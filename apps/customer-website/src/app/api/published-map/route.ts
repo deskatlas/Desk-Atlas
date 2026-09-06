@@ -16,7 +16,14 @@ export async function GET(request: NextRequest) {
       service.loadPublishedFloorMap(floorId, { audience: 'CUSTOMER' }),
     ]);
 
-    return NextResponse.json({ floors, published });
+    return NextResponse.json(
+      { floors, published },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof PublishedMapNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });

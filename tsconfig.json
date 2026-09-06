@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@deskatlas/domain": ["packages/domain/src"],
+      "@deskatlas/domain/*": ["packages/domain/src/*"],
+      "@deskatlas/validation": ["packages/validation/src"],
+      "@deskatlas/validation/*": ["packages/validation/src/*"],
+      "@deskatlas/config": ["packages/config/src"],
+      "@deskatlas/config/*": ["packages/config/src/*"],
+      "@deskatlas/ui": ["packages/ui/src"],
+      "@deskatlas/ui/*": ["packages/ui/src/*"]
+    },
+    "types": ["vitest/globals", "node"]
+  },
+  "include": [
+    "tests/**/*.ts",
+    "scripts/**/*.ts",
+    "packages/**/src/**/*.ts"
+  ]
+}
