@@ -19,7 +19,14 @@ export async function GET() {
       new SupabaseSettingsRepository({ supabaseUrl, serviceRoleKey })
     );
     const photos = await service.getPublicLandingPreviewPhotos();
-    return NextResponse.json({ photos });
+    return NextResponse.json(
+      { photos },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1200',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching landing preview photos:', error);
     return NextResponse.json({ photos: [] });
