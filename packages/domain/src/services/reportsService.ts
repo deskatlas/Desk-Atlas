@@ -775,3 +775,53 @@ function csvEscape(value: string | number) {
   }
   return stringValue;
 }
+
+export interface RevenueBarLabelInfo {
+  formattedValue: string;
+  isInsideBar: boolean;
+  isZero: boolean;
+}
+
+export function formatRevenueBarValue(
+  amount?: number,
+  currency: string = "PHP"
+): string {
+  const numericAmount = typeof amount === "number" && !isNaN(amount) ? amount : 0;
+  if (numericAmount === 0) {
+    return "₱0";
+  }
+
+  const hasDecimals = numericAmount % 1 !== 0;
+  try {
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency: currency || "PHP",
+      minimumFractionDigits: hasDecimals ? 2 : 0,
+      maximumFractionDigits: 2,
+    }).format(numericAmount);
+  } catch {
+    return `₱${numericAmount.toLocaleString("en-US", {
+      minimumFractionDigits: hasDecimals ? 2 : 0,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+}
+
+export function getRevenueBarLabelInfo(
+  heightPercentage: number,
+  amount?: number,
+  currency: string = "PHP"
+): RevenueBarLabelInfo {
+  const numericAmount = typeof amount === "number" && !isNaN(amount) ? amount : 0;
+  const isZero = numericAmount === 0;
+  const formattedValue = formatRevenueBarValue(numericAmount, currency);
+  // Place inside the bar if the bar has sufficient vertical space (>= 25% height) and is not zero
+  const isInsideBar = !isZero && heightPercentage >= 25;
+
+  return {
+    formattedValue,
+    isInsideBar,
+    isZero,
+  };
+}
+

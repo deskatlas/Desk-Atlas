@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { compareWorkspaceInstances, sortWorkspaceInstances } from '@deskatlas/domain';
+import { handleNumericKeyDown } from '@deskatlas/ui';
 
 const availableTags = [
   'Near Window',
@@ -676,6 +677,12 @@ export function WorkspaceList() {
                         type="number"
                         value={capacity}
                         onChange={(e) => setCapacity(e.target.value)}
+                        onBlur={() => {
+                          if (!capacity || parseInt(capacity, 10) < 1) {
+                            setCapacity('1');
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
                         placeholder="e.g. 1"
                         min="1"
                         style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '14px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
@@ -688,6 +695,12 @@ export function WorkspaceList() {
                         type="number"
                         value={rateAmount}
                         onChange={(e) => setRateAmount(e.target.value)}
+                        onBlur={() => {
+                          if (!rateAmount || parseFloat(rateAmount) < 0) {
+                            setRateAmount('0');
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e, { allowDecimal: true })}
                         placeholder="e.g. 500"
                         min="0"
                         style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '14px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}

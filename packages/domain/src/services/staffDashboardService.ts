@@ -181,19 +181,26 @@ function buildStaffActivityStream(
       const eventKey = `${event.reservationId}-${event.activityType}-${event.occurredAt}`;
       if (!seenEvents.has(eventKey)) {
         seenEvents.add(eventKey);
-        const isCheckIn = event.activityType === "CHECK_IN" || event.activityType === "REENTRY";
+        const isReentry = event.activityType === "REENTRY";
+        const isCheckIn = event.activityType === "CHECK_IN" || isReentry;
+        const actorDisplay = event.actorName ?? event.actorUserId ?? null;
         items.push({
           id: eventKey,
           time: formatTimeInTimezone(event.occurredAt, timezone),
           initials: getInitials(event.customerName),
           name: event.customerName,
           workspace: event.workspaceDisplayName ?? event.workspaceInstanceCode ?? "Workspace",
-          mark: isCheckIn ? "✓" : "→",
-          status: isCheckIn ? (event.activityType === "REENTRY" ? "Re-entered" : "Checked In") : "Checked Out",
-          style: isCheckIn
-            ? { background: "var(--da-info)", color: "var(--da-brand-dark)" }
-            : { background: "var(--da-canvas)", color: "var(--da-text-secondary)" },
+          mark: isReentry ? "↺" : (isCheckIn ? "✓" : "→"),
+          status: isReentry ? "Re-entered" : (isCheckIn ? "Checked In" : "Checked Out"),
+          style: isReentry
+            ? { background: "#E0F2FE", color: "#0369A1" }
+            : isCheckIn
+              ? { background: "var(--da-info)", color: "var(--da-brand-dark)" }
+              : { background: "var(--da-canvas)", color: "var(--da-text-secondary)" },
           occurredAt: event.occurredAt,
+          actorUserId: event.actorUserId ?? null,
+          actorRole: event.actorRole ?? null,
+          actorName: actorDisplay,
         });
       }
     }

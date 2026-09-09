@@ -9,8 +9,20 @@ export function Login() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const { user, login } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    fetch('/api/admin/auth/setup/status', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.hasAdmin === false) {
+          setNeedsSetup(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (user && user.role === 'admin') {
@@ -67,6 +79,15 @@ export function Login() {
           <span style={{ fontWeight: 800, fontSize: '19px', color: 'var(--da-brand-dark)' }}>DeskAtlas</span>
         </div>
         <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '24px' }}>Management Portal</div>
+
+        {needsSetup && (
+          <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', fontFamily: 'var(--da-font-family)' }}>
+            <strong>First-Time Setup:</strong> No administrator account detected.{' '}
+            <a href="/manage/setup" style={{ color: '#059669', fontWeight: 700, textDecoration: 'underline' }}>
+              Initialize with Google
+            </a>
+          </div>
+        )}
 
         {errorMsg && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', fontFamily: 'var(--da-font-family)' }}>

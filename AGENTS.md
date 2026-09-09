@@ -26,6 +26,13 @@ Current post-FM customer/kiosk flow change requests are tracked in
 `docs/milestone-fixes/MF-42_KIOSK_TEMPLATE_FIRST_NOW_RESERVE_FLOW.md`.
 Read the matching MF file before implementing any of those requested changes.
 
+Current dev-notes bug fixes, feature gaps, and improvements (MF-43 through
+MF-64) are analyzed in `docs/DEV_NOTES_ANALYSIS.md` with phased execution
+order in `docs/DEV_NOTES_MILESTONE_RUNBOOK.md`. Individual MF files are in
+`docs/milestone-fixes/`. Read the matching MF file, the analysis, and the
+runbook before implementing any dev-notes requested change.
+
+
 ## 1. Project Documentation Is Mandatory
 
 All authoritative DeskAtlas project documentation lives in:

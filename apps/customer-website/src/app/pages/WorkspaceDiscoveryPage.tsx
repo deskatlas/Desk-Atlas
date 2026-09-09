@@ -10,6 +10,7 @@ import {
   fetchTimeAvailability,
 } from "../lib/availabilityApi";
 import type { Floor } from "@deskatlas/domain";
+import { handleNumericKeyDown } from "@deskatlas/ui";
 import "react-day-picker/dist/style.css";
 
 export interface Workspace {
@@ -330,6 +331,12 @@ export function WorkspaceDiscoveryPage() {
                 max="12"
                 value={filters.duration}
                 onChange={(e) => setFilters({ ...filters, duration: e.target.value })}
+                onBlur={() => {
+                  if (!filters.duration || Number(filters.duration) < 1) {
+                    setFilters({ ...filters, duration: "1" });
+                  }
+                }}
+                onKeyDown={(e) => handleNumericKeyDown(e)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
               />
             </div>

@@ -178,4 +178,5 @@ export interface WorkspaceRepository {
     fromIso: string
   ): Promise<WorkspaceStatusImpactReservation[]>;
   appendAuditLog(entry: WorkspaceAuditLogEntry): Promise<void>;
+  listAuditLogs?(limit?: number): Promise<WorkspaceAuditLogEntry[]>;
 }

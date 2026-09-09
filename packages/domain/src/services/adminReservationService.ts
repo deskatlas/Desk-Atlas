@@ -9,6 +9,7 @@ import {
   ReservationStatus,
 } from "../models/reservation";
 import { AdminReservationRepository } from "./adminReservationRepository";
+import { filterReservationsBySearch } from "./reservationSearch";
 
 export class AdminReservationError extends Error {
   constructor(message: string) {
@@ -24,7 +25,7 @@ export class AdminReservationService {
   ) {}
 
   async listReservations(
-    filter: AdminReservationFilter = "all",
+    filter: AdminReservationFilter = "active",
     search?: string
   ): Promise<{ reservations: AdminReservationSummary[]; total: number }> {
     const list = await this.repository.listAdminReservations();
@@ -51,14 +52,37 @@ export class AdminReservationService {
       return false;
     };
 
-    let filtered = list.filter((r) => !isAwaitingProofExpired(r));
+    const mappedList = list.map((r) => {
+      if (isAwaitingProofExpired(r)) {
+        const pres = mapStatusPresentation("EXPIRED");
+        return {
+          ...r,
+          reservationStatus: "EXPIRED" as ReservationStatus,
+          status: pres.label,
+          statusStyle: pres.style,
+          mark: pres.mark,
+          paymentStatus: pres.payment,
+          paymentColor: pres.paymentColor,
+        };
+      }
+      return r;
+    });
 
-    if (filter === "checked_in") {
+    let filtered = mappedList;
+
+    if (filter === "active") {
+      filtered = filtered.filter((r) => r.reservationStatus !== "EXPIRED" && r.reservationStatus !== "CANCELLED");
+    } else if (filter === "expired") {
+      filtered = filtered.filter((r) => r.reservationStatus === "EXPIRED");
+    } else if (filter === "checked_in") {
       filtered = filtered.filter(
         (r) => r.reservationStatus === "CHECKED_IN" || (r.checkedInAt !== null && r.checkedOutAt === null)
       );
     } else if (filter === "upcoming") {
       filtered = filtered.filter((r) => {
+        if (r.reservationStatus === "EXPIRED" || r.reservationStatus === "CANCELLED") {
+          return false;
+        }
         if (r.reservationStatus === "CONFIRMED" || r.reservationStatus === "CHECKED_IN") {
           return true;
         }
@@ -71,19 +95,13 @@ export class AdminReservationService {
       filtered = filtered.filter((r) =>
         ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PENDING_COUNTER_CONFIRMATION"].includes(
           r.reservationStatus
-        )
+        ) && r.reservationStatus !== "EXPIRED"
       );
     }
+    // "all": retains all items in mappedList (both active and expired)
 
     if (search && search.trim() !== "") {
-      const q = search.trim().toLowerCase();
-      filtered = filtered.filter(
-        (r) =>
-          r.referenceCode.toLowerCase().includes(q) ||
-          r.customerName.toLowerCase().includes(q) ||
-          r.customerEmail.toLowerCase().includes(q) ||
-          r.workspaceDisplayName.toLowerCase().includes(q)
-      );
+      filtered = filterReservationsBySearch(filtered, search);
     }
 
     return {
@@ -96,7 +114,52 @@ export class AdminReservationService {
     if (!idOrReferenceCode || idOrReferenceCode.trim() === "") {
       return null;
     }
-    return this.repository.getAdminReservationDetail(idOrReferenceCode.trim());
+    const detail = await this.repository.getAdminReservationDetail(idOrReferenceCode.trim());
+    if (!detail) {
+      return null;
+    }
+
+    const now = this.nowProvider();
+    const nowMs = now.getTime();
+
+    if (detail.reservationStatus === "PENDING_PAYMENT") {
+      let isExpired = false;
+      let expIso = detail.updatedAt;
+      if (detail.paymentExpiresAt) {
+        const expMs = new Date(detail.paymentExpiresAt).getTime();
+        if (!isNaN(expMs) && expMs <= nowMs) {
+          isExpired = true;
+          expIso = detail.paymentExpiresAt;
+        }
+      } else if (detail.createdAt) {
+        const createdMs = new Date(detail.createdAt).getTime();
+        if (!isNaN(createdMs) && createdMs + 60 * 60 * 1000 <= nowMs) {
+          isExpired = true;
+          expIso = new Date(createdMs + 60 * 60 * 1000).toISOString();
+        }
+      }
+
+      if (isExpired) {
+        const pres = mapStatusPresentation("EXPIRED");
+        const timeline = [...detail.timeline];
+        if (!timeline.some((t) => t.toLowerCase().includes("expired"))) {
+          timeline.push(`${formatTimelineDate(expIso)} - Payment session expired`);
+        }
+        return {
+          ...detail,
+          reservationStatus: "EXPIRED",
+          status: pres.label,
+          statusStyle: pres.style,
+          mark: pres.mark,
+          paymentStatus: `${pres.payment} (${formatAmountWithCurrency(detail.amountDue, detail.currency)})`,
+          paymentColor: pres.paymentColor,
+          expiryReason: detail.expiryReason ?? "1-hour payment window expired without payment proof submission",
+          timeline,
+        };
+      }
+    }
+
+    return detail;
   }
 }
 

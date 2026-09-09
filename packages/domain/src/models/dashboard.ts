@@ -30,6 +30,9 @@ export interface AdminDashboardActivityItem {
     color: string;
   };
   occurredAt: string;
+  actorUserId?: string | null;
+  actorRole?: string | null;
+  actorName?: string | null;
 }
 
 export interface AdminDashboardOccupancyItem {

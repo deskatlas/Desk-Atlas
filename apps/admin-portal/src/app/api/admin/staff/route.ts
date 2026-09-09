@@ -3,6 +3,7 @@ import {
   StaffManagementAuthorizationError,
   StaffManagementConflictError,
   StaffManagementError,
+  validatePassword,
 } from "@deskatlas/domain";
 import { getStaffManagementService } from "./_lib/staffService";
 
@@ -12,9 +13,13 @@ export async function GET(request: NextRequest) {
   try {
     const actorUserId = request.headers.get("x-user-id") ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? "ADMIN") as "ADMIN" | "STAFF";
+    const activeOnly = request.nextUrl.searchParams.get("activeOnly") === "true";
 
     const service = getStaffManagementService();
-    const staff = await service.listStaff(actorUserId ? { userId: actorUserId, role: actorRole } : undefined);
+    const actor = actorUserId ? { userId: actorUserId, role: actorRole } : undefined;
+    const staff = activeOnly
+      ? await service.listActiveStaff(actor)
+      : await service.listStaff(actor);
     return NextResponse.json({ staff });
   } catch (error: any) {
     if (error instanceof StaffManagementAuthorizationError) {
@@ -38,6 +43,16 @@ export async function POST(request: NextRequest) {
         { error: "Email, display name, and role are required." },
         { status: 400 }
       );
+    }
+
+    if (password !== undefined && password !== null && String(password).length > 0) {
+      const validation = validatePassword(String(password));
+      if (!validation.isValid) {
+        return NextResponse.json(
+          { error: `Password does not meet security requirements: ${validation.errors.join(' ')}` },
+          { status: 400 }
+        );
+      }
     }
 
     const service = getStaffManagementService();

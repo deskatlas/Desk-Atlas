@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const filterParam = (request.nextUrl.searchParams.get("filter") ?? "all") as AdminReservationFilter;
+    const filterParam = (request.nextUrl.searchParams.get("filter") ?? "active") as AdminReservationFilter;
     const searchParam = request.nextUrl.searchParams.get("search") ?? undefined;
 
     const service = getAdminReservationService();

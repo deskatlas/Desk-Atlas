@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   test: {
-    include: ["tests/t*.test.ts"],
+    include: ["tests/t*.test.ts", "tests/mf*.test.ts", "tests/staff*.test.ts"],
     passWithNoTests: true,
     environment: "node",
     testTimeout: 20000,
@@ -21,6 +21,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@deskatlas/domain": path.resolve(__dirname, "packages/domain/src"),
+      "@deskatlas/ui": path.resolve(__dirname, "packages/ui/src"),
       "@deskatlas/validation": path.resolve(__dirname, "packages/validation/src"),
       "@deskatlas/config": path.resolve(__dirname, "packages/config/src"),
     },

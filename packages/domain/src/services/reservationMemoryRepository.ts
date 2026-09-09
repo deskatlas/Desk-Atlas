@@ -1,6 +1,7 @@
 import {
   AdminReservationCandidateSummary,
   AdminReservationDetail,
+  AdminReservationPaymentAttemptSummary,
   AdminReservationSummary,
   BookingAccessState,
   CounterPaymentRecord,
@@ -45,6 +46,7 @@ import { ReservationPaymentRepository, CreateWebPaymentSessionInput } from "./pa
 import { PaymentReviewRepository } from "./paymentReviewRepository";
 import { ReportsRepository } from "./reportsRepository";
 import { StaffOperationsRepository } from "./staffOperationsRepository";
+import { StaffOperationsConflictError } from "./staffOperationsService";
 import { randomUUID } from "crypto";
 
 interface StoredPaymentAttempt {
@@ -88,6 +90,14 @@ export class ReservationMemoryRepository
   private nextApprovalFailureMessage: string | null = null;
   private businessName: string = "DeskAtlas";
   constructor(private readonly nowProvider: () => Date = () => new Date()) { }
+
+  getStoredReservation(id: string): ReservationResponseDTO | undefined {
+    return this.reservations.find((r) => r.id === id);
+  }
+
+  getStoredPaymentAttempts(): StoredPaymentAttempt[] {
+    return Array.from(this.paymentAttempts.values());
+  }
 
   setBusinessName(name: string): void {
     this.businessName = name;
@@ -179,6 +189,7 @@ export class ReservationMemoryRepository
       updatedAt: now,
       confirmedAt: null,
       bookingTokenHash: null,
+      bookingToken: null,
       qrIssuedAt: null,
       qrRevokedAt: null,
       checkedInAt: null,
@@ -212,14 +223,18 @@ export class ReservationMemoryRepository
       let methodId: string | null = null;
       if (request.paymentMethodId) {
         const method = this.paymentMethods.find(
-          (entry) => entry.id === request.paymentMethodId && entry.isActive
+          (entry) =>
+            (entry.id === request.paymentMethodId ||
+              entry.methodType.toUpperCase() === String(request.paymentMethodId).toUpperCase()) &&
+            entry.isActive &&
+            entry.allowKiosk
         );
         if (!method) {
           throw new Error("Invalid kiosk payment method.");
         }
         methodId = method.id;
       } else {
-        const activeMethod = this.paymentMethods.find((entry) => entry.isActive);
+        const activeMethod = this.paymentMethods.find((entry) => entry.isActive && entry.allowKiosk);
         methodId = activeMethod ? activeMethod.id : null;
       }
 
@@ -299,6 +314,8 @@ export class ReservationMemoryRepository
       return null;
     }
 
+    const method = this.paymentMethods.find((m) => m.id === attempt.paymentMethodId);
+
     return {
       paymentAttemptId: attempt.id,
       reservationId: reservation.id,
@@ -311,6 +328,8 @@ export class ReservationMemoryRepository
       amountDue: reservation.amountDue,
       currency: reservation.currency,
       paymentMethodId: attempt.paymentMethodId,
+      paymentMethodType: method?.methodType ?? null,
+      paymentMethodDisplayName: method?.displayName ?? null,
       submittedCandidates: structuredClone(reservation.candidates ?? []),
       processedAt: attempt.processedAt,
       processedByUserId: attempt.processedByUserId,
@@ -346,6 +365,8 @@ export class ReservationMemoryRepository
       return null;
     }
 
+    const method = this.paymentMethods.find((m) => m.id === attempt.paymentMethodId);
+
     return {
       paymentAttemptId: attempt.id,
       reservationId: matchedReservation.id,
@@ -358,6 +379,8 @@ export class ReservationMemoryRepository
       amountDue: matchedReservation.amountDue,
       currency: matchedReservation.currency,
       paymentMethodId: attempt.paymentMethodId,
+      paymentMethodType: method?.methodType ?? null,
+      paymentMethodDisplayName: method?.displayName ?? null,
       submittedCandidates: structuredClone(matchedReservation.candidates ?? []),
       processedAt: attempt.processedAt,
       processedByUserId: attempt.processedByUserId,
@@ -635,6 +658,7 @@ export class ReservationMemoryRepository
   async issueBookingAccessToken(input: {
     reservationId: string;
     tokenHash: string;
+    token?: string;
     issuedAt: string;
   }): Promise<boolean> {
     const reservation = this.requireReservation(input.reservationId);
@@ -649,6 +673,7 @@ export class ReservationMemoryRepository
     }
 
     reservation.bookingTokenHash = input.tokenHash;
+    reservation.bookingToken = input.token ?? null;
     reservation.qrIssuedAt = input.issuedAt;
     reservation.updatedAt = input.issuedAt;
     return true;
@@ -673,6 +698,7 @@ export class ReservationMemoryRepository
       customerLastName: reservation.customerLastName,
       customerEmail: reservation.customerEmail,
       bookingTokenHash: reservation.bookingTokenHash,
+      bookingToken: reservation.bookingToken ?? null,
       qrIssuedAt: reservation.qrIssuedAt,
       qrRevokedAt: reservation.qrRevokedAt ?? null,
       checkedInAt: reservation.checkedInAt ?? null,
@@ -691,12 +717,29 @@ export class ReservationMemoryRepository
     reservationId: string;
     scannedAt: string;
     accessState: BookingAccessState;
+    actorUserId?: string | null;
+    actorRole?: "ADMIN" | "STAFF" | "SYSTEM" | null;
+    reentry?: boolean;
   }): Promise<void> {
     this.bookingScanEvents.push({
       reservationId: input.reservationId,
       scannedAt: input.scannedAt,
       accessState: input.accessState,
     });
+
+    if (input.reentry) {
+      const reservation = this.reservations.find((r) => r.id === input.reservationId);
+      if (reservation) {
+        this.recordOperationalAudit({
+          reservation,
+          action: "CHECK_IN",
+          actedAt: input.scannedAt,
+          actorRole: (input.actorRole === "ADMIN" || input.actorRole === "STAFF") ? input.actorRole : "STAFF",
+          actorUserId: input.actorUserId ?? "staff-scanner",
+          reentry: true,
+        });
+      }
+    }
   }
 
   async listOperationalReservations(_nowIso: string): Promise<StaffOperationalReservation[]> {
@@ -743,7 +786,14 @@ export class ReservationMemoryRepository
   }
 
   async listOperationalActivity(limit: number): Promise<OperationalActivityRecord[]> {
-    return this.operationalAuditEvents.slice(0, limit).map((event) => ({ ...event }));
+    return [...this.operationalAuditEvents]
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+      .slice(0, limit)
+      .map((event) => ({ ...event }));
+  }
+
+  addOperationalActivity(event: OperationalActivityRecord): void {
+    this.operationalAuditEvents.unshift(event);
   }
 
   async listReportReservations(): Promise<ReportReservationRecord[]> {
@@ -933,12 +983,23 @@ export class ReservationMemoryRepository
       }
 
       if (reservation.status !== "CHECKED_IN") {
-        throw new Error("Reservation is not currently checked in.");
+        throw new StaffOperationsConflictError("Reservation is not currently checked in.");
       }
 
       reservation.status = "COMPLETED";
       reservation.checkedOutAt = reservation.checkedOutAt ?? input.actedAt;
       reservation.updatedAt = input.actedAt;
+
+      // On early checkout, release the physical workspace by shortening the assigned candidate's endAt
+      const assigned = (reservation.candidates ?? []).find((c) => c.isAssigned);
+      if (assigned) {
+        const actedTime = new Date(input.actedAt).getTime();
+        const endTime = new Date(assigned.endAt).getTime();
+        const startTime = new Date(assigned.startAt).getTime();
+        if (actedTime < endTime && actedTime > startTime) {
+          assigned.endAt = input.actedAt;
+        }
+      }
 
       this.recordOperationalAudit({
         reservation,
@@ -1098,6 +1159,9 @@ export class ReservationMemoryRepository
       [...(reservation.candidates ?? [])].sort((a, b) => a.rank - b.rank)[0] ??
       null;
 
+    const attempt = Array.from(this.paymentAttempts.values()).find((a) => a.reservationId === reservation.id);
+    const method = attempt?.paymentMethodId ? this.paymentMethods.find((m) => m.id === attempt.paymentMethodId) : null;
+
     return {
       reservationId: reservation.id,
       referenceCode: reservation.referenceCode,
@@ -1118,6 +1182,9 @@ export class ReservationMemoryRepository
       checkedInAt: reservation.checkedInAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
       qrIssuedAt: reservation.qrIssuedAt ?? null,
+      paymentMethodId: attempt?.paymentMethodId ?? null,
+      paymentMethodType: method?.methodType ?? null,
+      paymentMethodDisplayName: method?.displayName ?? null,
     };
   }
 
@@ -1128,6 +1195,7 @@ export class ReservationMemoryRepository
     actorRole: "ADMIN" | "STAFF";
     actorUserId: string;
     reentry: boolean;
+    actorName?: string | null;
   }) {
     const summary = this.buildOperationalReservation(input.reservation);
     this.operationalAuditEvents.unshift({
@@ -1145,6 +1213,7 @@ export class ReservationMemoryRepository
       occurredAt: input.actedAt,
       actorUserId: input.actorUserId,
       actorRole: input.actorRole,
+      actorName: input.actorName ?? input.actorUserId,
     });
   }
 
@@ -1173,6 +1242,10 @@ export class ReservationMemoryRepository
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       const latestAttempt = attempts[0] ?? null;
       const paymentExpiresAt = latestAttempt?.expiresAt ?? null;
+
+      const method = latestAttempt?.paymentMethodId
+        ? this.paymentMethods.find((m) => m.id === latestAttempt.paymentMethodId)
+        : null;
 
       return {
         id: r.id,
@@ -1203,6 +1276,9 @@ export class ReservationMemoryRepository
         checkedInAt: r.checkedInAt,
         checkedOutAt: r.checkedOutAt,
         paymentExpiresAt,
+        paymentMethodId: latestAttempt?.paymentMethodId ?? null,
+        paymentMethodType: method?.methodType ?? null,
+        paymentMethodDisplayName: method?.displayName ?? null,
       };
     });
   }
@@ -1269,9 +1345,47 @@ export class ReservationMemoryRepository
       `${formatTimelineDate(r.createdAt)} - Reservation requested (${r.source === "KIOSK" ? "Kiosk" : "Web"})`
     );
 
-    // Check payment attempts for proof
-    const attempts = Array.from(this.paymentAttempts.values()).filter((a) => a.reservationId === r.id);
-    const proofAttempt = attempts.find((a) => a.proofSubmittedAt !== null);
+    // Check payment attempts for proof and history
+    const attempts = Array.from(this.paymentAttempts.values())
+      .filter((a) => a.reservationId === r.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const latestAttempt = attempts[0] ?? null;
+    const proofAttempt = attempts.find((a) => a.proofSubmittedAt !== null) ?? null;
+    const paymentExpiresAt = latestAttempt?.expiresAt ?? null;
+    const proofSubmittedAt = proofAttempt?.proofSubmittedAt ?? null;
+
+    const paymentAttemptsSummary: AdminReservationPaymentAttemptSummary[] = attempts.map((a) => {
+      const aMethod = a.paymentMethodId
+        ? this.paymentMethods.find((m) => m.id === a.paymentMethodId)
+        : null;
+      return {
+        id: a.id,
+        status: a.status,
+        amount: r.amountDue,
+        currency: r.currency,
+        channel: a.channel,
+        createdAt: a.createdAt,
+        expiresAt: a.expiresAt,
+        proofSubmittedAt: a.proofSubmittedAt,
+        proofStoragePath: a.proofStoragePath,
+        rejectionReason: a.rejectionReason,
+        paymentMethodId: a.paymentMethodId ?? null,
+        paymentMethodType: aMethod?.methodType ?? null,
+        paymentMethodDisplayName: aMethod?.displayName ?? null,
+      };
+    });
+
+    let expiryReason: string | null = null;
+    if (r.status === "EXPIRED") {
+      if (latestAttempt?.rejectionReason) {
+        expiryReason = latestAttempt.rejectionReason;
+      } else if (proofSubmittedAt) {
+        expiryReason = "Proof submitted after payment window expired";
+      } else {
+        expiryReason = "1-hour payment window expired without payment proof submission";
+      }
+    }
+
     if (proofAttempt?.proofSubmittedAt) {
       timeline.push(`${formatTimelineDate(proofAttempt.proofSubmittedAt)} - Payment proof uploaded`);
     }
@@ -1286,6 +1400,14 @@ export class ReservationMemoryRepository
       timeline.push(`${formatTimelineDate(r.checkedInAt)} - Customer checked in`);
     }
 
+    const reentries = this.operationalAuditEvents
+      .filter((e) => e.reservationId === r.id && e.activityType === "REENTRY")
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+
+    for (const re of reentries) {
+      timeline.push(`${formatTimelineDate(re.occurredAt)} - Customer re-entered (Re-entry)`);
+    }
+
     if (r.checkedOutAt) {
       timeline.push(`${formatTimelineDate(r.checkedOutAt)} - Customer checked out`);
     }
@@ -1293,12 +1415,16 @@ export class ReservationMemoryRepository
     if (r.status === "CANCELLED") {
       timeline.push(`${formatTimelineDate(r.updatedAt)} - Reservation cancelled`);
     } else if (r.status === "EXPIRED") {
-      timeline.push(`${formatTimelineDate(r.updatedAt)} - Payment session expired`);
+      timeline.push(`${formatTimelineDate(r.updatedAt)} - Payment session expired (${expiryReason ?? "Window elapsed"})`);
     } else if (r.status === "NEEDS_MANUAL_RESOLUTION") {
       timeline.push(`${formatTimelineDate(r.updatedAt)} - Needs manual resolution`);
     }
 
     const formattedPaymentStatus = `${pres.payment} (${formatAmountWithCurrency(r.amountDue, r.currency)})`;
+
+    const detailMethod = latestAttempt?.paymentMethodId
+      ? this.paymentMethods.find((m) => m.id === latestAttempt.paymentMethodId)
+      : null;
 
     return {
       id: r.id,
@@ -1328,9 +1454,19 @@ export class ReservationMemoryRepository
       qrIssuedAt: r.qrIssuedAt,
       qrRevokedAt: r.qrRevokedAt,
       hasBookingQr: Boolean(r.qrIssuedAt && !r.qrRevokedAt),
+      bookingToken: r.bookingToken ?? null,
+      bookingAccessUrl: r.bookingToken ? `https://deskatlas.test/booking/${encodeURIComponent(r.bookingToken)}` : null,
       assignedCandidate,
       candidates,
       timeline,
+      paymentExpiresAt,
+      paymentAttemptStatus: latestAttempt?.status ?? null,
+      paymentMethodId: latestAttempt?.paymentMethodId ?? null,
+      paymentMethodType: detailMethod?.methodType ?? null,
+      paymentMethodDisplayName: detailMethod?.displayName ?? null,
+      proofSubmittedAt,
+      expiryReason,
+      paymentAttempts: paymentAttemptsSummary,
     };
   }
 }

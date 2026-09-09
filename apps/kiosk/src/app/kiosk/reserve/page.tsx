@@ -245,6 +245,9 @@ export default function KioskReservePage() {
   const [selectedTemplate, setSelectedTemplate] = useState<WorkspaceTemplateSummary | null>(null);
   const [durationHours, setDurationHours] = useState<number>(2);
 
+  // Payment method selection
+  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "COUNTER_QR">("CASH");
+
   // Modal Workspace
   const [modalWorkspace, setModalWorkspace] = useState<WorkspaceMapViewModel | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -519,6 +522,7 @@ export default function KioskReservePage() {
     setSelectedWorkspace(null);
     setSelectedTemplate(null);
     setDurationHours(2);
+    setPaymentMethod("CASH");
     setCustomerFirstName("");
     setCustomerLastName("");
     setCustomerEmail("");
@@ -573,6 +577,7 @@ export default function KioskReservePage() {
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
           durationHours,
           durationMinutes: durationHours * 60,
+          paymentMethod,
         }),
       });
 
@@ -860,11 +865,12 @@ export default function KioskReservePage() {
                           {elements.map((el: PublishedMapElement) => {
                             const isWorkspace = el.elementRole === "WORKSPACE" || Boolean(el.workspace);
                             const isWall =
-                              el.elementRole === "STRUCTURE" ||
-                              el.elementType?.toLowerCase().includes("wall") ||
-                              el.elementType?.toLowerCase().includes("thin") ||
-                              el.elementType?.toLowerCase().includes("glass") ||
-                              el.elementType?.toLowerCase().includes("separator");
+                              !isWorkspace &&
+                              (el.elementRole === "STRUCTURE" ||
+                                el.elementType?.toLowerCase().includes("wall") ||
+                                el.elementType?.toLowerCase().includes("thin_wall") ||
+                                el.elementType?.toLowerCase().includes("glass") ||
+                                el.elementType?.toLowerCase().includes("separator"));
 
                             const isRestroom =
                               el.elementType?.toLowerCase().includes("restroom") ||
@@ -1615,6 +1621,46 @@ export default function KioskReservePage() {
                     )}
                   </div>
 
+                  {/* Payment Method Selection */}
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1.5">
+                      Counter Payment Method <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("CASH")}
+                        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
+                          paymentMethod === "CASH"
+                            ? "border-[var(--da-primary)] bg-[var(--da-canvas)] ring-2 ring-[var(--da-primary)]"
+                            : "border-[var(--da-border-light)] bg-white hover:border-[var(--da-border)]"
+                        }`}
+                      >
+                        <span className="text-2xl">💵</span>
+                        <div>
+                          <div className="font-extrabold text-xs text-[var(--da-brand-dark)]">Pay Cash at Counter</div>
+                          <div className="text-[11px] text-[var(--da-text-secondary)]">Pay exact cash to staff upon check-in</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("COUNTER_QR")}
+                        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
+                          paymentMethod === "COUNTER_QR"
+                            ? "border-[var(--da-primary)] bg-[var(--da-canvas)] ring-2 ring-[var(--da-primary)]"
+                            : "border-[var(--da-border-light)] bg-white hover:border-[var(--da-border)]"
+                        }`}
+                      >
+                        <span className="text-2xl">📱</span>
+                        <div>
+                          <div className="font-extrabold text-xs text-[var(--da-brand-dark)]">Counter QR (GCash)</div>
+                          <div className="text-[11px] text-[var(--da-text-secondary)]">Scan counter QR code via mobile wallet</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[11px] text-slate-600 leading-relaxed">
                     <span className="font-bold text-slate-800">⚡ Walk-In Policy:</span> Submitting creates a pending reservation. Present your code to staff at the counter to confirm payment (cash or QR) and activate your booking pass.
                   </div>
@@ -1685,10 +1731,13 @@ export default function KioskReservePage() {
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-left w-full">
                   <div className="rounded-2xl bg-emerald-50/70 border border-emerald-200 p-4 text-xs text-emerald-950 flex flex-col gap-1.5">
                     <div className="font-bold flex items-center gap-1.5">
-                      <span>📱</span> Counter GCash / Maya QR or Cash
+                      <span>{paymentMethod === "CASH" ? "💵" : "📱"}</span>{" "}
+                      {paymentMethod === "CASH" ? "Cash Payment at Counter" : "Counter GCash / Maya QR"}
                     </div>
                     <p className="leading-relaxed">
-                      Staff will confirm your payment at the counter desk and instantly allocate your reserved spot.
+                      {paymentMethod === "CASH"
+                        ? `Present your reference code and pay ₱${totalAmount.toFixed(2)} in cash to staff at the counter desk.`
+                        : "Staff will confirm your payment at the counter desk and instantly allocate your reserved spot."}
                     </p>
                   </div>
 

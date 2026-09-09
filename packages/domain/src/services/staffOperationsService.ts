@@ -1,11 +1,13 @@
 import {
   OperationalActivityRecord,
+  OperationalActivityType,
   OccupancyRecord,
   ReservationOperationalActionRequest,
   ReservationOperationalActionResult,
   StaffOperationalReservation,
 } from "../models/reservation";
 import { StaffOperationsRepository } from "./staffOperationsRepository";
+import { filterReservationsBySearch } from "./reservationSearch";
 
 export class StaffOperationsError extends Error {
   constructor(message: string) {
@@ -27,10 +29,14 @@ export class StaffOperationsService {
     private readonly nowProvider: () => Date = () => new Date()
   ) {}
 
-  async listOperationalReservations(): Promise<StaffOperationalReservation[]> {
-    return this.staffOperationsRepository.listOperationalReservations(
+  async listOperationalReservations(search?: string): Promise<StaffOperationalReservation[]> {
+    const list = await this.staffOperationsRepository.listOperationalReservations(
       this.nowProvider().toISOString()
     );
+    if (search && search.trim() !== "") {
+      return filterReservationsBySearch(list, search);
+    }
+    return list;
   }
 
   async getOperationalReservation(
@@ -49,12 +55,19 @@ export class StaffOperationsService {
     return this.staffOperationsRepository.listOccupancy(this.nowProvider().toISOString());
   }
 
-  async listOperationalActivity(limit = 20): Promise<OperationalActivityRecord[]> {
+  async listOperationalActivity(
+    limit = 20,
+    filter?: { activityType?: OperationalActivityType }
+  ): Promise<OperationalActivityRecord[]> {
     if (!Number.isInteger(limit) || limit <= 0) {
       throw new StaffOperationsError("Activity limit must be a positive integer.");
     }
 
-    return this.staffOperationsRepository.listOperationalActivity(limit);
+    const records = await this.staffOperationsRepository.listOperationalActivity(limit);
+    if (filter?.activityType) {
+      return records.filter((r) => r.activityType === filter.activityType);
+    }
+    return records;
   }
 
   async checkInReservation(
@@ -91,13 +104,17 @@ function validateActor(request: ReservationOperationalActionRequest) {
     throw new StaffOperationsError("Actor user ID is required.");
   }
 
-  if (request.actor.role !== "ADMIN" && request.actor.role !== "STAFF") {
+  const normalizedRole = String(request.actor.role || "").toUpperCase();
+  if (normalizedRole !== "ADMIN" && normalizedRole !== "STAFF") {
     throw new StaffOperationsConflictError(
       "Only ADMIN or STAFF may perform reservation operational actions."
     );
   }
 
-  return request.actor;
+  return {
+    ...request.actor,
+    role: normalizedRole as "ADMIN" | "STAFF",
+  };
 }
 
 export function createStaffOperationsService(

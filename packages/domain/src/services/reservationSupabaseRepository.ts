@@ -1,6 +1,7 @@
 import {
   AdminReservationCandidateSummary,
   AdminReservationDetail,
+  AdminReservationPaymentAttemptSummary,
   AdminReservationSummary,
   BookingAccessState,
   CandidateRank,
@@ -41,6 +42,10 @@ import { CreateWebPaymentSessionInput, ReservationPaymentRepository } from "./pa
 import { PaymentReviewRepository } from "./paymentReviewRepository";
 import { ReportsRepository } from "./reportsRepository";
 import { StaffOperationsRepository } from "./staffOperationsRepository";
+import {
+  StaffOperationsError,
+  StaffOperationsConflictError,
+} from "./staffOperationsService";
 import {
   GuestReservationTrackingRecord,
   GuestReservationTrackingRepository,
@@ -95,7 +100,8 @@ export class ReservationSupabaseRepository
     }
 
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    return text ? (JSON.parse(text) as T) : (undefined as T);
   }
 
   private mapReservation(data: any, candidates: ReservationCandidate[]): ReservationResponseDTO {
@@ -114,6 +120,7 @@ export class ReservationSupabaseRepository
       updatedAt: data.updated_at,
       confirmedAt: data.confirmed_at,
       bookingTokenHash: data.booking_token_hash,
+      bookingToken: data.booking_token ?? null,
       qrIssuedAt: data.qr_issued_at,
       qrRevokedAt: data.qr_revoked_at,
       checkedInAt: data.checked_in_at,
@@ -253,7 +260,7 @@ export class ReservationSupabaseRepository
 
   async listActiveKioskPaymentMethods(): Promise<PaymentMethod[]> {
     const rows = await this.request<any[]>(
-      "/payment_methods?select=*&is_active=eq.true&order=display_order.asc"
+      "/payment_methods?select=*&is_active=eq.true&allow_kiosk=eq.true&order=display_order.asc"
     );
 
     return rows.map((row) => ({
@@ -306,6 +313,15 @@ export class ReservationSupabaseRepository
       isAssigned: candidate.is_assigned,
     }));
 
+    let paymentMethod: any = null;
+    if (attempt.payment_method_id) {
+      paymentMethod = (
+        await this.request<any[]>(
+          `/payment_methods?select=*&id=eq.${encodeURIComponent(attempt.payment_method_id)}&limit=1`
+        )
+      )?.[0];
+    }
+
     return {
       paymentAttemptId: attempt.id,
       reservationId: reservation.id,
@@ -318,6 +334,8 @@ export class ReservationSupabaseRepository
       amountDue: Number(reservation.amount_due),
       currency: reservation.currency,
       paymentMethodId: attempt.payment_method_id,
+      paymentMethodType: paymentMethod?.method_type ?? null,
+      paymentMethodDisplayName: paymentMethod?.display_name ?? null,
       submittedCandidates: candidates,
       processedAt: attempt.processed_at,
       processedByUserId: attempt.processed_by_user_id,
@@ -371,6 +389,15 @@ export class ReservationSupabaseRepository
       isAssigned: candidate.is_assigned,
     }));
 
+    let paymentMethod: any = null;
+    if (attempt.payment_method_id) {
+      paymentMethod = (
+        await this.request<any[]>(
+          `/payment_methods?select=*&id=eq.${encodeURIComponent(attempt.payment_method_id)}&limit=1`
+        )
+      )?.[0];
+    }
+
     return {
       paymentAttemptId: attempt.id,
       reservationId: reservation.id,
@@ -383,6 +410,8 @@ export class ReservationSupabaseRepository
       amountDue: Number(reservation.amount_due),
       currency: reservation.currency,
       paymentMethodId: attempt.payment_method_id,
+      paymentMethodType: paymentMethod?.method_type ?? null,
+      paymentMethodDisplayName: paymentMethod?.display_name ?? null,
       submittedCandidates: candidates,
       processedAt: attempt.processed_at,
       processedByUserId: attempt.processed_by_user_id,
@@ -584,6 +613,7 @@ export class ReservationSupabaseRepository
   async issueBookingAccessToken(input: {
     reservationId: string;
     tokenHash: string;
+    token?: string;
     issuedAt: string;
   }): Promise<boolean> {
     const reservationRows = await this.request<any[]>(
@@ -603,6 +633,15 @@ export class ReservationSupabaseRepository
       throw new Error("Booking access can only be issued for confirmed reservations.");
     }
 
+    const patchBody: Record<string, any> = {
+      booking_token_hash: input.tokenHash,
+      qr_issued_at: input.issuedAt,
+      updated_at: input.issuedAt,
+    };
+    if (input.token !== undefined) {
+      patchBody.booking_token = input.token;
+    }
+
     const response = await fetch(
       `${this.restUrl}/reservations?id=eq.${encodeURIComponent(input.reservationId)}&booking_token_hash=is.null&select=id`,
       {
@@ -614,11 +653,7 @@ export class ReservationSupabaseRepository
           Prefer: "return=representation",
         },
         cache: "no-store",
-        body: JSON.stringify({
-          booking_token_hash: input.tokenHash,
-          qr_issued_at: input.issuedAt,
-          updated_at: input.issuedAt,
-        }),
+        body: JSON.stringify(patchBody),
       }
     );
 
@@ -679,6 +714,7 @@ export class ReservationSupabaseRepository
       customerLastName: reservation.customer_last_name,
       customerEmail: reservation.customer_email,
       bookingTokenHash: reservation.booking_token_hash,
+      bookingToken: reservation.booking_token ?? null,
       qrIssuedAt: reservation.qr_issued_at,
       qrRevokedAt: reservation.qr_revoked_at,
       checkedInAt: reservation.checked_in_at,
@@ -699,7 +735,17 @@ export class ReservationSupabaseRepository
     reservationId: string;
     scannedAt: string;
     accessState: BookingAccessState;
+    actorUserId?: string | null;
+    actorRole?: "ADMIN" | "STAFF" | "SYSTEM" | null;
+    reentry?: boolean;
   }): Promise<void> {
+    const isReentry = Boolean(input.reentry);
+    const actorUserId = input.actorUserId ?? null;
+    let actorRole = input.actorRole ?? (actorUserId ? "STAFF" : "SYSTEM");
+    if (!actorUserId) {
+      actorRole = "SYSTEM";
+    }
+
     const response = await fetch(`${this.restUrl}/audit_logs`, {
       method: "POST",
       headers: {
@@ -710,14 +756,16 @@ export class ReservationSupabaseRepository
       },
       cache: "no-store",
       body: JSON.stringify({
-        actor_user_id: null,
-        actor_role: "SYSTEM",
-        action: "booking_qr_scanned",
+        actor_user_id: actorUserId,
+        actor_role: actorRole,
+        action: isReentry ? "reservation_reentered" : "booking_qr_scanned",
         entity_type: "reservation",
         entity_id: input.reservationId,
         metadata: {
           access_state: input.accessState,
           scanned_at: input.scannedAt,
+          reentry: isReentry,
+          event_type: isReentry ? "RE_ENTRY" : "QR_SCAN",
         },
       }),
     });
@@ -779,11 +827,11 @@ export class ReservationSupabaseRepository
 
   async listOperationalActivity(limit: number): Promise<OperationalActivityRecord[]> {
     const rows = await this.request<any[]>(
-      `/audit_logs?select=*&action=in.(reservation_checked_in,reservation_checked_out)&order=created_at.desc&limit=${limit}`
+      `/audit_logs?select=*&action=in.(reservation_checked_in,reservation_checked_out,reservation_reentered)&order=created_at.desc&limit=${limit}`
     );
 
-    const events = await Promise.all(
-      rows.map(async (row) => {
+    const events: (OperationalActivityRecord | null)[] = await Promise.all(
+      rows.map(async (row): Promise<OperationalActivityRecord | null> => {
         const summary = await this.loadOperationalReservation(row.entity_id);
         if (!summary) {
           return null;
@@ -798,17 +846,24 @@ export class ReservationSupabaseRepository
           activityType:
             row.action === "reservation_checked_out"
               ? "CHECK_OUT"
-              : row.metadata?.reentry
+              : (row.action === "reservation_reentered" || row.metadata?.reentry === true || row.metadata?.event_type === "RE_ENTRY")
                 ? "REENTRY"
                 : "CHECK_IN",
           occurredAt: row.created_at,
           actorUserId: row.actor_user_id,
           actorRole: row.actor_role,
-        } satisfies OperationalActivityRecord;
+          actorName: row.metadata?.actor_name ?? row.actor_user_id ?? null,
+        };
       })
     );
 
-    return events.filter((event): event is OperationalActivityRecord => event !== null);
+    const filtered: OperationalActivityRecord[] = [];
+    for (const event of events) {
+      if (event !== null) {
+        filtered.push(event);
+      }
+    }
+    return filtered;
   }
 
   async listReportReservations(): Promise<ReportReservationRecord[]> {
@@ -1030,14 +1085,25 @@ export class ReservationSupabaseRepository
     actorRole: "ADMIN" | "STAFF";
     actedAt: string;
   }): Promise<ReservationOperationalActionResult> {
-    await this.request<any[]>("/rpc/check_out_reservation", {
-      method: "POST",
-      body: JSON.stringify({
-        p_reservation_id: input.reservationId,
-        p_actor_user_id: input.actorUserId,
-        p_acted_at: input.actedAt,
-      }),
-    });
+    try {
+      await this.request<any[]>("/rpc/check_out_reservation", {
+        method: "POST",
+        body: JSON.stringify({
+          p_reservation_id: input.reservationId,
+          p_actor_user_id: input.actorUserId,
+          p_acted_at: input.actedAt,
+        }),
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("Reservation is not currently checked in")) {
+        throw new StaffOperationsConflictError("Reservation is not currently checked in.");
+      }
+      if (msg.includes("Reservation was not found")) {
+        throw new StaffOperationsError("Reservation was not found.");
+      }
+      throw error;
+    }
 
     const summary = await this.loadOperationalReservation(input.reservationId);
     if (!summary) {
@@ -1483,7 +1549,7 @@ export class ReservationSupabaseRepository
 
     const r = reservationRows[0];
 
-    const [candidateRows, instancesRows, templatesRows, floorsRows, paymentAttempts] =
+    const [candidateRows, instancesRows, templatesRows, floorsRows, paymentAttempts, auditRows] =
       await Promise.all([
         this.request<any[]>(
           `/reservation_candidates?select=*&reservation_id=eq.${encodeURIComponent(r.id)}&order=rank.asc`
@@ -1494,6 +1560,9 @@ export class ReservationSupabaseRepository
         this.request<any[]>(
           `/payment_attempts?select=*&reservation_id=eq.${encodeURIComponent(r.id)}&order=created_at.desc`
         ),
+        this.request<any[]>(
+          `/audit_logs?select=*&entity_type=eq.reservation&entity_id=eq.${encodeURIComponent(r.id)}&order=created_at.asc`
+        ).catch(() => []),
       ]);
 
     const instancesById = new Map<string, any>((instancesRows ?? []).map((i) => [i.id, i]));
@@ -1535,13 +1604,41 @@ export class ReservationSupabaseRepository
     const schedule = formatSchedule(effective?.startAt, effective?.endAt);
     const duration = formatDuration(effective?.startAt, effective?.endAt);
 
+    const latestAttempt = (paymentAttempts ?? [])[0] ?? null;
+    const proofAttempt = (paymentAttempts ?? []).find((a) => a.proof_submitted_at !== null) ?? null;
+    const paymentExpiresAt = latestAttempt?.expires_at ?? null;
+    const proofSubmittedAt = proofAttempt?.proof_submitted_at ?? null;
+
+    const paymentAttemptsSummary: AdminReservationPaymentAttemptSummary[] = (paymentAttempts ?? []).map((a) => ({
+      id: a.id,
+      status: a.status,
+      amount: Number(a.amount),
+      currency: a.currency,
+      channel: a.channel,
+      createdAt: a.created_at,
+      expiresAt: a.expires_at,
+      proofSubmittedAt: a.proof_submitted_at,
+      proofStoragePath: a.proof_storage_path,
+      rejectionReason: a.rejection_reason,
+    }));
+
+    let expiryReason: string | null = null;
+    if (r.status === "EXPIRED") {
+      if (latestAttempt?.rejection_reason) {
+        expiryReason = latestAttempt.rejection_reason;
+      } else if (proofSubmittedAt) {
+        expiryReason = "Proof submitted after payment window expired";
+      } else {
+        expiryReason = "1-hour payment window expired without payment proof submission";
+      }
+    }
+
     // Timeline building
     const timeline: string[] = [];
     timeline.push(
       `${formatTimelineDate(r.created_at)} - Reservation requested (${r.source === "KIOSK" ? "Kiosk" : "Web"})`
     );
 
-    const proofAttempt = (paymentAttempts ?? []).find((a) => a.proof_submitted_at !== null);
     if (proofAttempt?.proof_submitted_at) {
       timeline.push(`${formatTimelineDate(proofAttempt.proof_submitted_at)} - Payment proof uploaded`);
     }
@@ -1556,6 +1653,20 @@ export class ReservationSupabaseRepository
       timeline.push(`${formatTimelineDate(r.checked_in_at)} - Customer checked in`);
     }
 
+    const reentries = (auditRows ?? [])
+      .filter(
+        (a) =>
+          a.action === "reservation_reentered" ||
+          (a.action === "reservation_checked_in" && a.metadata?.reentry === true) ||
+          a.metadata?.reentry === true ||
+          a.metadata?.event_type === "RE_ENTRY"
+      )
+      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+
+    for (const re of reentries) {
+      timeline.push(`${formatTimelineDate(re.created_at)} - Customer re-entered (Re-entry)`);
+    }
+
     if (r.checked_out_at) {
       timeline.push(`${formatTimelineDate(r.checked_out_at)} - Customer checked out`);
     }
@@ -1563,7 +1674,7 @@ export class ReservationSupabaseRepository
     if (r.status === "CANCELLED") {
       timeline.push(`${formatTimelineDate(r.updated_at)} - Reservation cancelled`);
     } else if (r.status === "EXPIRED") {
-      timeline.push(`${formatTimelineDate(r.updated_at)} - Payment session expired`);
+      timeline.push(`${formatTimelineDate(r.updated_at)} - Payment session expired (${expiryReason ?? "Window elapsed"})`);
     } else if (r.status === "NEEDS_MANUAL_RESOLUTION") {
       timeline.push(`${formatTimelineDate(r.updated_at)} - Needs manual resolution`);
     }
@@ -1599,9 +1710,18 @@ export class ReservationSupabaseRepository
       qrIssuedAt: r.qr_issued_at,
       qrRevokedAt: r.qr_revoked_at,
       hasBookingQr: Boolean(r.qr_issued_at && !r.qr_revoked_at),
+      bookingToken: r.booking_token ?? null,
+      bookingAccessUrl: r.booking_token
+        ? `${(process.env.BOOKING_ACCESS_BASE_URL ?? process.env.DESKATLAS_PUBLIC_APP_URL ?? "https://deskatlas.test/booking").replace(/\/$/, "")}/${encodeURIComponent(r.booking_token)}`
+        : null,
       assignedCandidate: assigned,
       candidates: candidateList,
       timeline,
+      paymentExpiresAt,
+      paymentAttemptStatus: latestAttempt?.status ?? null,
+      proofSubmittedAt,
+      expiryReason,
+      paymentAttempts: paymentAttemptsSummary,
     };
   }
 }

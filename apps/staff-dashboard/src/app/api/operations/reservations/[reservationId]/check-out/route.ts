@@ -18,7 +18,12 @@ export async function POST(
 ) {
   try {
     const { reservationId } = await context.params;
-    const body = await request.json();
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
     const service = createStaffOperationsService(new ReservationSupabaseRepository());
     let actorUserId = String(body.actor?.userId ?? body.actorUserId ?? "").trim();
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
@@ -47,7 +52,7 @@ export async function POST(
         }
       }
     }
-    const actorRole = body.actor?.role ?? body.actorRole ?? "STAFF";
+    const actorRole = (String(body.actor?.role ?? body.actorRole ?? "STAFF")).toUpperCase() === "ADMIN" ? "ADMIN" : "STAFF";
 
     const result = await service.checkOutReservation({
       reservationId,

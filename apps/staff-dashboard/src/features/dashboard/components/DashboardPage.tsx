@@ -212,7 +212,10 @@ export function DashboardPage() {
                       </div>
                       <div>
                         <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--da-text-primary)" }}>{a.name}</div>
-                        <div style={{ fontSize: "11px", color: "var(--da-text-secondary)" }}>{a.workspace}</div>
+                        <div style={{ fontSize: "11px", color: "var(--da-text-secondary)" }}>
+                          {a.workspace}
+                          {a.actorName || a.actorUserId ? ` · Scanned by ${a.actorName ?? a.actorUserId}` : ""}
+                        </div>
                       </div>
                     </div>
                     <span

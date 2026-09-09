@@ -1076,8 +1076,8 @@ BEGIN
       UPDATE public.reservations
       SET
         status = 'CHECKED_IN',
-        confirmed_at = COALESCE(confirmed_at, p_processed_at),
-        checked_in_at = COALESCE(checked_in_at, p_processed_at)
+        confirmed_at = COALESCE(v_reservation.confirmed_at, p_processed_at),
+        checked_in_at = COALESCE(v_reservation.checked_in_at, p_processed_at)
       WHERE id = v_reservation.id;
     ELSE
       UPDATE public.reservations
@@ -1171,6 +1171,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_actor_role public.staff_role;
   v_reservation public.reservations%ROWTYPE;
@@ -1233,7 +1234,7 @@ BEGIN
   UPDATE public.reservations
   SET
     status = 'CHECKED_IN',
-    checked_in_at = COALESCE(checked_in_at, p_acted_at),
+    checked_in_at = COALESCE(v_reservation.checked_in_at, p_acted_at),
     updated_at = p_acted_at
   WHERE id = v_reservation.id;
 
@@ -1248,21 +1249,22 @@ BEGIN
   VALUES (
     p_actor_user_id,
     v_actor_role::text::public.audit_actor_role,
-    'reservation_checked_in',
+    CASE WHEN v_reentry THEN 'reservation_reentered' ELSE 'reservation_checked_in' END,
     'reservation',
     v_reservation.id,
     jsonb_build_object(
       'reentry', v_reentry,
+      'event_type', CASE WHEN v_reentry THEN 'RE_ENTRY' ELSE 'CHECK_IN' END,
       'workspace_instance_id', v_candidate.workspace_instance_id,
       'start_at', v_candidate.start_at,
       'end_at', v_candidate.end_at
     )
   );
 
-  SELECT id, status, checked_in_at, checked_out_at
+  SELECT r.id, r.status, r.checked_in_at, r.checked_out_at
     INTO reservation_id, reservation_status, checked_in_at, checked_out_at
-  FROM public.reservations
-  WHERE id = v_reservation.id;
+  FROM public.reservations r
+  WHERE r.id = v_reservation.id;
 
   reentry := v_reentry;
   RETURN NEXT;
@@ -1284,6 +1286,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_actor_role public.staff_role;
   v_reservation public.reservations%ROWTYPE;
@@ -1321,10 +1324,10 @@ BEGIN
   END IF;
 
   IF v_reservation.status = 'COMPLETED' THEN
-    SELECT id, status, checked_in_at, checked_out_at
+    SELECT r.id, r.status, r.checked_in_at, r.checked_out_at
       INTO reservation_id, reservation_status, checked_in_at, checked_out_at
-    FROM public.reservations
-    WHERE id = v_reservation.id;
+    FROM public.reservations r
+    WHERE r.id = v_reservation.id;
 
     RETURN NEXT;
   END IF;
@@ -1336,9 +1339,18 @@ BEGIN
   UPDATE public.reservations
   SET
     status = 'COMPLETED',
-    checked_out_at = COALESCE(checked_out_at, p_acted_at),
+    checked_out_at = COALESCE(v_reservation.checked_out_at, p_acted_at),
     updated_at = p_acted_at
   WHERE id = v_reservation.id;
+
+  -- Release the physical workspace on early checkout by updating end_at of the assigned candidate
+  -- so that subsequent bookings for this workspace can be allocated without exclusion violation.
+  UPDATE public.reservation_candidates
+  SET end_at = p_acted_at
+  WHERE reservation_id = v_reservation.id
+    AND is_assigned = true
+    AND end_at > p_acted_at
+    AND start_at < p_acted_at;
 
   INSERT INTO public.audit_logs (
     actor_user_id,
@@ -1360,10 +1372,10 @@ BEGIN
     )
   );
 
-  SELECT id, status, checked_in_at, checked_out_at
+  SELECT r.id, r.status, r.checked_in_at, r.checked_out_at
     INTO reservation_id, reservation_status, checked_in_at, checked_out_at
-  FROM public.reservations
-  WHERE id = v_reservation.id;
+  FROM public.reservations r
+  WHERE r.id = v_reservation.id;
 
   RETURN NEXT;
 END;
@@ -1452,7 +1464,8 @@ RETURNS TABLE (
   is_active boolean,
   created_at timestamptz,
   updated_at timestamptz,
-  last_sign_in_at timestamptz
+  last_sign_in_at timestamptz,
+  created_by_admin_id uuid
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1479,9 +1492,11 @@ BEGIN
     p.is_active,
     p.created_at,
     p.updated_at,
-    u.last_sign_in_at
+    u.last_sign_in_at,
+    p.created_by_admin_id
   FROM public.staff_profiles p
   LEFT JOIN auth.users u ON u.id = p.user_id
+  WHERE (p_actor_user_id IS NULL OR p.created_by_admin_id = p_actor_user_id)
   ORDER BY p.created_at ASC;
 END;
 $$;
@@ -1506,7 +1521,8 @@ RETURNS TABLE (
   is_active boolean,
   created_at timestamptz,
   updated_at timestamptz,
-  last_sign_in_at timestamptz
+  last_sign_in_at timestamptz,
+  created_by_admin_id uuid
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1518,15 +1534,17 @@ DECLARE
   v_new_user_id uuid;
   v_encrypted_pw text;
 BEGIN
-  IF p_actor_user_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.staff_profiles
-      WHERE user_id = p_actor_user_id
-        AND role = 'ADMIN'
-        AND is_active = true
-    ) THEN
-      RAISE EXCEPTION 'Only active ADMIN profiles may create staff accounts';
-    END IF;
+  IF p_actor_user_id IS NULL THEN
+    RAISE EXCEPTION 'Creating admin actor is required to create staff accounts';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.staff_profiles
+    WHERE user_id = p_actor_user_id
+      AND role = 'ADMIN'
+      AND is_active = true
+  ) THEN
+    RAISE EXCEPTION 'Only active ADMIN profiles may create staff accounts';
   END IF;
 
   v_trimmed_email := lower(btrim(p_email));
@@ -1540,8 +1558,8 @@ BEGIN
     RAISE EXCEPTION 'Display name cannot be blank';
   END IF;
 
-  IF p_password IS NULL OR length(p_password) < 6 THEN
-    RAISE EXCEPTION 'Password must be at least 6 characters long';
+  IF p_password IS NULL OR length(p_password) < 8 OR p_password !~ '[A-Z]' OR p_password !~ '[0-9]' OR p_password !~ '[^a-zA-Z0-9\s]' THEN
+    RAISE EXCEPTION 'Password must be at least 8 characters long, contain at least 1 uppercase letter, 1 number, and 1 special character';
   END IF;
 
   IF p_role NOT IN ('ADMIN', 'STAFF') THEN
@@ -1586,6 +1604,7 @@ BEGIN
 
   INSERT INTO public.staff_profiles (
     user_id,
+    created_by_admin_id,
     role,
     display_name,
     is_active,
@@ -1594,6 +1613,7 @@ BEGIN
   )
   VALUES (
     v_new_user_id,
+    p_actor_user_id,
     p_role,
     v_trimmed_name,
     true,
@@ -1601,28 +1621,27 @@ BEGIN
     now()
   );
 
-  IF p_actor_user_id IS NOT NULL THEN
-    INSERT INTO public.audit_logs (
-      actor_user_id,
-      actor_role,
-      action,
-      entity_type,
-      entity_id,
-      metadata
+  INSERT INTO public.audit_logs (
+    actor_user_id,
+    actor_role,
+    action,
+    entity_type,
+    entity_id,
+    metadata
+  )
+  VALUES (
+    p_actor_user_id,
+    'ADMIN',
+    'CREATE_STAFF_ACCOUNT',
+    'staff_profiles',
+    v_new_user_id,
+    jsonb_build_object(
+      'email', v_trimmed_email,
+      'role', p_role::text,
+      'display_name', v_trimmed_name,
+      'created_by_admin_id', p_actor_user_id
     )
-    VALUES (
-      p_actor_user_id,
-      'ADMIN',
-      'CREATE_STAFF_ACCOUNT',
-      'staff_profiles',
-      v_new_user_id,
-      jsonb_build_object(
-        'email', v_trimmed_email,
-        'role', p_role::text,
-        'display_name', v_trimmed_name
-      )
-    );
-  END IF;
+  );
 
   RETURN QUERY
   SELECT
@@ -1633,7 +1652,8 @@ BEGIN
     p.is_active,
     p.created_at,
     p.updated_at,
-    NULL::timestamptz AS last_sign_in_at
+    NULL::timestamptz AS last_sign_in_at,
+    p.created_by_admin_id
   FROM public.staff_profiles p
   WHERE p.user_id = v_new_user_id;
 END;
@@ -1660,7 +1680,8 @@ RETURNS TABLE (
   is_active boolean,
   created_at timestamptz,
   updated_at timestamptz,
-  last_sign_in_at timestamptz
+  last_sign_in_at timestamptz,
+  created_by_admin_id uuid
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1689,13 +1710,20 @@ BEGIN
     RAISE EXCEPTION 'Staff member not found';
   END IF;
 
+  -- Scoping validation: Admin cannot modify staff created by another admin
+  IF p_actor_user_id IS NOT NULL
+     AND v_current_profile.created_by_admin_id IS NOT NULL
+     AND v_current_profile.created_by_admin_id <> p_actor_user_id THEN
+    RAISE EXCEPTION 'Admin cannot manage staff created by another admin';
+  END IF;
+
   IF p_display_name IS NOT NULL AND btrim(p_display_name) = '' THEN
     RAISE EXCEPTION 'Display name cannot be blank';
   END IF;
 
   IF p_new_password IS NOT NULL AND btrim(p_new_password) <> '' THEN
-    IF length(p_new_password) < 6 THEN
-      RAISE EXCEPTION 'Password must be at least 6 characters long';
+    IF length(p_new_password) < 8 OR p_new_password !~ '[A-Z]' OR p_new_password !~ '[0-9]' OR p_new_password !~ '[^a-zA-Z0-9\s]' THEN
+      RAISE EXCEPTION 'Password must be at least 8 characters long, contain at least 1 uppercase letter, 1 number, and 1 special character';
     END IF;
     UPDATE auth.users
     SET
@@ -1742,7 +1770,8 @@ BEGIN
         'new_display_name', COALESCE(btrim(p_display_name), v_current_profile.display_name),
         'previous_is_active', v_current_profile.is_active,
         'new_is_active', COALESCE(p_is_active, v_current_profile.is_active),
-        'password_changed', (p_new_password IS NOT NULL AND btrim(p_new_password) <> '')
+        'password_changed', (p_new_password IS NOT NULL AND btrim(p_new_password) <> ''),
+        'created_by_admin_id', v_current_profile.created_by_admin_id
       )
     );
   END IF;
@@ -1756,7 +1785,8 @@ BEGIN
     p.is_active,
     p.created_at,
     p.updated_at,
-    u.last_sign_in_at
+    u.last_sign_in_at,
+    p.created_by_admin_id
   FROM public.staff_profiles p
   LEFT JOIN auth.users u ON u.id = p.user_id
   WHERE p.user_id = p_target_user_id;
@@ -1767,5 +1797,293 @@ REVOKE ALL ON FUNCTION public.admin_update_staff(uuid, uuid, text, public.staff_
 REVOKE ALL ON FUNCTION public.admin_update_staff(uuid, uuid, text, public.staff_role, boolean, text) FROM anon;
 REVOKE ALL ON FUNCTION public.admin_update_staff(uuid, uuid, text, public.staff_role, boolean, text) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_update_staff(uuid, uuid, text, public.staff_role, boolean, text) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_check_staff_deletion(
+  p_target_user_id uuid
+)
+RETURNS TABLE (
+  can_delete boolean,
+  reason text,
+  reference_counts jsonb
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_audit_count integer := 0;
+  v_res_count integer := 0;
+  v_pay_count integer := 0;
+  v_total integer := 0;
+  v_reason text := NULL;
+  v_reasons text[] := ARRAY[]::text[];
+BEGIN
+  SELECT count(*) INTO v_audit_count
+  FROM public.audit_logs
+  WHERE actor_user_id = p_target_user_id;
+
+  SELECT count(*) INTO v_res_count
+  FROM public.reservations
+  WHERE resolved_by_user_id = p_target_user_id
+     OR cancelled_by_user_id = p_target_user_id;
+
+  SELECT count(*) INTO v_pay_count
+  FROM public.payment_attempts
+  WHERE processed_by_user_id = p_target_user_id
+     OR refund_recorded_by_user_id = p_target_user_id;
+
+  v_total := v_audit_count + v_res_count + v_pay_count;
+
+  IF v_total > 0 THEN
+    IF v_audit_count > 0 THEN
+      v_reasons := array_append(v_reasons, v_audit_count || ' audit log' || (CASE WHEN v_audit_count > 1 THEN 's' ELSE '' END));
+    END IF;
+    IF v_res_count > 0 THEN
+      v_reasons := array_append(v_reasons, v_res_count || ' reservation' || (CASE WHEN v_res_count > 1 THEN 's' ELSE '' END));
+    END IF;
+    IF v_pay_count > 0 THEN
+      v_reasons := array_append(v_reasons, v_pay_count || ' payment confirmation' || (CASE WHEN v_pay_count > 1 THEN 's' ELSE '' END));
+    END IF;
+    v_reason := 'Cannot delete: Staff has historical records (' || array_to_string(v_reasons, ', ') || '). Deactivate instead.';
+    RETURN QUERY SELECT false, v_reason, jsonb_build_object(
+      'auditLogs', v_audit_count,
+      'reservations', v_res_count,
+      'payments', v_pay_count,
+      'total', v_total
+    );
+  ELSE
+    RETURN QUERY SELECT true, NULL::text, jsonb_build_object(
+      'auditLogs', 0,
+      'reservations', 0,
+      'payments', 0,
+      'total', 0
+    );
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_check_staff_deletion(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_check_staff_deletion(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.admin_check_staff_deletion(uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_check_staff_deletion(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_staff(
+  p_actor_user_id uuid,
+  p_target_user_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_profile public.staff_profiles%ROWTYPE;
+  v_check RECORD;
+BEGIN
+  IF p_actor_user_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.staff_profiles
+      WHERE user_id = p_actor_user_id
+        AND role = 'ADMIN'
+        AND is_active = true
+    ) THEN
+      RAISE EXCEPTION 'Only active ADMIN profiles may delete staff accounts';
+    END IF;
+  END IF;
+
+  SELECT * INTO v_profile
+  FROM public.staff_profiles
+  WHERE user_id = p_target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Staff member not found';
+  END IF;
+
+  IF p_actor_user_id IS NOT NULL AND v_profile.created_by_admin_id IS NOT NULL AND v_profile.created_by_admin_id <> p_actor_user_id THEN
+    RAISE EXCEPTION 'Admin cannot manage staff created by another admin';
+  END IF;
+
+  SELECT * INTO v_check
+  FROM public.admin_check_staff_deletion(p_target_user_id);
+
+  IF v_check.can_delete IS NOT TRUE THEN
+    RAISE EXCEPTION '%', COALESCE(v_check.reason, 'Cannot delete staff account with historical audit, reservation, or payment records. Deactivate instead.');
+  END IF;
+
+  DELETE FROM public.staff_profiles
+  WHERE user_id = p_target_user_id;
+
+  DELETE FROM auth.users
+  WHERE id = p_target_user_id;
+
+  IF p_actor_user_id IS NOT NULL THEN
+    INSERT INTO public.audit_logs (
+      actor_user_id,
+      actor_role,
+      action,
+      entity_type,
+      entity_id,
+      metadata
+    )
+    VALUES (
+      p_actor_user_id,
+      'ADMIN',
+      'DELETE_STAFF_ACCOUNT',
+      'staff_profiles',
+      p_target_user_id,
+      jsonb_build_object(
+        'email', 'deleted@deskatlas.com',
+        'display_name', v_profile.display_name,
+        'role', v_profile.role::text
+      )
+    );
+  END IF;
+
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_delete_staff(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_delete_staff(uuid, uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.admin_delete_staff(uuid, uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_delete_staff(uuid, uuid) TO service_role;
+
+-- ----------------------------------------------------------------------------
+-- 10. Admin Initial Sign-Up & Setup RPCs (MF-43)
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.admin_has_existing_admin()
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.staff_profiles
+    WHERE role = 'ADMIN'
+      AND is_active = true
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_has_existing_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_has_existing_admin() TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_bootstrap_initial_admin(
+  p_user_id uuid,
+  p_email text,
+  p_display_name text DEFAULT NULL
+)
+RETURNS TABLE (
+  id uuid,
+  email text,
+  role public.staff_role,
+  display_name text,
+  is_active boolean,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_trimmed_email text;
+  v_final_name text;
+BEGIN
+  -- Strict single-use guard
+  IF EXISTS (
+    SELECT 1
+    FROM public.staff_profiles
+    WHERE role = 'ADMIN'
+      AND is_active = true
+  ) THEN
+    RAISE EXCEPTION 'Admin account already exists. Setup is sealed.';
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User ID is required for initial admin bootstrap';
+  END IF;
+
+  v_trimmed_email := lower(btrim(p_email));
+  IF v_trimmed_email = '' OR position('@' in v_trimmed_email) = 0 THEN
+    RAISE EXCEPTION 'A valid email address is required';
+  END IF;
+
+  v_final_name := COALESCE(NULLIF(btrim(p_display_name), ''), split_part(v_trimmed_email, '@', 1));
+  IF v_final_name = '' THEN
+    v_final_name := 'Admin';
+  END IF;
+
+  -- Upsert staff_profiles for this auth user with role ADMIN
+  INSERT INTO public.staff_profiles (
+    user_id,
+    role,
+    display_name,
+    is_active,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    p_user_id,
+    'ADMIN',
+    v_final_name,
+    true,
+    now(),
+    now()
+  )
+  ON CONFLICT (user_id) DO UPDATE
+  SET
+    role = 'ADMIN',
+    display_name = EXCLUDED.display_name,
+    is_active = true,
+    updated_at = now();
+
+  -- Append to audit logs
+  INSERT INTO public.audit_logs (
+    id,
+    actor_user_id,
+    actor_role,
+    action,
+    entity_type,
+    entity_id,
+    metadata,
+    created_at
+  )
+  VALUES (
+    gen_random_uuid(),
+    p_user_id,
+    'ADMIN',
+    'BOOTSTRAP_INITIAL_ADMIN',
+    'staff_profiles',
+    p_user_id::text,
+    jsonb_build_object(
+      'email', v_trimmed_email,
+      'display_name', v_final_name,
+      'provider', 'google_oauth'
+    ),
+    now()
+  );
+
+  RETURN QUERY
+  SELECT
+    p.user_id AS id,
+    v_trimmed_email AS email,
+    p.role,
+    p.display_name,
+    p.is_active,
+    p.created_at,
+    p.updated_at
+  FROM public.staff_profiles p
+  WHERE p.user_id = p_user_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_bootstrap_initial_admin(uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_bootstrap_initial_admin(uuid, text, text) FROM anon;
+GRANT EXECUTE ON FUNCTION public.admin_bootstrap_initial_admin(uuid, text, text) TO authenticated, service_role;
 
 COMMIT;

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   createStaffOperationsService,
   ReservationSupabaseRepository,
@@ -8,10 +8,11 @@ import {
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParam = request.nextUrl.searchParams.get("search") ?? undefined;
     const service = createStaffOperationsService(new ReservationSupabaseRepository());
-    const reservations = await service.listOperationalReservations();
+    const reservations = await service.listOperationalReservations(searchParam);
     return NextResponse.json({ reservations });
   } catch (error) {
     if (error instanceof StaffOperationsError) {

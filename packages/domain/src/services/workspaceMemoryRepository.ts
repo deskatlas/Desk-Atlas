@@ -168,8 +168,13 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     this.reservationImpacts.set(instanceId, existing);
   }
 
-  listAuditLogs(): WorkspaceAuditLogEntry[] {
-    return [...this.auditLogs];
+  async listAuditLogs(limit?: number): Promise<WorkspaceAuditLogEntry[]> {
+    const sorted = [...this.auditLogs].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
+    return typeof limit === 'number' ? sorted.slice(0, limit) : sorted;
   }
 
   private refreshInstanceTemplate(templateId: string) {

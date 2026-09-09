@@ -94,11 +94,17 @@ export function PaymentSessionPage({ token }: { token: string }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  const webPaymentMethods = useMemo(() => {
+    return (data?.paymentMethods ?? []).filter(
+      (m) => m.allowWeb && m.methodType !== "CASH"
+    );
+  }, [data?.paymentMethods]);
+
   useEffect(() => {
-    if (!paymentMethodId && data?.paymentMethods?.[0]?.id) {
-      setPaymentMethodId(data.paymentMethods[0].id);
+    if (!paymentMethodId && webPaymentMethods[0]?.id) {
+      setPaymentMethodId(webPaymentMethods[0].id);
     }
-  }, [data, paymentMethodId]);
+  }, [webPaymentMethods, paymentMethodId]);
 
   // Clean up object URLs on change / unmount
   useEffect(() => {
@@ -128,14 +134,14 @@ export function PaymentSessionPage({ token }: { token: string }) {
     submitted;
 
   const selectedMethod = useMemo(() => {
-    if (!data?.paymentMethods || data.paymentMethods.length === 0) {
+    if (webPaymentMethods.length === 0) {
       return null;
     }
     return (
-      data.paymentMethods.find((m) => m.id === (paymentMethodId || data.paymentMethodId)) ??
-      data.paymentMethods[0]
+      webPaymentMethods.find((m) => m.id === (paymentMethodId || data?.paymentMethodId)) ??
+      webPaymentMethods[0]
     );
-  }, [data?.paymentMethods, data?.paymentMethodId, paymentMethodId]);
+  }, [webPaymentMethods, data?.paymentMethodId, paymentMethodId]);
 
   const selectedProviderInfo = useMemo(() => {
     if (!selectedMethod) return null;
@@ -442,7 +448,7 @@ export function PaymentSessionPage({ token }: { token: string }) {
                   body={`Time remaining: ${formatCountdown(remainingSeconds)}. The deadline stops only after successful server-accepted proof submission.`}
                 />
 
-                {data.paymentMethods.length === 0 ? (
+                {webPaymentMethods.length === 0 ? (
                   <div className="mt-8 rounded-[22px] border border-amber-200 bg-amber-50 p-6">
                     <div className="flex items-center gap-3">
                       <span className="text-xl">⚠️</span>
@@ -464,7 +470,7 @@ export function PaymentSessionPage({ token }: { token: string }) {
                           Select a payment provider below to view account details and receiving QR.
                         </p>
                         <div className="mt-4 grid gap-3">
-                          {data.paymentMethods.map((method) => {
+                          {webPaymentMethods.map((method) => {
                             const isSelected = (selectedMethod?.id ?? paymentMethodId) === method.id;
                             const providerInfo = getMethodProviderInfo(method);
                             return (

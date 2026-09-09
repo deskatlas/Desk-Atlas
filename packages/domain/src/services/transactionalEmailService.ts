@@ -94,6 +94,15 @@ export interface ReservationTrackingEmailInput {
   trackingUrl: string;
 }
 
+export interface StaffInvitationEmailInput {
+  to: string;
+  displayName: string;
+  role: string;
+  invitationUrl: string;
+  verificationCode?: string;
+  expiresAt: string;
+}
+
 export interface RawEmailInput {
   to: string | string[];
   from?: string;
@@ -797,6 +806,104 @@ export class TransactionalEmailService {
       text: rendered.text,
     });
   }
+
+  async sendStaffInvitationEmail(input: StaffInvitationEmailInput): Promise<EmailSendResult> {
+    const rendered = renderStaffInvitationEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+}
+
+export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { subject: string; html: string; text: string } {
+  const subject = `You've been invited to join DeskAtlas as ${input.role === 'ADMIN' ? 'an Administrator' : 'Staff'}`;
+  const roleLabel = input.role === 'ADMIN' ? 'Administrator' : 'Staff Member';
+  const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-box { background: #f8fafc; border: 2px dashed #064E3B; border-radius: 10px; padding: 18px; margin: 24px 0; text-align: center; }
+    .code-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .code-val { font-family: monospace; font-size: 32px; font-weight: 800; color: #064E3B; letter-spacing: 6px; }
+    .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">DeskAtlas</div>
+      <span class="badge">Team Invitation</span>
+    </div>
+    <div class="content">
+      <div class="title">Welcome to DeskAtlas!</div>
+      <p>Hello <strong>${escapeHtml(input.displayName)}</strong>,</p>
+      <p>You have been invited to join the workspace operations team as a <strong>${escapeHtml(roleLabel)}</strong>.</p>
+      
+      <p>To finalize and activate your account, click the button below to open the confirmation page, then enter the verification code provided below (or shared with you by your administrator):</p>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(input.invitationUrl)}" class="btn">Confirm & Activate Account</a>
+      </div>
+
+      ${input.verificationCode ? `
+      <div class="code-box">
+        <div class="code-label">2FA Confirmation Code</div>
+        <div class="code-val">${escapeHtml(input.verificationCode)}</div>
+      </div>
+      ` : ''}
+
+      <p style="font-size: 13px; color: #64748b;">
+        This invitation link expires on <strong>${escapeHtml(expiresFormatted)}</strong>.
+      </p>
+
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">
+        If the button above does not work, copy and paste this URL into your browser:<br>
+        <a href="${escapeHtml(input.invitationUrl)}" style="color: #064E3B; word-break: break-all;">${escapeHtml(input.invitationUrl)}</a>
+      </p>
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Automated Staff Onboarding
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+DeskAtlas Team Invitation
+
+Hello ${input.displayName},
+
+You have been invited to join the DeskAtlas team as a ${roleLabel}.
+
+To finalize and activate your account, visit the link below:
+${input.invitationUrl}
+
+${input.verificationCode ? `Your 2FA Verification Code is: ${input.verificationCode}\n` : ''}
+This invitation expires on ${expiresFormatted}.
+
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
 }
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {

@@ -26,6 +26,7 @@ export interface Reservation {
   updatedAt: string;
   confirmedAt?: string | null;
   bookingTokenHash?: string | null;
+  bookingToken?: string | null;
   qrIssuedAt?: string | null;
   qrRevokedAt?: string | null;
   checkedInAt?: string | null;
@@ -146,6 +147,8 @@ export interface CounterPaymentRecord {
   amountDue: number;
   currency: string;
   paymentMethodId: string;
+  paymentMethodType?: PaymentMethodType | null;
+  paymentMethodDisplayName?: string | null;
   submittedCandidates: ReservationCandidate[];
   processedAt: string | null;
   processedByUserId: string | null;
@@ -278,6 +281,9 @@ export interface StaffOperationalReservation {
   checkedInAt: string | null;
   checkedOutAt: string | null;
   qrIssuedAt: string | null;
+  paymentMethodId?: string | null;
+  paymentMethodType?: PaymentMethodType | null;
+  paymentMethodDisplayName?: string | null;
 }
 
 export type OccupancyState = "RESERVED" | "OCCUPIED";
@@ -298,6 +304,7 @@ export interface OperationalActivityRecord {
   occurredAt: string;
   actorUserId: string | null;
   actorRole: "ADMIN" | "STAFF" | "SYSTEM";
+  actorName?: string | null;
 }
 
 export interface ReservationOperationalActionRequest {
@@ -343,7 +350,7 @@ export interface GuestReservationTrackingResult {
   finalAssignment: GuestReservationAssignmentSummary | null;
 }
 
-export type AdminReservationFilter = "all" | "checked_in" | "upcoming" | "awaiting_proof";
+export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired";
 
 export interface AdminReservationSummary {
   id: string;
@@ -374,6 +381,9 @@ export interface AdminReservationSummary {
   checkedInAt?: string | null;
   checkedOutAt?: string | null;
   paymentExpiresAt?: string | null;
+  paymentMethodId?: string | null;
+  paymentMethodType?: PaymentMethodType | null;
+  paymentMethodDisplayName?: string | null;
 }
 
 export interface AdminReservationCandidateSummary {
@@ -390,6 +400,22 @@ export interface AdminReservationCandidateSummary {
   schedule: string;
   isAssigned: boolean;
   color: string;
+}
+
+export interface AdminReservationPaymentAttemptSummary {
+  id: string;
+  status: PaymentAttemptStatus;
+  amount: number;
+  currency: string;
+  channel: PaymentChannel;
+  createdAt: string;
+  expiresAt: string | null;
+  proofSubmittedAt: string | null;
+  proofStoragePath?: string | null;
+  rejectionReason?: string | null;
+  paymentMethodId?: string | null;
+  paymentMethodType?: PaymentMethodType | null;
+  paymentMethodDisplayName?: string | null;
 }
 
 export interface AdminReservationDetail {
@@ -420,8 +446,19 @@ export interface AdminReservationDetail {
   qrIssuedAt?: string | null;
   qrRevokedAt?: string | null;
   hasBookingQr: boolean;
+  bookingToken?: string | null;
+  bookingAccessUrl?: string | null;
   assignedCandidate: AdminReservationCandidateSummary | null;
   candidates: AdminReservationCandidateSummary[];
   timeline: string[];
+  paymentExpiresAt?: string | null;
+  paymentAttemptStatus?: string | null;
+  paymentMethodId?: string | null;
+  paymentMethodType?: PaymentMethodType | null;
+  paymentMethodDisplayName?: string | null;
+  proofSubmittedAt?: string | null;
+  expiryReason?: string | null;
+  paymentAttempts?: AdminReservationPaymentAttemptSummary[];
 }
+
 

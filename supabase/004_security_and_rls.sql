@@ -104,6 +104,22 @@ CREATE POLICY p_staff_profiles_self_read ON public.staff_profiles
   TO authenticated
   USING (user_id = auth.uid());
 
+-- staff_invitations
+ALTER TABLE public.staff_invitations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS p_staff_invitations_admin_all ON public.staff_invitations;
+CREATE POLICY p_staff_invitations_admin_all ON public.staff_invitations
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS p_staff_invitations_anon_token_read ON public.staff_invitations;
+CREATE POLICY p_staff_invitations_anon_token_read ON public.staff_invitations
+  FOR SELECT
+  TO anon, authenticated
+  USING (status = 'PENDING');
+
 -- workspace_templates
 ALTER TABLE public.workspace_templates ENABLE ROW LEVEL SECURITY;
 

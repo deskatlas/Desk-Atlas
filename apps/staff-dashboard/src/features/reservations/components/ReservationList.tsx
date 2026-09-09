@@ -4,7 +4,8 @@ import React from 'react';
 import { useReservations } from '../hooks/useReservations';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
-import type { StaffOperationalReservation, ReservationStatus } from '@deskatlas/domain';
+import { useSearch } from '@deskatlas/ui';
+import { filterReservationsBySearch, type StaffOperationalReservation, type ReservationStatus } from '@deskatlas/domain';
 
 function getStatusDisplay(status: ReservationStatus) {
   switch (status) {
@@ -23,7 +24,10 @@ function getStatusDisplay(status: ReservationStatus) {
 
 export function ReservationList() {
   const { reservations, loading, error, refetch } = useReservations();
+  const { searchQuery } = useSearch();
   const router = useRouter();
+
+  const displayedReservations = filterReservationsBySearch(reservations, searchQuery);
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
   if (error) return (
@@ -52,10 +56,10 @@ export function ReservationList() {
             </tr>
           </thead>
           <tbody>
-            {reservations.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--da-text-secondary)' }}>No reservations today</td></tr>
+            {displayedReservations.length === 0 ? (
+              <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--da-text-secondary)' }}>No reservations found.</td></tr>
             ) : (
-              reservations.map((res: StaffOperationalReservation) => {
+              displayedReservations.map((res: StaffOperationalReservation) => {
                 const statusDisp = getStatusDisplay(res.reservationStatus);
                 return (
                   <tr key={res.reservationId} style={{ borderBottom: '1px solid var(--da-border)' }}>

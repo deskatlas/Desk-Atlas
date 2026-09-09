@@ -234,11 +234,6 @@ export function ReservationPage() {
   const [catDate, setCatDate] = useState<string>(getTodayManila());
   const [catDurationHours, setCatDurationHours] = useState<number>(2);
   const [catStartTime, setCatStartTime] = useState<string | null>(null);
-  const [customTimeInput, setCustomTimeInput] = useState<string>("");
-  const [customTimeStatus, setCustomTimeStatus] = useState<{
-    isAvailable: boolean;
-    message: string;
-  } | null>(null);
 
   // Month navigation state for Category flow
   const todayStr = useMemo(() => getTodayManila(), []);
@@ -567,42 +562,6 @@ export function ReservationPage() {
     return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
   }, [catStartTime, catDurationHours]);
 
-  const handleApplyCustomCatTime = async () => {
-    if (!customTimeInput || !selectedTemplate || !catDate || catDurationHours <= 0) return;
-    setCustomTimeStatus(null);
-
-    const representative = selectedTemplate.representativeWorkspace;
-    if (!representative) return;
-
-    try {
-      const res = await fetchTimeAvailability({
-        workspaceInstanceId: representative.workspaceInstanceId,
-        date: catDate,
-        durationMinutes: catDurationHours * 60,
-        customStartTime: customTimeInput,
-      });
-      setCatTimeSlots(res.slots || []);
-      const slot = res.slots?.find((s) => s.startTime === customTimeInput);
-      if (slot && slot.isAvailable) {
-        setCatStartTime(customTimeInput);
-        setCustomTimeStatus({
-          isAvailable: true,
-          message: `✓ Selected ${formatTime12Hour(slot.startTime)} to ${formatTime12Hour(slot.endTime)}`,
-        });
-      } else {
-        const reason = slot?.blockingReason ?? "UNAVAILABLE";
-        setCustomTimeStatus({
-          isAvailable: false,
-          message: `⚠️ ${formatTime12Hour(customTimeInput)} is unavailable (${reason.replace(/_/g, " ")})`,
-        });
-      }
-    } catch (err: any) {
-      setCustomTimeStatus({
-        isAvailable: false,
-        message: err.message || "Failed to verify custom time.",
-      });
-    }
-  };
 
   // Spot click in Map Flow
   const handleSpotClick = (workspace: WorkspaceMapViewModel) => {
@@ -1272,11 +1231,12 @@ export function ReservationPage() {
                           {elements.map((el: PublishedMapElement) => {
                             const isWorkspace = el.elementRole === "WORKSPACE" || Boolean(el.workspace);
                             const isWall =
-                              el.elementRole === "STRUCTURE" ||
-                              el.elementType?.toLowerCase().includes("wall") ||
-                              el.elementType?.toLowerCase().includes("thin") ||
-                              el.elementType?.toLowerCase().includes("glass") ||
-                              el.elementType?.toLowerCase().includes("separator");
+                              !isWorkspace &&
+                              (el.elementRole === "STRUCTURE" ||
+                                el.elementType?.toLowerCase().includes("wall") ||
+                                el.elementType?.toLowerCase().includes("thin_wall") ||
+                                el.elementType?.toLowerCase().includes("glass") ||
+                                el.elementType?.toLowerCase().includes("separator"));
 
                             const isRestroom =
                               el.elementType?.toLowerCase().includes("restroom") ||
@@ -1946,7 +1906,6 @@ export function ReservationPage() {
                               disabled={!isAvailable}
                               onClick={() => {
                                 setCatStartTime(slot.startTime);
-                                setCustomTimeStatus(null);
                               }}
                               className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${isSelected
                                 ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
@@ -1973,41 +1932,7 @@ export function ReservationPage() {
                         })}
                       </div>
 
-                      {/* Custom Time */}
-                      <div className="border-t border-[var(--da-border-light)] pt-3">
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--da-brand-dark)]">
-                            Custom Start Time
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="time"
-                            value={customTimeInput}
-                            onChange={(e) => setCustomTimeInput(e.target.value)}
-                            className="da-input text-xs font-semibold py-1.5 px-3 flex-1"
-                            aria-label="Custom start time input"
-                          />
-                          <button
-                            type="button"
-                            disabled={!customTimeInput}
-                            onClick={handleApplyCustomCatTime}
-                            className="da-secondary-button text-xs py-1.5 px-3 font-bold shrink-0"
-                          >
-                            Apply
-                          </button>
-                        </div>
-                        {customTimeStatus ? (
-                          <div
-                            className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold ${customTimeStatus.isAvailable
-                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
-                              }`}
-                          >
-                            {customTimeStatus.message}
-                          </div>
-                        ) : null}
-                      </div>
+
                     </div>
                   )}
                 </div>

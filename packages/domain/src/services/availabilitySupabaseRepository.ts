@@ -274,7 +274,8 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
       return undefined as T;
     }
 
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    return text ? (JSON.parse(text) as T) : (undefined as T);
   }
 }
 

@@ -1,7 +1,12 @@
 import {
+  ConfirmStaffInvitationInput,
   CreateStaffInput,
+  CreateStaffInvitationInput,
   formatRelativeTime,
   getInitials,
+  StaffDeletionCheckResult,
+  StaffInvitation,
+  StaffManagementAuthorizationError,
   StaffManagementConflictError,
   StaffManagementError,
   StaffMember,
@@ -66,7 +71,8 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     }
 
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    return text ? (JSON.parse(text) as T) : (undefined as T);
   }
 
   private mapRowToStaffMember(row: any): StaffMember {
@@ -92,6 +98,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       lastActive: formatRelativeTime(row.last_sign_in_at ?? row.updated_at ?? row.created_at, now),
       createdAt: row.created_at ?? now.toISOString(),
       updatedAt: row.updated_at ?? now.toISOString(),
+      createdByAdminId: row.created_by_admin_id ?? null,
     };
   }
 
@@ -107,8 +114,14 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
 
       return rows.map((r) => this.mapRowToStaffMember(r));
     } catch (rpcErr) {
+      if (rpcErr instanceof Error && rpcErr.message.includes('Only active ADMIN profiles')) {
+        throw new StaffManagementAuthorizationError(rpcErr.message);
+      }
       // 2. Fallback to direct REST table queries
-      const profiles = await this.request<any[]>('/staff_profiles?select=*&order=created_at.asc');
+      const endpoint = actorUserId
+        ? `/staff_profiles?created_by_admin_id=eq.${encodeURIComponent(actorUserId)}&select=*&order=created_at.asc`
+        : '/staff_profiles?select=*&order=created_at.asc';
+      const profiles = await this.request<any[]>(endpoint);
 
       // Fetch users from auth admin if available
       let usersMap = new Map<string, { email?: string; last_sign_in_at?: string }>();
@@ -142,6 +155,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
           created_at: p.created_at,
           updated_at: p.updated_at,
           last_sign_in_at: authUser?.last_sign_in_at,
+          created_by_admin_id: p.created_by_admin_id,
         });
       });
     }
@@ -203,6 +217,18 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       const createdAuthUser = await authRes.json();
       const userId = createdAuthUser.id;
 
+      let effectiveAdminId = input.actorUserId ?? null;
+      if (!effectiveAdminId) {
+        try {
+          const admins = await this.request<any[]>('/staff_profiles?role=eq.ADMIN&is_active=eq.true&select=user_id&limit=1');
+          if (admins && admins.length > 0) {
+            effectiveAdminId = admins[0].user_id;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       // Insert staff profile
       const profiles = await this.request<any[]>('/staff_profiles', {
         method: 'POST',
@@ -211,6 +237,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         },
         body: JSON.stringify({
           user_id: userId,
+          created_by_admin_id: effectiveAdminId,
           role: input.role,
           display_name: input.displayName.trim(),
           is_active: true,
@@ -231,6 +258,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
               email: trimmedEmail,
               role: input.role,
               display_name: input.displayName.trim(),
+              created_by_admin_id: input.actorUserId,
             },
           }),
         }).catch(() => {});
@@ -264,7 +292,25 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
 
       return this.mapRowToStaffMember(rows[0]);
     } catch (err: any) {
+      if (err instanceof Error) {
+        if (
+          err.message.includes('Admin cannot manage staff created by another admin') ||
+          err.message.includes('Only active ADMIN profiles')
+        ) {
+          throw new StaffManagementAuthorizationError(err.message);
+        }
+      }
       // 2. Fallback
+      if (input.actorUserId) {
+        const existing = await this.request<any[]>(`/staff_profiles?user_id=eq.${encodeURIComponent(input.staffUserId)}&select=*`);
+        if (!existing || existing.length === 0) {
+          throw new StaffManagementError('Staff profile not found for update');
+        }
+        if (existing[0].created_by_admin_id && existing[0].created_by_admin_id !== input.actorUserId) {
+          throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
+        }
+      }
+
       const patchBody: Record<string, any> = {
         updated_at: new Date().toISOString(),
       };
@@ -328,4 +374,366 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     const found = list.find((s) => s.id === id);
     return found ?? null;
   }
+
+  async listActiveStaff(actorUserId?: string): Promise<StaffMember[]> {
+    const list = await this.listStaff(actorUserId);
+    return list.filter((s) => s.isActive);
+  }
+
+  async checkStaffDeletionEligibility(staffUserId: string): Promise<StaffDeletionCheckResult> {
+    try {
+      // 1. Try RPC first if available
+      const rows = await this.request<any[]>('/rpc/admin_check_staff_deletion', {
+        method: 'POST',
+        body: JSON.stringify({ p_target_user_id: staffUserId }),
+      });
+      if (rows && rows.length > 0) {
+        const row = rows[0];
+        return {
+          canDelete: Boolean(row.can_delete),
+          reason: row.reason || undefined,
+          references: row.references,
+        };
+      }
+    } catch {
+      // Fallback to direct REST queries
+    }
+
+    try {
+      // Check audit logs
+      const audits = await this.request<any[]>(
+        `/audit_logs?actor_user_id=eq.${encodeURIComponent(staffUserId)}&select=id&limit=1`
+      ).catch(() => []);
+      const auditCount = audits.length;
+
+      // Check reservations
+      const reservations = await this.request<any[]>(
+        `/reservations?or=(resolved_by_user_id.eq.${encodeURIComponent(staffUserId)},cancelled_by_user_id.eq.${encodeURIComponent(staffUserId)})&select=id&limit=1`
+      ).catch(() => []);
+      const resCount = reservations.length;
+
+      // Check payment attempts
+      const payments = await this.request<any[]>(
+        `/payment_attempts?or=(processed_by_user_id.eq.${encodeURIComponent(staffUserId)},refund_recorded_by_user_id.eq.${encodeURIComponent(staffUserId)})&select=id&limit=1`
+      ).catch(() => []);
+      const payCount = payments.length;
+
+      const total = auditCount + resCount + payCount;
+      if (total > 0) {
+        const reasons: string[] = [];
+        if (auditCount > 0) reasons.push('audit logs');
+        if (resCount > 0) reasons.push('reservation records');
+        if (payCount > 0) reasons.push('payment confirmations');
+        return {
+          canDelete: false,
+          reason: `Cannot delete: Staff has historical ${reasons.join(', ')}. Deactivate instead.`,
+          references: {
+            auditLogs: auditCount,
+            reservations: resCount,
+            payments: payCount,
+            total,
+          },
+        };
+      }
+
+      return {
+        canDelete: true,
+        references: {
+          auditLogs: 0,
+          reservations: 0,
+          payments: 0,
+          total: 0,
+        },
+      };
+    } catch (err: any) {
+      return {
+        canDelete: false,
+        reason: err?.message || 'Failed to check staff deletion eligibility.',
+      };
+    }
+  }
+
+  async deleteStaff(staffUserId: string, actorUserId?: string): Promise<{ success: boolean }> {
+    try {
+      // 1. Try RPC first
+      await this.request<any>('/rpc/admin_delete_staff', {
+        method: 'POST',
+        body: JSON.stringify({
+          p_actor_user_id: actorUserId ?? null,
+          p_target_user_id: staffUserId,
+        }),
+      });
+      return { success: true };
+    } catch (rpcErr: any) {
+      if (rpcErr instanceof StaffManagementConflictError) {
+        throw rpcErr;
+      }
+      if (rpcErr instanceof StaffManagementAuthorizationError) {
+        throw rpcErr;
+      }
+
+      // 2. Fallback: Check eligibility first
+      const check = await this.checkStaffDeletionEligibility(staffUserId);
+      if (!check.canDelete) {
+        throw new StaffManagementConflictError(
+          check.reason || 'Cannot delete staff account with historical audit, reservation, or payment records. Deactivate instead.'
+        );
+      }
+
+      // Fetch profile to verify exists and for audit metadata
+      const existingProfiles = await this.request<any[]>(
+        `/staff_profiles?user_id=eq.${encodeURIComponent(staffUserId)}&select=*&limit=1`
+      );
+      if (!existingProfiles || existingProfiles.length === 0) {
+        throw new StaffManagementError('Staff profile not found');
+      }
+      const profile = existingProfiles[0];
+
+      if (
+        actorUserId &&
+        profile.created_by_admin_id &&
+        profile.created_by_admin_id !== actorUserId
+      ) {
+        throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
+      }
+
+      // Delete staff profile
+      await this.request(`/staff_profiles?user_id=eq.${encodeURIComponent(staffUserId)}`, {
+        method: 'DELETE',
+      });
+
+      // Delete auth user
+      await fetch(`${this.authAdminUrl}/users/${encodeURIComponent(staffUserId)}`, {
+        method: 'DELETE',
+        headers: {
+          apikey: this.serviceRoleKey,
+          Authorization: `Bearer ${this.serviceRoleKey}`,
+        },
+      }).catch(() => {});
+
+      // Audit log
+      if (actorUserId) {
+        await this.request('/audit_logs', {
+          method: 'POST',
+          body: JSON.stringify({
+            actor_user_id: actorUserId,
+            actor_role: 'ADMIN',
+            action: 'DELETE_STAFF_ACCOUNT',
+            entity_type: 'staff_profiles',
+            entity_id: staffUserId,
+            metadata: {
+              display_name: profile.display_name,
+              role: profile.role,
+            },
+          }),
+        }).catch(() => {});
+      }
+
+      return { success: true };
+    }
+  }
+
+  // Invitations / 2FA flow
+  private mapRowToStaffInvitation(row: any): StaffInvitation {
+    return {
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name,
+      role: (row.role ?? 'STAFF').toUpperCase() as any,
+      verificationCode: row.verification_code,
+      token: row.token,
+      status: row.status,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      createdByAdminId: row.created_by_admin_id ?? null,
+    };
+  }
+
+  async createStaffInvitation(
+    input: CreateStaffInvitationInput,
+    verificationCode: string,
+    token: string,
+    expiresAt: Date
+  ): Promise<StaffInvitation> {
+    const trimmedEmail = input.email.toLowerCase().trim();
+
+    // Check if user already exists
+    try {
+      const existing = await this.request<any[]>(
+        `/staff_profiles?select=user_id&limit=1`
+      );
+      // Also check auth users
+      const authRes = await fetch(
+        `${this.authAdminUrl}/users?page=1&per_page=1000`,
+        {
+          headers: {
+            apikey: this.serviceRoleKey,
+            Authorization: `Bearer ${this.serviceRoleKey}`,
+          },
+          cache: 'no-store',
+        }
+      );
+      if (authRes.ok) {
+        const authData = await authRes.json();
+        const exists = (authData.users ?? []).some(
+          (u: any) => u.email?.toLowerCase().trim() === trimmedEmail
+        );
+        if (exists) {
+          throw new StaffManagementConflictError(
+            `A user with email ${trimmedEmail} already exists`
+          );
+        }
+      }
+    } catch (checkErr) {
+      if (checkErr instanceof StaffManagementConflictError) {
+        throw checkErr;
+      }
+    }
+
+    let effectiveAdminId = input.actorUserId ?? null;
+    if (!effectiveAdminId) {
+      try {
+        const admins = await this.request<any[]>('/staff_profiles?role=eq.ADMIN&is_active=eq.true&select=user_id&limit=1');
+        if (admins && admins.length > 0) {
+          effectiveAdminId = admins[0].user_id;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const rows = await this.request<any[]>('/staff_invitations', {
+      method: 'POST',
+      headers: {
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({
+        email: trimmedEmail,
+        display_name: input.displayName.trim(),
+        role: input.role,
+        temporary_password: input.password || null,
+        verification_code: verificationCode.trim(),
+        token: token.trim(),
+        status: 'PENDING',
+        expires_at: expiresAt.toISOString(),
+        created_by_admin_id: effectiveAdminId,
+      }),
+    });
+
+    if (!rows || rows.length === 0) {
+      throw new StaffManagementError('Failed to record staff invitation');
+    }
+
+    return this.mapRowToStaffInvitation(rows[0]);
+  }
+
+  async getStaffInvitationByToken(token: string): Promise<StaffInvitation | null> {
+    const rows = await this.request<any[]>(
+      `/staff_invitations?token=eq.${encodeURIComponent(token)}&select=*&limit=1`
+    );
+    if (!rows || rows.length === 0) {
+      return null;
+    }
+    return this.mapRowToStaffInvitation(rows[0]);
+  }
+
+  async listPendingInvitations(actorUserId?: string): Promise<StaffInvitation[]> {
+    const endpoint = actorUserId
+      ? `/staff_invitations?created_by_admin_id=eq.${encodeURIComponent(
+          actorUserId
+        )}&select=*&order=created_at.desc`
+      : '/staff_invitations?select=*&order=created_at.desc';
+
+    const rows = await this.request<any[]>(endpoint);
+    const now = this.nowProvider().getTime();
+
+    return rows.map((r) => {
+      const isExpired = new Date(r.expires_at).getTime() < now;
+      const status = isExpired && r.status === 'PENDING' ? 'EXPIRED' : r.status;
+      return {
+        ...this.mapRowToStaffInvitation(r),
+        status,
+      };
+    });
+  }
+
+  async confirmStaffInvitation(
+    input: ConfirmStaffInvitationInput
+  ): Promise<{ staff: StaffMember; invitation: StaffInvitation }> {
+    const rows = await this.request<any[]>(
+      `/staff_invitations?token=eq.${encodeURIComponent(input.token)}&select=*&limit=1`
+    );
+    if (!rows || rows.length === 0) {
+      throw new StaffManagementError('Invitation not found');
+    }
+
+    const row = rows[0];
+    if (row.status !== 'PENDING') {
+      throw new StaffManagementError(`Invitation is ${row.status.toLowerCase()}`);
+    }
+
+    const now = this.nowProvider();
+    if (new Date(row.expires_at).getTime() < now.getTime()) {
+      await this.request(`/staff_invitations?id=eq.${encodeURIComponent(row.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'EXPIRED' }),
+      });
+      throw new StaffManagementError('Invitation has expired');
+    }
+
+    if (row.verification_code.trim() !== input.verificationCode.trim()) {
+      throw new StaffManagementError('Invalid verification code');
+    }
+
+    // Create staff account
+    const password = input.password || row.temporary_password || 'DeskAtlas123!';
+    const staff = await this.createStaff({
+      email: row.email,
+      displayName: row.display_name,
+      role: row.role,
+      password,
+      actorUserId: row.created_by_admin_id ?? undefined,
+      actorRole: 'ADMIN',
+    });
+
+    // Mark invitation confirmed
+    await this.request(`/staff_invitations?id=eq.${encodeURIComponent(row.id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'CONFIRMED', updated_at: now.toISOString() }),
+    });
+
+    return {
+      staff,
+      invitation: {
+        ...this.mapRowToStaffInvitation(row),
+        status: 'CONFIRMED',
+        updatedAt: now.toISOString(),
+      },
+    };
+  }
+
+  async cancelStaffInvitation(id: string, actorUserId?: string): Promise<boolean> {
+    const rows = await this.request<any[]>(
+      `/staff_invitations?id=eq.${encodeURIComponent(id)}&select=*&limit=1`
+    );
+    if (!rows || rows.length === 0) return false;
+
+    const row = rows[0];
+    if (actorUserId && row.created_by_admin_id && row.created_by_admin_id !== actorUserId) {
+      throw new StaffManagementAuthorizationError(
+        'Admin cannot cancel invitation created by another admin'
+      );
+    }
+
+    await this.request(`/staff_invitations?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'CANCELLED',
+        updated_at: this.nowProvider().toISOString(),
+      }),
+    });
+    return true;
+  }
 }
+

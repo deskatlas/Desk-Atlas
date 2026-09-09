@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
+import { SearchProvider, useSearch } from '@deskatlas/ui';
 import { useRouter, usePathname } from 'next/navigation';
 
-export default function ManageLayout({ children }: { children: React.ReactNode }) {
+function StaffShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
@@ -18,6 +19,8 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { searchQuery, setSearchQuery, clearSearch } = useSearch();
+  const isReservationsPage = pathname === '/manage/reservations';
 
   useEffect(() => {
     if (user === null) {
@@ -147,10 +150,29 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
             <button className="mobile-only" onClick={() => setMobileMenuOpen(true)} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
               ☰
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '8px 12px', flex: 1, maxWidth: '380px' }}>
-              <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '50%', flexShrink: 0 }}></div>
-              <input placeholder="Search..." style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', flex: 1, minWidth: 0, fontFamily: 'var(--da-font-family)', color: 'var(--da-text-primary)' }} />
-            </div>
+            {isReservationsPage && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '8px 12px', flex: 1, maxWidth: '380px' }}>
+                <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '50%', flexShrink: 0 }}></div>
+                <input
+                  data-testid="reservations-search-input"
+                  aria-label="Search reservations"
+                  placeholder="Search guest name or ref ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', flex: 1, minWidth: 0, fontFamily: 'var(--da-font-family)', color: 'var(--da-text-primary)' }}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    aria-label="Clear search"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--da-text-secondary)', fontSize: '12px', padding: '0 4px', lineHeight: 1 }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div className="mobile-hide" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '7px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
@@ -173,5 +195,13 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
         {children}
       </div>
     </div>
+  );
+}
+
+export default function ManageLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SearchProvider>
+      <StaffShell>{children}</StaffShell>
+    </SearchProvider>
   );
 }

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/features/auth';
+import { NotificationCenter } from '@/features/notifications';
+import { SearchProvider, useSearch } from '@deskatlas/ui';
 import { useRouter, usePathname } from 'next/navigation';
 
 function AdminShell({ children }: { children: React.ReactNode }) {
@@ -17,6 +19,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { searchQuery, setSearchQuery, clearSearch } = useSearch();
+  const isReservationsPage = pathname === '/manage/reservations';
 
   const [reservationsCount, setReservationsCount] = useState<number>(0);
   const [paymentsCount, setPaymentsCount] = useState<number>(0);
@@ -215,21 +219,38 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <button className="mobile-only" onClick={() => setMobileMenuOpen(true)} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
               ☰
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '8px 12px', flex: 1, maxWidth: '380px' }}>
-              <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '50%', flexShrink: 0 }}></div>
-              <input placeholder="Search..." style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', flex: 1, minWidth: 0, fontFamily: 'var(--da-font-family)', color: 'var(--da-text-primary)' }} />
-              <span className="mobile-hide" style={{ fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '5px', padding: '2px 6px', fontFamily: 'var(--da-font-family)' }}>⌘K</span>
-            </div>
+            {isReservationsPage && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '8px 12px', flex: 1, maxWidth: '380px' }}>
+                <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '50%', flexShrink: 0 }}></div>
+                <input
+                  data-testid="reservations-search-input"
+                  aria-label="Search reservations"
+                  placeholder="Search guest name or ref ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', flex: 1, minWidth: 0, fontFamily: 'var(--da-font-family)', color: 'var(--da-text-primary)' }}
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    aria-label="Clear search"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--da-text-secondary)', fontSize: '12px', padding: '0 4px', lineHeight: 1 }}
+                  >
+                    ✕
+                  </button>
+                ) : (
+                  <span className="mobile-hide" style={{ fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '5px', padding: '2px 6px', fontFamily: 'var(--da-font-family)' }}>⌘K</span>
+                )}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div className="mobile-hide" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '7px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
               <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '3px' }}></div>
               {currentTime ? `${currentTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${currentTime.toLocaleTimeString('en-US', { hour12: false })}` : 'Loading...'}
             </div>
-            <div style={{ position: 'relative', width: '32px', height: '32px', borderRadius: '9px', background: 'var(--da-canvas)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: '11px', height: '11px', border: '2px solid var(--da-text-primary)', borderRadius: '50% 50% 3px 3px' }}></div>
-              <div style={{ position: 'absolute', top: '6px', right: '7px', width: '7px', height: '7px', borderRadius: '50%', background: '#FFF0CC', border: '1.5px solid #fff' }}></div>
-            </div>
+            <NotificationCenter />
             <div onClick={logout} style={{ display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: '14px', borderLeft: '1px solid var(--da-border)', cursor: 'pointer' }}>
               <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--da-brand-dark)', color: 'var(--da-brand-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800 }}>
                 {user.name?.[0] || 'A'}
@@ -257,11 +278,13 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
   // but for login, we should probably bypass it.
   
   const pathname = usePathname();
-  const isLogin = pathname === '/manage/login';
+  const isPublicAuthRoute = pathname === '/manage/login' || pathname === '/manage/setup' || pathname?.startsWith('/manage/auth');
 
   return (
     <AuthProvider>
-      {isLogin ? children : <AdminShell>{children}</AdminShell>}
+      <SearchProvider>
+        {isPublicAuthRoute ? children : <AdminShell>{children}</AdminShell>}
+      </SearchProvider>
     </AuthProvider>
   );
 }

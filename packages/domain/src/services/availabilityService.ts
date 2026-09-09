@@ -74,8 +74,7 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
         instance.id,
         normalized.date,
         normalized.durationMinutes,
-        normalized.nowIso ? new Date(normalized.nowIso) : new Date(),
-        normalized.customStartTime
+        normalized.nowIso ? new Date(normalized.nowIso) : new Date()
       );
 
       return {
@@ -139,8 +138,7 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
           instance.id,
           normalized.date,
           normalized.durationMinutes,
-          now,
-          normalized.startTime
+          now
         );
 
         if (normalized.startTime) {
@@ -263,8 +261,7 @@ async function listTimeSlotsForDate(
   workspaceInstanceId: string,
   date: string,
   durationMinutes: number,
-  now: Date,
-  customStartTime?: string
+  now: Date
 ): Promise<AvailableTimeSlot[]> {
   if (!workspaceIsBookable) {
     return [];
@@ -310,71 +307,7 @@ async function listTimeSlotsForDate(
     );
   }
 
-  if (customStartTime) {
-    slots.push(
-      evaluateCustomTimeSlot({
-        customStartTime,
-        date,
-        durationMinutes,
-        timezone: settings.timezone,
-        intervals,
-        now,
-        blocks,
-        reservations,
-      })
-    );
-  }
-
   return dedupeSlots(slots);
-}
-
-function evaluateCustomTimeSlot(input: {
-  customStartTime: string;
-  date: string;
-  durationMinutes: number;
-  timezone: string;
-  intervals: OperatingHoursInterval[];
-  now: Date;
-  blocks: ScheduleBlock[];
-  reservations: BlockingReservationWindow[];
-}): AvailableTimeSlot {
-  const customStartMinutes = parseTimeToMinutes(input.customStartTime);
-  const customEndMinutes = customStartMinutes + input.durationMinutes;
-  const startTime = formatMinutes(customStartMinutes);
-  const endTime = formatMinutes(customEndMinutes);
-
-  const fitsInInterval = input.intervals.some((interval) => {
-    const openMinutes = parseTimeToMinutes(interval.opensAt);
-    const closeMinutes = parseTimeToMinutes(interval.closesAt);
-    return customStartMinutes >= openMinutes && customEndMinutes <= closeMinutes;
-  });
-
-  if (!fitsInInterval) {
-    return {
-      startTime,
-      endTime,
-      isAvailable: false,
-      blockingReason: 'BUSINESS_CLOSED',
-    };
-  }
-
-  const slotStart = zonedDateTimeToUtc(input.date, startTime, input.timezone);
-  const slotEnd = new Date(slotStart.getTime() + input.durationMinutes * 60_000);
-
-  const blockingReason = getSlotBlockingReason(
-    slotStart,
-    slotEnd,
-    input.now,
-    input.blocks,
-    input.reservations
-  );
-
-  return {
-    startTime,
-    endTime,
-    isAvailable: blockingReason === null,
-    blockingReason,
-  };
 }
 
 function buildIntervalSlots(input: {
@@ -501,25 +434,12 @@ function normalizeDateAvailabilityQuery(query: DateAvailabilityQuery): Required<
   };
 }
 
-function normalizeTimeAvailabilityQuery(query: TimeAvailabilityQuery): Required<Omit<TimeAvailabilityQuery, 'customStartTime'>> & {
-  customStartTime?: string;
-} {
-  let customStartTime: string | undefined = undefined;
-  if (query.customStartTime && query.customStartTime.trim().length > 0) {
-    const trimmed = query.customStartTime.trim();
-    if (!/^(\d{1,2}):(\d{2})(?::\d{2})?$/.test(trimmed)) {
-      throw new AvailabilityValidationError(`Invalid custom start time: ${trimmed}`);
-    }
-    const [h, m] = trimmed.split(':');
-    customStartTime = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
-  }
-
+function normalizeTimeAvailabilityQuery(query: TimeAvailabilityQuery): Required<TimeAvailabilityQuery> {
   return {
     workspaceInstanceId: requireNonBlank(query.workspaceInstanceId, 'Workspace instance id'),
     date: requireDateString(query.date, 'Date'),
     durationMinutes: requirePositiveMinutes(query.durationMinutes, 'Duration'),
     nowIso: query.nowIso ?? new Date().toISOString(),
-    customStartTime,
   };
 }
 
