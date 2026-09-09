@@ -32,7 +32,6 @@ export async function fetchTimeAvailability(input: {
   workspaceInstanceId: string;
   date: string;
   durationMinutes: number;
-  customStartTime?: string;
   nowIso?: string;
 }): Promise<TimeAvailabilityResult> {
   const params = new URLSearchParams({
@@ -40,9 +39,6 @@ export async function fetchTimeAvailability(input: {
     date: input.date,
     durationMinutes: String(input.durationMinutes),
   });
-  if (input.customStartTime) {
-    params.set('customStartTime', input.customStartTime);
-  }
   if (input.nowIso) {
     params.set('nowIso', input.nowIso);
   }

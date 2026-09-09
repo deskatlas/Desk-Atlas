@@ -27,10 +27,7 @@ export async function GET(request: NextRequest) {
         templateId,
         date: searchParams.get('date') ?? '',
         durationMinutes,
-        startTime:
-          searchParams.get('startTime') ??
-          searchParams.get('customStartTime') ??
-          undefined,
+        startTime: searchParams.get('startTime') ?? undefined,
         nowIso,
       });
       return NextResponse.json(result);

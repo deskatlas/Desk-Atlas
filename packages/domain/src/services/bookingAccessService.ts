@@ -43,6 +43,7 @@ export class BookingAccessService {
     const created = await this.bookingAccessRepository.issueBookingAccessToken({
       reservationId,
       tokenHash,
+      token,
       issuedAt,
     });
 
@@ -60,7 +61,13 @@ export class BookingAccessService {
     };
   }
 
-  async resolveBookingAccess(token: string): Promise<BookingScanResult> {
+  async resolveBookingAccess(
+    token: string,
+    actor?: {
+      userId?: string | null;
+      role?: "ADMIN" | "STAFF" | "SYSTEM" | null;
+    }
+  ): Promise<BookingScanResult> {
     const normalizedToken = token.trim();
     if (!normalizedToken) {
       throw new BookingAccessError("Booking token is required.");
@@ -83,10 +90,15 @@ export class BookingAccessService {
         ? Math.max(0, Math.floor((endAt.getTime() - now.getTime()) / 1000))
         : 0;
 
+    const isReentry = accessState === "ACTIVE" && checkInState === "CHECKED_IN";
+
     await this.bookingAccessRepository.recordBookingScan({
       reservationId: record.reservationId,
       scannedAt: nowIso,
       accessState,
+      actorUserId: actor?.userId ?? null,
+      actorRole: actor?.role ?? null,
+      reentry: isReentry,
     });
 
     return {

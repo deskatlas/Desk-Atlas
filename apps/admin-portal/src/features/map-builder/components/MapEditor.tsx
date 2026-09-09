@@ -5,12 +5,22 @@ import { useAuth } from '@/features/auth/components/AuthProvider';
 import {
   computeFitViewZoom,
   clampMapZoom,
+  clampRotatedElementToBounds,
+  isRotatedElementWithinBounds,
   getSavedMapZoom,
   saveMapZoom,
   DEFAULT_MAP_CANVAS_WIDTH,
   DEFAULT_MAP_CANVAS_HEIGHT,
   DEFAULT_MAP_GRID_SIZE,
+  MapUndoRedoManager,
+  type MapCommand,
+  serializeMapElementsForSnapshot,
+  isMapDraftDirty,
+  createAutosaveDebouncer,
+  AUTOSAVE_DEBOUNCE_MS,
+  NAVIGATION_WARNING_MESSAGE,
 } from '@deskatlas/domain';
+import { useNavigationGuard } from '../hooks/useNavigationGuard';
 
 function getContrastColor(hexColor?: string): string {
   if (!hexColor || !hexColor.startsWith('#') || hexColor.length < 7) return '#111827';
@@ -107,6 +117,99 @@ export function MapEditor() {
   const [dragState, setDragState] = useState<{ id: string; startX: number; startY: number; startObjX: number; startObjY: number } | null>(null);
   const [resizeState, setResizeState] = useState<{ id: string; startX: number; startY: number; startObjW: number; startObjH: number; startObjX: number; startObjY: number } | null>(null);
 
+  const builderObjectsRef = useRef(builderObjects);
+  builderObjectsRef.current = builderObjects;
+
+  const selectedFloorIdRef = useRef(selectedFloorId);
+  selectedFloorIdRef.current = selectedFloorId;
+
+  const canvasDimensionsRef = useRef(canvasDimensions);
+  canvasDimensionsRef.current = canvasDimensions;
+
+  const savedSnapshotRef = useRef<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useNavigationGuard({ isDirty });
+
+  const autosaveDebouncerRef = useRef<ReturnType<typeof createAutosaveDebouncer> | null>(null);
+
+  const undoManagerRef = useRef<MapUndoRedoManager>(new MapUndoRedoManager(50));
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const initialNameRef = useRef<string>('');
+
+  const syncUndoRedoState = (floorId: string | null = selectedFloorId) => {
+    if (!floorId) {
+      setCanUndo(false);
+      setCanRedo(false);
+      return;
+    }
+    setCanUndo(undoManagerRef.current.canUndo(floorId));
+    setCanRedo(undoManagerRef.current.canRedo(floorId));
+  };
+
+  useEffect(() => {
+    syncUndoRedoState(selectedFloorId);
+  }, [selectedFloorId]);
+
+  const handleUndo = () => {
+    if (!selectedFloorId || !undoManagerRef.current.canUndo(selectedFloorId)) return;
+    const res = undoManagerRef.current.undo(selectedFloorId, builderObjectsRef.current);
+    setBuilderObjects(res.updatedObjects);
+    setCanUndo(res.canUndo);
+    setCanRedo(res.canRedo);
+    setSaveState('Unsaved changes');
+    if (selectedObjId && !res.updatedObjects.some(o => o.id === selectedObjId)) {
+      setSelectedObjId(null);
+    }
+  };
+
+  const handleRedo = () => {
+    if (!selectedFloorId || !undoManagerRef.current.canRedo(selectedFloorId)) return;
+    const res = undoManagerRef.current.redo(selectedFloorId, builderObjectsRef.current);
+    setBuilderObjects(res.updatedObjects);
+    setCanUndo(res.canUndo);
+    setCanRedo(res.canRedo);
+    setSaveState('Unsaved changes');
+    if (selectedObjId && !res.updatedObjects.some(o => o.id === selectedObjId)) {
+      setSelectedObjId(null);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (!isCtrlOrCmd) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedFloorId, canUndo, canRedo, selectedObjId]);
+
   // Load floors & workspace catalog
   const loadInitialData = async () => {
     try {
@@ -135,6 +238,8 @@ export function MapEditor() {
         await loadDraftForFloor(firstFloorId, loadedInstances, loadedTemplates);
       } else {
         setBuilderObjects([]);
+        savedSnapshotRef.current = serializeMapElementsForSnapshot([]);
+        setIsDirty(false);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to load initial map data');
@@ -197,6 +302,8 @@ export function MapEditor() {
       if (!mapData || !mapData.elements || mapData.elements.length === 0) {
         setBuilderObjects([]);
         setSelectedObjId(null);
+        savedSnapshotRef.current = serializeMapElementsForSnapshot([]);
+        setIsDirty(false);
         setSaveState('Saved');
         return;
       }
@@ -211,43 +318,48 @@ export function MapEditor() {
           ? (inst.template || currentTemplates.find((t: any) => t.id === inst.templateId))
           : currentTemplates.find((t: any) => t.id === el.properties?.templateId || t.name === el.properties?.template);
 
-        const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
-        const isPantry = el.elementType?.toLowerCase().includes('pantry') || el.label?.toLowerCase().includes('pantry');
-        const isEmergencyExit = el.elementType?.toLowerCase().includes('exit') || el.elementType?.toLowerCase().includes('emergency') || el.label?.toLowerCase().includes('exit') || el.label?.toLowerCase().includes('emergency');
-        const isAmenity = el.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit;
+        const isWorkspace = el.elementRole === 'WORKSPACE' || Boolean(el.workspaceInstanceId) || Boolean(inst);
+        const isRestroom = !isWorkspace && (el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom'));
+        const isPantry = !isWorkspace && (el.elementType?.toLowerCase().includes('pantry') || el.label?.toLowerCase().includes('pantry'));
+        const isEmergencyExit = !isWorkspace && (el.elementType?.toLowerCase().includes('exit') || el.elementType?.toLowerCase().includes('emergency') || el.label?.toLowerCase().includes('exit') || el.label?.toLowerCase().includes('emergency'));
+        const isAmenity = !isWorkspace && (el.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
         const isKioskMarker =
-          el.elementType === 'KIOSK_YOU_ARE_HERE' ||
-          el.elementType === 'kiosk_marker' ||
-          el.elementRole === 'INFORMATION' ||
-          el.properties?.markerType === 'KIOSK_YOU_ARE_HERE' ||
-          el.label?.toLowerCase() === 'you are here';
+          !isWorkspace &&
+          (el.elementType === 'KIOSK_YOU_ARE_HERE' ||
+            el.elementType === 'kiosk_marker' ||
+            el.elementRole === 'INFORMATION' ||
+            el.properties?.markerType === 'KIOSK_YOU_ARE_HERE' ||
+            el.label?.toLowerCase() === 'you are here');
 
         let defaultAmenityColor = '#F3F7F4';
         if (isRestroom) defaultAmenityColor = '#E0F2FE';
         else if (isPantry) defaultAmenityColor = '#FEF3C7';
         else if (isEmergencyExit) defaultAmenityColor = '#DCFCE7';
 
-        const color = el.properties?.color || tmpl?.defaultColor || (el.elementRole === 'WORKSPACE' ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : '#F3F7F4')));
+        const color = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : '#F3F7F4')));
         const displayName = el.label || (isKioskMarker ? 'You Are Here' : (inst?.displayName || tmpl?.name || el.elementType));
 
-        const isThinWall = el.elementType?.toLowerCase().includes('thin') || el.elementType?.toLowerCase().includes('separator') || el.label?.toLowerCase().includes('thin') || el.label?.toLowerCase().includes('separator');
-        const isGlass = el.elementType?.toLowerCase().includes('glass') || el.label?.toLowerCase().includes('glass');
-        const isWall = el.elementType?.toLowerCase().includes('wall') || el.label?.toLowerCase().includes('wall') || isThinWall || isGlass;
-        const isRect = el.elementType?.toLowerCase() === 'rectangle' || el.elementType?.toLowerCase() === 'rect' || tmpl?.defaultShape?.toLowerCase() === 'rectangle' || tmpl?.defaultShape?.toLowerCase() === 'rect';
-        const defaultW = isKioskMarker ? 80 : (isRect ? 120 : (isWall ? 160 : (isAmenity ? 100 : 80)));
-        const defaultH = isKioskMarker ? 80 : (isThinWall ? 10 : (isWall ? 20 : (isAmenity ? 80 : 80)));
+        const isThinWall = !isWorkspace && (el.elementType === 'thin_wall' || el.elementType === 'thin' || el.elementType?.toLowerCase().includes('thin_wall') || el.label?.toLowerCase() === 'thin wall' || el.elementType?.toLowerCase().includes('separator') || el.label?.toLowerCase().includes('separator'));
+        const isGlass = !isWorkspace && (el.elementType?.toLowerCase().includes('glass') || el.label?.toLowerCase().includes('glass'));
+        const isWall = !isWorkspace && (el.elementType === 'wall' || el.elementType?.toLowerCase().includes('wall') || el.label?.toLowerCase() === 'wall' || isThinWall || isGlass);
+        const isRect = isWorkspace
+          ? (el.elementType?.toLowerCase() === 'rectangle' || el.elementType?.toLowerCase() === 'rect' || tmpl?.defaultShape?.toLowerCase() === 'rectangle' || tmpl?.defaultShape?.toLowerCase() === 'rect')
+          : (el.elementType?.toLowerCase() === 'rectangle' || el.elementType?.toLowerCase() === 'rect');
+        const defaultW = isKioskMarker ? 80 : (isWorkspace ? (isRect ? 120 : 80) : (isWall ? 160 : (isAmenity ? 100 : 80)));
+        const defaultH = isKioskMarker ? 80 : (isWorkspace ? 80 : (isThinWall ? 10 : (isWall ? 20 : (isAmenity ? 80 : 80))));
 
         let normType = el.elementType;
         if (isKioskMarker) {
           normType = 'KIOSK_YOU_ARE_HERE';
         } else if (!normType || normType === 'generic') {
-          if (isRestroom) normType = 'restroom';
+          if (isWorkspace) normType = tmpl?.defaultShape || 'desk';
+          else if (isRestroom) normType = 'restroom';
           else if (isPantry) normType = 'pantry';
           else if (isEmergencyExit) normType = 'emergency_exit';
           else if (isThinWall) normType = 'thin_wall';
           else if (isGlass) normType = 'glass';
           else if (isWall) normType = 'wall';
-          else normType = tmpl?.defaultShape || 'desk';
+          else normType = 'generic';
         }
 
         return {
@@ -256,19 +368,21 @@ export function MapEditor() {
           x: Number(el.x) || 0,
           y: Number(el.y) || 0,
           w: el.width !== undefined && el.width !== null ? Number(el.width) : defaultW,
-          h: isKioskMarker ? 80 : (isThinWall ? 10 : (isWall ? 20 : (el.height !== undefined && el.height !== null ? Number(el.height) : defaultH))),
+          h: isKioskMarker ? 80 : (isWorkspace ? (el.height !== undefined && el.height !== null ? Number(el.height) : defaultH) : (isThinWall ? 10 : (isWall ? 20 : (el.height !== undefined && el.height !== null ? Number(el.height) : defaultH)))),
           rotation: el.rotation || 0,
-          bookable: el.elementRole === 'WORKSPACE',
+          bookable: isWorkspace,
           template: tmpl?.name || el.properties?.template || null,
-          status: inst?.operationalStatus || (el.elementRole === 'WORKSPACE' ? 'ACTIVE' : null),
+          status: inst?.operationalStatus || (isWorkspace ? 'ACTIVE' : null),
           workspaceInstanceId: el.workspaceInstanceId || null,
-          elementRole: el.elementRole === 'WORKSPACE' ? 'WORKSPACE' : (isKioskMarker ? 'INFORMATION' : (isAmenity ? 'AMENITY' : (el.elementRole || 'STRUCTURE'))),
+          elementRole: isWorkspace ? 'WORKSPACE' : (isKioskMarker ? 'INFORMATION' : (isAmenity ? 'AMENITY' : (el.elementRole || 'STRUCTURE'))),
           elementType: normType,
           color,
         };
       });
 
       setBuilderObjects(mapped);
+      savedSnapshotRef.current = serializeMapElementsForSnapshot(mapped);
+      setIsDirty(false);
       if (mapped.length > 0) {
         setSelectedObjId(mapped[0].id);
       } else {
@@ -313,7 +427,18 @@ export function MapEditor() {
   }, [selectedFloorId, canvasDimensions.width, canvasDimensions.height, loading]);
 
   const handleFloorChange = async (floorId: string) => {
+    if (floorId === selectedFloorId) return;
+
+    if (isDirty) {
+      const confirmed = window.confirm(NAVIGATION_WARNING_MESSAGE);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    autosaveDebouncerRef.current?.cancel();
     setSelectedFloorId(floorId);
+    syncUndoRedoState(floorId);
     await loadDraftForFloor(floorId);
   };
 
@@ -409,6 +534,12 @@ export function MapEditor() {
       setSelectedObjId(newObj.id);
       setShowInspector(true);
       setSaveState('Unsaved changes');
+
+      undoManagerRef.current.push(selectedFloorId, {
+        type: 'ADD_OBJECT',
+        object: newObj,
+      });
+      syncUndoRedoState(selectedFloorId);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to place workspace');
     } finally {
@@ -483,6 +614,12 @@ export function MapEditor() {
     setSelectedObjId(newObj.id);
     setShowInspector(true);
     setSaveState('Unsaved changes');
+
+    undoManagerRef.current.push(selectedFloorId, {
+      type: 'ADD_OBJECT',
+      object: newObj,
+    });
+    syncUndoRedoState(selectedFloorId);
   };
 
   // Add Kiosk "You Are Here" Marker (enforce at most 1 per floor)
@@ -526,6 +663,12 @@ export function MapEditor() {
     setSelectedObjId(newObj.id);
     setShowInspector(true);
     setSaveState('Unsaved changes');
+
+    undoManagerRef.current.push(selectedFloorId, {
+      type: 'ADD_OBJECT',
+      object: newObj,
+    });
+    syncUndoRedoState(selectedFloorId);
   };
 
   const handleFitView = () => {
@@ -584,14 +727,35 @@ export function MapEditor() {
         const canvasW = canvasDimensions.width;
         const canvasH = canvasDimensions.height;
 
-        newX = Math.max(0, Math.min(newX, canvasW - objW));
-        newY = Math.max(0, Math.min(newY, canvasH - objH));
+        const clamped = clampRotatedElementToBounds(
+          { x: newX, y: newY, width: objW, height: objH, rotation: obj?.rotation || 0 },
+          canvasW,
+          canvasH
+        );
+        newX = clamped.x;
+        newY = clamped.y;
 
         setBuilderObjects(prev => prev.map(o => (o.id === dragState.id ? { ...o, x: newX, y: newY } : o)));
         setSaveState('Unsaved changes');
       };
 
-      const handlePointerUp = () => setDragState(null);
+      const handlePointerUp = () => {
+        const finalObj = builderObjectsRef.current.find(o => o.id === dragState.id);
+        if (
+          finalObj &&
+          selectedFloorId &&
+          (finalObj.x !== dragState.startObjX || finalObj.y !== dragState.startObjY)
+        ) {
+          undoManagerRef.current.push(selectedFloorId, {
+            type: 'MOVE_OBJECT',
+            id: dragState.id,
+            before: { x: dragState.startObjX, y: dragState.startObjY },
+            after: { x: finalObj.x, y: finalObj.y },
+          });
+          syncUndoRedoState(selectedFloorId);
+        }
+        setDragState(null);
+      };
 
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
@@ -605,25 +769,29 @@ export function MapEditor() {
         const dy = (e.clientY - resizeState.startY) / builderZoom;
 
         const obj = builderObjects.find(o => o.id === resizeState.id);
-        const isThinWall = obj && (
-          obj.elementType?.toLowerCase().includes('thin') ||
+        const isWorkspace = Boolean(obj && (obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId));
+        const isThinWall = !isWorkspace && Boolean(obj && (
+          obj.elementType === 'thin_wall' ||
+          obj.elementType === 'thin' ||
+          obj.elementType?.toLowerCase().includes('thin_wall') ||
           obj.elementType?.toLowerCase().includes('separator') ||
-          obj.name?.toLowerCase().includes('thin') ||
+          obj.name?.toLowerCase() === 'thin wall' ||
           obj.name?.toLowerCase().includes('separator')
-        );
-        const isGlass = obj && (
+        ));
+        const isGlass = !isWorkspace && Boolean(obj && (
           obj.elementType?.toLowerCase().includes('glass') ||
           obj.name?.toLowerCase().includes('glass')
-        );
-        const isWall = obj && (
+        ));
+        const isWall = !isWorkspace && Boolean(obj && (
+          obj.elementType === 'wall' ||
           obj.elementType?.toLowerCase().includes('wall') ||
-          obj.name?.toLowerCase().includes('wall') ||
+          obj.name?.toLowerCase() === 'wall' ||
           isThinWall ||
           isGlass
-        );
+        ));
         const fixedThickness = isThinWall ? 10 : 20;
 
-        if (isWall && obj) {
+        if (!isWorkspace && isWall && obj) {
           const rot = ((obj.rotation || 0) % 360 + 360) % 360;
           let dLength = dx;
           if (rot === 90) {
@@ -686,7 +854,36 @@ export function MapEditor() {
         }
       };
 
-      const handlePointerUp = () => setResizeState(null);
+      const handlePointerUp = () => {
+        const finalObj = builderObjectsRef.current.find(o => o.id === resizeState.id);
+        if (
+          finalObj &&
+          selectedFloorId &&
+          (finalObj.w !== resizeState.startObjW ||
+            finalObj.h !== resizeState.startObjH ||
+            finalObj.x !== resizeState.startObjX ||
+            finalObj.y !== resizeState.startObjY)
+        ) {
+          undoManagerRef.current.push(selectedFloorId, {
+            type: 'RESIZE_OBJECT',
+            id: resizeState.id,
+            before: {
+              w: resizeState.startObjW,
+              h: resizeState.startObjH,
+              x: resizeState.startObjX,
+              y: resizeState.startObjY,
+            },
+            after: {
+              w: finalObj.w,
+              h: finalObj.h,
+              x: finalObj.x,
+              y: finalObj.y,
+            },
+          });
+          syncUndoRedoState(selectedFloorId);
+        }
+        setResizeState(null);
+      };
 
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
@@ -698,35 +895,55 @@ export function MapEditor() {
   }, [dragState, resizeState, builderZoom, snapOn, builderObjects, canvasDimensions]);
 
   // Save draft
-  const handleSaveDraft = async () => {
-    if (!selectedFloorId) return;
+  const handleSaveDraft = async (isAutosave = false) => {
+    const floorId = selectedFloorIdRef.current;
+    if (!floorId) return;
 
     try {
-      setSaveState('Saving draft...');
-      setErrorMsg(null);
+      setSaveState(isAutosave ? 'Saving...' : 'Saving draft...');
+      if (!isAutosave) {
+        setErrorMsg(null);
+        autosaveDebouncerRef.current?.cancel();
+      }
 
-      const elementsPayload = builderObjects.map((obj, index) => {
-        const isThinWall = obj.elementType?.toLowerCase().includes('thin') || obj.elementType?.toLowerCase().includes('separator') || obj.name?.toLowerCase().includes('thin') || obj.name?.toLowerCase().includes('separator');
-        const isGlass = obj.elementType?.toLowerCase().includes('glass') || obj.name?.toLowerCase().includes('glass');
-        const isWall = obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall') || isThinWall || isGlass;
-        const isRestroom = obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom');
-        const isPantry = obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry');
-        const isEmergencyExit = obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency');
-        const isAmenity = obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit;
-        const isKioskMarker =
+      const currentObjects = builderObjectsRef.current;
+      const elementsPayload = currentObjects.map((obj, index) => {
+        const isWorkspace = Boolean(obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId);
+        const isThinWall = !isWorkspace && (
+          obj.elementType === 'thin_wall' ||
+          obj.elementType === 'thin' ||
+          obj.elementType?.toLowerCase().includes('thin_wall') ||
+          obj.elementType?.toLowerCase().includes('separator') ||
+          obj.name?.toLowerCase() === 'thin wall' ||
+          obj.name?.toLowerCase().includes('separator')
+        );
+        const isGlass = !isWorkspace && (obj.elementType?.toLowerCase().includes('glass') || obj.name?.toLowerCase().includes('glass'));
+        const isWall = !isWorkspace && (
+          obj.elementType === 'wall' ||
+          obj.elementType?.toLowerCase().includes('wall') ||
+          obj.name?.toLowerCase() === 'wall' ||
+          isThinWall ||
+          isGlass
+        );
+        const isRestroom = !isWorkspace && (obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom'));
+        const isPantry = !isWorkspace && (obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry'));
+        const isEmergencyExit = !isWorkspace && (obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency'));
+        const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
+        const isKioskMarker = !isWorkspace && (
           obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
           obj.elementRole === 'INFORMATION' ||
-          obj.name?.toLowerCase() === 'you are here';
+          obj.name?.toLowerCase() === 'you are here'
+        );
         const fixedThickness = isThinWall ? 10 : 20;
 
-        let role: 'WORKSPACE' | 'STRUCTURE' | 'AMENITY' | 'INFORMATION' = obj.bookable
+        let role: 'WORKSPACE' | 'STRUCTURE' | 'AMENITY' | 'INFORMATION' = isWorkspace
           ? 'WORKSPACE'
           : (isKioskMarker ? 'INFORMATION' : (isAmenity ? 'AMENITY' : (obj.elementRole || 'STRUCTURE')));
         let normType = obj.elementType;
         if (isKioskMarker) {
           normType = 'KIOSK_YOU_ARE_HERE';
         } else if (!normType || normType === 'generic') {
-          if (obj.bookable) normType = 'desk';
+          if (isWorkspace) normType = 'desk';
           else if (isRestroom) normType = 'restroom';
           else if (isPantry) normType = 'pantry';
           else if (isEmergencyExit) normType = 'emergency_exit';
@@ -759,10 +976,10 @@ export function MapEditor() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          floorId: selectedFloorId,
-          canvasWidth: canvasDimensions.width,
-          canvasHeight: canvasDimensions.height,
-          gridSize: canvasDimensions.gridSize,
+          floorId,
+          canvasWidth: canvasDimensionsRef.current.width,
+          canvasHeight: canvasDimensionsRef.current.height,
+          gridSize: canvasDimensionsRef.current.gridSize,
           elements: elementsPayload,
           actorUserId: user?.id ?? null,
         }),
@@ -773,12 +990,42 @@ export function MapEditor() {
         throw new Error(err.error || 'Failed to save draft map');
       }
 
-      setSaveState(`Saved at ${new Date().toLocaleTimeString()}`);
+      const snapshotAfterSave = serializeMapElementsForSnapshot(currentObjects);
+      savedSnapshotRef.current = snapshotAfterSave;
+
+      if (!isMapDraftDirty(snapshotAfterSave, builderObjectsRef.current)) {
+        setIsDirty(false);
+        setSaveState(`Saved at ${new Date().toLocaleTimeString()}`);
+      } else {
+        setSaveState('Unsaved changes');
+      }
     } catch (err: any) {
-      setSaveState('Save failed');
-      setErrorMsg(err.message || 'Failed to save draft map');
+      setSaveState('Unsaved changes');
+      setErrorMsg(isAutosave ? `Autosave warning: ${err.message || 'Failed to save draft map'}` : (err.message || 'Failed to save draft map'));
     }
   };
+
+  useEffect(() => {
+    autosaveDebouncerRef.current = createAutosaveDebouncer(() => handleSaveDraft(true), AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      autosaveDebouncerRef.current?.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (savedSnapshotRef.current === null || loading) return;
+
+    const dirty = isMapDraftDirty(savedSnapshotRef.current, builderObjects);
+    setIsDirty(dirty);
+
+    if (dirty) {
+      setSaveState((prev) => (prev === 'Saving...' ? prev : 'Unsaved changes'));
+      autosaveDebouncerRef.current?.schedule();
+    } else {
+      autosaveDebouncerRef.current?.cancel();
+      setSaveState((prev) => (prev === 'Unsaved changes' ? 'Saved' : prev));
+    }
+  }, [builderObjects, loading]);
 
   // Publish map
   const handlePublish = async () => {
@@ -817,17 +1064,57 @@ export function MapEditor() {
   };
 
   const handleRemoveObject = (id: string) => {
+    const targetIndex = builderObjects.findIndex(o => o.id === id);
+    const targetObj = builderObjects[targetIndex];
+    if (targetObj && selectedFloorId) {
+      undoManagerRef.current.push(selectedFloorId, {
+        type: 'REMOVE_OBJECT',
+        object: targetObj,
+        index: targetIndex,
+      });
+      syncUndoRedoState(selectedFloorId);
+    }
     setBuilderObjects(prev => prev.filter(o => o.id !== id));
     if (selectedObjId === id) setSelectedObjId(null);
     setSaveState('Unsaved changes');
   };
 
   const handleRotate = (id: string) => {
+    const obj = builderObjects.find(o => o.id === id);
+    if (!obj) return;
+    const prevRot = obj.rotation || 0;
+    const nextRot = ((prevRot + 90) % 360);
+
+    const clamped = clampRotatedElementToBounds(
+      { x: obj.x, y: obj.y, width: obj.w, height: obj.h, rotation: nextRot },
+      canvasDimensions.width,
+      canvasDimensions.height
+    );
+
+    if (selectedFloorId) {
+      if (clamped.wasAdjusted) {
+        undoManagerRef.current.push(selectedFloorId, {
+          type: 'BATCH',
+          commands: [
+            { type: 'ROTATE_OBJECT', id, before: prevRot, after: nextRot },
+            { type: 'MOVE_OBJECT', id, before: { x: obj.x, y: obj.y }, after: { x: clamped.x, y: clamped.y } },
+          ],
+        });
+      } else {
+        undoManagerRef.current.push(selectedFloorId, {
+          type: 'ROTATE_OBJECT',
+          id,
+          before: prevRot,
+          after: nextRot,
+        });
+      }
+      syncUndoRedoState(selectedFloorId);
+    }
+
     setBuilderObjects(prev =>
       prev.map(o => {
         if (o.id !== id) return o;
-        const nextRot = ((o.rotation || 0) + 90) % 360;
-        return { ...o, rotation: nextRot };
+        return { ...o, rotation: nextRot, x: clamped.x, y: clamped.y };
       })
     );
     setSaveState('Unsaved changes');
@@ -840,15 +1127,18 @@ export function MapEditor() {
     const canvasW = canvasDimensions.width;
     const canvasH = canvasDimensions.height;
 
-    const newX = Math.min(target.x + 20, canvasW - target.w);
-    const newY = Math.min(target.y + 20, canvasH - target.h);
+    const clamped = clampRotatedElementToBounds(
+      { x: target.x + 20, y: target.y + 20, width: target.w, height: target.h, rotation: target.rotation || 0 },
+      canvasW,
+      canvasH
+    );
 
     const newObj = {
       ...target,
       id: 'str-' + Date.now(),
       name: target.name,
-      x: Math.max(0, newX),
-      y: Math.max(0, newY),
+      x: clamped.x,
+      y: clamped.y,
       w: target.w,
       h: target.h,
       rotation: target.rotation || 0,
@@ -860,10 +1150,45 @@ export function MapEditor() {
     setBuilderObjects(prev => [...prev, newObj]);
     setSelectedObjId(newObj.id);
     setSaveState('Unsaved changes');
+
+    if (selectedFloorId) {
+      undoManagerRef.current.push(selectedFloorId, {
+        type: 'ADD_OBJECT',
+        object: newObj,
+      });
+      syncUndoRedoState(selectedFloorId);
+    }
   };
 
   const handleColorChange = (newColor: string) => {
-    if (!selectedObj) return;
+    if (!selectedObj || !selectedFloorId) return;
+    const prevColor = selectedObj.color;
+    if (prevColor === newColor) return;
+
+    if (applyColorToSimilar && !selectedObj.bookable) {
+      const matching = builderObjects.filter(
+        o => !o.bookable && (o.elementType === selectedObj.elementType || (o.name && o.name === selectedObj.name))
+      );
+      const batchCommands: MapCommand[] = matching.map(o => ({
+        type: 'UPDATE_PROPERTIES',
+        id: o.id,
+        before: { color: o.color },
+        after: { color: newColor },
+      }));
+      undoManagerRef.current.push(selectedFloorId, {
+        type: 'BATCH',
+        commands: batchCommands,
+      });
+    } else {
+      undoManagerRef.current.push(selectedFloorId, {
+        type: 'UPDATE_PROPERTIES',
+        id: selectedObj.id,
+        before: { color: prevColor },
+        after: { color: newColor },
+      });
+    }
+    syncUndoRedoState(selectedFloorId);
+
     setBuilderObjects(prev =>
       prev.map(o => {
         if (o.id === selectedObj.id) {
@@ -897,6 +1222,22 @@ export function MapEditor() {
 
   return (
     <main data-screen-label="Map Builder" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <style>{`
+        @keyframes da-pulse-red-glow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.75), 0 0 10px 2px rgba(239, 68, 68, 0.55);
+            border-color: #EF4444;
+          }
+          50% {
+            box-shadow: 0 0 0 8px rgba(239, 68, 68, 0), 0 0 22px 6px rgba(239, 68, 68, 0.9);
+            border-color: #DC2626;
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.75), 0 0 10px 2px rgba(239, 68, 68, 0.55);
+            border-color: #EF4444;
+          }
+        }
+      `}</style>
       {/* Notifications */}
       {errorMsg && (
         <div style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca', color: '#b91c1c', padding: '8px 16px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 50 }}>
@@ -943,10 +1284,57 @@ export function MapEditor() {
           <button onClick={handleFitView} style={{ border: '1px solid var(--da-border)', background: '#fff', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Fit View</button>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+            style={{
+              border: '1px solid var(--da-border)',
+              background: '#fff',
+              borderRadius: '8px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: canUndo ? 'pointer' : 'not-allowed',
+              opacity: canUndo ? 1 : 0.45,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              color: 'var(--da-text-primary)',
+            }}
+          >
+            <span>↺</span> Undo
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
+            aria-label="Redo"
+            style={{
+              border: '1px solid var(--da-border)',
+              background: '#fff',
+              borderRadius: '8px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: canRedo ? 'pointer' : 'not-allowed',
+              opacity: canRedo ? 1 : 0.45,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              color: 'var(--da-text-primary)',
+            }}
+          >
+            <span>↻</span> Redo
+          </button>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '11px', fontFamily: 'var(--da-font-family)', color: 'var(--da-text-secondary)' }}>{saveState}</span>
           <button
-            onClick={handleSaveDraft}
+            onClick={() => handleSaveDraft(false)}
             disabled={floors.length === 0}
             style={{ border: '1px solid var(--da-border)', background: '#fff', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, cursor: floors.length === 0 ? 'not-allowed' : 'pointer' }}
           >
@@ -1077,19 +1465,37 @@ export function MapEditor() {
                 }}
               >
               {builderObjects.map((obj) => {
-                const isRestroom = obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom');
-                const isPantry = obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry');
-                const isEmergencyExit = obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency');
-                const isAmenity = obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit;
+                const isWorkspace = Boolean(obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId);
+                const isRestroom = !isWorkspace && (obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom'));
+                const isPantry = !isWorkspace && (obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry'));
+                const isEmergencyExit = !isWorkspace && (obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency'));
+                const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
                 const isKioskMarker =
-                  obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
-                  obj.elementRole === 'INFORMATION' ||
-                  obj.name?.toLowerCase() === 'you are here';
-                const isWall = obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall');
+                  !isWorkspace &&
+                  (obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
+                    obj.elementRole === 'INFORMATION' ||
+                    obj.name?.toLowerCase() === 'you are here');
+                const isWall = !isWorkspace && (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall'));
                 const contrastColor = getContrastColor(obj.color);
+                const isOutOfBounds = !isRotatedElementWithinBounds(
+                  { x: obj.x, y: obj.y, width: obj.w, height: obj.h, rotation: obj.rotation || 0 },
+                  canvasDimensions.width,
+                  canvasDimensions.height
+                );
 
                 return (
-                  <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: obj.w, height: obj.h, transform: `rotate(${obj.rotation}deg)` }}>
+                  <div
+                    key={obj.id}
+                    style={{
+                      position: 'absolute',
+                      left: obj.x,
+                      top: obj.y,
+                      width: obj.w,
+                      height: obj.h,
+                      transform: `rotate(${obj.rotation}deg)`,
+                      zIndex: isOutOfBounds ? 60 : (selectedObjId === obj.id ? 40 : (obj.zIndex || 1)),
+                    }}
+                  >
                     <button
                       onPointerDown={(e) => {
                         e.preventDefault();
@@ -1106,16 +1512,24 @@ export function MapEditor() {
                       }}
                       onClick={() => { setSelectedObjId(obj.id); setShowInspector(true); }}
                       aria-pressed={selectedObjId === obj.id}
+                      title={isOutOfBounds ? `${obj.name || 'This element'} is out of bounds!` : undefined}
                       style={{
                         width: '100%', height: '100%',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         fontSize: '11px', fontWeight: 700, textAlign: 'center', cursor: 'pointer',
                         fontFamily: 'var(--da-font-family)', padding: '4px', lineHeight: 1.2,
-                        background: isKioskMarker ? (obj.color || '#DC2626') : (obj.color || (obj.bookable ? 'rgba(200, 244, 81, 0.4)' : '#F3F7F4')),
-                        border: selectedObjId === obj.id ? '2px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #fff' : '1px solid var(--da-border)'),
+                        background: isOutOfBounds
+                          ? 'rgba(239, 68, 68, 0.15)'
+                          : (isKioskMarker ? (obj.color || '#DC2626') : (obj.color || (obj.bookable ? 'rgba(200, 244, 81, 0.4)' : '#F3F7F4'))),
+                        border: isOutOfBounds
+                          ? '2.5px solid #EF4444'
+                          : (selectedObjId === obj.id ? '2px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #fff' : '1px solid var(--da-border)')),
                         borderRadius: isKioskMarker ? '14px' : (isWall ? '2px' : '8px'),
-                        boxShadow: isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : 'none',
-                        color: isKioskMarker ? '#ffffff' : contrastColor,
+                        boxShadow: isOutOfBounds
+                          ? '0 0 16px rgba(239, 68, 68, 0.85)'
+                          : (isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : 'none'),
+                        animation: isOutOfBounds ? 'da-pulse-red-glow 1.2s infinite ease-in-out' : 'none',
+                        color: isOutOfBounds ? '#DC2626' : (isKioskMarker ? '#ffffff' : contrastColor),
                         boxSizing: 'border-box',
                         overflow: 'hidden',
                         position: 'relative'
@@ -1198,6 +1612,25 @@ export function MapEditor() {
             <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '4px' }}>Display Name</div>
             <input
               value={selectedObj.name}
+              onFocus={() => {
+                initialNameRef.current = selectedObj.name;
+              }}
+              onBlur={() => {
+                if (
+                  selectedFloorId &&
+                  initialNameRef.current !== undefined &&
+                  initialNameRef.current !== selectedObj.name
+                ) {
+                  undoManagerRef.current.push(selectedFloorId, {
+                    type: 'UPDATE_PROPERTIES',
+                    id: selectedObj.id,
+                    before: { name: initialNameRef.current },
+                    after: { name: selectedObj.name },
+                  });
+                  syncUndoRedoState(selectedFloorId);
+                  initialNameRef.current = selectedObj.name;
+                }
+              }}
               onChange={(e) => {
                 const val = e.target.value;
                 setBuilderObjects(prev => prev.map(o => o.id === selectedObj.id ? { ...o, name: val } : o));
@@ -1213,6 +1646,16 @@ export function MapEditor() {
                   value={selectedObj.status || 'ACTIVE'}
                   onChange={(e) => {
                     const val = e.target.value;
+                    const prevStatus = selectedObj.status || 'ACTIVE';
+                    if (val !== prevStatus && selectedFloorId) {
+                      undoManagerRef.current.push(selectedFloorId, {
+                        type: 'UPDATE_PROPERTIES',
+                        id: selectedObj.id,
+                        before: { status: prevStatus },
+                        after: { status: val },
+                      });
+                      syncUndoRedoState(selectedFloorId);
+                    }
                     setBuilderObjects(prev => prev.map(o => o.id === selectedObj.id ? { ...o, status: val } : o));
                     setSaveState('Unsaved changes');
                   }}

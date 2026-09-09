@@ -6,6 +6,7 @@ import type {
   AdminReportRange,
   AdminReportsSnapshot,
 } from '@deskatlas/domain';
+import { getRevenueBarLabelInfo } from '@deskatlas/domain';
 import {
   downloadAdminReport,
   fetchAdminReportsSnapshot,
@@ -141,28 +142,100 @@ export function Reports() {
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', height: '200px', gap: '10px', paddingTop: '20px' }}>
             {(snapshot?.revenueOverview?.bars ?? [
-              { label: 'Sun', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-              { label: 'Mon', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-              { label: 'Tue', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-              { label: 'Wed', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-              { label: 'Thu', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-              { label: 'Fri', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-              { label: 'Sat', heightPercentage: 0, formattedAmount: '₱ 0.00' },
-            ]).map((bar, i) => (
-              <div key={i} title={`${bar.label}: ${bar.formattedAmount}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', height: '100%', justifyContent: 'flex-end' }}>
+              { label: 'Sun', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+              { label: 'Mon', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+              { label: 'Tue', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+              { label: 'Wed', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+              { label: 'Thu', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+              { label: 'Fri', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+              { label: 'Sat', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
+            ]).map((bar, i) => {
+              const labelInfo = getRevenueBarLabelInfo(
+                bar.heightPercentage,
+                bar.amount,
+                snapshot?.revenueOverview?.currency ?? 'PHP'
+              );
+
+              return (
                 <div
+                  key={i}
+                  title={`${bar.label}: ${bar.formattedAmount}`}
+                  data-testid={`revenue-bar-col-${i}`}
                   style={{
-                    width: '100%',
-                    height: `${Math.max(bar.heightPercentage, 4)}%`,
-                    background: 'var(--da-brand-dark)',
-                    borderRadius: '4px 4px 0 0',
-                    opacity: i === 6 ? 1 : 0.45,
-                    transition: 'height 0.3s ease',
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '100%',
+                    justifyContent: 'flex-end',
+                    minWidth: 0,
                   }}
-                />
-                <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>{bar.label}</div>
-              </div>
-            ))}
+                >
+                  {/* Label above bar for small bars (<25% height) or zero-value bars */}
+                  {!labelInfo.isInsideBar && (
+                    <span
+                      data-testid={`revenue-bar-label-${i}`}
+                      style={{
+                        fontSize: '10px',
+                        fontWeight: labelInfo.isZero ? 500 : 700,
+                        color: labelInfo.isZero ? 'var(--da-text-secondary)' : 'var(--da-brand-dark)',
+                        fontFamily: 'var(--da-font-family)',
+                        whiteSpace: 'nowrap',
+                        lineHeight: 1,
+                        opacity: labelInfo.isZero ? 0.6 : 1,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {labelInfo.formattedValue}
+                    </span>
+                  )}
+
+                  {/* Bar element */}
+                  <div
+                    data-testid={`revenue-bar-${i}`}
+                    style={{
+                      width: '100%',
+                      height: `${Math.max(bar.heightPercentage, 4)}%`,
+                      background: 'var(--da-brand-dark)',
+                      borderRadius: '4px 4px 0 0',
+                      opacity: i === 6 ? 1 : 0.8,
+                      transition: 'height 0.3s ease',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'center',
+                      paddingTop: labelInfo.isInsideBar ? '6px' : '0px',
+                      boxSizing: 'border-box',
+                      minHeight: '8px',
+                    }}
+                  >
+                    {/* Label inside bar for tall bars (>= 25% height) */}
+                    {labelInfo.isInsideBar && (
+                      <span
+                        data-testid={`revenue-bar-label-${i}`}
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          color: '#ffffff',
+                          fontFamily: 'var(--da-font-family)',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1,
+                          textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        {labelInfo.formattedValue}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Day of week label */}
+                  <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
+                    {bar.label}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

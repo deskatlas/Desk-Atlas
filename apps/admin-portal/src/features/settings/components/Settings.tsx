@@ -10,6 +10,7 @@ import type {
   BusinessClosureType,
   LandingPreviewPhoto,
 } from '@deskatlas/domain';
+import { handleNumericKeyDown } from '@deskatlas/ui';
 
 const DAY_NAMES = [
   'Sunday',
@@ -480,10 +481,23 @@ export function Settings() {
       setSaving(true);
       setErrorMsg(null);
 
+      const normalizedExpiry = !businessSettings.paymentExpiryMinutes || Number(businessSettings.paymentExpiryMinutes) < 5
+        ? 60
+        : Number(businessSettings.paymentExpiryMinutes);
+      const normalizedTimeout = !businessSettings.kioskTimeoutMinutes || Number(businessSettings.kioskTimeoutMinutes) < 1
+        ? 5
+        : Number(businessSettings.kioskTimeoutMinutes);
+
+      const payload = {
+        ...businessSettings,
+        paymentExpiryMinutes: normalizedExpiry,
+        kioskTimeoutMinutes: normalizedTimeout,
+      };
+
       const res = await fetch('/api/admin/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(businessSettings),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -1095,8 +1109,20 @@ export function Settings() {
                   type="number" 
                   min={5}
                   max={1440}
-                  value={businessSettings.paymentExpiryMinutes}
-                  onChange={(e) => setBusinessSettings({ ...businessSettings, paymentExpiryMinutes: Number(e.target.value) })}
+                  value={businessSettings.paymentExpiryMinutes === '' as any ? '' : (businessSettings.paymentExpiryMinutes ?? '')}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      paymentExpiryMinutes: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (!businessSettings.paymentExpiryMinutes || Number(businessSettings.paymentExpiryMinutes) < 5) {
+                      setBusinessSettings({ ...businessSettings, paymentExpiryMinutes: 60 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
                 />
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
@@ -2405,8 +2431,20 @@ export function Settings() {
                   type="number" 
                   min={1}
                   max={60}
-                  value={businessSettings.kioskTimeoutMinutes || 5}
-                  onChange={(e) => setBusinessSettings({ ...businessSettings, kioskTimeoutMinutes: Number(e.target.value) })}
+                  value={businessSettings.kioskTimeoutMinutes === '' as any ? '' : (businessSettings.kioskTimeoutMinutes ?? '')}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      kioskTimeoutMinutes: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (!businessSettings.kioskTimeoutMinutes || Number(businessSettings.kioskTimeoutMinutes) < 1) {
+                      setBusinessSettings({ ...businessSettings, kioskTimeoutMinutes: 5 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
                 />
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>

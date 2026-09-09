@@ -375,7 +375,7 @@ export default function WorkspaceMapPage() {
               >
                 {elements.map((el) => {
                   const isWorkspace = el.elementRole === 'WORKSPACE' || Boolean(el.workspace);
-                  const isWall = el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator');
+                  const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
                   const isSelected = selectedObjId === el.id;
 
                   const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
@@ -455,16 +455,9 @@ export default function WorkspaceMapPage() {
                         }}
                       >
                         {isWorkspace ? (
-                          <>
-                            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {displayName}
-                            </span>
-                            {el.workspace?.instanceCode && (
-                              <span style={{ fontSize: '9px', opacity: 0.85, marginTop: '2px', fontWeight: 600 }}>
-                                {el.workspace.instanceCode}
-                              </span>
-                            )}
-                          </>
+                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {displayName}
+                          </span>
                         ) : isKioskMarker ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">

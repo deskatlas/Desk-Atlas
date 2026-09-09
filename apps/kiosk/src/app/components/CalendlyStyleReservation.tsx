@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Clock, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
 import { WorkspaceMap, type Desk } from './WorkspaceMap';
+import { handleNumericKeyDown } from '@deskatlas/ui';
 import { QRCodeSVG } from 'qrcode.react';
 import { BookingConfirmation } from './BookingConfirmation';
 import { UpcomingScheduleView } from './UpcomingScheduleView';
@@ -499,6 +500,7 @@ export function CalendlyStyleReservation({ desk, allDesks, onBack }: CalendlySty
                             placeholder="Enter hours"
                             className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl text-lg focus:border-purple-600 focus:outline-none"
                             onKeyDown={(e) => {
+                              handleNumericKeyDown(e);
                               if (e.key === 'Enter') {
                                 const value = parseInt((e.target as HTMLInputElement).value);
                                 if (value > 0) handleCustomDuration(value);

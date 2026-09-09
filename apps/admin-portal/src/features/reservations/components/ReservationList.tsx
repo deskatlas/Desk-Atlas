@@ -2,15 +2,19 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { AdminReservationFilter, AdminReservationSummary } from '@deskatlas/domain';
+import { useSearch } from '@deskatlas/ui';
+import { filterReservationsBySearch, type AdminReservationFilter, type AdminReservationSummary } from '@deskatlas/domain';
 
 export function ReservationList() {
   const router = useRouter();
-  const [activeFilter, setActiveFilter] = useState<AdminReservationFilter>('all');
+  const [activeFilter, setActiveFilter] = useState<AdminReservationFilter>('active');
   const [reservations, setReservations] = useState<AdminReservationSummary[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { searchQuery } = useSearch();
+
+  const displayedReservations = filterReservationsBySearch(reservations, searchQuery);
 
   useEffect(() => {
     let isCancelled = false;
@@ -51,10 +55,12 @@ export function ReservationList() {
   }, [activeFilter]);
 
   const resFilters: Array<{ label: string; filter: AdminReservationFilter }> = [
+    { label: 'Active', filter: 'active' },
     { label: 'All', filter: 'all' },
     { label: 'Checked In', filter: 'checked_in' },
     { label: 'Upcoming', filter: 'upcoming' },
     { label: 'Awaiting Proof', filter: 'awaiting_proof' },
+    { label: 'Expired', filter: 'expired' },
   ];
 
   const pages = [
@@ -79,7 +85,7 @@ export function ReservationList() {
       <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', boxShadow: 'var(--da-shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '14px 20px', borderBottom: '1px solid var(--da-border-light)', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{totalCount}</span>
+            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{searchQuery.trim() ? displayedReservations.length : totalCount}</span>
             <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>reservations</span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -113,12 +119,12 @@ export function ReservationList() {
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-danger)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             {error}
           </div>
-        ) : reservations.length === 0 ? (
+        ) : displayedReservations.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             No reservations found.
           </div>
         ) : (
-          reservations.map((r, i) => (
+          displayedReservations.map((r, i) => (
             <div
               key={r.id || i}
               onClick={() => router.push(`/manage/reservations/${r.referenceCode}`)}
@@ -142,7 +148,7 @@ export function ReservationList() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-            Showing {reservations.length > 0 ? 1 : 0} to {reservations.length} of {totalCount} entries
+            Showing {displayedReservations.length > 0 ? 1 : 0} to {displayedReservations.length} of {searchQuery.trim() ? displayedReservations.length : totalCount} entries
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             {pages.map((pg, i) => (

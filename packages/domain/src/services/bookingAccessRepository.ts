@@ -17,6 +17,7 @@ export interface BookingAccessRecord {
   customerLastName: string;
   customerEmail?: string;
   bookingTokenHash: string;
+  bookingToken?: string | null;
   qrIssuedAt: string;
   qrRevokedAt: string | null;
   checkedInAt: string | null;
@@ -34,6 +35,7 @@ export interface BookingAccessRepository {
   issueBookingAccessToken(input: {
     reservationId: string;
     tokenHash: string;
+    token?: string;
     issuedAt: string;
   }): Promise<boolean>;
   findBookingAccessByTokenHash(tokenHash: string): Promise<BookingAccessRecord | null>;
@@ -41,5 +43,8 @@ export interface BookingAccessRepository {
     reservationId: string;
     scannedAt: string;
     accessState: BookingAccessState;
+    actorUserId?: string | null;
+    actorRole?: "ADMIN" | "STAFF" | "SYSTEM" | null;
+    reentry?: boolean;
   }): Promise<void>;
 }

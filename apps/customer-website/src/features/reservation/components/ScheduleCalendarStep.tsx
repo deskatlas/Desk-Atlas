@@ -214,8 +214,6 @@ export function ScheduleCalendarStep({
     return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
   }, [viewYear, viewMonth]);
 
-  const [customTimeInput, setCustomTimeInput] = useState<string>("");
-  const [customTimeStatus, setCustomTimeStatus] = useState<{ isAvailable: boolean; message: string } | null>(null);
 
   const selectedSlot = useMemo(() => {
     if (!selectedStartTime) return null;
@@ -237,46 +235,6 @@ export function ScheduleCalendarStep({
 
   const totalPrice = workspace.rateAmount * selectedDurationHours;
 
-  const handleApplyCustomTime = async (timeVal?: string) => {
-    const val = timeVal ?? customTimeInput;
-    if (!val || !selectedDate || selectedDurationHours <= 0) return;
-    setCustomTimeStatus(null);
-    if (excludedStartTimes.includes(val)) {
-      setCustomTimeStatus({
-        isAvailable: false,
-        message: `⚠️ ${formatTime12Hour(val)} is already selected for this spot in your reservation.`,
-      });
-      return;
-    }
-    try {
-      const res = await fetchTimeAvailability({
-        workspaceInstanceId: workspace.workspaceInstanceId,
-        date: selectedDate,
-        durationMinutes: selectedDurationHours * 60,
-        customStartTime: val,
-      });
-      setTimeSlots(res.slots || []);
-      const slot = res.slots?.find((s) => s.startTime === val);
-      if (slot && slot.isAvailable && !excludedStartTimes.includes(val)) {
-        setSelectedStartTime(val);
-        setCustomTimeStatus({
-          isAvailable: true,
-          message: `✓ Selected ${formatTime12Hour(slot.startTime)} to ${formatTime12Hour(slot.endTime)}`,
-        });
-      } else {
-        const reason = slot?.blockingReason ?? "UNAVAILABLE";
-        setCustomTimeStatus({
-          isAvailable: false,
-          message: `⚠️ ${formatTime12Hour(val)} is unavailable (${reason.replace(/_/g, " ")})`,
-        });
-      }
-    } catch (err: any) {
-      setCustomTimeStatus({
-        isAvailable: false,
-        message: err.message || "Failed to verify custom time.",
-      });
-    }
-  };
 
   const handleContinue = () => {
     if (!selectedDate || !selectedStartTime || !selectedSlot) return;
@@ -576,7 +534,6 @@ export function ScheduleCalendarStep({
                         disabled={!isAvailable}
                         onClick={() => {
                           setSelectedStartTime(slot.startTime);
-                          setCustomTimeStatus(null);
                         }}
                         className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
                           isSelected
@@ -604,48 +561,7 @@ export function ScheduleCalendarStep({
                   })}
                 </div>
 
-                {/* Custom Minute-Precision Start Time Input */}
-                <div className="border-t border-[var(--da-border-light)] pt-3">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--da-brand-dark)]">
-                      Custom Start Time (Minute Precision)
-                    </span>
-                    <span className="text-[10px] font-semibold text-[var(--da-text-secondary)]">
-                      e.g. 9:10 AM, 10:15 AM
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="time"
-                      value={customTimeInput}
-                      onChange={(e) => {
-                        setCustomTimeInput(e.target.value);
-                      }}
-                      className="da-input text-xs font-semibold py-1.5 px-3 flex-1"
-                      aria-label="Custom start time input"
-                    />
-                    <button
-                      type="button"
-                      disabled={!customTimeInput}
-                      onClick={() => handleApplyCustomTime()}
-                      className="da-secondary-button text-xs py-1.5 px-3 font-bold shrink-0"
-                    >
-                      Apply Time
-                    </button>
-                  </div>
 
-                  {customTimeStatus ? (
-                    <div
-                      className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                        customTimeStatus.isAvailable
-                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                          : "bg-red-50 text-red-700 border border-red-200"
-                      }`}
-                    >
-                      {customTimeStatus.message}
-                    </div>
-                  ) : null}
-                </div>
               </div>
             )}
           </div>

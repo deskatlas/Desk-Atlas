@@ -257,7 +257,7 @@ export default function WorkspaceMapPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to update workspace status');
       }
 
@@ -415,7 +415,7 @@ export default function WorkspaceMapPage() {
               >
               {elements.map((el: any) => {
                 const isWorkspace = el.elementRole === 'WORKSPACE';
-                const isWall = el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator');
+                const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
                 const inst = isWorkspace ? instances.find(ins => ins.id === el.workspaceInstanceId) : null;
                 const tmpl = inst ? (inst.template || templates.find(t => t.id === inst.templateId)) : null;
                 const status = inst?.operationalStatus || 'ACTIVE';
@@ -496,16 +496,9 @@ export default function WorkspaceMapPage() {
                       }}
                     >
                       {isWorkspace ? (
-                        <>
-                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {displayName}
-                          </span>
-                          {inst?.instanceCode && (
-                            <span style={{ fontSize: '9px', opacity: 0.85, marginTop: '2px', fontWeight: 600 }}>
-                              {inst.instanceCode}
-                            </span>
-                          )}
-                        </>
+                        <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {displayName}
+                        </span>
                       ) : isKioskMarker ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
                           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">

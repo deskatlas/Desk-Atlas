@@ -7,6 +7,7 @@ import type {
   PublishMapDraftInput,
   SaveMapDraftInput,
 } from '../models/map';
+import { computeRotatedAABB } from './mapGeometryService';
 
 const DEFAULT_CANVAS_WIDTH = 1600;
 const DEFAULT_CANVAS_HEIGHT = 1000;
@@ -204,12 +205,19 @@ async function normalizeElements(
 
 function isWallElement(elementType: string, elementRole: MapElementRole): boolean {
   const type = elementType.toLowerCase();
-  return elementRole === 'STRUCTURE' && (type.includes('wall') || type.includes('thin') || type.includes('glass') || type.includes('separator'));
+  return elementRole === 'STRUCTURE' && (type.includes('wall') || isThinWallElement(elementType, elementRole) || type.includes('glass'));
 }
 
 function isThinWallElement(elementType: string, elementRole: MapElementRole): boolean {
   const type = elementType.toLowerCase();
-  return elementRole === 'STRUCTURE' && (type.includes('thin') || type.includes('separator'));
+  return (
+    elementRole === 'STRUCTURE' &&
+    (type === 'thin_wall' ||
+      type === 'thin-wall' ||
+      type === 'thin' ||
+      type.includes('thin_wall') ||
+      type.includes('separator'))
+  );
 }
 
 function normalizeElementGeometry(
@@ -219,7 +227,7 @@ function normalizeElementGeometry(
   canvasHeight: number,
   gridSize: number
 ): MapElementInput {
-  const label = `Map element ${index + 1}`;
+  const label = (element.label && element.label.trim()) || `Map element ${index + 1}`;
   const elementType = requireNonBlank(element.elementType, `${label} type`);
   const elementRole = normalizeRole(element.elementRole, label);
   const rawX = requireFiniteNumber(element.x, `${label} x`);
@@ -243,7 +251,15 @@ function normalizeElementGeometry(
   const rotation = normalizeRotation(element.rotation ?? 0, label);
   const zIndex = normalizeInteger(element.zIndex ?? index, `${label} z-index`);
 
-  if (x + width > canvasWidth || y + height > canvasHeight) {
+  const aabb = computeRotatedAABB(x, y, width, height, rotation);
+  if (
+    x + width > canvasWidth ||
+    y + height > canvasHeight ||
+    aabb.minX < -1e-2 ||
+    aabb.minY < -1e-2 ||
+    aabb.maxX > canvasWidth + 1e-2 ||
+    aabb.maxY > canvasHeight + 1e-2
+  ) {
     throw new MapValidationError(`${label} must stay within the canvas bounds`);
   }
 

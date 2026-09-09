@@ -156,3 +156,14 @@ export * from './services/authRepository';
 export * from './services/authMemoryRepository';
 export * from './services/authSupabaseRepository';
 export * from './services/authService';
+export * from './models/staffProfile';
+export * from './services/passwordPolicyService';
+export * from './services/staffService';
+export * from './services/reservationSearch';
+export * from './models/adminNotification';
+export * from './services/adminNotificationService';
+export * from './services/mapUndoRedoService';
+export * from './services/mapAutosaveService';
+export * from './services/mapGeometryService';
+
+

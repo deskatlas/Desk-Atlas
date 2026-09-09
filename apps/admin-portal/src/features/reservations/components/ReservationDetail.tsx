@@ -2,13 +2,28 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
 import type { AdminReservationDetail as AdminReservationDetailType } from '@deskatlas/domain';
+import { formatTimelineDate } from '@deskatlas/domain';
+
+export function canViewBookingQr(detail: AdminReservationDetailType | null): boolean {
+  if (!detail) return false;
+  const isEligibleStatus = detail.reservationStatus === 'CONFIRMED' || detail.reservationStatus === 'CHECKED_IN';
+  if (!isEligibleStatus) return false;
+  if (detail.qrRevokedAt) return false;
+  return Boolean(detail.bookingToken || detail.bookingAccessUrl || detail.hasBookingQr);
+}
+
+export function getBookingQrValue(detail: AdminReservationDetailType): string {
+  return detail.bookingAccessUrl || detail.bookingToken || detail.referenceCode;
+}
 
 export function ReservationDetail({ id }: { id: string }) {
   const router = useRouter();
   const [detail, setDetail] = useState<AdminReservationDetailType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -55,6 +70,25 @@ export function ReservationDetail({ id }: { id: string }) {
         { label: 'Schedule', value: detail.schedule },
         { label: 'Duration', value: detail.duration },
         { label: 'Payment Status', value: detail.paymentStatus },
+        ...(detail.reservationStatus === 'EXPIRED' || (detail.paymentAttempts && detail.paymentAttempts.length > 0)
+          ? [
+              {
+                label: 'Payment Attempt',
+                value: detail.paymentAttempts && detail.paymentAttempts.length > 0
+                  ? `${detail.paymentAttempts[0].channel} (${detail.paymentAttempts[0].status})`
+                  : 'None',
+              },
+              {
+                label: 'Proof Uploaded',
+                value: detail.proofSubmittedAt
+                  ? `Yes (${formatTimelineDate(detail.proofSubmittedAt)})`
+                  : 'No proof uploaded',
+              },
+              ...(detail.expiryReason
+                ? [{ label: 'Expiry Reason', value: detail.expiryReason }]
+                : []),
+            ]
+          : []),
       ]
     : [
         { label: 'Customer Name', value: '...' },
@@ -65,7 +99,12 @@ export function ReservationDetail({ id }: { id: string }) {
       ];
 
   const isConfirmed = detail?.reservationStatus === 'CONFIRMED' || detail?.reservationStatus === 'CHECKED_IN';
-  const detailActions: Array<{ label: string; style: React.CSSProperties }> = [];
+  const detailActions: Array<{
+    label: string;
+    style: React.CSSProperties;
+    onClick?: () => void;
+    testId?: string;
+  }> = [];
 
   if (isConfirmed) {
     detailActions.push({
@@ -76,10 +115,12 @@ export function ReservationDetail({ id }: { id: string }) {
       label: 'Cancel Booking',
       style: { background: 'transparent', color: 'var(--da-danger)', border: '1px solid #FECACA' },
     });
-    if (detail?.hasBookingQr) {
+    if (canViewBookingQr(detail)) {
       detailActions.push({
         label: 'View QR Code',
         style: { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' },
+        onClick: () => setShowQrModal(true),
+        testId: 'view-qr-code-button',
       });
     }
   }
@@ -139,7 +180,31 @@ export function ReservationDetail({ id }: { id: string }) {
           {detailActions.length > 0 && (
             <div style={{ display: 'flex', gap: '8px', marginTop: '18px', flexWrap: 'wrap' }}>
               {detailActions.map((act, i) => (
-                <button key={i} style={{ padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...act.style }}>{act.label}</button>
+                <button
+                  key={i}
+                  data-testid={act.testId}
+                  onClick={act.onClick}
+                  style={{ padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...act.style }}
+                >
+                  {act.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {detail.paymentAttempts && detail.paymentAttempts.length > 0 && (
+            <div style={{ marginTop: '20px', borderTop: '1px solid var(--da-border-light)', paddingTop: '16px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-text-primary)', margin: '0 0 10px' }}>Payment History</h3>
+              {detail.paymentAttempts.map((pa, i) => (
+                <div key={pa.id || i} style={{ borderLeft: '3px solid var(--da-border)', padding: '8px 10px', marginBottom: '8px', background: '#F8FAFC', borderRadius: '6px', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--da-text-primary)' }}>
+                    <span>{pa.channel} Attempt</span>
+                    <span style={{ color: pa.status === 'APPROVED' ? 'var(--da-success)' : pa.status === 'EXPIRED' ? 'var(--da-text-secondary)' : 'var(--da-brand-dark)' }}>{pa.status}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                    {pa.proofSubmittedAt ? `Proof uploaded: ${formatTimelineDate(pa.proofSubmittedAt)}` : 'No proof submitted'}
+                    {pa.expiresAt ? ` • Expired: ${formatTimelineDate(pa.expiresAt)}` : ''}
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -153,11 +218,152 @@ export function ReservationDetail({ id }: { id: string }) {
             </div>
           ))}
           <h3 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-text-primary)', margin: '20px 0 12px' }}>Timeline</h3>
-          {detailTimeline.map((t, i) => (
-            <div key={i} style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', padding: '6px 0', borderTop: i === 0 ? 'none' : '1px solid var(--da-border-light)' }}>{t}</div>
-          ))}
+          {detailTimeline.map((t, i) => {
+            const isReentry = t.toLowerCase().includes("re-entered") || t.toLowerCase().includes("re-entry") || t.toLowerCase().includes("re-check-in");
+            return (
+              <div
+                key={i}
+                style={{
+                  fontSize: '12px',
+                  color: isReentry ? '#0369A1' : 'var(--da-text-primary)',
+                  fontWeight: isReentry ? 600 : 400,
+                  fontFamily: 'var(--da-font-family)',
+                  padding: '6px 0',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--da-border-light)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isReentry && <span aria-hidden="true" style={{ fontSize: '11px', color: '#0284C7', fontWeight: 800 }}>↺</span>}
+                <span>{t}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
+
+      {showQrModal && detail && (
+        <div
+          data-modal="booking-qr-modal"
+          data-testid="booking-qr-modal"
+          onClick={() => setShowQrModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '16px',
+              maxWidth: '420px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+              border: '1px solid var(--da-border)',
+              boxSizing: 'border-box',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+                  Booking QR Code
+                </h2>
+                <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: 0 }}>
+                  Scan at front desk or kiosk for check-in / re-entry
+                </p>
+              </div>
+              <button
+                data-testid="close-qr-modal-x-button"
+                onClick={() => setShowQrModal(false)}
+                aria-label="Close modal"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: 'var(--da-text-secondary)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px',
+                background: '#f8fafc',
+                borderRadius: '12px',
+                border: '1px dashed var(--da-border)',
+                margin: '16px 0',
+              }}
+            >
+              <QRCodeSVG
+                value={getBookingQrValue(detail)}
+                size={200}
+                level="H"
+              />
+              <div style={{ marginTop: '14px', textAlign: 'center' }}>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: '14px',
+                    fontWeight: 800,
+                    color: 'var(--da-brand-dark)',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {detail.referenceCode}
+                </span>
+                <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                  {detail.customerName}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', marginBottom: '18px', background: '#F1F8F3', padding: '10px 12px', borderRadius: '8px', borderLeft: '3px solid var(--da-brand-dark)' }}>
+              <div style={{ fontWeight: 700, color: 'var(--da-brand-dark)' }}>Schedule</div>
+              <div>{detail.schedule} ({detail.duration})</div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                data-testid="close-qr-modal-button"
+                onClick={() => setShowQrModal(false)}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: 'var(--da-brand-dark)',
+                  color: '#fff',
+                  border: 'none',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

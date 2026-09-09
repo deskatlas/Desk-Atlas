@@ -151,7 +151,7 @@ describe("t03: Availability, Business Hours & Closures", () => {
     assert.equal(slot12?.isAvailable, true);
   });
 
-  it("enforces minute precision and booking interval alignment (MF21)", async () => {
+  it("enforces booking interval alignment with fixed time slots only (MF64)", async () => {
     const repository = new InMemoryAvailabilityRepository();
     repository.setBusinessSettings({
       timezone: "Asia/Manila",
@@ -159,7 +159,7 @@ describe("t03: Availability, Business Hours & Closures", () => {
     });
 
     repository.seedWorkspaceInstance({
-      id: "workspace-mf21-1",
+      id: "workspace-mf64-1",
       templateId: "template-desk-std",
       floorId: "floor-1",
       instanceCode: "D201",
@@ -173,17 +173,22 @@ describe("t03: Availability, Business Hours & Closures", () => {
 
     const service = createAvailabilityService(repository);
 
-    const slot910 = await service.listTimeAvailability({
-      workspaceInstanceId: "workspace-mf21-1",
+    const timeResult = await service.listTimeAvailability({
+      workspaceInstanceId: "workspace-mf64-1",
       date: "2099-09-01",
       durationMinutes: 60,
-      customStartTime: "09:10",
       nowIso: "2099-08-31T00:00:00.000Z",
     });
 
-    const found910 = slot910.slots.find((s) => s.startTime === "09:10");
-    assert.ok(found910);
-    assert.equal(found910.endTime, "10:10");
-    assert.equal(found910.isAvailable, true);
+    // Verify all returned slots align exactly to 60-minute intervals
+    assert.ok(timeResult.slots.length > 0);
+    for (const slot of timeResult.slots) {
+      const [h, m] = slot.startTime.split(":").map(Number);
+      assert.equal(m, 0, `Slot start minute must align to 60m interval, got: ${slot.startTime}`);
+    }
+
+    // Explicitly verify non-interval minute times (like 09:10) are not present
+    const found910 = timeResult.slots.find((s) => s.startTime === "09:10");
+    assert.equal(found910, undefined);
   });
 });

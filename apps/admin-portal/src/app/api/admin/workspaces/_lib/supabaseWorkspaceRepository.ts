@@ -212,11 +212,20 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
   }
 
   async appendAuditLog(entry: WorkspaceAuditLogEntry): Promise<void> {
+    const validUuid =
+      typeof entry.actorUserId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entry.actorUserId.trim())
+        ? entry.actorUserId.trim()
+        : null;
+
+    const actorRole = validUuid ? entry.actorRole : 'SYSTEM';
+    const actorUserId = validUuid ? validUuid : null;
+
     await this.request<unknown>('/audit_logs', {
       method: 'POST',
       body: JSON.stringify({
-        actor_user_id: entry.actorUserId,
-        actor_role: entry.actorRole,
+        actor_user_id: actorUserId,
+        actor_role: actorRole,
         action: entry.action,
         entity_type: entry.entityType,
         entity_id: entry.entityId,
@@ -225,6 +234,21 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       }),
       prefer: 'return=minimal',
     });
+  }
+
+  async listAuditLogs(limit = 50): Promise<WorkspaceAuditLogEntry[]> {
+    const rows = await this.request<any[]>(
+      `/audit_logs?select=*&order=created_at.desc&limit=${limit}`
+    );
+    return rows.map((row) => ({
+      actorRole: row.actor_role,
+      actorUserId: row.actor_user_id,
+      action: row.action,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      metadata: (row.metadata && typeof row.metadata === 'object') ? row.metadata : {},
+      createdAt: row.created_at,
+    }));
   }
 
   private async assertUniqueInstanceCode(instanceCode: string) {
@@ -258,7 +282,8 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     }
 
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    return text ? (JSON.parse(text) as T) : (undefined as T);
   }
 }
 

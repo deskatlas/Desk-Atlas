@@ -83,6 +83,14 @@ export function KioskConfirmPage() {
                   <span>{pendingRecord.customerEmail}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '14px' }}>
+                  <span style={{ color: 'var(--da-text-secondary)' }}>Payment Method:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--da-brand-dark)' }}>
+                    {pendingRecord.paymentMethodType === 'CASH'
+                      ? '💵 Cash'
+                      : pendingRecord.paymentMethodDisplayName || pendingRecord.paymentMethodType || 'Counter QR'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '14px' }}>
                   <span style={{ color: 'var(--da-text-secondary)' }}>Amount Due:</span>
                   <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)' }}>₱{pendingRecord.amountDue}</span>
                 </div>
@@ -99,7 +107,11 @@ export function KioskConfirmPage() {
               disabled={loading || !paymentId.trim()}
               style={{ width: '100%', padding: '12px', background: 'var(--da-brand-dark)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: (loading || !paymentId.trim()) ? 'not-allowed' : 'pointer', opacity: (loading || !paymentId.trim()) ? 0.7 : 1 }}
             >
-              {loading ? 'Confirming...' : 'Confirm Kiosk Payment'}
+              {loading
+                ? 'Confirming...'
+                : pendingRecord?.paymentMethodType === 'CASH'
+                ? `Confirm Cash Receipt & Activate (₱${pendingRecord.amountDue})`
+                : 'Confirm Kiosk Payment'}
             </button>
           </div>
         )}

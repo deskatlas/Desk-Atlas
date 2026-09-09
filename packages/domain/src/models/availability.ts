@@ -97,7 +97,6 @@ export interface TimeAvailabilityQuery {
   date: string;
   durationMinutes: number;
   nowIso?: string;
-  customStartTime?: string;
 }
 
 export interface DateAvailabilityResult {

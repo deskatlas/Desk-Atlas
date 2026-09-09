@@ -1,5 +1,37 @@
 export type StaffRole = 'ADMIN' | 'STAFF';
 
+export type StaffInvitationStatus = 'PENDING' | 'CONFIRMED' | 'EXPIRED' | 'CANCELLED';
+
+export interface StaffInvitation {
+  id: string;
+  email: string;
+  displayName: string;
+  role: StaffRole;
+  verificationCode: string;
+  token: string;
+  status: StaffInvitationStatus;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByAdminId?: string | null;
+}
+
+export interface CreateStaffInvitationInput {
+  email: string;
+  displayName: string;
+  role: StaffRole;
+  password?: string;
+  actorUserId?: string;
+  actorRole?: StaffRole;
+  invitationBaseUrl?: string;
+}
+
+export interface ConfirmStaffInvitationInput {
+  token: string;
+  verificationCode: string;
+  password?: string;
+}
+
 export interface StaffMember {
   id: string;
   email: string;
@@ -14,6 +46,20 @@ export interface StaffMember {
   lastActive: string;
   createdAt: string;
   updatedAt: string;
+  createdByAdminId?: string | null;
+  canDelete?: boolean;
+  deleteBlockReason?: string;
+}
+
+export interface StaffDeletionCheckResult {
+  canDelete: boolean;
+  reason?: string;
+  references?: {
+    auditLogs: number;
+    reservations: number;
+    payments: number;
+    total: number;
+  };
 }
 
 export interface CreateStaffInput {
@@ -44,6 +90,13 @@ export class StaffManagementError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'StaffManagementError';
+  }
+}
+
+export class StaffInvitationInvalidCodeError extends Error {
+  constructor(message: string = 'Invalid or expired verification code.') {
+    super(message);
+    this.name = 'StaffInvitationInvalidCodeError';
   }
 }
 

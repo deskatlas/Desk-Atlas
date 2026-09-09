@@ -639,6 +639,9 @@ importers:
       '@deskatlas/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@deskatlas/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@emotion/react':
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.2.18)(react@19.2.8)
@@ -836,7 +839,11 @@ importers:
         specifier: ^6.0.5
         version: 6.0.5
 
-  packages/ui: {}
+  packages/ui:
+    dependencies:
+      '@deskatlas/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/validation: {}
 
