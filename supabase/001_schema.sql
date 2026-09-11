@@ -191,6 +191,29 @@ CREATE TABLE public.staff_invitations (
     CHECK (btrim(display_name) <> '')
 );
 
+CREATE TABLE public.admin_password_resets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  email text NOT NULL,
+  token text NOT NULL UNIQUE,
+  status text NOT NULL DEFAULT 'PENDING',
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  used_at timestamptz NULL,
+
+  CONSTRAINT admin_password_resets_user_id_fk
+    FOREIGN KEY (user_id)
+    REFERENCES public.staff_profiles(user_id)
+    ON UPDATE RESTRICT
+    ON DELETE CASCADE,
+
+  CONSTRAINT admin_password_resets_status_check
+    CHECK (status IN ('PENDING', 'USED', 'EXPIRED')),
+
+  CONSTRAINT admin_password_resets_email_nonblank
+    CHECK (btrim(email) <> '' AND position('@' in email) > 0)
+);
+
 -- Role Resolution Helper Functions
 CREATE OR REPLACE FUNCTION public.current_actor_role()
 RETURNS text

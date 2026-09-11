@@ -38,6 +38,8 @@ export interface PaymentLinkEmailInput {
   paymentUrl: string;
   expiresAt: string;
   trackingUrl?: string;
+  workspaceTemplateName?: string;
+  bookingDate?: string;
 }
 
 export interface BookingConfirmationEmailInput {
@@ -86,12 +88,39 @@ export interface PaymentProofRejectedEmailInput {
   trackingUrl?: string;
 }
 
+export interface ReservationTrackingCandidate {
+  rank: number;
+  workspaceDisplayName?: string;
+  workspaceTemplateName?: string;
+  floorName?: string;
+  startAt?: string;
+  endAt?: string;
+}
+
 export interface ReservationTrackingEmailInput {
-  to: string;
+  to?: string;
   customerFirstName?: string;
   customerLastName?: string;
   referenceCode: string;
   trackingUrl: string;
+  status?: string;
+  candidates?: ReservationTrackingCandidate[];
+  supportEmail?: string;
+}
+
+export interface BookingEndedSurveyEmailInput {
+  to?: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  workspaceDisplayName?: string;
+  workspaceTemplateName?: string;
+  floorName?: string;
+  bookingStartAt?: string;
+  bookingEndAt?: string;
+  surveyUrl?: string;
+  bookAgainUrl?: string;
+  trackingUrl?: string;
 }
 
 export interface StaffInvitationEmailInput {
@@ -101,6 +130,40 @@ export interface StaffInvitationEmailInput {
   invitationUrl: string;
   verificationCode?: string;
   expiresAt: string;
+}
+
+export interface AdminPasswordResetEmailInput {
+  to: string;
+  displayName?: string;
+  resetUrl: string;
+  expiresAt: string;
+}
+
+export interface ReservationCancelledEmailInput {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  cancellationReason: string;
+  cancellationNotes?: string;
+  schedule?: string;
+  workspaceDisplayName?: string;
+  trackingUrl?: string;
+}
+
+export interface ReservationRescheduledEmailInput {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  oldSchedule: string;
+  newSchedule: string;
+  workspaceDisplayName: string;
+  workspaceTemplateName?: string;
+  floorName?: string;
+  bookingAccessUrl?: string;
+  bookingToken?: string;
+  trackingUrl?: string;
 }
 
 export interface RawEmailInput {
@@ -113,7 +176,7 @@ export interface RawEmailInput {
 
 export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Complete Your DeskAtlas Reservation Payment [${input.referenceCode}]`;
+  const subject = `DeskAtlas Reservation Payment - Ref #${input.referenceCode}`;
   const formattedAmount = `${input.currency.toUpperCase()} ${Number(input.amountDue).toFixed(2)}`;
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
     timeZone: 'UTC',
@@ -136,6 +199,8 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
     .amount-box { background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center; }
     .amount-label { font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
     .amount-val { font-size: 24px; font-weight: 700; color: #0f172a; margin-top: 4px; }
+    .instruction-box { background-color: #f1f5f9; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; line-height: 1.5; color: #334155; }
+    .instruction-title { font-weight: 700; color: #0f172a; margin-bottom: 8px; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; }
     .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 16px 0; text-align: center; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
     .warning { color: #d97706; font-size: 13px; margin-top: 12px; }
@@ -160,7 +225,14 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
         <a href="${escapeHtml(input.paymentUrl)}" class="btn">Proceed to Payment</a>
       </div>
 
-      <p class="warning">⚠️ <strong>1-Hour Session:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong>. Spot allocation is finalized only after successful payment proof verification.</p>
+      <div class="instruction-box">
+        <div class="instruction-title">Payment Instructions (GCash &amp; Bank Transfer)</div>
+        <p style="margin: 0 0 6px 0;">1. Click the button above to view the official DeskAtlas payment QR code and account details.</p>
+        <p style="margin: 0 0 6px 0;">2. Open your GCash app or mobile banking to transfer the exact amount of <strong>${escapeHtml(formattedAmount)}</strong>.</p>
+        <p style="margin: 0;">3. Upload a screenshot or photo of your payment receipt before the session expires.</p>
+      </div>
+
+      <p class="warning">⚠️ <strong>1-Hour Session:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong>. DeskAtlas No-Hold Policy: Submitting a reservation does not reserve physical inventory until payment proof is verified and approved by admin.</p>
       
       ${input.trackingUrl ? `
       <p style="font-size: 13px; color: #475569; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
@@ -182,8 +254,7 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
   `.trim();
 
   const text = `
-DeskAtlas Reservation Payment
-Reference: ${input.referenceCode}
+DeskAtlas Reservation Payment - Ref #${input.referenceCode}
 
 Hello ${customerName},
 
@@ -193,7 +264,11 @@ Amount Due: ${formattedAmount}
 Payment URL: ${input.paymentUrl}
 
 Session Expiry: ${expiresFormatted} (1 hour)
-${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}Note: Selecting a spot or submitting a request does not hold inventory. Spot allocation is finalized only after payment proof approval.
+${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}Payment Instructions:
+1. Open your GCash app or mobile banking to transfer the exact amount (${formattedAmount}).
+2. Upload your payment receipt screenshot before the timer ends.
+
+Note: Selecting a spot or submitting a request does not hold inventory. Spot allocation is finalized only after payment proof approval.
 
 DeskAtlas Workspace Reservation System
   `.trim();
@@ -203,7 +278,7 @@ DeskAtlas Workspace Reservation System
 
 export function renderBookingConfirmationEmail(input: BookingConfirmationEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Booking Confirmed: ${input.referenceCode} - DeskAtlas`;
+  const subject = `Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}`;
   const qrImageUrl =
     input.qrImageUrl ||
     `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
@@ -230,6 +305,9 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
     .qr-label { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
     .qr-code-text { font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 10px; margin-bottom: 4px; }
     .btn { display: inline-block; background-color: #15803d; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 16px 0; text-align: center; }
+    .guidelines-box { background-color: #f8fafc; border-radius: 8px; padding: 16px; margin: 24px 0 16px 0; border: 1px solid #e2e8f0; }
+    .guidelines-title { font-weight: 700; color: #0f172a; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .guideline-item { font-size: 13px; color: #475569; margin: 6px 0; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
   </style>
 </head>
@@ -277,6 +355,13 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         <a href="${escapeHtml(input.bookingAccessUrl)}" class="btn">View Digital Pass Online</a>
       </div>
 
+      <div class="guidelines-box">
+        <div class="guidelines-title">Facility Guidelines &amp; Amenities</div>
+        <div class="guideline-item">📶 <strong>High-Speed WiFi:</strong> Network connection credentials are provided upon check-in.</div>
+        <div class="guideline-item">🏷️ <strong>Facility Access:</strong> Present your booking QR code at the reception desk for initial check-in and subsequent re-entry during your session.</div>
+        <div class="guideline-item">🤫 <strong>Quiet &amp; Focus Zones:</strong> Please keep voices down in open workspaces and use dedicated phone booths for phone and video calls.</div>
+      </div>
+
       ${input.trackingUrl ? `
       <p style="font-size: 13px; color: #475569; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
         Track live reservation status: <a href="${escapeHtml(input.trackingUrl)}" style="color: #15803d; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
@@ -296,8 +381,7 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
   `.trim();
 
   const text = `
-Booking Confirmed! - DeskAtlas
-Reference: ${input.referenceCode}
+Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}
 
 Hello ${customerName},
 
@@ -311,7 +395,10 @@ End Time: ${input.bookingEndAt}
 Digital Pass / Booking QR Link: ${input.bookingAccessUrl}
 QR Code Image: ${qrImageUrl}
 ${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
-Please present your Digital Pass / QR code upon arrival at the workspace.
+Facility Guidelines:
+- High-Speed WiFi credentials available at reception.
+- Present your QR pass at reception or kiosk for check-in and re-entry.
+- Please use designated call booths for phone calls.
 
 DeskAtlas Workspace Reservation System
   `.trim();
@@ -416,7 +503,7 @@ DeskAtlas Workspace Reservation System
 
 export function renderPaymentProofReceivedEmail(input: PaymentProofReceivedEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Payment Proof Received - Reservation ${input.referenceCode}`;
+  const subject = `Payment Proof Received - Waiting for Admin Approval (Ref #${input.referenceCode})`;
 
   const html = `
 <!DOCTYPE html>
@@ -430,28 +517,33 @@ export function renderPaymentProofReceivedEmail(input: PaymentProofReceivedEmail
     .title { font-size: 18px; font-weight: 700; color: #0f172a; margin: 0; }
     .content { font-size: 15px; line-height: 1.6; color: #334155; }
     .badge { display: inline-block; background-color: #fef3c7; color: #b45309; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 700; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 16px 0; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">Payment Proof Under Review</div>
+      <div class="title">Payment Proof Received</div>
       <span class="badge" style="margin-top: 6px;">UNDER REVIEW</span>
     </div>
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
-      <p>We have successfully received your payment proof for reservation <strong>${escapeHtml(input.referenceCode)}</strong>.</p>
-      <p>Our admin team is currently reviewing the submission. Once verified, your workspace spot will be allocated and you will receive a booking confirmation email with your digital pass and access QR code.</p>
+      <p>We have successfully received your proof of payment for reservation <strong>${escapeHtml(input.referenceCode)}</strong>.</p>
+      <p>Your 1-hour payment session timer has stopped and your reservation is now in <strong>PAYMENT_UNDER_REVIEW</strong> status. Our administration team is currently reviewing your payment proof.</p>
+      <p>Once verified, your workspace spot will be allocated and you will receive a Booking Confirmation email with your digital access pass and check-in QR code.</p>
 
       ${input.trackingUrl ? `
+      <div style="text-align: center;">
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">Track Reservation Status</a>
+      </div>
       <p style="font-size: 13px; color: #475569; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-        Track live reservation status: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
+        Live Tracking Link: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
       </p>
       ` : ''}
     </div>
     <div class="footer">
-      DeskAtlas Workspace Reservation System
+      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
     </div>
   </div>
 </body>
@@ -459,13 +551,13 @@ export function renderPaymentProofReceivedEmail(input: PaymentProofReceivedEmail
   `.trim();
 
   const text = `
-Payment Proof Under Review - DeskAtlas
-Reference: ${input.referenceCode}
+Payment Proof Received - Waiting for Admin Approval (Ref #${input.referenceCode})
 
 Hello ${customerName},
 
 We have received your payment proof for reservation ${input.referenceCode}.
-Our team is reviewing the submission. You will receive a confirmation email once approved.
+Your 1-hour session timer has stopped. Our team is reviewing the submission. You will receive a booking confirmation email once approved.
+
 ${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
 DeskAtlas Workspace Reservation System
   `.trim();
@@ -545,7 +637,38 @@ ${input.paymentUrl ? `Re-submit proof (if session is active): ${input.paymentUrl
 
 export function renderReservationTrackingEmail(input: ReservationTrackingEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Track Your DeskAtlas Reservation [${input.referenceCode}]`;
+  const subject = `DeskAtlas Reservation Status - Ref #${input.referenceCode}`;
+  const statusLabel = input.status || 'PENDING_PAYMENT';
+  const supportEmail = input.supportEmail || 'support@deskatlas.com';
+
+  const candidatesHtml = input.candidates && input.candidates.length > 0 ? `
+    <div style="margin: 20px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+      <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Selected Workspace Candidates</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        ${input.candidates.map((c) => {
+          const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
+          const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
+          const floorInfo = c.floorName ? ` (${c.floorName})` : '';
+          const timeInfo = c.startAt && c.endAt ? ` - ${new Date(c.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${new Date(c.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+          return `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 6px 0; font-weight: 600; color: ${c.rank === 0 ? '#0284c7' : '#64748b'}; width: 35%;">${escapeHtml(rankLabel)}</td>
+            <td style="padding: 6px 0; color: #1e293b;">${escapeHtml(spotInfo + floorInfo + timeInfo)}</td>
+          </tr>
+          `;
+        }).join('')}
+      </table>
+    </div>
+  ` : '';
+
+  const candidatesText = input.candidates && input.candidates.length > 0 ? `
+Selected Candidates:
+${input.candidates.map((c) => {
+  const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
+  const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Option ${c.rank + 1}`;
+  return `- ${rankLabel}: ${spotInfo}`;
+}).join('\n')}
+  `.trim() : '';
 
   const html = `
 <!DOCTYPE html>
@@ -558,6 +681,7 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
     .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
     .title { font-size: 18px; font-weight: 700; color: #0f172a; margin: 0; }
     .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .badge { display: inline-block; background-color: #f1f5f9; color: #334155; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 700; }
     .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 16px 0; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
   </style>
@@ -566,12 +690,14 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
   <div class="card">
     <div class="header">
       <div class="title">DeskAtlas Reservation Status</div>
-      <div>Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+      <div style="margin-top: 6px;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong> &bull; <span class="badge">${escapeHtml(statusLabel)}</span></div>
     </div>
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
-      <p>You can track the live status of your reservation at any time using the link below:</p>
+      <p>You can track the live status and allocation progress of your reservation at any time using the link below:</p>
       
+      ${candidatesHtml}
+
       <div style="text-align: center;">
         <a href="${escapeHtml(input.trackingUrl)}" class="btn">Track Reservation Status</a>
       </div>
@@ -579,9 +705,13 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
       <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
         Tracking Link: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; word-break: break-all;">${escapeHtml(input.trackingUrl)}</a>
       </p>
+
+      <p style="font-size: 12px; color: #64748b; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+        Need assistance? Reach out to support at <a href="mailto:${escapeHtml(supportEmail)}" style="color: #0284c7;">${escapeHtml(supportEmail)}</a>.
+      </p>
     </div>
     <div class="footer">
-      DeskAtlas Workspace Reservation System
+      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
     </div>
   </div>
 </body>
@@ -589,13 +719,126 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
   `.trim();
 
   const text = `
-DeskAtlas Reservation Status
-Reference: ${input.referenceCode}
+DeskAtlas Reservation Status - Ref #${input.referenceCode}
 
 Hello ${customerName},
 
 Track the live status of your reservation here:
 ${input.trackingUrl}
+
+Status: ${statusLabel}
+${candidatesText ? `\n${candidatesText}\n` : ''}
+Need help? Contact support at: ${supportEmail}
+
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): { subject: string; html: string; text: string } {
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Your DeskAtlas Booking Has Ended — We Value Your Feedback!`;
+  const defaultSurveyUrl = process.env.SURVEY_FORM_URL || process.env.NEXT_PUBLIC_SURVEY_FORM_URL || 'https://forms.google.com/deskatlas-feedback';
+  const surveyUrl = input.surveyUrl || defaultSurveyUrl;
+  const bookAgainUrl = input.bookAgainUrl || process.env.DESKATLAS_PUBLIC_APP_URL || 'https://deskatlas.com';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; }
+    .summary-row { margin: 6px 0; }
+    .summary-label { color: #64748b; font-weight: 500; display: inline-block; width: 120px; }
+    .summary-val { color: #0f172a; font-weight: 600; }
+    .btn-survey { display: inline-block; background-color: #064E3B; color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
+    .btn-secondary { display: inline-block; background-color: #f1f5f9; color: #334155 !important; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; font-size: 13px; margin-top: 10px; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Thank you for visiting DeskAtlas! 🙌</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Your workspace reservation has now ended. We hope you enjoyed your visit and had a highly productive session!</p>
+
+      <div class="summary-box">
+        <div class="summary-row">
+          <span class="summary-label">Reference:</span>
+          <span class="summary-val">${escapeHtml(input.referenceCode)}</span>
+        </div>
+        ${input.workspaceDisplayName ? `
+        <div class="summary-row">
+          <span class="summary-label">Workspace:</span>
+          <span class="summary-val">${escapeHtml(input.workspaceDisplayName)}${input.workspaceTemplateName ? ` (${escapeHtml(input.workspaceTemplateName)})` : ''}</span>
+        </div>
+        ` : ''}
+        ${input.floorName ? `
+        <div class="summary-row">
+          <span class="summary-label">Floor:</span>
+          <span class="summary-val">${escapeHtml(input.floorName)}</span>
+        </div>
+        ` : ''}
+        ${input.bookingStartAt && input.bookingEndAt ? `
+        <div class="summary-row">
+          <span class="summary-label">Session Time:</span>
+          <span class="summary-val">${escapeHtml(input.bookingStartAt)} &ndash; ${escapeHtml(input.bookingEndAt)}</span>
+        </div>
+        ` : ''}
+      </div>
+
+      <p>To help us continuously improve the DeskAtlas workspace experience, could you please take 1 minute to share your thoughts?</p>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(surveyUrl)}" class="btn-survey">Share Your Feedback (1-Min Survey)</a>
+      </div>
+
+      <div style="text-align: center; margin-top: 16px;">
+        <p style="font-size: 13px; color: #64748b; margin-bottom: 6px;">Need a desk again soon?</p>
+        <a href="${escapeHtml(bookAgainUrl)}" class="btn-secondary">Book Another Workspace</a>
+      </div>
+
+      ${input.trackingUrl ? `
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
+        View past booking details: <a href="${escapeHtml(input.trackingUrl)}" style="color: #064E3B; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
+      </p>
+      ` : ''}
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Customer Experience &amp; Feedback
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Your DeskAtlas Booking Has Ended — We Value Your Feedback!
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+Thank you for working at DeskAtlas! We hope you had a productive session.
+
+Session Summary:
+- Reference: ${input.referenceCode}
+${input.workspaceDisplayName ? `- Workspace: ${input.workspaceDisplayName}\n` : ''}${input.bookingStartAt ? `- Start Time: ${input.bookingStartAt}\n` : ''}${input.bookingEndAt ? `- End Time: ${input.bookingEndAt}\n` : ''}
+Please take a minute to share your feedback with us:
+Survey Link: ${surveyUrl}
+
+Ready to book another workspace? Visit:
+${bookAgainUrl}
 
 DeskAtlas Workspace Reservation System
   `.trim();
@@ -816,6 +1059,46 @@ export class TransactionalEmailService {
       text: rendered.text,
     });
   }
+
+  async sendAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): Promise<EmailSendResult> {
+    const rendered = renderAdminPasswordResetEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationCancelledEmail(input: ReservationCancelledEmailInput): Promise<EmailSendResult> {
+    const rendered = renderReservationCancelledEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationRescheduledEmail(input: ReservationRescheduledEmailInput): Promise<EmailSendResult> {
+    const rendered = renderReservationRescheduledEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
+    const rendered = renderBookingEndedSurveyEmail(input);
+    return this.sendEmail({
+      to: input.to || '',
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
 }
 
 export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { subject: string; html: string; text: string } {
@@ -900,6 +1183,237 @@ ${input.invitationUrl}
 ${input.verificationCode ? `Your 2FA Verification Code is: ${input.verificationCode}\n` : ''}
 This invitation expires on ${expiresFormatted}.
 
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): { subject: string; html: string; text: string } {
+  const subject = 'Reset Your DeskAtlas Admin Password';
+  const name = input.displayName || 'Administrator';
+  const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 20px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+    .warning { color: #d97706; font-size: 13px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">DeskAtlas</div>
+      <span class="badge">Security Recovery</span>
+    </div>
+    <div class="content">
+      <div class="title">Reset Your Password</div>
+      <p>Hello <strong>${escapeHtml(name)}</strong>,</p>
+      <p>We received a request to reset the password for your DeskAtlas administrative account.</p>
+      <p>Click the button below to set a new password:</p>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(input.resetUrl)}" class="btn">Reset Admin Password</a>
+      </div>
+
+      <p class="warning">⚠️ <strong>1-Hour Expiry:</strong> This password reset link will expire on <strong>${escapeHtml(expiresFormatted)}</strong>.</p>
+
+      <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
+        If you did not request a password reset, you can safely ignore this email. Your current credentials remain active and unchanged.
+      </p>
+
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">
+        If the button above does not work, copy and paste this URL into your browser:<br>
+        <a href="${escapeHtml(input.resetUrl)}" style="color: #064E3B; word-break: break-all;">${escapeHtml(input.resetUrl)}</a>
+      </p>
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Administrative Security Alert
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+DeskAtlas Admin Password Reset
+
+Hello ${name},
+
+We received a request to reset the password for your DeskAtlas administrative account.
+
+To reset your password, visit the link below:
+${input.resetUrl}
+
+This link expires on ${expiresFormatted} (1 hour).
+
+If you did not request this, please ignore this email.
+
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderReservationCancelledEmail(input: ReservationCancelledEmailInput): { subject: string; html: string; text: string } {
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Your DeskAtlas Reservation Has Been Cancelled [${input.referenceCode}]`;
+  const reasonText = input.cancellationNotes ? `${input.cancellationReason} - ${input.cancellationNotes}` : input.cancellationReason;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #991b1b; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .reason-box { background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 14px; color: #991b1b; }
+    .info-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; color: #475569; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Reservation Cancellation Notice</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been cancelled.</p>
+      
+      <div class="reason-box">
+        <strong>Reason for cancellation:</strong><br>
+        ${escapeHtml(reasonText)}
+      </div>
+
+      ${input.schedule || input.workspaceDisplayName ? `
+      <div class="info-box">
+        ${input.workspaceDisplayName ? `<div><strong>Workspace:</strong> ${escapeHtml(input.workspaceDisplayName)}</div>` : ''}
+        ${input.schedule ? `<div><strong>Original Schedule:</strong> ${escapeHtml(input.schedule)}</div>` : ''}
+      </div>
+      ` : ''}
+
+      <p>If you made a payment that requires a refund or have any questions regarding this cancellation, please contact our support desk.</p>
+
+      ${input.trackingUrl ? `
+      <div style="text-align: center;">
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">View Reservation Status</a>
+      </div>
+      ` : ''}
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Reservation Cancellation Notice - DeskAtlas
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+Your workspace reservation ${input.referenceCode} has been cancelled.
+
+Reason: ${reasonText}
+${input.workspaceDisplayName ? `Workspace: ${input.workspaceDisplayName}\n` : ''}${input.schedule ? `Original Schedule: ${input.schedule}\n` : ''}${input.trackingUrl ? `Status Link: ${input.trackingUrl}\n` : ''}
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderReservationRescheduledEmail(input: ReservationRescheduledEmailInput): { subject: string; html: string; text: string } {
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Your DeskAtlas Reservation Has Been Rescheduled [${input.referenceCode}]`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #0284c7; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .schedule-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Reservation Schedule Updated</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been rescheduled by the administration.</p>
+      
+      <div class="schedule-box">
+        <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 8px;">Updated Schedule Details</div>
+        <div><strong>New Schedule:</strong> ${escapeHtml(input.newSchedule)}</div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 4px;"><strong>Previous Schedule:</strong> ${escapeHtml(input.oldSchedule)}</div>
+        <div style="margin-top: 8px;"><strong>Allocated Spot:</strong> ${escapeHtml(input.workspaceDisplayName)}${input.floorName ? ` (${escapeHtml(input.floorName)})` : ''}</div>
+      </div>
+
+      ${input.bookingAccessUrl ? `
+      <div style="text-align: center;">
+        <a href="${escapeHtml(input.bookingAccessUrl)}" class="btn">View Digital Access Pass</a>
+      </div>
+      ` : ''}
+
+      ${input.trackingUrl ? `
+      <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
+        Track Reservation: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
+      </p>
+      ` : ''}
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Reservation Schedule Updated - DeskAtlas
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+Your reservation has been rescheduled:
+New Schedule: ${input.newSchedule}
+Previous Schedule: ${input.oldSchedule}
+Allocated Spot: ${input.workspaceDisplayName}
+${input.bookingAccessUrl ? `Access Pass: ${input.bookingAccessUrl}\n` : ''}${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
 DeskAtlas Workspace Reservation System
   `.trim();
 

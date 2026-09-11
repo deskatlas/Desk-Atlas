@@ -2086,4 +2086,235 @@ REVOKE ALL ON FUNCTION public.admin_bootstrap_initial_admin(uuid, text, text) FR
 REVOKE ALL ON FUNCTION public.admin_bootstrap_initial_admin(uuid, text, text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.admin_bootstrap_initial_admin(uuid, text, text) TO authenticated, service_role;
 
+-- ----------------------------------------------------------------------------
+-- 11. Admin Password Reset RPCs (MF-69)
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.admin_get_admin_by_email(
+  p_email text
+)
+RETURNS TABLE (
+  id uuid,
+  email text,
+  display_name text,
+  role public.staff_role,
+  is_active boolean
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.user_id AS id,
+    lower(btrim(u.email))::text AS email,
+    p.display_name,
+    p.role,
+    p.is_active
+  FROM public.staff_profiles p
+  JOIN auth.users u ON u.id = p.user_id
+  WHERE lower(btrim(u.email)) = lower(btrim(p_email))
+    AND p.role = 'ADMIN'
+    AND p.is_active = true
+  LIMIT 1;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_get_admin_by_email(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_get_admin_by_email(text) FROM anon;
+GRANT EXECUTE ON FUNCTION public.admin_get_admin_by_email(text) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_request_password_reset(
+  p_email text,
+  p_token text,
+  p_expires_at timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_admin RECORD;
+  v_new_id uuid;
+BEGIN
+  SELECT p.user_id, lower(btrim(u.email)) AS email
+  INTO v_admin
+  FROM public.staff_profiles p
+  JOIN auth.users u ON u.id = p.user_id
+  WHERE lower(btrim(u.email)) = lower(btrim(p_email))
+    AND p.role = 'ADMIN'
+    AND p.is_active = true
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'not_found', true);
+  END IF;
+
+  v_new_id := gen_random_uuid();
+
+  INSERT INTO public.admin_password_resets (
+    id,
+    user_id,
+    email,
+    token,
+    status,
+    expires_at,
+    created_at
+  )
+  VALUES (
+    v_new_id,
+    v_admin.user_id,
+    v_admin.email,
+    p_token,
+    'PENDING',
+    p_expires_at,
+    now()
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'record', jsonb_build_object(
+      'id', v_new_id,
+      'user_id', v_admin.user_id,
+      'email', v_admin.email,
+      'token', p_token,
+      'status', 'PENDING',
+      'expires_at', p_expires_at,
+      'created_at', now(),
+      'used_at', null
+    )
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_request_password_reset(text, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_request_password_reset(text, text, timestamptz) FROM anon;
+GRANT EXECUTE ON FUNCTION public.admin_request_password_reset(text, text, timestamptz) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_verify_password_reset_token(
+  p_token text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_reset public.admin_password_resets%ROWTYPE;
+BEGIN
+  SELECT * INTO v_reset
+  FROM public.admin_password_resets
+  WHERE token = btrim(p_token);
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('valid', false, 'error', 'Invalid token');
+  END IF;
+
+  IF v_reset.status <> 'PENDING' THEN
+    RETURN jsonb_build_object('valid', false, 'error', 'Token already used');
+  END IF;
+
+  IF now() > v_reset.expires_at THEN
+    RETURN jsonb_build_object('valid', false, 'error', 'Token expired');
+  END IF;
+
+  RETURN jsonb_build_object(
+    'valid', true,
+    'record', jsonb_build_object(
+      'id', v_reset.id,
+      'user_id', v_reset.user_id,
+      'email', v_reset.email,
+      'token', v_reset.token,
+      'status', v_reset.status,
+      'expires_at', v_reset.expires_at,
+      'created_at', v_reset.created_at,
+      'used_at', v_reset.used_at
+    )
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_verify_password_reset_token(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_verify_password_reset_token(text) TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_complete_password_reset(
+  p_token text,
+  p_new_password text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_reset public.admin_password_resets%ROWTYPE;
+BEGIN
+  SELECT * INTO v_reset
+  FROM public.admin_password_resets
+  WHERE token = btrim(p_token);
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid token');
+  END IF;
+
+  IF v_reset.status <> 'PENDING' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Token already used');
+  END IF;
+
+  IF now() > v_reset.expires_at THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Token expired');
+  END IF;
+
+  IF p_new_password IS NULL OR length(p_new_password) < 8 OR p_new_password !~ '[A-Z]' OR p_new_password !~ '[0-9]' OR p_new_password !~ '[^a-zA-Z0-9\s]' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Password must be at least 8 characters long, contain at least 1 uppercase letter, 1 number, and 1 special character');
+  END IF;
+
+  -- Update auth user password
+  UPDATE auth.users
+  SET
+    encrypted_password = extensions.crypt(p_new_password::text, extensions.gen_salt('bf'::text)),
+    updated_at = now()
+  WHERE id = v_reset.user_id;
+
+  -- Mark reset record as used
+  UPDATE public.admin_password_resets
+  SET
+    status = 'USED',
+    used_at = now()
+  WHERE id = v_reset.id;
+
+  -- Insert audit log entry
+  INSERT INTO public.audit_logs (
+    id,
+    actor_user_id,
+    actor_role,
+    action,
+    entity_type,
+    entity_id,
+    metadata,
+    created_at
+  )
+  VALUES (
+    gen_random_uuid(),
+    v_reset.user_id,
+    'ADMIN',
+    'ADMIN_PASSWORD_RESET',
+    'staff_profiles',
+    v_reset.user_id::text,
+    jsonb_build_object(
+      'email', v_reset.email,
+      'method', 'password_reset_flow'
+    ),
+    now()
+  );
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_complete_password_reset(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_complete_password_reset(text, text) TO anon, authenticated, service_role;
+
 COMMIT;

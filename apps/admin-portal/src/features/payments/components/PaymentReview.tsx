@@ -24,26 +24,32 @@ function formatTimeAgo(dateStr: string | null): string {
   return `${days} days ago`;
 }
 
-function formatScheduleRange(startIso?: string, endIso?: string): string {
+function formatScheduleRange(startIso?: string, endIso?: string, timezone = 'Asia/Manila'): string {
   if (!startIso || !endIso) return 'Schedule not specified';
   try {
     const start = new Date(startIso);
     const end = new Date(endIso);
-    const dateFormatted = start.toLocaleDateString('en-US', {
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return `${startIso} - ${endIso}`;
+    }
+    const dateFormatted = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-    });
-    const startTime = start.toLocaleTimeString('en-US', {
-      hour: '2-digit',
+    }).format(start);
+    const startTime = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
       minute: '2-digit',
-      hour12: false,
-    });
-    const endTime = end.toLocaleTimeString('en-US', {
-      hour: '2-digit',
+      hour12: true,
+    }).format(start);
+    const endTime = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
       minute: '2-digit',
-      hour12: false,
-    });
+      hour12: true,
+    }).format(end);
     return `${dateFormatted}, ${startTime} - ${endTime}`;
   } catch {
     return `${startIso} - ${endIso}`;

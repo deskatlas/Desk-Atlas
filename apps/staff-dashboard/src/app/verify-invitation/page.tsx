@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { PasswordRequirementsChecklist } from '@deskatlas/ui';
+import { PasswordRequirementsChecklist, PasswordInput } from '@deskatlas/ui';
 import { validatePassword } from '@deskatlas/domain';
 
 function InvitationVerifyForm() {
@@ -229,8 +229,7 @@ function InvitationVerifyForm() {
           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
             SET PERMANENT PASSWORD (OPTIONAL)
           </label>
-          <input
-            type="password"
+          <PasswordInput
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Leave blank to use pre-set password"
@@ -244,8 +243,7 @@ function InvitationVerifyForm() {
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
               CONFIRM PERMANENT PASSWORD
             </label>
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Confirm new password"

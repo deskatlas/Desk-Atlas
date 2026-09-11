@@ -106,6 +106,8 @@ export { InMemoryAvailabilityRepository } from './services/availabilityMemoryRep
 export {
   AvailabilityValidationError,
   createAvailabilityService,
+  zonedDateTimeToUtc,
+  getTimezoneOffsetMinutes,
 } from './services/availabilityService';
 export * from './services/availabilityMemoryRepository';
 export * from './services/availabilitySupabaseRepository';
@@ -151,6 +153,7 @@ export * from './services/staffDashboardService';
 export * from './services/workspaceSupabaseRepository';
 export * from './services/mapViewportService';
 export * from './services/transactionalEmailService';
+export * from './services/bookingSurveyService';
 export * from './models/auth';
 export * from './services/authRepository';
 export * from './services/authMemoryRepository';
@@ -165,5 +168,8 @@ export * from './services/adminNotificationService';
 export * from './services/mapUndoRedoService';
 export * from './services/mapAutosaveService';
 export * from './services/mapGeometryService';
-
-
+export * from './services/reservationFilters';
+export * from './services/reservationExport';
+export * from './models/adminPasswordReset';
+export * from './services/adminPasswordResetService';
+export * from './services/reservationSessionService';

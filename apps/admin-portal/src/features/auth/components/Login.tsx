@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+import { PasswordInput } from '@deskatlas/ui';
 
 export function Login() {
   const [loginEmail, setLoginEmail] = useState('');
@@ -12,6 +14,8 @@ export function Login() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const { user, login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resetSuccess = searchParams.get('reset') === 'success';
 
   useEffect(() => {
     fetch('/api/admin/auth/setup/status', { cache: 'no-store' })
@@ -80,6 +84,12 @@ export function Login() {
         </div>
         <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '24px' }}>Management Portal</div>
 
+        {resetSuccess && (
+          <div data-testid="reset-success-alert" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', fontFamily: 'var(--da-font-family)' }}>
+            <strong>Success:</strong> Password updated successfully. Please sign in with your new password.
+          </div>
+        )}
+
         {needsSetup && (
           <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', fontFamily: 'var(--da-font-family)' }}>
             <strong>First-Time Setup:</strong> No administrator account detected.{' '}
@@ -106,14 +116,18 @@ export function Login() {
             style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', margin: '6px 0 14px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
           />
           
-          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>Password</label>
-          <input 
-            type="password" 
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '6px 0 2px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>Password</label>
+            <a href="/manage/forgot-password" data-testid="forgot-password-link" style={{ fontSize: '12px', color: '#059669', textDecoration: 'none', fontWeight: 600, fontFamily: 'var(--da-font-family)' }}>
+              Forgot password?
+            </a>
+          </div>
+          <PasswordInput 
             value={loginPassword} 
             onChange={(e) => setLoginPassword(e.target.value)} 
             placeholder="••••••••" 
             disabled={loading}
-            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', margin: '6px 0 22px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', margin: '4px 0 22px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
           />
           
           <button 

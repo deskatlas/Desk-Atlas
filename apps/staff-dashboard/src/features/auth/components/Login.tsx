@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { useRouter } from 'next/navigation';
+import { PasswordInput } from '@deskatlas/ui';
 
 export function Login() {
   const { login } = useAuth();
@@ -74,8 +75,7 @@ export function Login() {
             style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', margin: '6px 0 14px', fontFamily: "'Inter', sans-serif", outline: 'none' }}
           />
           <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', fontFamily: "'Inter', sans-serif" }}>Password</label>
-          <input 
-            type="password" 
+          <PasswordInput 
             value={password} 
             onChange={(e) => setPassword(e.target.value)} 
             placeholder="••••••••" 

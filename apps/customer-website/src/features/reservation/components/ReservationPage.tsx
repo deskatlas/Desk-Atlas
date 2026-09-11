@@ -20,6 +20,14 @@ import {
   type AvailableTimeSlot,
   type AvailableDate,
   zonedDateTimeToUtc,
+  formatSessionCountdown,
+  calculateRemainingSessionSeconds,
+  isSessionWarning,
+  isSessionExpired,
+  getOrCreateSessionExpiry,
+  clearSessionExpiry,
+  CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS,
+  CUSTOMER_RESERVATION_SESSION_WARNING_SECONDS,
 } from "@deskatlas/domain";
 import { useRouter } from "next/navigation";
 import { SpotDetailModal } from "./SpotDetailModal";
@@ -269,6 +277,89 @@ export function ReservationPage() {
   } | null>(null);
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const [candidateImageErrors, setCandidateImageErrors] = useState<Record<string, boolean>>({});
+
+  // MF-70: 20-minute client-side session timeout state
+  const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
+  const [isSessionTimedOut, setIsSessionTimedOut] = useState<boolean>(false);
+  const [timeoutRedirectCountdown, setTimeoutRedirectCountdown] = useState<number>(5);
+
+  // MF-70: Reservation session timer lifecycle (20 mins / 1200 seconds)
+  useEffect(() => {
+    // If we have transitioned to email-handoff, clear session timer
+    if (step === "email-handoff") {
+      if (typeof window !== "undefined") {
+        clearSessionExpiry(window.sessionStorage);
+      }
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    const expiryMs = getOrCreateSessionExpiry(window.sessionStorage);
+    const initialRemaining = calculateRemainingSessionSeconds(expiryMs);
+
+    if (initialRemaining <= 0) {
+      setIsSessionTimedOut(true);
+      clearSessionExpiry(window.sessionStorage);
+      setSessionSecondsLeft(0);
+      return;
+    }
+
+    setSessionSecondsLeft(initialRemaining);
+
+    const intervalId = setInterval(() => {
+      const remaining = calculateRemainingSessionSeconds(expiryMs);
+      if (remaining <= 0) {
+        clearInterval(intervalId);
+        setSessionSecondsLeft(0);
+        setIsSessionTimedOut(true);
+        clearSessionExpiry(window.sessionStorage);
+        // Clear draft selections and close modals
+        setCandidates([]);
+        setSelectedWorkspaceId(null);
+        setModalWorkspace(null);
+        setIsModalOpen(false);
+        setIsEmailConfirmOpen(false);
+        setSelectedTemplate(null);
+        setCatStartTime(null);
+        setCustomerFirstName("");
+        setCustomerLastName("");
+        setCustomerEmail("");
+        setFormErrors({});
+      } else {
+        setSessionSecondsLeft(remaining);
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [step]);
+
+  // MF-70: Auto-redirect countdown when session expires
+  useEffect(() => {
+    if (!isSessionTimedOut) return;
+
+    const interval = setInterval(() => {
+      setTimeoutRedirectCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          router.push("/");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isSessionTimedOut, router]);
+
+  const handleReturnToHome = () => {
+    if (typeof window !== "undefined") {
+      clearSessionExpiry(window.sessionStorage);
+    }
+    router.push("/");
+  };
 
   // Published map & all workspaces across floors
   const [allFloorWorkspaces, setAllFloorWorkspaces] = useState<WorkspaceMapViewModel[]>([]);
@@ -781,6 +872,9 @@ export function ReservationPage() {
         referenceCode: result.referenceCode || "DA-REF",
         customerEmail: customerEmail.trim().toLowerCase(),
       });
+      if (typeof window !== "undefined") {
+        clearSessionExpiry(window.sessionStorage);
+      }
       setIsEmailConfirmOpen(false);
       setIsSubmitting(false);
       setStep("email-handoff");
@@ -898,7 +992,56 @@ export function ReservationPage() {
                               : "Explore our interactive floor layout and click on any available spot to book."}
             </p>
           </div>
+
+          {/* MF-70: Session Timeout Pill */}
+          {step !== "email-handoff" && sessionSecondsLeft !== null && !isSessionTimedOut && (
+            <div
+              className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm ${
+                sessionSecondsLeft <= 120
+                  ? "border-2 border-amber-500 bg-amber-50 text-amber-900 animate-pulse"
+                  : "border border-[var(--da-border)] bg-white text-[var(--da-text-secondary)]"
+              }`}
+              title="Your reservation session lasts 20 minutes to ensure real-time inventory availability."
+            >
+              <span className="text-sm">{sessionSecondsLeft <= 120 ? "⚠️" : "⏱️"}</span>
+              <span>
+                Time remaining:{" "}
+                <span
+                  className={`font-mono font-extrabold ${
+                    sessionSecondsLeft <= 120 ? "text-amber-900 text-sm" : "text-[var(--da-brand-dark)]"
+                  }`}
+                >
+                  {formatSessionCountdown(sessionSecondsLeft)}
+                </span>
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* MF-70: 2-Minute Expiry Warning Banner */}
+        {sessionSecondsLeft !== null &&
+          sessionSecondsLeft <= 120 &&
+          sessionSecondsLeft > 0 &&
+          step !== "email-handoff" &&
+          !isSessionTimedOut && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50/95 p-4 text-amber-950 shadow-sm animate-pulse"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <p className="font-extrabold text-sm sm:text-base">
+                    Session Expiring Soon: Less than 2 minutes remaining!
+                  </p>
+                  <p className="text-xs sm:text-sm text-amber-900 mt-0.5">
+                    Please finalize your reservation details and submit within{" "}
+                    <span className="font-mono font-extrabold">{formatSessionCountdown(sessionSecondsLeft)}</span> before your draft session resets.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
         {/* 0. Post-Submit Email Handoff Screen */}
         {step === "email-handoff" ? (
@@ -2741,6 +2884,51 @@ export function ReservationPage() {
           onConfirm={handleConfirmSubmit}
         />
       ) : null}
+
+      {/* MF-70: Session Expired Modal */}
+      {isSessionTimedOut && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="session-expired-title"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div className="relative w-full max-w-md rounded-[28px] border border-[var(--da-border)] bg-white p-6 sm:p-8 text-center shadow-[var(--da-shadow-lg)] flex flex-col items-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 border-2 border-amber-300 text-3xl shadow-sm">
+              ⏳
+            </div>
+
+            <span className="rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold px-3 py-1 uppercase tracking-wider mb-2">
+              Time Limit Reached
+            </span>
+
+            <h2
+              id="session-expired-title"
+              className="text-2xl font-extrabold text-[var(--da-brand-dark)] tracking-tight"
+            >
+              Session Expired
+            </h2>
+
+            <p className="mt-3 text-sm text-[var(--da-text-secondary)] leading-relaxed">
+              Your 20-minute reservation session has ended. To ensure accurate real-time availability, please begin a new booking.
+            </p>
+
+            <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-4 py-2 text-xs text-slate-600 font-medium">
+              Redirecting to home in <span className="font-bold text-[var(--da-brand-dark)] font-mono">{timeoutRedirectCountdown}s</span>...
+            </div>
+
+            <div className="mt-6 w-full flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={handleReturnToHome}
+                className="w-full rounded-2xl bg-[var(--da-brand-dark)] px-5 py-3.5 text-sm font-bold text-white shadow hover:opacity-90 transition-all cursor-pointer"
+              >
+                Return to Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

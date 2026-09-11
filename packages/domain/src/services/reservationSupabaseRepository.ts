@@ -20,7 +20,7 @@ import {
   ReservationResponseDTO,
   StaffOperationalReservation,
 } from "../models/reservation";
-import { AdminReservationRepository } from "./adminReservationRepository";
+import { AdminReservationRepository, RescheduleSlotAvailability } from "./adminReservationRepository";
 import {
   formatAmountWithCurrency,
   formatDuration,
@@ -50,6 +50,8 @@ import {
   GuestReservationTrackingRecord,
   GuestReservationTrackingRepository,
 } from "./guestReservationTrackingRepository";
+import { BookingSurveyRepository, EndedReservationForSurvey } from "./bookingSurveyService";
+import { zonedDateTimeToUtc } from "./availabilityService";
 
 export class ReservationSupabaseRepository
   implements
@@ -61,7 +63,8 @@ export class ReservationSupabaseRepository
   StaffOperationsRepository,
   GuestReservationTrackingRepository,
   ReportsRepository,
-  AdminReservationRepository {
+  AdminReservationRepository,
+  BookingSurveyRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
 
@@ -1449,13 +1452,14 @@ export class ReservationSupabaseRepository
       return [];
     }
 
-    const [candidatesRows, instancesRows, templatesRows, floorsRows, paymentAttemptsRows] =
+    const [candidatesRows, instancesRows, templatesRows, floorsRows, paymentAttemptsRows, paymentMethodsRows] =
       await Promise.all([
         this.request<any[]>("/reservation_candidates?select=*&order=rank.asc"),
         this.request<any[]>("/workspace_instances?select=*"),
         this.request<any[]>("/workspace_templates?select=*"),
         this.request<any[]>("/floors?select=*"),
         this.request<any[]>("/payment_attempts?select=*&order=created_at.desc"),
+        this.request<any[]>("/payment_methods?select=*").catch(() => []),
       ]);
 
     const candidatesByReservation = new Map<string, any[]>();
@@ -1475,6 +1479,7 @@ export class ReservationSupabaseRepository
     const instancesById = new Map<string, any>((instancesRows ?? []).map((i) => [i.id, i]));
     const templatesById = new Map<string, any>((templatesRows ?? []).map((t) => [t.id, t]));
     const floorsById = new Map<string, any>((floorsRows ?? []).map((f) => [f.id, f]));
+    const paymentMethodsById = new Map<string, any>((paymentMethodsRows ?? []).map((m) => [m.id, m]));
 
     return reservations.map((r) => {
       const candidates = candidatesByReservation.get(r.id) ?? [];
@@ -1488,6 +1493,9 @@ export class ReservationSupabaseRepository
 
       const latestAttempt = attemptsByReservation.get(r.id);
       const paymentExpiresAt = latestAttempt?.expires_at ?? null;
+      const paymentMethod = latestAttempt?.payment_method_id
+        ? paymentMethodsById.get(latestAttempt.payment_method_id)
+        : null;
 
       const pres = mapStatusPresentation(r.status);
       const customerName = `${r.customer_first_name} ${r.customer_last_name}`.trim();
@@ -1499,6 +1507,12 @@ export class ReservationSupabaseRepository
         : candidates.length > 1
           ? "Multiple Candidates"
           : (instance?.display_name ?? instance?.instance_code ?? template?.name ?? "Unassigned");
+
+      const amountDue = Number(r.amount_due);
+      const isApproved =
+        latestAttempt?.status === "APPROVED" ||
+        ["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(r.status);
+      const amountPaid = isApproved ? Number(latestAttempt?.amount ?? amountDue) : 0;
 
       return {
         id: r.id,
@@ -1522,13 +1536,18 @@ export class ReservationSupabaseRepository
         status: pres.label,
         statusStyle: pres.style,
         mark: pres.mark,
-        amountDue: Number(r.amount_due),
+        amountDue,
+        amountPaid,
         currency: r.currency,
         createdAt: r.created_at,
         confirmedAt: r.confirmed_at,
         checkedInAt: r.checked_in_at,
         checkedOutAt: r.checked_out_at,
         paymentExpiresAt,
+        paymentAttemptStatus: latestAttempt?.status ?? null,
+        paymentMethodId: latestAttempt?.payment_method_id ?? null,
+        paymentMethodType: paymentMethod?.method_type ?? null,
+        paymentMethodDisplayName: paymentMethod?.display_name ?? null,
       };
     });
   }
@@ -1671,8 +1690,18 @@ export class ReservationSupabaseRepository
       timeline.push(`${formatTimelineDate(r.checked_out_at)} - Customer checked out`);
     }
 
+    const rescheduleEvents = (auditRows ?? []).filter(
+      (a) => a.action === "reservation_rescheduled" || a.action === "RESERVATION_RESCHEDULED"
+    );
+    for (const res of rescheduleEvents) {
+      timeline.push(
+        `${formatTimelineDate(res.created_at)} - Rescheduled by Admin to ${res.metadata?.new_schedule || schedule}`
+      );
+    }
+
     if (r.status === "CANCELLED") {
-      timeline.push(`${formatTimelineDate(r.updated_at)} - Reservation cancelled`);
+      const cancelReasonStr = r.cancellation_reason ? ` (${r.cancellation_reason})` : "";
+      timeline.push(`${formatTimelineDate(r.cancelled_at || r.updated_at)} - Reservation cancelled${cancelReasonStr}`);
     } else if (r.status === "EXPIRED") {
       timeline.push(`${formatTimelineDate(r.updated_at)} - Payment session expired (${expiryReason ?? "Window elapsed"})`);
     } else if (r.status === "NEEDS_MANUAL_RESOLUTION") {
@@ -1721,8 +1750,413 @@ export class ReservationSupabaseRepository
       paymentAttemptStatus: latestAttempt?.status ?? null,
       proofSubmittedAt,
       expiryReason,
+      cancellationReason: r.cancellation_reason ?? null,
+      cancelledAt: r.cancelled_at ?? null,
       paymentAttempts: paymentAttemptsSummary,
     };
+  }
+
+  async cancelReservation(input: {
+    reservationId: string;
+    reason: string;
+    notes?: string;
+    actorUserId?: string;
+    actorRole?: string;
+  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const reservationRows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`);
+    if (!reservationRows || reservationRows.length === 0) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const r = reservationRows[0];
+    const nowIso = new Date().toISOString();
+    const fullReason = input.notes ? `${input.reason} - ${input.notes}` : input.reason;
+
+    await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "CANCELLED",
+        cancelled_at: nowIso,
+        cancellation_reason: fullReason,
+        cancelled_by_user_id: input.actorUserId ?? null,
+        qr_revoked_at: nowIso,
+        updated_at: nowIso,
+      }),
+    });
+
+    await this.request(`/reservation_candidates?reservation_id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        is_assigned: false,
+      }),
+    }).catch(() => {});
+
+    await this.request("/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        actor_user_id: input.actorUserId ?? null,
+        actor_role: input.actorRole ?? "ADMIN",
+        action: "reservation_cancelled",
+        entity_type: "reservation",
+        entity_id: r.id,
+        metadata: {
+          reason: input.reason,
+          notes: input.notes,
+          reference_code: r.reference_code,
+          previous_status: r.status,
+          cancelled_at: nowIso,
+        },
+      }),
+    }).catch(() => {});
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to retrieve updated reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      message: "Reservation cancelled successfully",
+    };
+  }
+
+  async rescheduleReservation(input: {
+    reservationId: string;
+    startAt: string;
+    endAt: string;
+    workspaceInstanceId?: string;
+    actorUserId?: string;
+    actorRole?: string;
+  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const reservationRows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`);
+    if (!reservationRows || reservationRows.length === 0) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const r = reservationRows[0];
+    if (r.status === "CANCELLED" || r.status === "EXPIRED") {
+      throw new Error(`Cannot reschedule a ${r.status.toLowerCase()} reservation`);
+    }
+
+    const candidates = await this.request<any[]>(
+      `/reservation_candidates?reservation_id=eq.${encodeURIComponent(r.id)}&order=rank.asc`
+    );
+
+    const assigned = (candidates ?? []).find((c) => c.is_assigned) ?? candidates?.[0];
+    const targetInstanceId = input.workspaceInstanceId || assigned?.workspace_instance_id;
+
+    if (!targetInstanceId) {
+      throw new Error("Target workspace instance not specified");
+    }
+
+    const conflictingCandidates = await this.request<any[]>(
+      `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(targetInstanceId)}&is_assigned=eq.true&reservation_id=neq.${encodeURIComponent(r.id)}&select=id,start_at,end_at,reservations(id,status)`
+    ).catch(() => []);
+
+    const newStartMs = new Date(input.startAt).getTime();
+    const newEndMs = new Date(input.endAt).getTime();
+    const nowMs = new Date().getTime();
+
+    if (newStartMs < nowMs) {
+      throw new Error("Cannot reschedule to a past date or time.");
+    }
+
+    for (const cand of conflictingCandidates ?? []) {
+      const resStatus = cand.reservations?.status;
+      if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
+        continue;
+      }
+      const candStartMs = new Date(cand.start_at).getTime();
+      const candEndMs = new Date(cand.end_at).getTime();
+      if (newStartMs < candEndMs && newEndMs > candStartMs) {
+        throw new Error("Selected workspace slot is already booked for this time window");
+      }
+    }
+
+    const oldSchedule = formatSchedule(assigned?.start_at, assigned?.end_at);
+    const newSchedule = formatSchedule(input.startAt, input.endAt);
+    const nowIso = new Date().toISOString();
+
+    if (assigned) {
+      await this.request(`/reservation_candidates?id=eq.${encodeURIComponent(assigned.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          start_at: input.startAt,
+          end_at: input.endAt,
+          workspace_instance_id: targetInstanceId,
+          is_assigned: true,
+        }),
+      });
+    }
+
+    await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        updated_at: nowIso,
+      }),
+    });
+
+    await this.request("/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        actor_user_id: input.actorUserId ?? null,
+        actor_role: input.actorRole ?? "ADMIN",
+        action: "reservation_rescheduled",
+        entity_type: "reservation",
+        entity_id: r.id,
+        metadata: {
+          old_schedule: oldSchedule,
+          new_schedule: newSchedule,
+          start_at: input.startAt,
+          end_at: input.endAt,
+          reference_code: r.reference_code,
+          rescheduled_at: nowIso,
+        },
+      }),
+    }).catch(() => {});
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to retrieve updated reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      oldSchedule,
+      message: "Reservation rescheduled successfully",
+    };
+  }
+
+  async checkRescheduleAvailability(input: {
+    reservationId: string;
+    startAt?: string;
+    endAt?: string;
+    date?: string;
+    durationHours?: number;
+    workspaceInstanceId?: string;
+  }): Promise<{
+    available: boolean;
+    reason?: string;
+    workspaceInstanceId?: string;
+    workspaceDisplayName?: string;
+    slots?: RescheduleSlotAvailability[];
+  }> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const reservationRows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`).catch(() => []);
+    const r = reservationRows?.[0];
+
+    let targetInstanceId = input.workspaceInstanceId;
+    if (!targetInstanceId && r) {
+      const candidates = await this.request<any[]>(
+        `/reservation_candidates?reservation_id=eq.${encodeURIComponent(r.id)}&order=rank.asc`
+      ).catch(() => []);
+      const assigned = (candidates ?? []).find((c) => c.is_assigned) ?? candidates?.[0];
+      targetInstanceId = assigned?.workspace_instance_id;
+    }
+
+    if (!targetInstanceId) {
+      return { available: true };
+    }
+
+    const conflictingCandidates = await this.request<any[]>(
+      `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(targetInstanceId)}&is_assigned=eq.true${r ? `&reservation_id=neq.${encodeURIComponent(r.id)}` : ""}&select=id,start_at,end_at,reservations(id,status)`
+    ).catch(() => []);
+
+    let available = true;
+    let reason: string | undefined;
+    const nowMs = new Date().getTime();
+
+    if (input.startAt && input.endAt) {
+      const newStartMs = new Date(input.startAt).getTime();
+      const newEndMs = new Date(input.endAt).getTime();
+
+      if (newStartMs < nowMs) {
+        available = false;
+        reason = "Cannot reschedule to a past date or time";
+      } else {
+        for (const cand of conflictingCandidates ?? []) {
+          const resStatus = cand.reservations?.status;
+          if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
+            continue;
+          }
+          const candStartMs = new Date(cand.start_at).getTime();
+          const candEndMs = new Date(cand.end_at).getTime();
+          if (newStartMs < candEndMs && newEndMs > candStartMs) {
+            available = false;
+            reason = "Spot is occupied during this time window";
+            break;
+          }
+        }
+      }
+    }
+
+    // Compute slots
+    let slots: RescheduleSlotAvailability[] | undefined;
+    const targetDate = input.date || (input.startAt ? input.startAt.split("T")[0] : undefined);
+    const duration = input.durationHours || 2;
+
+    if (targetDate) {
+      const timeOptions = [
+        '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
+        '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'
+      ];
+
+      slots = timeOptions.map((time) => {
+        const [h, m] = time.split(":").map(Number);
+        const slotStart = zonedDateTimeToUtc(targetDate, time, "Asia/Manila");
+        const slotEnd = new Date(slotStart.getTime() + duration * 60 * 60 * 1000);
+        const startMs = slotStart.getTime();
+        const endMs = slotEnd.getTime();
+
+        const endHour = h + duration;
+        const endTime = `${String(endHour).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+        let slotAvailable = true;
+        let slotReason: string | undefined;
+
+        if (startMs < nowMs) {
+          slotAvailable = false;
+          slotReason = "Past";
+        } else {
+          for (const cand of conflictingCandidates ?? []) {
+            const resStatus = cand.reservations?.status;
+            if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
+              continue;
+            }
+            const candStartMs = new Date(cand.start_at).getTime();
+            const candEndMs = new Date(cand.end_at).getTime();
+            if (startMs < candEndMs && endMs > candStartMs) {
+              slotAvailable = false;
+              slotReason = "Booked";
+              break;
+            }
+          }
+        }
+
+        return {
+          startTime: time,
+          endTime,
+          startAt: slotStart.toISOString(),
+          endAt: slotEnd.toISOString(),
+          isAvailable: slotAvailable,
+          reason: slotReason,
+        };
+      });
+    }
+
+    return {
+      available,
+      reason,
+      workspaceInstanceId: targetInstanceId,
+      slots,
+    };
+  }
+
+  async listEndedReservationsForSurvey(nowIso: string): Promise<EndedReservationForSurvey[]> {
+    const reservations = await this.request<any[]>(
+      `/reservations?select=id,reference_code,customer_email,customer_first_name,customer_last_name,status,created_at,checked_out_at&status=in.(CONFIRMED,CHECKED_IN,COMPLETED)&order=created_at.desc&limit=100`
+    );
+
+    if (!Array.isArray(reservations) || reservations.length === 0) {
+      return [];
+    }
+
+    const resIds = reservations.map((r) => r.id);
+    const candidates = await this.request<any[]>(
+      `/reservation_candidates?select=*&reservation_id=in.(${resIds.map(encodeURIComponent).join(",")})&is_assigned=eq.true`
+    );
+
+    const instances = await this.request<any[]>("/workspace_instances?select=id,display_name,instance_code,template_id,floor_id");
+    const templates = await this.request<any[]>("/workspace_templates?select=id,name");
+    const floors = await this.request<any[]>("/floors?select=id,name");
+
+    const instanceMap = new Map(instances.map((i) => [i.id, i]));
+    const templateMap = new Map(templates.map((t) => [t.id, t]));
+    const floorMap = new Map(floors.map((f) => [f.id, f]));
+    const candidateMap = new Map(candidates.map((c) => [c.reservation_id, c]));
+
+    const results: EndedReservationForSurvey[] = [];
+    const nowMs = new Date(nowIso).getTime();
+
+    for (const r of reservations) {
+      const cand = candidateMap.get(r.id);
+      const endMs = cand?.end_at ? new Date(cand.end_at).getTime() : 0;
+      const isEnded = r.status === "COMPLETED" || (endMs > 0 && endMs <= nowMs);
+
+      if (isEnded) {
+        const inst = cand ? instanceMap.get(cand.workspace_instance_id) : null;
+        const tpl = inst ? templateMap.get(inst.template_id) : null;
+        const fl = inst ? floorMap.get(inst.floor_id) : null;
+
+        results.push({
+          id: r.id,
+          referenceCode: r.reference_code,
+          customerEmail: r.customer_email,
+          customerFirstName: r.customer_first_name,
+          customerLastName: r.customer_last_name,
+          status: r.status,
+          workspaceDisplayName: inst?.display_name || inst?.instance_code || "Workspace",
+          workspaceTemplateName: tpl?.name || "Desk",
+          floorName: fl?.name || "Main Floor",
+          bookingStartAt: cand?.start_at,
+          bookingEndAt: cand?.end_at,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async hasSurveyEmailBeenDispatched(reservationId: string): Promise<boolean> {
+    try {
+      const logs = await this.request<any[]>(
+        `/audit_logs?select=id&action=eq.SURVEY_EMAIL_DISPATCHED&entity_id=eq.${encodeURIComponent(reservationId)}&limit=1`
+      );
+      return Array.isArray(logs) && logs.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async recordSurveyEmailDispatched(reservationId: string, metadata?: Record<string, any>): Promise<void> {
+    await this.request("/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        actor_user_id: null,
+        actor_role: "SYSTEM",
+        action: "SURVEY_EMAIL_DISPATCHED",
+        entity_type: "reservation",
+        entity_id: reservationId,
+        metadata: metadata ?? {},
+      }),
+    });
+  }
+
+  async markReservationCompleted(reservationId: string, completedAt: string): Promise<void> {
+    await this.request(`/reservations?id=eq.${encodeURIComponent(reservationId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "COMPLETED",
+        checked_out_at: completedAt,
+        updated_at: completedAt,
+      }),
+    });
   }
 }
 

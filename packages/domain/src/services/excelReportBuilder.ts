@@ -788,7 +788,25 @@ function applyCardBorder(sheet: ExcelJS.Worksheet, rangeStr: string, borderColor
   }
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, timezone = "Asia/Manila"): string {
   if (!iso) return "";
-  return iso.replace("T", " ").slice(0, 16);
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.replace("T", " ").slice(0, 16);
+    const dateStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(d);
+    const timeStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(d);
+    return `${dateStr}, ${timeStr}`;
+  } catch {
+    return iso.replace("T", " ").slice(0, 16);
+  }
 }

@@ -105,18 +105,38 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // 5. Successfully bootstrapped or verified!
-        setStatus('success');
-        login('admin', data.user?.displayName || 'Admin', {
-          id: data.user?.id,
-          email: data.user?.email,
-          token: data.token || token,
-        });
+        // 5. Successfully authenticated with Google!
+        // Save pending setup state and route to mandatory password creation (MF-67)
+        const finalUserId = data.user?.id || userId;
+        const finalEmail = data.user?.email || email;
+        const finalDisplayName = data.user?.displayName || displayName;
+        const finalToken = data.token || token;
 
-        // Redirect to admin dashboard
+        if (typeof window !== 'undefined') {
+          try {
+            sessionStorage.setItem(
+              'da_admin_setup_user',
+              JSON.stringify({
+                userId: finalUserId,
+                email: finalEmail,
+                displayName: finalDisplayName,
+                token: finalToken,
+              })
+            );
+          } catch (e) {
+            // ignore session storage error
+          }
+        }
+
+        setStatus('success');
+
+        // Redirect to mandatory password creation screen
         setTimeout(() => {
-          router.push('/manage');
-        }, 800);
+          const queryParams = new URLSearchParams();
+          if (finalUserId) queryParams.set('userId', finalUserId);
+          if (finalEmail) queryParams.set('email', finalEmail);
+          router.push(`/manage/setup/password?${queryParams.toString()}`);
+        }, 600);
       } catch (err: any) {
         setStatus('error');
         setErrorMessage(err?.message || 'Unexpected error processing Google OAuth callback.');
@@ -202,10 +222,10 @@ export default function AuthCallbackPage() {
               </svg>
             </div>
             <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#f8fafc', margin: '0 0 8px' }}>
-              Setup Complete!
+              Google Account Verified!
             </h2>
             <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
-              Administrator account initialized. Redirecting to management portal...
+              Redirecting to administrator password setup...
             </p>
           </>
         )}

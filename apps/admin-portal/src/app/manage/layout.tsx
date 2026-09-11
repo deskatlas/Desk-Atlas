@@ -248,7 +248,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div className="mobile-hide" style={{ display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '7px 12px', fontSize: '12px', fontWeight: 600, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
               <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '3px' }}></div>
-              {currentTime ? `${currentTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${currentTime.toLocaleTimeString('en-US', { hour12: false })}` : 'Loading...'}
+              {currentTime ? `${currentTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}` : 'Loading...'}
             </div>
             <NotificationCenter />
             <div onClick={logout} style={{ display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: '14px', borderLeft: '1px solid var(--da-border)', cursor: 'pointer' }}>
@@ -278,7 +278,13 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
   // but for login, we should probably bypass it.
   
   const pathname = usePathname();
-  const isPublicAuthRoute = pathname === '/manage/login' || pathname === '/manage/setup' || pathname?.startsWith('/manage/auth');
+  const isPublicAuthRoute =
+    pathname === '/manage/login' ||
+    pathname === '/manage/setup' ||
+    pathname === '/manage/forgot-password' ||
+    pathname === '/manage/reset-password' ||
+    pathname?.startsWith('/manage/setup') ||
+    pathname?.startsWith('/manage/auth');
 
   return (
     <AuthProvider>

@@ -55,6 +55,8 @@
     "test:mf64": "vitest run tests/mf64-remove-custom-start-time.test.ts",
     "test:mf65": "vitest run tests/mf65-workspace-operational-status.test.ts",
     "test:mf66": "vitest run tests/mf66-early-checkout-fix.test.ts",
+    "test:mf67": "vitest run tests/mf67-initial-admin-password-creation.test.ts",
+    "test:mf68": "vitest run tests/mf68-password-input-eye-toggle.test.ts",
     "test:mf41": "vitest run tests/t12-customer-reserve-ui-integration.test.ts",
     "test:mf20": "vitest run tests/t03-availability-business-hours.test.ts",
     "test:mf21": "vitest run tests/mf64-remove-custom-start-time.test.ts",

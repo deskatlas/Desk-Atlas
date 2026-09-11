@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
         paymentUrl: reservation.paymentSession.paymentUrl,
         expiresAt: reservation.paymentSession.expiresAt,
         trackingUrl,
+        workspaceTemplateName: reservation.candidates?.[0]?.workspaceTemplateName,
+        bookingDate: reservation.candidates?.[0]?.startAt,
       });
     }
 
@@ -101,6 +103,14 @@ export async function POST(request: NextRequest) {
       customerLastName: reservation.customerLastName,
       referenceCode: reservation.referenceCode,
       trackingUrl,
+      candidates: reservation.candidates?.map((c) => ({
+        rank: c.rank,
+        workspaceDisplayName: c.workspaceDisplayName,
+        workspaceTemplateName: c.workspaceTemplateName,
+        floorName: c.floorName,
+        startAt: c.startAt,
+        endAt: c.endAt,
+      })),
     });
 
     return NextResponse.json(reservation, { status: 201 });
