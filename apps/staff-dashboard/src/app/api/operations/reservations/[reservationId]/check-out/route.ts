@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  createBookingSurveyService,
   createStaffOperationsService,
   ReservationSupabaseRepository,
   StaffOperationsConflictError,
@@ -61,6 +62,16 @@ export async function POST(
         role: actorRole,
       },
     });
+
+    try {
+      const surveyService = createBookingSurveyService(new ReservationSupabaseRepository(), {
+        surveyFormUrl: process.env.SURVEY_FORM_URL || process.env.NEXT_PUBLIC_SURVEY_FORM_URL,
+        bookAgainUrl: process.env.DESKATLAS_PUBLIC_APP_URL,
+      });
+      await surveyService.sendSurveyForReservation(result.reservationId);
+    } catch (surveyErr) {
+      console.warn("[CheckOut] Failed to dispatch survey email:", surveyErr);
+    }
 
     return NextResponse.json(result);
   } catch (error) {

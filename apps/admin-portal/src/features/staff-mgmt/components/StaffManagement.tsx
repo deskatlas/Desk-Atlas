@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import type { StaffMember, StaffRole } from '@deskatlas/domain';
 import { validatePassword } from '@deskatlas/domain';
-import { PasswordRequirementsChecklist } from '@deskatlas/ui';
+import { PasswordRequirementsChecklist, PasswordInput } from '@deskatlas/ui';
 import { useAuth } from '@/features/auth';
 
 export function StaffManagement() {
@@ -529,8 +529,7 @@ export function StaffManagement() {
 
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>INITIAL PASSWORD (OPTIONAL)</label>
-                    <input
-                      type="password"
+                    <PasswordInput
                       value={addPassword}
                       onChange={(e) => setAddPassword(e.target.value)}
                       placeholder="Leave blank or minimum 8 characters"
@@ -640,8 +639,7 @@ export function StaffManagement() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>RESET PASSWORD (OPTIONAL)</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={managePassword}
                   onChange={(e) => setManagePassword(e.target.value)}
                   placeholder="Leave blank to keep current password"

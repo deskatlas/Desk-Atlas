@@ -120,6 +120,22 @@ CREATE POLICY p_staff_invitations_anon_token_read ON public.staff_invitations
   TO anon, authenticated
   USING (status = 'PENDING');
 
+-- admin_password_resets
+ALTER TABLE public.admin_password_resets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS p_admin_password_resets_admin_all ON public.admin_password_resets;
+CREATE POLICY p_admin_password_resets_admin_all ON public.admin_password_resets
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS p_admin_password_resets_anon_token_read ON public.admin_password_resets;
+CREATE POLICY p_admin_password_resets_anon_token_read ON public.admin_password_resets
+  FOR SELECT
+  TO anon, authenticated
+  USING (status = 'PENDING');
+
 -- workspace_templates
 ALTER TABLE public.workspace_templates ENABLE ROW LEVEL SECURITY;
 

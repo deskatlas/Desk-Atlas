@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
+  buildReservationTrackingUrl,
   createPaymentSessionService,
+  createTransactionalEmailService,
   PaymentSessionError,
   ReservationSupabaseRepository,
 } from "@deskatlas/domain";
@@ -88,6 +90,27 @@ export async function POST(
       paymentMethodId,
       proofStoragePath: uploadedPath,
     });
+
+    try {
+      const trackingBaseUrl =
+        process.env.TRACKING_BASE_URL ??
+        process.env.DESKATLAS_PUBLIC_APP_URL ??
+        request.nextUrl.origin.replace(/\/$/, "");
+      const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, session.reservationReferenceCode);
+      const emailService = createTransactionalEmailService();
+
+      if (session.customerEmail) {
+        await emailService.sendPaymentProofReceivedEmail({
+          to: session.customerEmail,
+          customerFirstName: session.customerFirstName,
+          customerLastName: session.customerLastName,
+          referenceCode: session.reservationReferenceCode,
+          trackingUrl,
+        });
+      }
+    } catch (emailErr) {
+      console.warn("[ProofSubmission] Failed to dispatch proof received email:", emailErr);
+    }
 
     return NextResponse.json(submission, { status: 201 });
   } catch (error) {

@@ -20,7 +20,7 @@ import {
   ReservationResponseDTO,
   StaffOperationalReservation,
 } from "../models/reservation";
-import { AdminReservationRepository } from "./adminReservationRepository";
+import { AdminReservationRepository, RescheduleSlotAvailability } from "./adminReservationRepository";
 import {
   formatAmountWithCurrency,
   formatDuration,
@@ -42,6 +42,8 @@ import {
   GuestReservationTrackingRecord,
   GuestReservationTrackingRepository,
 } from "./guestReservationTrackingRepository";
+import { BookingSurveyRepository, EndedReservationForSurvey } from "./bookingSurveyService";
+import { zonedDateTimeToUtc } from "./availabilityService";
 import { ReservationPaymentRepository, CreateWebPaymentSessionInput } from "./paymentSessionRepository";
 import { PaymentReviewRepository } from "./paymentReviewRepository";
 import { ReportsRepository } from "./reportsRepository";
@@ -77,7 +79,8 @@ export class ReservationMemoryRepository
   StaffOperationsRepository,
   GuestReservationTrackingRepository,
   ReportsRepository,
-  AdminReservationRepository {
+  AdminReservationRepository,
+  BookingSurveyRepository {
   private reservations: ReservationResponseDTO[] = [];
   private paymentAttempts = new Map<string, StoredPaymentAttempt>();
   private bookingScanEvents: Array<{
@@ -86,6 +89,7 @@ export class ReservationMemoryRepository
     accessState: BookingAccessState;
   }> = [];
   private operationalAuditEvents: OperationalActivityRecord[] = [];
+  private surveyDispatchedReservationIds = new Set<string>();
   private operationQueue = Promise.resolve();
   private nextApprovalFailureMessage: string | null = null;
   private businessName: string = "DeskAtlas";
@@ -1413,11 +1417,18 @@ export class ReservationMemoryRepository
     }
 
     if (r.status === "CANCELLED") {
-      timeline.push(`${formatTimelineDate(r.updatedAt)} - Reservation cancelled`);
+      const cancelReasonStr = (r as any).cancellationReason ? ` (${(r as any).cancellationReason})` : "";
+      timeline.push(`${formatTimelineDate((r as any).cancelledAt || r.updatedAt)} - Reservation cancelled${cancelReasonStr}`);
     } else if (r.status === "EXPIRED") {
       timeline.push(`${formatTimelineDate(r.updatedAt)} - Payment session expired (${expiryReason ?? "Window elapsed"})`);
     } else if (r.status === "NEEDS_MANUAL_RESOLUTION") {
       timeline.push(`${formatTimelineDate(r.updatedAt)} - Needs manual resolution`);
+    }
+
+    if ((r as any).rescheduledAt) {
+      timeline.push(
+        `${formatTimelineDate((r as any).rescheduledAt)} - Rescheduled by Admin to ${schedule}`
+      );
     }
 
     const formattedPaymentStatus = `${pres.payment} (${formatAmountWithCurrency(r.amountDue, r.currency)})`;
@@ -1466,8 +1477,310 @@ export class ReservationMemoryRepository
       paymentMethodDisplayName: detailMethod?.displayName ?? null,
       proofSubmittedAt,
       expiryReason,
+      cancellationReason: (r as any).cancellationReason ?? null,
+      cancelledAt: (r as any).cancelledAt ?? null,
       paymentAttempts: paymentAttemptsSummary,
     };
+  }
+
+  async cancelReservation(input: {
+    reservationId: string;
+    reason: string;
+    notes?: string;
+    actorUserId?: string;
+    actorRole?: string;
+  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const nowIso = this.nowProvider().toISOString();
+    const fullReason = input.notes ? `${input.reason} - ${input.notes}` : input.reason;
+
+    r.status = "CANCELLED";
+    r.updatedAt = nowIso;
+    r.qrRevokedAt = nowIso;
+    (r as any).cancelledAt = nowIso;
+    (r as any).cancellationReason = fullReason;
+    (r as any).cancelledByUserId = input.actorUserId ?? null;
+
+    if (r.candidates) {
+      for (const c of r.candidates) {
+        c.isAssigned = false;
+      }
+    }
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to retrieve updated reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      message: "Reservation cancelled successfully",
+    };
+  }
+
+  async rescheduleReservation(input: {
+    reservationId: string;
+    startAt: string;
+    endAt: string;
+    workspaceInstanceId?: string;
+    actorUserId?: string;
+    actorRole?: string;
+  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    if (r.status === "CANCELLED" || r.status === "EXPIRED") {
+      throw new Error(`Cannot reschedule a ${r.status.toLowerCase()} reservation`);
+    }
+
+    const candidates = r.candidates ?? [];
+    const assigned = candidates.find((c) => c.isAssigned) ?? candidates[0];
+    const targetInstanceId = input.workspaceInstanceId || assigned?.workspaceInstanceId;
+
+    if (!targetInstanceId) {
+      throw new Error("Target workspace instance not specified");
+    }
+
+    const newStartMs = new Date(input.startAt).getTime();
+    const newEndMs = new Date(input.endAt).getTime();
+    const nowMs = this.nowProvider().getTime();
+
+    if (newStartMs < nowMs) {
+      throw new Error("Cannot reschedule to a past date or time.");
+    }
+
+    // Check conflict with other reservations
+    for (const other of this.reservations) {
+      if (other.id === r.id || other.status === "CANCELLED" || other.status === "EXPIRED") {
+        continue;
+      }
+      for (const otherCand of other.candidates ?? []) {
+        if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== targetInstanceId) {
+          continue;
+        }
+        const otherStartMs = new Date(otherCand.startAt).getTime();
+        const otherEndMs = new Date(otherCand.endAt).getTime();
+        if (newStartMs < otherEndMs && newEndMs > otherStartMs) {
+          throw new Error("Selected workspace slot is already booked for this time window");
+        }
+      }
+    }
+
+    const oldSchedule = formatSchedule(assigned?.startAt, assigned?.endAt);
+    const nowIso = this.nowProvider().toISOString();
+
+    if (assigned) {
+      assigned.startAt = input.startAt;
+      assigned.endAt = input.endAt;
+      assigned.workspaceInstanceId = targetInstanceId;
+      assigned.isAssigned = true;
+    }
+
+    r.updatedAt = nowIso;
+    (r as any).rescheduledAt = nowIso;
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to retrieve updated reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      oldSchedule,
+      message: "Reservation rescheduled successfully",
+    };
+  }
+
+  async checkRescheduleAvailability(input: {
+    reservationId: string;
+    startAt?: string;
+    endAt?: string;
+    date?: string;
+    durationHours?: number;
+    workspaceInstanceId?: string;
+  }): Promise<{
+    available: boolean;
+    reason?: string;
+    workspaceInstanceId?: string;
+    workspaceDisplayName?: string;
+    slots?: RescheduleSlotAvailability[];
+  }> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+
+    const targetInstanceId =
+      input.workspaceInstanceId ||
+      r?.candidates?.find((c) => c.isAssigned)?.workspaceInstanceId ||
+      r?.candidates?.[0]?.workspaceInstanceId ||
+      "spot-1";
+
+    let available = true;
+    let reason: string | undefined;
+    const nowMs = this.nowProvider().getTime();
+
+    if (input.startAt && input.endAt) {
+      const newStartMs = new Date(input.startAt).getTime();
+      const newEndMs = new Date(input.endAt).getTime();
+
+      if (newStartMs < nowMs) {
+        available = false;
+        reason = "Cannot reschedule to a past date or time";
+      } else {
+        for (const other of this.reservations) {
+          if (other.id === r?.id || other.status === "CANCELLED" || other.status === "EXPIRED") {
+            continue;
+          }
+          for (const otherCand of other.candidates ?? []) {
+            if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== targetInstanceId) {
+              continue;
+            }
+            const otherStartMs = new Date(otherCand.startAt).getTime();
+            const otherEndMs = new Date(otherCand.endAt).getTime();
+            if (newStartMs < otherEndMs && newEndMs > otherStartMs) {
+              available = false;
+              reason = "Spot is occupied during this time window";
+              break;
+            }
+          }
+          if (!available) break;
+        }
+      }
+    }
+
+    // Compute slots for date
+    let slots: RescheduleSlotAvailability[] | undefined;
+    const targetDate = input.date || (input.startAt ? input.startAt.split("T")[0] : undefined);
+    const duration = input.durationHours || 2;
+
+    if (targetDate) {
+      const timeOptions = [
+        '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
+        '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'
+      ];
+
+      slots = timeOptions.map((time) => {
+        const [h, m] = time.split(":").map(Number);
+        const slotStart = zonedDateTimeToUtc(targetDate, time, "Asia/Manila");
+        const slotEnd = new Date(slotStart.getTime() + duration * 60 * 60 * 1000);
+        const startMs = slotStart.getTime();
+        const endMs = slotEnd.getTime();
+
+        const endHour = h + duration;
+        const endTime = `${String(endHour).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+        let slotAvailable = true;
+        let slotReason: string | undefined;
+
+        if (startMs < nowMs) {
+          slotAvailable = false;
+          slotReason = "Past";
+        } else {
+          for (const other of this.reservations) {
+            if (other.id === r?.id || other.status === "CANCELLED" || other.status === "EXPIRED") {
+              continue;
+            }
+            for (const otherCand of other.candidates ?? []) {
+              if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== targetInstanceId) {
+                continue;
+              }
+              const otherStartMs = new Date(otherCand.startAt).getTime();
+              const otherEndMs = new Date(otherCand.endAt).getTime();
+              if (startMs < otherEndMs && endMs > otherStartMs) {
+                slotAvailable = false;
+                slotReason = "Booked";
+                break;
+              }
+            }
+            if (!slotAvailable) break;
+          }
+        }
+
+        return {
+          startTime: time,
+          endTime,
+          startAt: slotStart.toISOString(),
+          endAt: slotEnd.toISOString(),
+          isAvailable: slotAvailable,
+          reason: slotReason,
+        };
+      });
+    }
+
+    return {
+      available,
+      reason,
+      workspaceInstanceId: targetInstanceId,
+      workspaceDisplayName: targetInstanceId,
+      slots,
+    };
+  }
+
+  async listEndedReservationsForSurvey(nowIso: string): Promise<EndedReservationForSurvey[]> {
+    const results: EndedReservationForSurvey[] = [];
+    const nowMs = new Date(nowIso).getTime();
+
+    for (const r of this.reservations) {
+      if (!["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(r.status)) {
+        continue;
+      }
+
+      const assignedCandidate =
+        r.candidates?.find((c) => c.isAssigned) ||
+        r.candidates?.[0];
+
+      const endMs = assignedCandidate?.endAt ? new Date(assignedCandidate.endAt).getTime() : 0;
+      const isEnded = r.status === "COMPLETED" || (endMs > 0 && endMs <= nowMs);
+
+      if (isEnded) {
+        results.push({
+          id: r.id,
+          referenceCode: r.referenceCode,
+          customerEmail: r.customerEmail,
+          customerFirstName: r.customerFirstName,
+          customerLastName: r.customerLastName,
+          status: r.status,
+          workspaceDisplayName: assignedCandidate?.workspaceDisplayName || "Workspace",
+          workspaceTemplateName: assignedCandidate?.workspaceTemplateName || "Desk",
+          floorName: assignedCandidate?.floorName || "Main Floor",
+          bookingStartAt: assignedCandidate?.startAt,
+          bookingEndAt: assignedCandidate?.endAt,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async hasSurveyEmailBeenDispatched(reservationId: string): Promise<boolean> {
+    return this.surveyDispatchedReservationIds.has(reservationId);
+  }
+
+  async recordSurveyEmailDispatched(reservationId: string, metadata?: Record<string, any>): Promise<void> {
+    this.surveyDispatchedReservationIds.add(reservationId);
+  }
+
+  async markReservationCompleted(reservationId: string, completedAt: string): Promise<void> {
+    const res = this.reservations.find((r) => r.id === reservationId);
+    if (res) {
+      res.status = "COMPLETED";
+      res.checkedOutAt = completedAt;
+      res.updatedAt = completedAt;
+    }
   }
 }
 

@@ -2,14 +2,17 @@ import {
   AdminAlreadyExistsError,
   AdminSetupError,
   AdminSetupInput,
+  AdminSetupPasswordInput,
   AdminSetupStatus,
   StaffProfile,
 } from '../models/staffProfile';
+import { assertValidPassword } from './passwordPolicyService';
 
 export interface StaffRepository {
   hasAdmin(): Promise<boolean>;
   bootstrapInitialAdmin(input: AdminSetupInput): Promise<StaffProfile>;
   getProfileByUserId(userId: string): Promise<StaffProfile | null>;
+  setAdminPassword(userId: string, password: string): Promise<boolean>;
 }
 
 export class InMemoryStaffRepository implements StaffRepository {
@@ -56,9 +59,21 @@ export class InMemoryStaffRepository implements StaffRepository {
     return p ? { ...p } : null;
   }
 
+  private passwords: Map<string, string> = new Map();
+
+  async setAdminPassword(userId: string, password: string): Promise<boolean> {
+    this.passwords.set(userId, password);
+    return true;
+  }
+
+  getPasswordByUserId(userId: string): string | undefined {
+    return this.passwords.get(userId);
+  }
+
   // Test helper
   clear() {
     this.profiles.clear();
+    this.passwords.clear();
   }
 }
 
@@ -251,6 +266,34 @@ export class SupabaseStaffRepository implements StaffRepository {
       return null;
     }
   }
+
+  async setAdminPassword(userId: string, password: string): Promise<boolean> {
+    if (!this.supabaseUrl || !this.serviceRoleKey) {
+      throw new AdminSetupError('Supabase configuration missing', 500);
+    }
+
+    try {
+      const res = await fetch(`${this.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        headers: {
+          apikey: this.serviceRoleKey,
+          Authorization: `Bearer ${this.serviceRoleKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password }),
+      });
+
+      if (!res.ok) {
+        const errDetail = await res.text();
+        throw new AdminSetupError(`Failed to update admin password: ${errDetail}`, res.status);
+      }
+
+      return true;
+    } catch (err: any) {
+      if (err instanceof AdminSetupError) throw err;
+      throw new AdminSetupError(`Failed to set admin password: ${err?.message || 'Unknown error'}`, 500);
+    }
+  }
 }
 
 export class StaffService {
@@ -289,6 +332,48 @@ export class StaffService {
       email,
       displayName: input.displayName?.trim(),
     });
+  }
+
+  async setupInitialAdminPassword(input: AdminSetupPasswordInput): Promise<StaffProfile> {
+    if (!input.userId || !input.userId.trim()) {
+      throw new AdminSetupError('User ID is required for password initialization', 400);
+    }
+
+    const email = input.email ? input.email.trim().toLowerCase() : '';
+    if (!email || !email.includes('@') || email.length < 5) {
+      throw new AdminSetupError('A valid email address is required', 400);
+    }
+
+    // Strict MF-46 password policy enforcement
+    assertValidPassword(input.password);
+
+    const existing = await this.repository.getProfileByUserId(input.userId.trim());
+    let profile: StaffProfile;
+
+    if (existing) {
+      if (existing.role !== 'ADMIN' || !existing.isActive) {
+        throw new AdminSetupError('Profile is not an active administrator', 403);
+      }
+      profile = existing;
+    } else {
+      // Check single-use guard
+      const hasAdmin = await this.repository.hasAdmin();
+      if (hasAdmin) {
+        throw new AdminAlreadyExistsError('Administrator account already exists. Setup is sealed.');
+      }
+
+      profile = await this.repository.bootstrapInitialAdmin({
+        userId: input.userId.trim(),
+        email,
+        displayName: input.displayName?.trim(),
+        provider: 'google',
+      });
+    }
+
+    // Update password in Auth provider
+    await this.repository.setAdminPassword(input.userId.trim(), input.password);
+
+    return profile;
   }
 
   async getProfile(userId: string): Promise<StaffProfile | null> {

@@ -532,9 +532,27 @@ function rangesOverlap(
   return leftStart.getTime() < rightEnd.getTime() && leftEnd.getTime() > rightStart.getTime();
 }
 
-function zonedDateTimeToUtc(date: string, time: string, timezone: string): Date {
+export function parseTimeToHoursAndMinutes(timeStr: string): { hours: number; minutes: number } {
+  const trimmed = (timeStr || '').trim();
+  const isPm = /pm/i.test(trimmed);
+  const isAm = /am/i.test(trimmed);
+  const cleanTime = trimmed.replace(/[^\d:]/g, '');
+  const [hStr, mStr] = cleanTime.split(':');
+  let hours = Number(hStr) || 0;
+  const minutes = Number(mStr) || 0;
+
+  if (isPm && hours < 12) {
+    hours += 12;
+  } else if (isAm && hours === 12) {
+    hours = 0;
+  }
+
+  return { hours, minutes };
+}
+
+export function zonedDateTimeToUtc(date: string, time: string, timezone: string): Date {
   const [year, month, day] = date.split('-').map(Number);
-  const [hours, minutes] = time.split(':').map(Number);
+  const { hours, minutes } = parseTimeToHoursAndMinutes(time);
   let utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, 0);
 
   for (let iteration = 0; iteration < 2; iteration += 1) {
@@ -545,7 +563,7 @@ function zonedDateTimeToUtc(date: string, time: string, timezone: string): Date 
   return new Date(utcTimestamp);
 }
 
-function getTimezoneOffsetMinutes(date: Date, timezone: string): number {
+export function getTimezoneOffsetMinutes(date: Date, timezone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     year: 'numeric',

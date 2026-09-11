@@ -128,10 +128,39 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
+function formatDateTime(value: string, timezone = "Asia/Manila") {
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    const dateStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(d);
+    const timeStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(d);
+    return `${dateStr}, ${timeStr}`;
+  } catch {
+    return value;
+  }
 }
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString();
+function formatTime(value: string, timezone = "Asia/Manila") {
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(d);
+  } catch {
+    return value;
+  }
 }

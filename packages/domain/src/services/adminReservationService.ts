@@ -8,8 +8,23 @@ import {
   ReservationResponseDTO,
   ReservationStatus,
 } from "../models/reservation";
-import { AdminReservationRepository } from "./adminReservationRepository";
+import {
+  AdminReservationRepository,
+  CancelReservationInput,
+  RescheduleReservationInput,
+  CheckRescheduleAvailabilityInput,
+  RescheduleAvailabilityResult,
+} from "./adminReservationRepository";
 import { filterReservationsBySearch } from "./reservationSearch";
+import {
+  AdminReservationAdvancedFilters,
+  filterReservations,
+} from "./reservationFilters";
+import {
+  TransactionalEmailService,
+  createTransactionalEmailService,
+  buildReservationTrackingUrl,
+} from "./transactionalEmailService";
 
 export class AdminReservationError extends Error {
   constructor(message: string) {
@@ -19,15 +34,22 @@ export class AdminReservationError extends Error {
 }
 
 export class AdminReservationService {
+  private readonly emailService: TransactionalEmailService;
+
   constructor(
     private readonly repository: AdminReservationRepository,
-    private readonly nowProvider: () => Date = () => new Date()
-  ) {}
+    private readonly nowProvider: () => Date = () => new Date(),
+    emailService?: TransactionalEmailService
+  ) {
+    this.emailService = emailService ?? createTransactionalEmailService();
+  }
 
   async listReservations(
     filter: AdminReservationFilter = "active",
-    search?: string
+    search?: string,
+    advancedFilters?: AdminReservationAdvancedFilters
   ): Promise<{ reservations: AdminReservationSummary[]; total: number }> {
+
     const list = await this.repository.listAdminReservations();
     const now = this.nowProvider();
     const nowMs = now.getTime();
@@ -100,6 +122,10 @@ export class AdminReservationService {
     }
     // "all": retains all items in mappedList (both active and expired)
 
+    if (advancedFilters) {
+      filtered = filterReservations(filtered, advancedFilters, now);
+    }
+
     if (search && search.trim() !== "") {
       filtered = filterReservationsBySearch(filtered, search);
     }
@@ -161,13 +187,129 @@ export class AdminReservationService {
 
     return detail;
   }
+
+  async cancelReservation(input: {
+    reservationId: string;
+    reason: string;
+    notes?: string;
+    actorUserId?: string;
+    actorRole?: string;
+  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (!input.reason || input.reason.trim() === "") {
+      throw new AdminReservationError("Cancellation reason is required.");
+    }
+
+    const result = await this.repository.cancelReservation({
+      reservationId: input.reservationId.trim(),
+      reason: input.reason.trim(),
+      notes: input.notes?.trim(),
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole ?? "ADMIN",
+    });
+
+    if (result.reservation && result.reservation.customerEmail) {
+      try {
+        const trackingUrl = buildReservationTrackingUrl(
+          process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
+          result.reservation.referenceCode
+        );
+        const effectiveCandidate = result.reservation.assignedCandidate || result.reservation.candidates[0];
+        await this.emailService.sendReservationCancelledEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          cancellationReason: input.reason.trim(),
+          cancellationNotes: input.notes?.trim(),
+          schedule: result.reservation.schedule,
+          workspaceDisplayName: effectiveCandidate?.workspaceDisplayName || "Workspace Spot",
+          trackingUrl,
+        });
+      } catch (emailErr: any) {
+        console.warn("[AdminReservationService] Failed to send cancellation email:", emailErr?.message);
+      }
+    }
+
+    return result;
+  }
+
+  async rescheduleReservation(input: {
+    reservationId: string;
+    startAt: string;
+    endAt: string;
+    workspaceInstanceId?: string;
+    actorUserId?: string;
+    actorRole?: string;
+  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (!input.startAt || !input.endAt) {
+      throw new AdminReservationError("Start time and end time are required.");
+    }
+    const startMs = new Date(input.startAt).getTime();
+    const endMs = new Date(input.endAt).getTime();
+    if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
+      throw new AdminReservationError("End time must be strictly after start time.");
+    }
+
+    const result = await this.repository.rescheduleReservation({
+      reservationId: input.reservationId.trim(),
+      startAt: input.startAt,
+      endAt: input.endAt,
+      workspaceInstanceId: input.workspaceInstanceId,
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole ?? "ADMIN",
+    });
+
+    if (result.reservation && result.reservation.customerEmail) {
+      try {
+        const trackingUrl = buildReservationTrackingUrl(
+          process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
+          result.reservation.referenceCode
+        );
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates[0];
+        await this.emailService.sendReservationRescheduledEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          oldSchedule: (result as any).oldSchedule || result.reservation.schedule,
+          newSchedule: formatSchedule(input.startAt, input.endAt),
+          workspaceDisplayName: assigned?.workspaceDisplayName || "Assigned Workspace",
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          floorName: assigned?.floorName || undefined,
+          bookingAccessUrl: result.reservation.bookingAccessUrl || undefined,
+          bookingToken: result.reservation.bookingToken || undefined,
+          trackingUrl,
+        });
+      } catch (emailErr: any) {
+        console.warn("[AdminReservationService] Failed to send rescheduled email:", emailErr?.message);
+      }
+    }
+
+    return result;
+  }
+
+  async checkRescheduleAvailability(
+    input: CheckRescheduleAvailabilityInput
+  ): Promise<RescheduleAvailabilityResult> {
+    if (!this.repository.checkRescheduleAvailability) {
+      return { available: true };
+    }
+    return this.repository.checkRescheduleAvailability(input);
+  }
 }
 
 export function createAdminReservationService(
   repository: AdminReservationRepository,
-  nowProvider?: () => Date
+  nowProvider?: () => Date,
+  emailService?: TransactionalEmailService
 ): AdminReservationService {
-  return new AdminReservationService(repository, nowProvider);
+  return new AdminReservationService(repository, nowProvider, emailService);
 }
 
 // Utility formatting helpers for repository implementations
@@ -262,7 +404,11 @@ export function formatInitials(first: string, last: string): string {
   return `${f}${l}`.toUpperCase() || "DA";
 }
 
-export function formatSchedule(startAt?: string | null, endAt?: string | null): string {
+export function formatSchedule(
+  startAt?: string | null,
+  endAt?: string | null,
+  timezone: string = "Asia/Manila"
+): string {
   if (!startAt || !endAt) {
     return "Schedule not set";
   }
@@ -270,17 +416,31 @@ export function formatSchedule(startAt?: string | null, endAt?: string | null): 
   try {
     const startDate = new Date(startAt);
     const endDate = new Date(endAt);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return `${startAt} - ${endAt}`;
+    }
 
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = monthNames[startDate.getUTCMonth()];
-    const day = startDate.getUTCDate();
+    const dateStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      month: "short",
+      day: "numeric",
+    }).format(startDate);
 
-    const startH = String(startDate.getUTCHours()).padStart(2, "0");
-    const startM = String(startDate.getUTCMinutes()).padStart(2, "0");
-    const endH = String(endDate.getUTCHours()).padStart(2, "0");
-    const endM = String(endDate.getUTCMinutes()).padStart(2, "0");
+    const startTimeStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(startDate);
 
-    return `${month} ${day}, ${startH}:${startM} - ${endH}:${endM}`;
+    const endTimeStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(endDate);
+
+    return `${dateStr}, ${startTimeStr} - ${endTimeStr}`;
   } catch {
     return `${startAt} - ${endAt}`;
   }
@@ -325,15 +485,27 @@ export function getCandidateColor(rank: CandidateRank): string {
   return "var(--da-text-secondary)";
 }
 
-export function formatTimelineDate(isoString: string): string {
+export function formatTimelineDate(isoString: string, timezone: string = "Asia/Manila"): string {
   try {
     const d = new Date(isoString);
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = monthNames[d.getUTCMonth()];
-    const day = d.getUTCDate();
-    const h = String(d.getUTCHours()).padStart(2, "0");
-    const m = String(d.getUTCMinutes()).padStart(2, "0");
-    return `${month} ${day}, ${h}:${m}`;
+    if (isNaN(d.getTime())) {
+      return isoString;
+    }
+
+    const dateStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      month: "short",
+      day: "numeric",
+    }).format(d);
+
+    const timeStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(d);
+
+    return `${dateStr}, ${timeStr}`;
   } catch {
     return isoString;
   }

@@ -20,6 +20,13 @@ export interface AdminSetupInput {
   provider?: string;
 }
 
+export interface AdminSetupPasswordInput {
+  userId: string;
+  email: string;
+  password: string;
+  displayName?: string;
+}
+
 export class AdminAlreadyExistsError extends Error {
   readonly statusCode = 403;
   constructor(message: string = 'Administrator account already exists. Setup is sealed.') {

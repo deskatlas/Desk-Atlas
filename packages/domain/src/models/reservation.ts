@@ -384,6 +384,9 @@ export interface AdminReservationSummary {
   paymentMethodId?: string | null;
   paymentMethodType?: PaymentMethodType | null;
   paymentMethodDisplayName?: string | null;
+  customerPhone?: string | null;
+  paymentAttemptStatus?: string | null;
+  amountPaid?: number | null;
 }
 
 export interface AdminReservationCandidateSummary {
@@ -458,6 +461,8 @@ export interface AdminReservationDetail {
   paymentMethodDisplayName?: string | null;
   proofSubmittedAt?: string | null;
   expiryReason?: string | null;
+  cancellationReason?: string | null;
+  cancelledAt?: string | null;
   paymentAttempts?: AdminReservationPaymentAttemptSummary[];
 }
 

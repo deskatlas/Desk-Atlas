@@ -3,7 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@deskatlas/ui';
-import { filterReservationsBySearch, type AdminReservationFilter, type AdminReservationSummary } from '@deskatlas/domain';
+import {
+  filterReservationsBySearch,
+  filterReservations,
+  countActiveFilters,
+  generateReservationsCsv,
+  generateReservationsCsvFilename,
+  type AdminReservationFilter,
+  type AdminReservationSummary,
+  type AdminReservationAdvancedFilters,
+} from '@deskatlas/domain';
+import { ReservationFilterModal } from './ReservationFilterModal';
 
 export function ReservationList() {
   const router = useRouter();
@@ -12,9 +22,24 @@ export function ReservationList() {
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState<boolean>(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdminReservationAdvancedFilters>({});
+  const [exporting, setExporting] = useState<boolean>(false);
   const { searchQuery } = useSearch();
 
-  const displayedReservations = filterReservationsBySearch(reservations, searchQuery);
+  const activeFilterCount = countActiveFilters(advancedFilters);
+
+  const searchFiltered = filterReservationsBySearch(reservations, searchQuery);
+  const displayedReservations = filterReservations(searchFiltered, advancedFilters);
+
+  // Extract unique available template names from loaded reservations
+  const availableTemplates = Array.from(
+    new Set(
+      reservations
+        .map((r) => r.workspaceTemplateName)
+        .filter((t): t is string => Boolean(t && t.trim() !== ""))
+    )
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -54,6 +79,27 @@ export function ReservationList() {
     };
   }, [activeFilter]);
 
+  const handleExport = () => {
+    try {
+      setExporting(true);
+      const csv = generateReservationsCsv(displayedReservations);
+      const filename = generateReservationsCsvFilename();
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const resFilters: Array<{ label: string; filter: AdminReservationFilter }> = [
     { label: 'Active', filter: 'active' },
     { label: 'All', filter: 'all' },
@@ -75,18 +121,60 @@ export function ReservationList() {
           <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>All bookings across floors and schedules</div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '7px', border: '1px solid var(--da-border)', background: '#fff', borderRadius: '9px', padding: '9px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', cursor: 'pointer', fontFamily: 'var(--da-font-family)' }}>
-            <div style={{ width: '11px', height: '11px', border: '2px solid var(--da-text-secondary)', borderRadius: '2px' }}></div>Filters
+          <button
+            type="button"
+            onClick={() => setIsFilterModalOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              border: activeFilterCount > 0 ? '1.5px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
+              background: activeFilterCount > 0 ? '#ECFDF5' : '#fff',
+              borderRadius: '9px',
+              padding: '9px 14px',
+              fontSize: '12px',
+              fontWeight: 700,
+              color: activeFilterCount > 0 ? 'var(--da-brand-dark)' : 'var(--da-text-primary)',
+              cursor: 'pointer',
+              fontFamily: 'var(--da-font-family)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <div style={{ width: '11px', height: '11px', border: `2px solid ${activeFilterCount > 0 ? 'var(--da-brand-dark)' : 'var(--da-text-secondary)'}`, borderRadius: '2px' }}></div>
+            Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
           </button>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '7px', background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)', color: '#fff', border: 'none', borderRadius: '9px', padding: '9px 16px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 10px 1px rgba(12,59,39,.16)' }}>Export</button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || displayedReservations.length === 0}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '9px',
+              padding: '9px 16px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: exporting || displayedReservations.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: exporting || displayedReservations.length === 0 ? 0.7 : 1,
+              boxShadow: '0 4px 10px 1px rgba(12,59,39,.16)',
+            }}
+          >
+            {exporting ? 'Exporting...' : 'Export'}
+          </button>
         </div>
       </div>
 
       <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', boxShadow: 'var(--da-shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '14px 20px', borderBottom: '1px solid var(--da-border-light)', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{searchQuery.trim() ? displayedReservations.length : totalCount}</span>
-            <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>reservations</span>
+            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{displayedReservations.length}</span>
+            <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
+              reservations {activeFilterCount > 0 || searchQuery.trim() ? `(filtered from ${totalCount})` : ''}
+            </span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {resFilters.map((f, i) => {
@@ -121,7 +209,7 @@ export function ReservationList() {
           </div>
         ) : displayedReservations.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
-            No reservations found.
+            No reservations match your filters.
           </div>
         ) : (
           displayedReservations.map((r, i) => (
@@ -148,7 +236,7 @@ export function ReservationList() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-            Showing {displayedReservations.length > 0 ? 1 : 0} to {displayedReservations.length} of {searchQuery.trim() ? displayedReservations.length : totalCount} entries
+            Showing {displayedReservations.length > 0 ? 1 : 0} to {displayedReservations.length} of {displayedReservations.length} entries
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             {pages.map((pg, i) => (
@@ -157,6 +245,16 @@ export function ReservationList() {
           </div>
         </div>
       </div>
+
+      <ReservationFilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        filters={advancedFilters}
+        onApply={(newFilters) => setAdvancedFilters(newFilters)}
+        onReset={() => setAdvancedFilters({})}
+        availableTemplates={availableTemplates.length > 0 ? availableTemplates : undefined}
+      />
     </main>
   );
 }
+

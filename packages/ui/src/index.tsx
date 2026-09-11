@@ -10,4 +10,6 @@ export { SearchProvider, useSearch } from './components/SearchContext';
 export type { SearchContextType, SearchProviderProps } from './components/SearchContext';
 export { NumericInput, handleNumericKeyDown, parseNumericInput } from './components/NumericInput';
 export type { NumericInputProps, NumericInputKeyOptions } from './components/NumericInput';
+export { PasswordInput } from './components/PasswordInput';
+export type { PasswordInputProps } from './components/PasswordInput';
 export const appShellClassName = 'min-h-screen bg-slate-950 text-slate-100';
