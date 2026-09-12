@@ -259,6 +259,7 @@ export interface BookingScanResult {
   checkedOutAt: string | null;
   qrIssuedAt: string;
   timeRemainingSeconds: number;
+  reentry?: boolean;
 }
 
 export interface StaffOperationalReservation {

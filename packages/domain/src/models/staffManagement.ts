@@ -23,6 +23,7 @@ export interface CreateStaffInvitationInput {
   password?: string;
   actorUserId?: string;
   actorRole?: StaffRole;
+  actorIsSuperAdmin?: boolean;
   invitationBaseUrl?: string;
 }
 
@@ -47,6 +48,7 @@ export interface StaffMember {
   createdAt: string;
   updatedAt: string;
   createdByAdminId?: string | null;
+  isSuperAdmin?: boolean;
   canDelete?: boolean;
   deleteBlockReason?: string;
 }
@@ -69,6 +71,7 @@ export interface CreateStaffInput {
   role: StaffRole;
   actorUserId?: string;
   actorRole?: StaffRole;
+  actorIsSuperAdmin?: boolean;
 }
 
 export interface UpdateStaffInput {
@@ -79,11 +82,13 @@ export interface UpdateStaffInput {
   password?: string;
   actorUserId?: string;
   actorRole?: StaffRole;
+  actorIsSuperAdmin?: boolean;
 }
 
 export interface StaffManagementActor {
   userId: string;
   role: StaffRole;
+  isSuperAdmin?: boolean;
 }
 
 export class StaffManagementError extends Error {

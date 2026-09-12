@@ -197,6 +197,27 @@ export function KioskScanner({ onCancel }: KioskScannerProps) {
               Reference: <strong style={{ color: "#0C3B27" }}>{bookingData.referenceCode}</strong>
             </div>
 
+            {bookingData.accessState === "ACTIVE" && !bookingData.reentry && bookingData.checkInState === "CHECKED_IN" && (
+              <div style={{ background: "#DCFCE7", color: "#166534", border: "1px solid #BBF7D0", padding: "12px 16px", borderRadius: "12px", fontSize: "15px", fontWeight: 600, marginBottom: "20px" }}>
+                Checked In: Guest successfully checked in.
+              </div>
+            )}
+            {bookingData.accessState === "ACTIVE" && bookingData.reentry && (
+              <div style={{ background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD", padding: "12px 16px", borderRadius: "12px", fontSize: "15px", fontWeight: 600, marginBottom: "20px" }}>
+                Active Guest (Re-entry): Guest is currently checked in. Re-entry authorized during active window.
+              </div>
+            )}
+            {bookingData.accessState === "NOT_ACTIVE" && (
+              <div style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", padding: "12px 16px", borderRadius: "12px", fontSize: "15px", fontWeight: 600, marginBottom: "20px" }}>
+                Too Early: Booking starts at {formatBookingTime(bookingData.bookingStartAt)}. Access is not yet active.
+              </div>
+            )}
+            {bookingData.accessState === "EXPIRED" && (
+              <div style={{ background: "#F1F5F9", color: "#475569", border: "1px solid #E2E8F0", padding: "12px 16px", borderRadius: "12px", fontSize: "15px", fontWeight: 600, marginBottom: "20px" }}>
+                Expired: Booking ended at {formatBookingTime(bookingData.bookingEndAt)}. Access is expired.
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "24px" }}>
               <div style={{ background: "#F8FAFC", padding: "12px 16px", borderRadius: "12px" }}>
                 <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 600, textTransform: "uppercase" }}>Guest</div>

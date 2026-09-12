@@ -517,7 +517,7 @@ export class ReservationSupabaseRepository
 
   async listPaymentReviewQueue(): Promise<PaymentReviewQueueItem[]> {
     const attempts = await this.request<any[]>(
-      "/payment_attempts?select=*&channel=eq.WEB&status=eq.UNDER_REVIEW&order=proof_submitted_at.asc"
+      "/payment_attempts?select=*&channel=eq.WEB&status=eq.UNDER_REVIEW&order=proof_submitted_at.asc.nullslast,created_at.asc"
     );
 
     const reviews = await Promise.all(
@@ -526,7 +526,15 @@ export class ReservationSupabaseRepository
 
     return reviews
       .filter((review): review is PaymentReviewDetail => review !== null)
-      .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, refundStatus: _refundStatus, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem);
+      .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, refundStatus: _refundStatus, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem)
+      .sort((a, b) => {
+        const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+        if (aTime !== bTime) {
+          return aTime - bTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
   }
 
   async getPaymentReviewDetail(paymentAttemptId: string): Promise<PaymentReviewDetail | null> {
@@ -610,7 +618,67 @@ export class ReservationSupabaseRepository
       throw new Error("Failed to confirm counter payment.");
     }
 
-    return this.mapDecisionResult(result[0]);
+    const decisionResult = this.mapDecisionResult(result[0]);
+
+    if (decisionResult.assignedCandidate) {
+      if (decisionResult.reservationStatus !== "CHECKED_IN") {
+        try {
+          await fetch(
+            `${this.restUrl}/reservations?id=eq.${encodeURIComponent(decisionResult.reservationId)}`,
+            {
+              method: "PATCH",
+              headers: {
+                apikey: this.serviceRoleKey,
+                Authorization: `Bearer ${this.serviceRoleKey}`,
+                "Content-Type": "application/json",
+                Prefer: "return=minimal",
+              },
+              cache: "no-store",
+              body: JSON.stringify({
+                status: "CHECKED_IN",
+                checked_in_at: input.processedAt,
+                updated_at: input.processedAt,
+              }),
+            }
+          );
+        } catch {
+          // fallback to returned DB state
+        }
+        decisionResult.reservationStatus = "CHECKED_IN";
+      }
+
+      // Record operational check-in audit log for activity feed
+      try {
+        await fetch(`${this.restUrl}/audit_logs`, {
+          method: "POST",
+          headers: {
+            apikey: this.serviceRoleKey,
+            Authorization: `Bearer ${this.serviceRoleKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          cache: "no-store",
+          body: JSON.stringify({
+            actor_user_id: input.actorUserId,
+            actor_role: "STAFF",
+            action: "reservation_checked_in",
+            entity_type: "reservation",
+            entity_id: decisionResult.reservationId,
+            metadata: {
+              source: "KIOSK",
+              auto_check_in: true,
+              workspace_instance_id: decisionResult.assignedCandidate.workspaceInstanceId,
+              start_at: decisionResult.assignedCandidate.startAt,
+              end_at: decisionResult.assignedCandidate.endAt,
+            },
+          }),
+        });
+      } catch {
+        // non-blocking
+      }
+    }
+
+    return decisionResult;
   }
 
   async issueBookingAccessToken(input: {
@@ -741,13 +809,53 @@ export class ReservationSupabaseRepository
     actorUserId?: string | null;
     actorRole?: "ADMIN" | "STAFF" | "SYSTEM" | null;
     reentry?: boolean;
+    checkIn?: boolean;
   }): Promise<void> {
     const isReentry = Boolean(input.reentry);
+    const isCheckIn = Boolean(input.checkIn);
     const actorUserId = input.actorUserId ?? null;
     let actorRole = input.actorRole ?? (actorUserId ? "STAFF" : "SYSTEM");
-    if (!actorUserId) {
+    if (!actorUserId && !input.actorRole) {
       actorRole = "SYSTEM";
     }
+
+    if (isCheckIn) {
+      try {
+        const patchRes = await fetch(`${this.restUrl}/reservations?id=eq.${input.reservationId}`, {
+          method: "PATCH",
+          headers: {
+            apikey: this.serviceRoleKey,
+            Authorization: `Bearer ${this.serviceRoleKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          cache: "no-store",
+          body: JSON.stringify({
+            status: "CHECKED_IN",
+            checked_in_at: input.scannedAt,
+            updated_at: input.scannedAt,
+          }),
+        });
+        if (!patchRes.ok) {
+          const detail = await patchRes.text();
+          console.error("Failed to update reservation to CHECKED_IN on scan:", detail);
+        }
+      } catch (err) {
+        console.error("Network error updating reservation to CHECKED_IN on scan:", err);
+      }
+    }
+
+    const action = isCheckIn
+      ? "reservation_checked_in"
+      : isReentry
+      ? "reservation_reentered"
+      : "booking_qr_scanned";
+
+    const eventType = isCheckIn
+      ? "CHECK_IN"
+      : isReentry
+      ? "RE_ENTRY"
+      : "QR_SCAN";
 
     const response = await fetch(`${this.restUrl}/audit_logs`, {
       method: "POST",
@@ -761,14 +869,14 @@ export class ReservationSupabaseRepository
       body: JSON.stringify({
         actor_user_id: actorUserId,
         actor_role: actorRole,
-        action: isReentry ? "reservation_reentered" : "booking_qr_scanned",
+        action,
         entity_type: "reservation",
         entity_id: input.reservationId,
         metadata: {
           access_state: input.accessState,
           scanned_at: input.scannedAt,
           reentry: isReentry,
-          event_type: isReentry ? "RE_ENTRY" : "QR_SCAN",
+          event_type: eventType,
         },
       }),
     });
@@ -814,7 +922,9 @@ export class ReservationSupabaseRepository
         (summary) =>
           summary.bookingStartAt !== null &&
           summary.bookingEndAt !== null &&
-          summary.bookingStartAt <= nowIso &&
+          (summary.reservationStatus === "CHECKED_IN" ||
+            summary.checkInState === "CHECKED_IN" ||
+            (summary.bookingStartAt <= nowIso && nowIso <= summary.bookingEndAt)) &&
           nowIso <= summary.bookingEndAt
       )
       .map(
@@ -981,11 +1091,14 @@ export class ReservationSupabaseRepository
 
   async findGuestReservationTrackingRecord(input: {
     referenceCode: string;
-    customerEmail: string;
+    customerEmail?: string;
   }): Promise<GuestReservationTrackingRecord | null> {
+    const emailFilter = input.customerEmail
+      ? `&customer_email=ilike.${encodeURIComponent(input.customerEmail.trim())}`
+      : "";
     const reservation = (
       await this.request<any[]>(
-        `/reservations?select=*&reference_code=eq.${encodeURIComponent(input.referenceCode)}&customer_email=ilike.${encodeURIComponent(input.customerEmail)}&limit=1`
+        `/reservations?select=*&reference_code=eq.${encodeURIComponent(input.referenceCode.trim().toUpperCase())}${emailFilter}&limit=1`
       )
     )?.[0];
 

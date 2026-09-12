@@ -10,7 +10,7 @@ export function useReservationTracking() {
 
   async function trackReservation(input: {
     referenceCode: string;
-    customerEmail: string;
+    customerEmail?: string;
   }) {
     setLoading(true);
     setError(null);

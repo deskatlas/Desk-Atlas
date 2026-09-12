@@ -30,7 +30,7 @@ export async function GET(
       serviceRoleKey: supabaseKey,
     });
     const service = createBookingAccessService(repository);
-    const result = await service.resolveBookingAccess(token);
+    const result = await service.getBookingAccess(token);
 
     return NextResponse.json(result);
   } catch (error) {

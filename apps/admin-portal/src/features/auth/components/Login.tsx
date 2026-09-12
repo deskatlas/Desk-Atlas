@@ -66,6 +66,7 @@ export function Login() {
         id: data.user.id,
         email: data.user.email,
         token: data.token,
+        isSuperAdmin: Boolean(data.user.isSuperAdmin),
       });
 
       router.push('/manage');

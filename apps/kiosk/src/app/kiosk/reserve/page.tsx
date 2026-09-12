@@ -22,6 +22,7 @@ import {
   getWorkspacePhotoObjectPosition,
 } from "../../features/reservation/SpotDetailModal";
 import { fetchTemplateAvailability, fetchOccupiedInstances } from "../../lib/availabilityApi";
+import { handleNumericKeyDown } from "@deskatlas/ui";
 
 export interface WorkspaceTemplateSummary {
   id: string;
@@ -244,6 +245,7 @@ export default function KioskReservePage() {
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceMapViewModel | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<WorkspaceTemplateSummary | null>(null);
   const [durationHours, setDurationHours] = useState<number>(2);
+  const [durationInputStr, setDurationInputStr] = useState<string>("2");
 
   // Payment method selection
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "COUNTER_QR">("CASH");
@@ -1275,7 +1277,10 @@ export default function KioskReservePage() {
                       <button
                         key={hours}
                         type="button"
-                        onClick={() => setDurationHours(hours)}
+                        onClick={() => {
+                          setDurationHours(hours);
+                          setDurationInputStr(String(hours));
+                        }}
                         className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all ${isSelected
                             ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-md ring-2 ring-[var(--da-accent)]"
                             : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
@@ -1293,44 +1298,92 @@ export default function KioskReservePage() {
                   })}
                 </div>
 
+                {/* Custom Hour Input */}
+                <div className="mt-6 pt-4 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <span className="text-sm font-bold text-[var(--da-brand-dark)] block">
+                      Custom Duration
+                    </span>
+                    <span className="text-xs text-[var(--da-text-secondary)]">
+                      Or enter the exact number of hours you need:
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      aria-label="Custom duration in hours"
+                      value={durationInputStr}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const sanitized = raw.replace(/\D/g, "").replace(/^0+/, "");
+                        setDurationInputStr(sanitized);
+                        if (sanitized === "") {
+                          setDurationHours(0);
+                        } else {
+                          const parsed = parseInt(sanitized, 10);
+                          setDurationHours(parsed > 0 ? parsed : 0);
+                        }
+                      }}
+                      onKeyDown={handleNumericKeyDown}
+                      placeholder="Hours"
+                      className="w-24 rounded-xl border border-[var(--da-border)] bg-white px-3 py-2 text-center text-base font-extrabold text-[var(--da-brand-dark)] placeholder:text-slate-400 focus:border-[var(--da-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--da-primary)]/20"
+                    />
+                    <span className="text-sm font-bold text-[var(--da-brand-dark)]">
+                      {durationHours === 1 ? "Hour" : "Hours"}
+                    </span>
+                  </div>
+                </div>
+
                 {/* Immediate Schedule Preview */}
-                <div className="mt-6 rounded-2xl bg-[var(--da-canvas)] border border-[var(--da-border-light)] p-5 flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white border border-[var(--da-border-light)] text-xl">
-                      ⏱️
+                {durationHours > 0 ? (
+                  <div className="mt-6 rounded-2xl bg-[var(--da-canvas)] border border-[var(--da-border-light)] p-5 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white border border-[var(--da-border-light)] text-xl">
+                        ⏱️
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-[var(--da-text-secondary)] block">
+                          Immediate Walk-In Window:
+                        </span>
+                        <p className="text-base font-extrabold text-[var(--da-brand-dark)]">
+                          {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)} ({durationHours} {durationHours === 1 ? "hour" : "hours"})
+                        </p>
+                      </div>
                     </div>
-                    <div>
+
+                    <div className="text-right">
                       <span className="text-xs font-bold text-[var(--da-text-secondary)] block">
-                        Immediate Walk-In Window:
+                        Estimated Total:
                       </span>
-                      <p className="text-base font-extrabold text-[var(--da-brand-dark)]">
-                        {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)} ({durationHours} {durationHours === 1 ? "hour" : "hours"})
+                      <p className="text-xl font-extrabold text-[var(--da-primary)]">
+                        ₱{totalAmount.toFixed(2)}
                       </p>
                     </div>
                   </div>
-
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-[var(--da-text-secondary)] block">
-                      Estimated Total:
-                    </span>
-                    <p className="text-xl font-extrabold text-[var(--da-primary)]">
-                      ₱{totalAmount.toFixed(2)}
-                    </p>
+                ) : (
+                  <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-center text-xs font-bold text-amber-800">
+                    Please select or enter a duration of at least 1 hour to continue.
                   </div>
-                </div>
+                )}
 
                 {/* Continue Button */}
                 <div className="mt-6 flex justify-end">
                   <button
                     type="button"
+                    disabled={!durationHours || durationHours <= 0}
                     onClick={() => {
+                      if (!durationHours || durationHours <= 0) return;
                       if (selectedWorkspace) {
                         setStep("details");
                       } else {
                         setStep("category-instances");
                       }
                     }}
-                    className="da-primary-button text-sm font-extrabold px-8 py-3"
+                    className={`da-primary-button text-sm font-extrabold px-8 py-3 ${
+                      !durationHours || durationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                   >
                     {selectedWorkspace ? "Proceed to Customer Details →" : "Select Available Desk for Now →"}
                   </button>

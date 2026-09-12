@@ -1107,6 +1107,33 @@ BEGIN
         'manual_resolution_required', v_assigned_candidate.id IS NULL
       )
     );
+
+    IF v_assigned_candidate.id IS NOT NULL THEN
+      INSERT INTO public.audit_logs (
+        actor_user_id,
+        actor_role,
+        action,
+        entity_type,
+        entity_id,
+        metadata
+      )
+      VALUES (
+        p_processed_by_user_id,
+        v_actor_role::text::public.audit_actor_role,
+        'reservation_checked_in',
+        'reservation',
+        v_reservation.id,
+        jsonb_build_object(
+          'source', 'KIOSK',
+          'auto_check_in', true,
+          'reentry', false,
+          'event_type', 'CHECK_IN',
+          'workspace_instance_id', v_assigned_candidate.workspace_instance_id,
+          'start_at', v_assigned_candidate.start_at,
+          'end_at', v_assigned_candidate.end_at
+        )
+      );
+    END IF;
   END IF;
 
   SELECT *
@@ -1182,22 +1209,18 @@ BEGIN
     RAISE EXCEPTION 'Reservation ID is required';
   END IF;
 
-  IF p_actor_user_id IS NULL THEN
-    RAISE EXCEPTION 'Actor user ID is required';
-  END IF;
+  IF p_actor_user_id IS NOT NULL THEN
+    SELECT role
+      INTO v_actor_role
+    FROM public.staff_profiles
+    WHERE user_id = p_actor_user_id
+      AND is_active = true;
 
-  IF p_acted_at IS NULL THEN
-    RAISE EXCEPTION 'Action timestamp is required';
-  END IF;
-
-  SELECT role
-    INTO v_actor_role
-  FROM public.staff_profiles
-  WHERE user_id = p_actor_user_id
-    AND is_active = true;
-
-  IF NOT FOUND OR v_actor_role NOT IN ('ADMIN', 'STAFF') THEN
-    RAISE EXCEPTION 'Only active ADMIN or STAFF profiles may check in reservations';
+    IF NOT FOUND OR v_actor_role NOT IN ('ADMIN', 'STAFF') THEN
+      RAISE EXCEPTION 'Only active ADMIN or STAFF profiles may check in reservations';
+    END IF;
+  ELSE
+    v_actor_role := 'STAFF';
   END IF;
 
   SELECT *
@@ -1227,8 +1250,12 @@ BEGIN
     RAISE EXCEPTION 'Reservation is not in a check-in state';
   END IF;
 
-  IF p_acted_at < v_candidate.start_at OR p_acted_at > v_candidate.end_at THEN
-    RAISE EXCEPTION 'Reservation is not currently active for check-in';
+  IF NOT v_reentry AND (p_acted_at < v_candidate.start_at OR p_acted_at > v_candidate.end_at) THEN
+    IF v_reservation.source = 'KIOSK' AND p_acted_at >= (v_candidate.start_at - interval '15 minutes') AND p_acted_at <= v_candidate.end_at THEN
+      -- Allow early check-in for kiosk bookings within the leeway window
+    ELSE
+      RAISE EXCEPTION 'Reservation is not currently active for check-in';
+    END IF;
   END IF;
 
   UPDATE public.reservations
@@ -1432,17 +1459,18 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'This account has been deactivated');
   END IF;
 
-  RETURN jsonb_build_object(
-    'success', true,
-    'user', jsonb_build_object(
-      'id', v_user.id,
-      'email', v_user.email,
-      'role', lower(v_profile.role::text),
-      'displayName', v_profile.display_name
-    )
-  );
-END;
-$$;
+    RETURN jsonb_build_object(
+      'success', true,
+      'user', jsonb_build_object(
+        'id', v_user.id,
+        'email', v_user.email,
+        'role', lower(v_profile.role::text),
+        'displayName', v_profile.display_name,
+        'isSuperAdmin', COALESCE(v_profile.is_super_admin, false)
+      )
+    );
+  END;
+  $$;
 
 REVOKE ALL ON FUNCTION public.verify_staff_login(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.verify_staff_login(text, text) FROM anon;
@@ -1465,39 +1493,62 @@ RETURNS TABLE (
   created_at timestamptz,
   updated_at timestamptz,
   last_sign_in_at timestamptz,
-  created_by_admin_id uuid
+  created_by_admin_id uuid,
+  is_super_admin boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth, extensions
 AS $$
+DECLARE
+  v_is_super_admin boolean := false;
 BEGIN
   IF p_actor_user_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.staff_profiles
-      WHERE user_id = p_actor_user_id
-        AND role = 'ADMIN'
-        AND is_active = true
-    ) THEN
+    SELECT COALESCE(sp.is_super_admin, false) INTO v_is_super_admin
+    FROM public.staff_profiles sp
+    WHERE sp.user_id = p_actor_user_id
+      AND sp.role = 'ADMIN'
+      AND sp.is_active = true;
+
+    IF NOT FOUND THEN
       RAISE EXCEPTION 'Only active ADMIN profiles may view staff management';
     END IF;
   END IF;
 
-  RETURN QUERY
-  SELECT
-    p.user_id AS id,
-    COALESCE(u.email, 'unknown@deskatlas.com')::text AS email,
-    p.role,
-    p.display_name,
-    p.is_active,
-    p.created_at,
-    p.updated_at,
-    u.last_sign_in_at,
-    p.created_by_admin_id
-  FROM public.staff_profiles p
-  LEFT JOIN auth.users u ON u.id = p.user_id
-  WHERE (p_actor_user_id IS NULL OR p.created_by_admin_id = p_actor_user_id)
-  ORDER BY p.created_at ASC;
+  IF v_is_super_admin OR p_actor_user_id IS NULL THEN
+    RETURN QUERY
+    SELECT
+      p.user_id AS id,
+      COALESCE(u.email, 'unknown@deskatlas.com')::text AS email,
+      p.role,
+      p.display_name,
+      p.is_active,
+      p.created_at,
+      p.updated_at,
+      u.last_sign_in_at,
+      p.created_by_admin_id,
+      COALESCE(p.is_super_admin, false) AS is_super_admin
+    FROM public.staff_profiles p
+    LEFT JOIN auth.users u ON u.id = p.user_id
+    ORDER BY p.is_super_admin DESC, p.created_at ASC;
+  ELSE
+    RETURN QUERY
+    SELECT
+      p.user_id AS id,
+      COALESCE(u.email, 'unknown@deskatlas.com')::text AS email,
+      p.role,
+      p.display_name,
+      p.is_active,
+      p.created_at,
+      p.updated_at,
+      u.last_sign_in_at,
+      p.created_by_admin_id,
+      COALESCE(p.is_super_admin, false) AS is_super_admin
+    FROM public.staff_profiles p
+    LEFT JOIN auth.users u ON u.id = p.user_id
+    WHERE p.created_by_admin_id = p_actor_user_id
+    ORDER BY p.created_at ASC;
+  END IF;
 END;
 $$;
 
@@ -1522,7 +1573,8 @@ RETURNS TABLE (
   created_at timestamptz,
   updated_at timestamptz,
   last_sign_in_at timestamptz,
-  created_by_admin_id uuid
+  created_by_admin_id uuid,
+  is_super_admin boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1533,18 +1585,24 @@ DECLARE
   v_trimmed_name text;
   v_new_user_id uuid;
   v_encrypted_pw text;
+  v_actor_is_super_admin boolean := false;
 BEGIN
   IF p_actor_user_id IS NULL THEN
     RAISE EXCEPTION 'Creating admin actor is required to create staff accounts';
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.staff_profiles
-    WHERE user_id = p_actor_user_id
-      AND role = 'ADMIN'
-      AND is_active = true
-  ) THEN
+  SELECT COALESCE(is_super_admin, false) INTO v_actor_is_super_admin
+  FROM public.staff_profiles
+  WHERE user_id = p_actor_user_id
+    AND role = 'ADMIN'
+    AND is_active = true;
+
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'Only active ADMIN profiles may create staff accounts';
+  END IF;
+
+  IF p_role = 'ADMIN' AND NOT v_actor_is_super_admin THEN
+    RAISE EXCEPTION 'Only the Superadmin can create administrator accounts';
   END IF;
 
   v_trimmed_email := lower(btrim(p_email));
@@ -1608,6 +1666,7 @@ BEGIN
     role,
     display_name,
     is_active,
+    is_super_admin,
     created_at,
     updated_at
   )
@@ -1617,6 +1676,7 @@ BEGIN
     p_role,
     v_trimmed_name,
     true,
+    false,
     now(),
     now()
   );
@@ -1653,7 +1713,8 @@ BEGIN
     p.created_at,
     p.updated_at,
     NULL::timestamptz AS last_sign_in_at,
-    p.created_by_admin_id
+    p.created_by_admin_id,
+    COALESCE(p.is_super_admin, false) AS is_super_admin
   FROM public.staff_profiles p
   WHERE p.user_id = v_new_user_id;
 END;
@@ -1681,7 +1742,8 @@ RETURNS TABLE (
   created_at timestamptz,
   updated_at timestamptz,
   last_sign_in_at timestamptz,
-  created_by_admin_id uuid
+  created_by_admin_id uuid,
+  is_super_admin boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1690,14 +1752,16 @@ AS $$
 DECLARE
   v_current_profile public.staff_profiles%ROWTYPE;
   v_action text := 'UPDATE_STAFF_ACCOUNT';
+  v_actor_is_super_admin boolean := false;
 BEGIN
   IF p_actor_user_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.staff_profiles
-      WHERE user_id = p_actor_user_id
-        AND role = 'ADMIN'
-        AND is_active = true
-    ) THEN
+    SELECT COALESCE(sp.is_super_admin, false) INTO v_actor_is_super_admin
+    FROM public.staff_profiles sp
+    WHERE sp.user_id = p_actor_user_id
+      AND sp.role = 'ADMIN'
+      AND sp.is_active = true;
+
+    IF NOT FOUND THEN
       RAISE EXCEPTION 'Only active ADMIN profiles may manage staff accounts';
     END IF;
   END IF;
@@ -1710,8 +1774,33 @@ BEGIN
     RAISE EXCEPTION 'Staff member not found';
   END IF;
 
-  -- Scoping validation: Admin cannot modify staff created by another admin
-  IF p_actor_user_id IS NOT NULL
+  -- Protection: Superadmin account cannot be demoted or deactivated
+  IF v_current_profile.is_super_admin THEN
+    IF p_role IS NOT NULL AND p_role <> 'ADMIN' THEN
+      RAISE EXCEPTION 'Cannot demote the Superadmin account';
+    END IF;
+    IF p_is_active IS NOT NULL AND p_is_active = false THEN
+      RAISE EXCEPTION 'Cannot deactivate the Superadmin account';
+    END IF;
+    IF p_actor_user_id IS NOT NULL AND p_actor_user_id <> p_target_user_id THEN
+      RAISE EXCEPTION 'Cannot modify the Superadmin account';
+    END IF;
+  END IF;
+
+  -- Scoping validation:
+  -- If target is an ADMIN and caller is not Superadmin, reject
+  IF v_current_profile.role = 'ADMIN' AND NOT v_actor_is_super_admin AND p_actor_user_id <> p_target_user_id THEN
+    RAISE EXCEPTION 'Only the Superadmin can manage administrator accounts';
+  END IF;
+
+  -- If promoting to ADMIN and caller is not Superadmin, reject
+  IF p_role = 'ADMIN' AND NOT v_actor_is_super_admin THEN
+    RAISE EXCEPTION 'Only the Superadmin can promote accounts to administrator';
+  END IF;
+
+  -- Scoping validation for regular staff: Admin cannot modify staff created by another admin (unless actor is Superadmin)
+  IF NOT v_actor_is_super_admin
+     AND p_actor_user_id IS NOT NULL
      AND v_current_profile.created_by_admin_id IS NOT NULL
      AND v_current_profile.created_by_admin_id <> p_actor_user_id THEN
     RAISE EXCEPTION 'Admin cannot manage staff created by another admin';
@@ -1786,7 +1875,8 @@ BEGIN
     p.created_at,
     p.updated_at,
     u.last_sign_in_at,
-    p.created_by_admin_id
+    p.created_by_admin_id,
+    COALESCE(p.is_super_admin, false) AS is_super_admin
   FROM public.staff_profiles p
   LEFT JOIN auth.users u ON u.id = p.user_id
   WHERE p.user_id = p_target_user_id;
@@ -1817,7 +1907,22 @@ DECLARE
   v_total integer := 0;
   v_reason text := NULL;
   v_reasons text[] := ARRAY[]::text[];
+  v_profile public.staff_profiles%ROWTYPE;
 BEGIN
+  SELECT * INTO v_profile
+  FROM public.staff_profiles
+  WHERE user_id = p_target_user_id;
+
+  IF v_profile.is_super_admin THEN
+    RETURN QUERY SELECT false, 'Cannot delete the Superadmin account.'::text, jsonb_build_object(
+      'auditLogs', 0,
+      'reservations', 0,
+      'payments', 0,
+      'total', 0
+    );
+    RETURN;
+  END IF;
+
   SELECT count(*) INTO v_audit_count
   FROM public.audit_logs
   WHERE actor_user_id = p_target_user_id;
@@ -1878,15 +1983,17 @@ SET search_path = public, auth, extensions
 AS $$
 DECLARE
   v_profile public.staff_profiles%ROWTYPE;
+  v_actor_is_super_admin boolean := false;
   v_check RECORD;
 BEGIN
   IF p_actor_user_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.staff_profiles
-      WHERE user_id = p_actor_user_id
-        AND role = 'ADMIN'
-        AND is_active = true
-    ) THEN
+    SELECT COALESCE(sp.is_super_admin, false) INTO v_actor_is_super_admin
+    FROM public.staff_profiles sp
+    WHERE sp.user_id = p_actor_user_id
+      AND sp.role = 'ADMIN'
+      AND sp.is_active = true;
+
+    IF NOT FOUND THEN
       RAISE EXCEPTION 'Only active ADMIN profiles may delete staff accounts';
     END IF;
   END IF;
@@ -1899,7 +2006,18 @@ BEGIN
     RAISE EXCEPTION 'Staff member not found';
   END IF;
 
-  IF p_actor_user_id IS NOT NULL AND v_profile.created_by_admin_id IS NOT NULL AND v_profile.created_by_admin_id <> p_actor_user_id THEN
+  IF v_profile.is_super_admin THEN
+    RAISE EXCEPTION 'Cannot delete the Superadmin account';
+  END IF;
+
+  IF v_profile.role = 'ADMIN' AND NOT v_actor_is_super_admin THEN
+    RAISE EXCEPTION 'Only the Superadmin can delete administrator accounts';
+  END IF;
+
+  IF NOT v_actor_is_super_admin
+     AND p_actor_user_id IS NOT NULL
+     AND v_profile.created_by_admin_id IS NOT NULL
+     AND v_profile.created_by_admin_id <> p_actor_user_id THEN
     RAISE EXCEPTION 'Admin cannot manage staff created by another admin';
   END IF;
 
@@ -1984,7 +2102,8 @@ RETURNS TABLE (
   display_name text,
   is_active boolean,
   created_at timestamptz,
-  updated_at timestamptz
+  updated_at timestamptz,
+  is_super_admin boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2018,12 +2137,13 @@ BEGIN
     v_final_name := 'Admin';
   END IF;
 
-  -- Upsert staff_profiles for this auth user with role ADMIN
+  -- Upsert staff_profiles for this auth user with role ADMIN and is_super_admin = true
   INSERT INTO public.staff_profiles (
     user_id,
     role,
     display_name,
     is_active,
+    is_super_admin,
     created_at,
     updated_at
   )
@@ -2031,6 +2151,7 @@ BEGIN
     p_user_id,
     'ADMIN',
     v_final_name,
+    true,
     true,
     now(),
     now()
@@ -2040,6 +2161,7 @@ BEGIN
     role = 'ADMIN',
     display_name = EXCLUDED.display_name,
     is_active = true,
+    is_super_admin = true,
     updated_at = now();
 
   -- Append to audit logs
@@ -2063,7 +2185,8 @@ BEGIN
     jsonb_build_object(
       'email', v_trimmed_email,
       'display_name', v_final_name,
-      'provider', 'google_oauth'
+      'provider', 'google_oauth',
+      'is_super_admin', true
     ),
     now()
   );
@@ -2076,7 +2199,8 @@ BEGIN
     p.display_name,
     p.is_active,
     p.created_at,
-    p.updated_at
+    p.updated_at,
+    COALESCE(p.is_super_admin, true) AS is_super_admin
   FROM public.staff_profiles p
   WHERE p.user_id = p_user_id;
 END;
@@ -2302,7 +2426,7 @@ BEGIN
     'ADMIN',
     'ADMIN_PASSWORD_RESET',
     'staff_profiles',
-    v_reset.user_id::text,
+    v_reset.user_id,
     jsonb_build_object(
       'email', v_reset.email,
       'method', 'password_reset_flow'

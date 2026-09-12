@@ -13,9 +13,12 @@ export async function GET(request: NextRequest) {
   try {
     const actorUserId = request.headers.get("x-user-id") ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin = request.headers.get("x-user-is-super-admin") === "true";
 
     const service = getStaffManagementService();
-    const actor = actorUserId ? { userId: actorUserId, role: actorRole } : undefined;
+    const actor = actorUserId
+      ? { userId: actorUserId, role: actorRole, isSuperAdmin: actorIsSuperAdmin }
+      : undefined;
     const invitations = await service.listPendingInvitations(actor);
     return NextResponse.json({ invitations });
   } catch (error: any) {
@@ -34,6 +37,10 @@ export async function POST(request: NextRequest) {
 
     const actorUserId = request.headers.get("x-user-id") ?? body.actorUserId ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? body.actorRole ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin =
+      request.headers.get("x-user-is-super-admin") === "true" ||
+      body.actorIsSuperAdmin === true ||
+      body.actorIsSuperAdmin === "true";
 
     if (!email || !displayName || !role) {
       return NextResponse.json(
@@ -60,6 +67,7 @@ export async function POST(request: NextRequest) {
       role: role.toUpperCase() as "ADMIN" | "STAFF",
       actorUserId,
       actorRole,
+      actorIsSuperAdmin,
       invitationBaseUrl: process.env.NEXT_PUBLIC_STAFF_PORTAL_URL || 'http://localhost:3003',
     });
 

@@ -15,11 +15,13 @@ export async function DELETE(
     const { id } = await params;
     let actorUserId = request.headers.get("x-user-id") ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin = request.headers.get("x-user-is-super-admin") === "true";
 
     const service = getStaffManagementService();
     const success = await service.cancelStaffInvitation(id, actorUserId ? {
       userId: actorUserId,
       role: actorRole,
+      isSuperAdmin: actorIsSuperAdmin,
     } : undefined);
 
     return NextResponse.json({ success });

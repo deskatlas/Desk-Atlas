@@ -61,20 +61,13 @@ export class BookingAccessService {
     };
   }
 
-  async resolveBookingAccess(
-    token: string,
-    actor?: {
-      userId?: string | null;
-      role?: "ADMIN" | "STAFF" | "SYSTEM" | null;
-    }
-  ): Promise<BookingScanResult> {
+  async getBookingAccess(token: string): Promise<BookingScanResult> {
     const normalizedToken = token.trim();
     if (!normalizedToken) {
       throw new BookingAccessError("Booking token is required.");
     }
 
     const now = this.nowProvider();
-    const nowIso = now.toISOString();
     const tokenHash = hashBookingToken(normalizedToken);
     const record = await this.bookingAccessRepository.findBookingAccessByTokenHash(tokenHash);
 
@@ -91,15 +84,6 @@ export class BookingAccessService {
         : 0;
 
     const isReentry = accessState === "ACTIVE" && checkInState === "CHECKED_IN";
-
-    await this.bookingAccessRepository.recordBookingScan({
-      reservationId: record.reservationId,
-      scannedAt: nowIso,
-      accessState,
-      actorUserId: actor?.userId ?? null,
-      actorRole: actor?.role ?? null,
-      reentry: isReentry,
-    });
 
     return {
       reservationId: record.reservationId,
@@ -120,6 +104,95 @@ export class BookingAccessService {
       checkedOutAt: record.checkedOutAt,
       qrIssuedAt: record.qrIssuedAt,
       timeRemainingSeconds,
+      reentry: isReentry,
+    };
+  }
+
+  async resolveBookingAccess(
+    token: string,
+    actor?: {
+      userId?: string | null;
+      role?: "ADMIN" | "STAFF" | "SYSTEM" | null;
+    },
+    options?: {
+      autoCheckIn?: boolean;
+      recordScan?: boolean;
+    }
+  ): Promise<BookingScanResult> {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) {
+      throw new BookingAccessError("Booking token is required.");
+    }
+
+    const now = this.nowProvider();
+    const nowIso = now.toISOString();
+    const tokenHash = hashBookingToken(normalizedToken);
+    const record = await this.bookingAccessRepository.findBookingAccessByTokenHash(tokenHash);
+
+    if (!record) {
+      throw new BookingAccessError("Invalid booking token.");
+    }
+
+    const accessState = getBookingAccessState(record, now);
+    const initialCheckInState = getBookingCheckInState(record.checkedInAt, record.checkedOutAt);
+    const endAt = new Date(record.assignedEndAt);
+    const timeRemainingSeconds =
+      accessState === "ACTIVE"
+        ? Math.max(0, Math.floor((endAt.getTime() - now.getTime()) / 1000))
+        : 0;
+
+    const autoCheckIn = options?.autoCheckIn ?? true;
+    const shouldRecordScan = options?.recordScan ?? true;
+
+    // MF-80: If the QR is not checked in yet but is on time within their scheduled time,
+    // the first scan should check them in, not re-enter.
+    const isInitialCheckIn =
+      autoCheckIn &&
+      accessState === "ACTIVE" &&
+      !record.checkedInAt &&
+      record.reservationStatus === "CONFIRMED";
+
+    const isReentry =
+      accessState === "ACTIVE" &&
+      Boolean(record.checkedInAt || record.reservationStatus === "CHECKED_IN") &&
+      !isInitialCheckIn;
+
+    if (shouldRecordScan) {
+      await this.bookingAccessRepository.recordBookingScan({
+        reservationId: record.reservationId,
+        scannedAt: nowIso,
+        accessState,
+        actorUserId: actor?.userId ?? null,
+        actorRole: actor?.role ?? null,
+        reentry: isReentry,
+        checkIn: isInitialCheckIn,
+      });
+    }
+
+    const finalReservationStatus = isInitialCheckIn ? "CHECKED_IN" : record.reservationStatus;
+    const finalCheckedInAt = isInitialCheckIn ? nowIso : record.checkedInAt;
+    const finalCheckInState = getBookingCheckInState(finalCheckedInAt, record.checkedOutAt);
+
+    return {
+      reservationId: record.reservationId,
+      referenceCode: record.referenceCode,
+      reservationStatus: finalReservationStatus,
+      accessState,
+      checkInState: finalCheckInState,
+      customerName: `${record.customerFirstName} ${record.customerLastName}`.trim(),
+      customerEmail: record.customerEmail,
+      workspaceInstanceId: record.assignedWorkspaceInstanceId,
+      workspaceDisplayName: record.assignedWorkspaceDisplayName,
+      workspaceInstanceCode: record.assignedWorkspaceInstanceCode,
+      workspaceTemplateName: record.assignedWorkspaceTemplateName,
+      floorName: record.assignedFloorName,
+      bookingStartAt: record.assignedStartAt,
+      bookingEndAt: record.assignedEndAt,
+      checkedInAt: finalCheckedInAt,
+      checkedOutAt: record.checkedOutAt,
+      qrIssuedAt: record.qrIssuedAt,
+      timeRemainingSeconds,
+      reentry: isReentry,
     };
   }
 }
@@ -130,6 +203,7 @@ function getBookingAccessState(
     qrRevokedAt: string | null;
     assignedStartAt: string;
     assignedEndAt: string;
+    checkedInAt?: string | null;
   },
   now: Date
 ): BookingAccessState {
@@ -140,12 +214,17 @@ function getBookingAccessState(
   const startAt = new Date(record.assignedStartAt);
   const endAt = new Date(record.assignedEndAt);
 
-  if (now < startAt) {
-    return "NOT_ACTIVE";
-  }
-
   if (now > endAt) {
     return "EXPIRED";
+  }
+
+  // If already checked in (e.g. automatic kiosk check-in), access is ACTIVE immediately
+  if (record.reservationStatus === "CHECKED_IN" || Boolean(record.checkedInAt)) {
+    return "ACTIVE";
+  }
+
+  if (now < startAt) {
+    return "NOT_ACTIVE";
   }
 
   return "ACTIVE";

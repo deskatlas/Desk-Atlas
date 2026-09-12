@@ -13,10 +13,11 @@ export async function GET(request: NextRequest) {
   try {
     const actorUserId = request.headers.get("x-user-id") ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin = request.headers.get("x-user-is-super-admin") === "true";
     const activeOnly = request.nextUrl.searchParams.get("activeOnly") === "true";
 
     const service = getStaffManagementService();
-    const actor = actorUserId ? { userId: actorUserId, role: actorRole } : undefined;
+    const actor = actorUserId ? { userId: actorUserId, role: actorRole, isSuperAdmin: actorIsSuperAdmin } : undefined;
     const staff = activeOnly
       ? await service.listActiveStaff(actor)
       : await service.listStaff(actor);
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
 
     const actorUserId = request.headers.get("x-user-id") ?? body.actorUserId ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? body.actorRole ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin = (request.headers.get("x-user-is-super-admin") === "true") || Boolean(body.actorIsSuperAdmin);
 
     if (!email || !displayName || !role) {
       return NextResponse.json(
@@ -63,6 +65,7 @@ export async function POST(request: NextRequest) {
       role: role.toUpperCase() as "ADMIN" | "STAFF",
       actorUserId,
       actorRole,
+      actorIsSuperAdmin,
     });
 
     return NextResponse.json({ staff: created }, { status: 201 });

@@ -63,18 +63,23 @@ export async function POST(
       },
     });
 
+    if (result.assignedCandidate) {
+      result.reservationStatus = "CHECKED_IN";
+    }
+
     if (
       (result.reservationStatus === "CONFIRMED" || result.reservationStatus === "CHECKED_IN") &&
       result.assignedCandidate
     ) {
       const bookingAccessService = createBookingAccessService(reservationRepository);
+      const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3002$/, ":3001").replace(/\/$/, "");
       const bookingAccessBaseUrl =
         process.env.BOOKING_ACCESS_BASE_URL ??
-        `${request.nextUrl.origin.replace(/\/$/, "")}/api/booking`;
+        `${defaultCustomerOrigin}/api/booking`;
       const trackingBaseUrl =
         process.env.TRACKING_BASE_URL ??
         process.env.DESKATLAS_PUBLIC_APP_URL ??
-        request.nextUrl.origin.replace(/\/$/, "");
+        defaultCustomerOrigin;
       const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, result.reservationReferenceCode);
       const bookingAccess = await bookingAccessService.issueBookingAccess(
         result.reservationId,
@@ -107,10 +112,11 @@ export async function POST(
         }
       }
     } else if (result.reservationStatus === "NEEDS_MANUAL_RESOLUTION") {
+      const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3002$/, ":3001").replace(/\/$/, "");
       const trackingBaseUrl =
         process.env.TRACKING_BASE_URL ??
         process.env.DESKATLAS_PUBLIC_APP_URL ??
-        request.nextUrl.origin.replace(/\/$/, "");
+        defaultCustomerOrigin;
       const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, result.reservationReferenceCode);
 
       let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";

@@ -4,10 +4,12 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { PasswordRequirementsChecklist, PasswordInput } from '@deskatlas/ui';
 import { validatePassword } from '@deskatlas/domain';
+import { useAuth } from '@/features/auth';
 
 function InvitationVerifyForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { logout } = useAuth();
   const token = searchParams.get('token') || '';
 
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,16 @@ function InvitationVerifyForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const handleNavigateToLogin = () => {
+    logout();
+    if (invitation?.role === 'ADMIN') {
+      const adminUrl = process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || 'http://localhost:3000';
+      window.location.href = `${adminUrl.replace(/\/+$/, '')}/manage/login`;
+    } else {
+      router.push('/manage');
+    }
+  };
 
   useEffect(() => {
     if (!token) {
@@ -118,36 +130,71 @@ function InvitationVerifyForm() {
         <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 8px' }}>
           Invalid or Expired Invitation
         </h2>
-        <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', margin: 0, lineHeight: 1.5 }}>
           {loadError || 'This invitation link is no longer valid. Please contact your workspace administrator to request a new invitation.'}
         </p>
-        <button
-          onClick={() => router.push('/manage')}
-          style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--da-brand-dark)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
-        >
-          Go to Staff Login
-        </button>
       </div>
     );
   }
 
-  if (invitation.status !== 'PENDING') {
+  if (invitation.status === 'CANCELLED') {
     return (
       <div style={{ textAlign: 'center', padding: '20px 0' }}>
-        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FEF3C7', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 16px', fontWeight: 700 }}>
-          i
+        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FEE2E2', color: '#991B1B', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 12px', fontWeight: 700 }}>
+          ✕
+        </div>
+        <div style={{ display: 'inline-block', background: '#FEE2E2', color: '#991B1B', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>
+          Revoked
+        </div>
+        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 8px' }}>
+          Invitation Revoked
+        </h2>
+        <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+          This staff invitation for <strong>{invitation.email}</strong> has been revoked or cancelled by an administrator. This link is no longer active, and an account cannot be created. If you believe this is an error, please contact your workspace administrator.
+        </p>
+      </div>
+    );
+  }
+
+  if (invitation.status === 'EXPIRED') {
+    return (
+      <div style={{ textAlign: 'center', padding: '20px 0' }}>
+        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FEF3C7', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 12px', fontWeight: 700 }}>
+          !
+        </div>
+        <div style={{ display: 'inline-block', background: '#FEF3C7', color: '#B45309', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>
+          Expired
+        </div>
+        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 8px' }}>
+          Invitation Expired
+        </h2>
+        <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+          This invitation link for <strong>{invitation.email}</strong> has expired. Invitations are valid for 24 hours. Please contact your workspace administrator to request a new invitation.
+        </p>
+      </div>
+    );
+  }
+
+  if (invitation.status === 'CONFIRMED') {
+    return (
+      <div style={{ textAlign: 'center', padding: '20px 0' }}>
+        <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#D1FAE5', color: '#065F46', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', margin: '0 auto 12px', fontWeight: 700 }}>
+          ✓
+        </div>
+        <div style={{ display: 'inline-block', background: '#D1FAE5', color: '#065F46', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>
+          Activated
         </div>
         <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 8px' }}>
           Invitation Already Processed
         </h2>
-        <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginBottom: '24px' }}>
-          This invitation has status: <strong>{invitation.status}</strong>. You can proceed directly to sign in.
+        <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+          This invitation for <strong>{invitation.email}</strong> has already been confirmed and activated. You can proceed directly to sign in with your credentials.
         </p>
         <button
-          onClick={() => router.push('/manage')}
+          onClick={handleNavigateToLogin}
           style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--da-brand-dark)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
         >
-          Go to Staff Login
+          {invitation?.role === 'ADMIN' ? 'Proceed to Admin Portal Login' : 'Proceed to Staff Login'}
         </button>
       </div>
     );
@@ -163,13 +210,13 @@ function InvitationVerifyForm() {
           Account Activated!
         </h2>
         <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
-          Your staff account (<strong>{invitation.email}</strong>) has been successfully verified and activated. You can now log into the Staff Dashboard.
+          Your {invitation.role === 'ADMIN' ? 'administrator' : 'staff'} account (<strong>{invitation.email}</strong>) has been successfully verified and activated. You can now log into the {invitation.role === 'ADMIN' ? 'Admin Portal' : 'Staff Dashboard'}.
         </p>
         <button
-          onClick={() => router.push('/manage')}
+          onClick={handleNavigateToLogin}
           style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}
         >
-          Proceed to Staff Login →
+          {invitation.role === 'ADMIN' ? 'Proceed to Admin Portal →' : 'Proceed to Staff Login →'}
         </button>
       </div>
     );
@@ -221,7 +268,7 @@ function InvitationVerifyForm() {
             }}
           />
           <p style={{ fontSize: '11px', color: 'var(--da-text-secondary)', margin: '4px 0 0' }}>
-            Enter the 6-digit code displayed in your admin console or invitation email.
+            Enter the 6-digit 2FA verification code provided by your workspace owner or administrator.
           </p>
         </div>
 

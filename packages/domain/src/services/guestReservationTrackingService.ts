@@ -21,22 +21,20 @@ export class GuestReservationTrackingService {
 
   async getReservationTracking(input: {
     referenceCode: string;
-    customerEmail: string;
+    customerEmail?: string;
   }): Promise<GuestReservationTrackingResult> {
     const referenceCode = input.referenceCode?.trim().toUpperCase() ?? "";
-    const customerEmail = input.customerEmail?.trim().toLowerCase() ?? "";
+    const customerEmail = input.customerEmail?.trim().toLowerCase() || undefined;
 
     if (!referenceCode) {
       throw new GuestReservationTrackingError("Reservation reference code is required.");
     }
 
-    if (!customerEmail) {
-      throw new GuestReservationTrackingError("Customer email is required.");
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(customerEmail)) {
-      throw new GuestReservationTrackingError("Invalid email format.");
+    if (customerEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customerEmail)) {
+        throw new GuestReservationTrackingError("Invalid email format.");
+      }
     }
 
     const record = await this.trackingRepository.findGuestReservationTrackingRecord({

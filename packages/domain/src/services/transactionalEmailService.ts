@@ -22,10 +22,170 @@ export interface EmailSendResult {
   error?: string;
 }
 
+export function normalizeCustomerTrackingUrl(trackingUrl?: string): string | undefined {
+  if (!trackingUrl) return undefined;
+  const trimmed = trackingUrl.trim();
+  if (!trimmed) return undefined;
+  try {
+    const url = new URL(trimmed);
+    if (url.port === '3000' || url.port === '3002' || url.port === '3003') {
+      url.port = '3001';
+      return url.toString();
+    }
+  } catch {
+    return trimmed.replace(/:(?:3000|3002|3003)(?=\/|\?|$)/, ':3001');
+  }
+  return trimmed;
+}
+
 export function buildReservationTrackingUrl(baseUrl: string, referenceCode: string): string {
-  const cleanBase = (baseUrl || '').trim().replace(/\/$/, '');
+  let cleanBase = (baseUrl || '').trim().replace(/\/$/, '');
+  try {
+    const url = new URL(cleanBase);
+    if (url.port === '3000' || url.port === '3002' || url.port === '3003') {
+      url.port = '3001';
+      cleanBase = url.origin;
+    }
+  } catch {
+    cleanBase = cleanBase.replace(/:(?:3000|3002|3003)(?=\/|$)/, ':3001');
+  }
   const encodedRef = encodeURIComponent(referenceCode.trim().toUpperCase());
   return `${cleanBase}/track?code=${encodedRef}`;
+}
+
+const DEFAULT_TIMEZONE = 'Asia/Manila';
+
+function convert24HourTo12Hour(hour: number, minute: string): string {
+  const ampm = hour >= 12 && hour < 24 ? 'PM' : 'AM';
+  let h12 = hour % 12;
+  if (h12 === 0) h12 = 12;
+  return `${h12}:${minute} ${ampm}`;
+}
+
+/**
+ * Formats a date/time or time string for transactional emails in 12-hour AM/PM format.
+ * - If already formatted with AM/PM (e.g. "Sep 12, 10:00 AM", "10:00 AM"), it is preserved.
+ * - If simple military time (e.g. "14:00", "14:00:00", "09:00"), converted to "2:00 PM", "9:00 AM".
+ * - If date with military time (e.g. "Sep 12, 14:00"), converted to "Sep 12, 2:00 PM".
+ * - If ISO timestamp (e.g. "2026-09-12T02:00:00.000Z"), formatted in timezone with date & 12-hour AM/PM time.
+ */
+export function formatEmailTime(value?: string | null, timezone: string = DEFAULT_TIMEZONE): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  // 1. If already formatted with AM/PM, preserve it
+  if (/\b(?:am|pm)\b/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // 2. Pure 24-hour military time string (e.g. "14:00", "14:00:00", "09:30")
+  const timeOnlyMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnlyMatch) {
+    const hour = parseInt(timeOnlyMatch[1], 10);
+    const minute = timeOnlyMatch[2];
+    if (hour >= 0 && hour <= 24 && parseInt(minute, 10) >= 0 && parseInt(minute, 10) < 60) {
+      return convert24HourTo12Hour(hour, minute);
+    }
+  }
+
+  // 3. Date-prefixed non-ISO military time (e.g. "Sep 12, 14:00" or "Sep 12 14:00")
+  const datePrefixMatch = trimmed.match(/^(.*?\b)(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (datePrefixMatch && !trimmed.includes('T')) {
+    const prefix = datePrefixMatch[1];
+    const hour = parseInt(datePrefixMatch[2], 10);
+    const minute = datePrefixMatch[3];
+    if (hour >= 0 && hour <= 24 && parseInt(minute, 10) >= 0 && parseInt(minute, 10) < 60) {
+      return `${prefix}${convert24HourTo12Hour(hour, minute)}`;
+    }
+  }
+
+  // 4. ISO 8601 or parseable date string
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    try {
+      const dateStr = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(d);
+
+      const timeStr = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(d);
+
+      return `${dateStr}, ${timeStr}`;
+    } catch {
+      // Fallback
+    }
+  }
+
+  return trimmed;
+}
+
+/**
+ * Formats only the time component in 12-hour AM/PM format (e.g. "10:00 AM", "2:00 PM").
+ */
+export function formatEmailTimeOnly(value?: string | null, timezone: string = DEFAULT_TIMEZONE): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  // 1. Pure military time
+  const timeOnlyMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnlyMatch) {
+    const hour = parseInt(timeOnlyMatch[1], 10);
+    const minute = timeOnlyMatch[2];
+    if (hour >= 0 && hour <= 24 && parseInt(minute, 10) >= 0 && parseInt(minute, 10) < 60) {
+      return convert24HourTo12Hour(hour, minute);
+    }
+  }
+
+  // 2. Already contains AM/PM
+  const ampmMatch = trimmed.match(/\b(\d{1,2}):(\d{2})\s*(am|pm)\b/i);
+  if (ampmMatch) {
+    return `${parseInt(ampmMatch[1], 10)}:${ampmMatch[2]} ${ampmMatch[3].toUpperCase()}`;
+  }
+
+  // 3. ISO string
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }).format(d);
+    } catch {
+      // Fallback
+    }
+  }
+
+  return formatEmailTime(trimmed, timezone);
+}
+
+/**
+ * Formats schedule range strings (e.g. "Sep 15, 09:00 - 11:00", "14:00 - 16:00")
+ * ensuring all military times are converted to 12-hour AM/PM format.
+ */
+export function formatEmailSchedule(value?: string | null, timezone: string = DEFAULT_TIMEZONE): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  return trimmed.replace(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b(?!\s*(?:am|pm))/gi, (_, hStr, mStr) => {
+    const hour = parseInt(hStr, 10);
+    const minute = mStr;
+    if (hour >= 0 && hour <= 24 && parseInt(minute, 10) >= 0 && parseInt(minute, 10) < 60) {
+      return convert24HourTo12Hour(hour, minute);
+    }
+    return `${hStr}:${mStr}`;
+  });
 }
 
 export interface PaymentLinkEmailInput {
@@ -164,6 +324,7 @@ export interface ReservationRescheduledEmailInput {
   bookingAccessUrl?: string;
   bookingToken?: string;
   trackingUrl?: string;
+  qrImageUrl?: string;
 }
 
 export interface RawEmailInput {
@@ -182,6 +343,7 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
     timeZone: 'UTC',
     dateStyle: 'medium',
     timeStyle: 'short',
+    hour12: true,
   }) + ' UTC';
 
   const html = `
@@ -233,12 +395,6 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
       </div>
 
       <p class="warning">⚠️ <strong>1-Hour Session:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong>. DeskAtlas No-Hold Policy: Submitting a reservation does not reserve physical inventory until payment proof is verified and approved by admin.</p>
-      
-      ${input.trackingUrl ? `
-      <p style="font-size: 13px; color: #475569; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-        Track live status: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
-      </p>
-      ` : ''}
 
       <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
         If the button above does not work, copy and paste this link into your browser:<br>
@@ -264,7 +420,8 @@ Amount Due: ${formattedAmount}
 Payment URL: ${input.paymentUrl}
 
 Session Expiry: ${expiresFormatted} (1 hour)
-${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}Payment Instructions:
+
+Payment Instructions:
 1. Open your GCash app or mobile banking to transfer the exact amount (${formattedAmount}).
 2. Upload your payment receipt screenshot before the timer ends.
 
@@ -279,6 +436,7 @@ DeskAtlas Workspace Reservation System
 export function renderBookingConfirmationEmail(input: BookingConfirmationEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}`;
+  const trackingUrl = normalizeCustomerTrackingUrl(input.trackingUrl);
   const qrImageUrl =
     input.qrImageUrl ||
     `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
@@ -336,11 +494,11 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         </tr>
         <tr>
           <td>Start Time</td>
-          <td>${escapeHtml(input.bookingStartAt)}</td>
+          <td>${escapeHtml(formatEmailTime(input.bookingStartAt))}</td>
         </tr>
         <tr>
           <td>End Time</td>
-          <td>${escapeHtml(input.bookingEndAt)}</td>
+          <td>${escapeHtml(formatEmailTime(input.bookingEndAt))}</td>
         </tr>
       </table>
 
@@ -351,10 +509,6 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         <p style="font-size: 12px; color: #64748b; margin: 0;">Present this QR code upon arrival at the workspace reception desk or kiosk.</p>
       </div>
 
-      <div style="text-align: center;">
-        <a href="${escapeHtml(input.bookingAccessUrl)}" class="btn">View Digital Pass Online</a>
-      </div>
-
       <div class="guidelines-box">
         <div class="guidelines-title">Facility Guidelines &amp; Amenities</div>
         <div class="guideline-item">📶 <strong>High-Speed WiFi:</strong> Network connection credentials are provided upon check-in.</div>
@@ -362,15 +516,11 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         <div class="guideline-item">🤫 <strong>Quiet &amp; Focus Zones:</strong> Please keep voices down in open workspaces and use dedicated phone booths for phone and video calls.</div>
       </div>
 
-      ${input.trackingUrl ? `
+      ${trackingUrl ? `
       <p style="font-size: 13px; color: #475569; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-        Track live reservation status: <a href="${escapeHtml(input.trackingUrl)}" style="color: #15803d; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
+        Track live reservation status: <a href="${escapeHtml(trackingUrl)}" style="color: #15803d; text-decoration: underline;">${escapeHtml(trackingUrl)}</a>
       </p>
       ` : ''}
-
-      <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
-        Direct Pass Link: <a href="${escapeHtml(input.bookingAccessUrl)}" style="color: #15803d; word-break: break-all;">${escapeHtml(input.bookingAccessUrl)}</a>
-      </p>
     </div>
     <div class="footer">
       DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
@@ -389,12 +539,11 @@ Your workspace reservation has been confirmed.
 
 Assigned Spot: ${input.workspaceDisplayName} (${input.workspaceTemplateName})
 Floor: ${input.floorName}
-Start Time: ${input.bookingStartAt}
-End Time: ${input.bookingEndAt}
+Start Time: ${formatEmailTime(input.bookingStartAt)}
+End Time: ${formatEmailTime(input.bookingEndAt)}
 
-Digital Pass / Booking QR Link: ${input.bookingAccessUrl}
 QR Code Image: ${qrImageUrl}
-${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
+${trackingUrl ? `Track Reservation: ${trackingUrl}\n` : ''}
 Facility Guidelines:
 - High-Speed WiFi credentials available at reception.
 - Present your QR pass at reception or kiosk for check-in and re-entry.
@@ -649,7 +798,9 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
           const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
           const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
           const floorInfo = c.floorName ? ` (${c.floorName})` : '';
-          const timeInfo = c.startAt && c.endAt ? ` - ${new Date(c.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${new Date(c.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+          const startTimeStr = formatEmailTimeOnly(c.startAt);
+          const endTimeStr = formatEmailTimeOnly(c.endAt);
+          const timeInfo = startTimeStr && endTimeStr ? ` - ${startTimeStr} to ${endTimeStr}` : '';
           return `
           <tr style="border-bottom: 1px solid #f1f5f9;">
             <td style="padding: 6px 0; font-weight: 600; color: ${c.rank === 0 ? '#0284c7' : '#64748b'}; width: 35%;">${escapeHtml(rankLabel)}</td>
@@ -666,7 +817,10 @@ Selected Candidates:
 ${input.candidates.map((c) => {
   const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
   const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Option ${c.rank + 1}`;
-  return `- ${rankLabel}: ${spotInfo}`;
+  const startTimeStr = formatEmailTimeOnly(c.startAt);
+  const endTimeStr = formatEmailTimeOnly(c.endAt);
+  const timeInfo = startTimeStr && endTimeStr ? ` (${startTimeStr} to ${endTimeStr})` : '';
+  return `- ${rankLabel}: ${spotInfo}${timeInfo}`;
 }).join('\n')}
   `.trim() : '';
 
@@ -793,7 +947,7 @@ export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInpu
         ${input.bookingStartAt && input.bookingEndAt ? `
         <div class="summary-row">
           <span class="summary-label">Session Time:</span>
-          <span class="summary-val">${escapeHtml(input.bookingStartAt)} &ndash; ${escapeHtml(input.bookingEndAt)}</span>
+          <span class="summary-val">${escapeHtml(formatEmailTime(input.bookingStartAt))} &ndash; ${escapeHtml(formatEmailTime(input.bookingEndAt))}</span>
         </div>
         ` : ''}
       </div>
@@ -803,6 +957,11 @@ export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInpu
       <div style="text-align: center;">
         <a href="${escapeHtml(surveyUrl)}" class="btn-survey">Share Your Feedback (1-Min Survey)</a>
       </div>
+
+      <p style="font-size: 13px; color: #64748b; text-align: center; margin: 12px 0 20px 0;">
+        If the button above does not work, access the feedback form directly:<br>
+        <a href="${escapeHtml(surveyUrl)}" style="color: #064E3B; word-break: break-all;">${escapeHtml(surveyUrl)}</a>
+      </p>
 
       <div style="text-align: center; margin-top: 16px;">
         <p style="font-size: 13px; color: #64748b; margin-bottom: 6px;">Need a desk again soon?</p>
@@ -833,7 +992,7 @@ Thank you for working at DeskAtlas! We hope you had a productive session.
 
 Session Summary:
 - Reference: ${input.referenceCode}
-${input.workspaceDisplayName ? `- Workspace: ${input.workspaceDisplayName}\n` : ''}${input.bookingStartAt ? `- Start Time: ${input.bookingStartAt}\n` : ''}${input.bookingEndAt ? `- End Time: ${input.bookingEndAt}\n` : ''}
+${input.workspaceDisplayName ? `- Workspace: ${input.workspaceDisplayName}\n` : ''}${input.bookingStartAt ? `- Start Time: ${formatEmailTime(input.bookingStartAt)}\n` : ''}${input.bookingEndAt ? `- End Time: ${formatEmailTime(input.bookingEndAt)}\n` : ''}
 Please take a minute to share your feedback with us:
 Survey Link: ${surveyUrl}
 
@@ -1105,8 +1264,10 @@ export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { 
   const subject = `You've been invited to join DeskAtlas as ${input.role === 'ADMIN' ? 'an Administrator' : 'Staff'}`;
   const roleLabel = input.role === 'ADMIN' ? 'Administrator' : 'Staff Member';
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
+    timeZone: 'Asia/Manila',
     dateStyle: 'medium',
     timeStyle: 'short',
+    hour12: true,
   });
 
   const html = `
@@ -1122,9 +1283,9 @@ export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { 
     .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 16px 0 8px 0; }
     .badge { display: inline-block; background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
     .content { font-size: 15px; line-height: 1.6; color: #334155; }
-    .code-box { background: #f8fafc; border: 2px dashed #064E3B; border-radius: 10px; padding: 18px; margin: 24px 0; text-align: center; }
-    .code-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .code-val { font-family: monospace; font-size: 32px; font-weight: 800; color: #064E3B; letter-spacing: 6px; }
+    .notice-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #064E3B; border-radius: 8px; padding: 16px 20px; margin: 24px 0; text-align: left; }
+    .notice-title { font-size: 13px; font-weight: 700; color: #064E3B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .notice-desc { font-size: 13px; color: #334155; margin: 0; line-height: 1.5; }
     .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
   </style>
@@ -1140,18 +1301,18 @@ export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { 
       <p>Hello <strong>${escapeHtml(input.displayName)}</strong>,</p>
       <p>You have been invited to join the workspace operations team as a <strong>${escapeHtml(roleLabel)}</strong>.</p>
       
-      <p>To finalize and activate your account, click the button below to open the confirmation page, then enter the verification code provided below (or shared with you by your administrator):</p>
+      <p>To finalize and activate your account, click the button below to open the confirmation page. You will be prompted to enter your 6-digit Two-Factor Authentication (2FA) verification code to complete activation.</p>
 
       <div style="text-align: center;">
         <a href="${escapeHtml(input.invitationUrl)}" class="btn">Confirm & Activate Account</a>
       </div>
 
-      ${input.verificationCode ? `
-      <div class="code-box">
-        <div class="code-label">2FA Confirmation Code</div>
-        <div class="code-val">${escapeHtml(input.verificationCode)}</div>
+      <div class="notice-box">
+        <div class="notice-title">Security Verification Required</div>
+        <p class="notice-desc">
+          For security reasons, your 2FA verification code is not included in this email. Please contact your workspace owner or administrator to obtain your 6-digit 2FA confirmation code.
+        </p>
       </div>
-      ` : ''}
 
       <p style="font-size: 13px; color: #64748b;">
         This invitation link expires on <strong>${escapeHtml(expiresFormatted)}</strong>.
@@ -1180,7 +1341,10 @@ You have been invited to join the DeskAtlas team as a ${roleLabel}.
 To finalize and activate your account, visit the link below:
 ${input.invitationUrl}
 
-${input.verificationCode ? `Your 2FA Verification Code is: ${input.verificationCode}\n` : ''}
+Two-Factor Authentication (2FA) Notice:
+For security reasons, your 2FA verification code is not included in this email.
+Please ask your workspace owner or administrator for your 6-digit 2FA confirmation code.
+
 This invitation expires on ${expiresFormatted}.
 
 DeskAtlas Workspace Reservation System
@@ -1193,8 +1357,10 @@ export function renderAdminPasswordResetEmail(input: AdminPasswordResetEmailInpu
   const subject = 'Reset Your DeskAtlas Admin Password';
   const name = input.displayName || 'Administrator';
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
+    timeZone: 'Asia/Manila',
     dateStyle: 'medium',
     timeStyle: 'short',
+    hour12: true,
   });
 
   const html = `
@@ -1274,6 +1440,7 @@ export function renderReservationCancelledEmail(input: ReservationCancelledEmail
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Your DeskAtlas Reservation Has Been Cancelled [${input.referenceCode}]`;
   const reasonText = input.cancellationNotes ? `${input.cancellationReason} - ${input.cancellationNotes}` : input.cancellationReason;
+  const formattedSchedule = input.schedule ? formatEmailSchedule(input.schedule) : undefined;
 
   const html = `
 <!DOCTYPE html>
@@ -1307,10 +1474,10 @@ export function renderReservationCancelledEmail(input: ReservationCancelledEmail
         ${escapeHtml(reasonText)}
       </div>
 
-      ${input.schedule || input.workspaceDisplayName ? `
+      ${formattedSchedule || input.workspaceDisplayName ? `
       <div class="info-box">
         ${input.workspaceDisplayName ? `<div><strong>Workspace:</strong> ${escapeHtml(input.workspaceDisplayName)}</div>` : ''}
-        ${input.schedule ? `<div><strong>Original Schedule:</strong> ${escapeHtml(input.schedule)}</div>` : ''}
+        ${formattedSchedule ? `<div><strong>Original Schedule:</strong> ${escapeHtml(formattedSchedule)}</div>` : ''}
       </div>
       ` : ''}
 
@@ -1339,7 +1506,7 @@ Hello ${customerName},
 Your workspace reservation ${input.referenceCode} has been cancelled.
 
 Reason: ${reasonText}
-${input.workspaceDisplayName ? `Workspace: ${input.workspaceDisplayName}\n` : ''}${input.schedule ? `Original Schedule: ${input.schedule}\n` : ''}${input.trackingUrl ? `Status Link: ${input.trackingUrl}\n` : ''}
+${input.workspaceDisplayName ? `Workspace: ${input.workspaceDisplayName}\n` : ''}${formattedSchedule ? `Original Schedule: ${formattedSchedule}\n` : ''}${input.trackingUrl ? `Status Link: ${input.trackingUrl}\n` : ''}
 DeskAtlas Workspace Reservation System
   `.trim();
 
@@ -1349,6 +1516,13 @@ DeskAtlas Workspace Reservation System
 export function renderReservationRescheduledEmail(input: ReservationRescheduledEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Your DeskAtlas Reservation Has Been Rescheduled [${input.referenceCode}]`;
+  const formattedNewSchedule = formatEmailSchedule(input.newSchedule);
+  const formattedOldSchedule = formatEmailSchedule(input.oldSchedule);
+  const qrImageUrl =
+    input.qrImageUrl ||
+    `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+      input.bookingAccessUrl || input.bookingToken || input.referenceCode
+    )}`;
 
   const html = `
 <!DOCTYPE html>
@@ -1362,7 +1536,6 @@ export function renderReservationRescheduledEmail(input: ReservationRescheduledE
     .title { font-size: 18px; font-weight: 700; color: #0284c7; margin: 0 0 6px 0; }
     .content { font-size: 15px; line-height: 1.6; color: #334155; }
     .schedule-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 18px 0; }
-    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
   </style>
 </head>
@@ -1378,16 +1551,17 @@ export function renderReservationRescheduledEmail(input: ReservationRescheduledE
       
       <div class="schedule-box">
         <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 8px;">Updated Schedule Details</div>
-        <div><strong>New Schedule:</strong> ${escapeHtml(input.newSchedule)}</div>
-        <div style="font-size: 12px; color: #64748b; margin-top: 4px;"><strong>Previous Schedule:</strong> ${escapeHtml(input.oldSchedule)}</div>
+        <div><strong>New Schedule:</strong> ${escapeHtml(formattedNewSchedule)}</div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 4px;"><strong>Previous Schedule:</strong> ${escapeHtml(formattedOldSchedule)}</div>
         <div style="margin-top: 8px;"><strong>Allocated Spot:</strong> ${escapeHtml(input.workspaceDisplayName)}${input.floorName ? ` (${escapeHtml(input.floorName)})` : ''}</div>
       </div>
 
-      ${input.bookingAccessUrl ? `
-      <div style="text-align: center;">
-        <a href="${escapeHtml(input.bookingAccessUrl)}" class="btn">View Digital Access Pass</a>
+      <div style="text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Digital Access QR Pass</div>
+        <img src="${escapeHtml(qrImageUrl)}" alt="Digital Pass QR Code" width="200" height="200" style="display: block; margin: 0 auto; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; padding: 6px;" />
+        <div style="font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 10px; margin-bottom: 4px;">${escapeHtml(input.referenceCode)}</div>
+        <p style="font-size: 12px; color: #64748b; margin: 0;">Present this QR code upon arrival at the workspace reception desk or kiosk.</p>
       </div>
-      ` : ''}
 
       ${input.trackingUrl ? `
       <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
@@ -1410,10 +1584,11 @@ Reference: ${input.referenceCode}
 Hello ${customerName},
 
 Your reservation has been rescheduled:
-New Schedule: ${input.newSchedule}
-Previous Schedule: ${input.oldSchedule}
+New Schedule: ${formattedNewSchedule}
+Previous Schedule: ${formattedOldSchedule}
 Allocated Spot: ${input.workspaceDisplayName}
-${input.bookingAccessUrl ? `Access Pass: ${input.bookingAccessUrl}\n` : ''}${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
+Digital Access QR Pass: ${qrImageUrl}
+${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
 DeskAtlas Workspace Reservation System
   `.trim();
 

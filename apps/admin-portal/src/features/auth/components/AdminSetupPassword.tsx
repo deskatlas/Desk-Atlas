@@ -134,6 +134,7 @@ export function AdminSetupPassword() {
         id: data.user?.id || userId,
         email: data.user?.email || email,
         token: data.token || token,
+        isSuperAdmin: true,
       });
 
       // Navigate to admin portal dashboard

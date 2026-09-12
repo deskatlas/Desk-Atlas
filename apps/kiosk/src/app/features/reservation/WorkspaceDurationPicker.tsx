@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { handleNumericKeyDown } from "@deskatlas/ui";
+
 interface WorkspaceDurationPickerProps {
   template: any;
   durationHours: number;
@@ -28,8 +31,9 @@ export function WorkspaceDurationPicker({
   onNext,
   onBack,
 }: WorkspaceDurationPickerProps) {
+  const [customInputStr, setCustomInputStr] = useState(String(durationHours > 0 ? durationHours : ""));
   const rate = Number(template.rate_amount ?? template.rateAmount ?? 0);
-  const totalAmount = rate * durationHours;
+  const totalAmount = rate * (durationHours > 0 ? durationHours : 0);
 
   // Compute immediate time window starting now in local time
   const now = new Date();
@@ -37,7 +41,7 @@ export function WorkspaceDurationPicker({
   const startMinute = now.getMinutes();
   const startStr = `${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}`;
 
-  const endTotalMinutes = startHour * 60 + startMinute + durationHours * 60;
+  const endTotalMinutes = startHour * 60 + startMinute + (durationHours > 0 ? durationHours : 0) * 60;
   const endHour = Math.floor(endTotalMinutes / 60) % 24;
   const endMinute = endTotalMinutes % 60;
   const endStr = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
@@ -59,32 +63,37 @@ export function WorkspaceDurationPicker({
             gap: "8px",
           }}
         >
-          ← Back to Categories
+          ← Back to Types
         </button>
       </div>
 
-      <h1 style={{ fontSize: "40px", fontWeight: 800, color: "#0C3B27", margin: "0 0 8px" }}>
-        How long do you need the {template.name}?
-      </h1>
-      <p style={{ fontSize: "20px", color: "#65736A", margin: "0 0 32px" }}>
-        Walk-in bookings start immediately. Choose your duration below.
-      </p>
+      <div style={{ marginBottom: "32px" }}>
+        <div style={{ fontSize: "16px", fontWeight: 700, color: "#1B5E20", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>
+          Step 2: Walk-In Duration
+        </div>
+        <h1 style={{ fontSize: "36px", fontWeight: 800, color: "#12251A", margin: "0 0 10px 0" }}>
+          How long do you need this {template.name}?
+        </h1>
+        <p style={{ fontSize: "18px", color: "#455A64", margin: 0 }}>
+          Walk-in bookings start immediately upon confirmation.
+        </p>
+      </div>
 
-      {/* Immediate time window banner */}
+      {/* Immediate time window highlight */}
       <div
         style={{
           background: "#E8F5E9",
-          border: "1px solid #C8E6C9",
+          border: "2px solid #A5D6A7",
           borderRadius: "16px",
           padding: "20px 24px",
-          marginBottom: "32px",
+          marginBottom: "28px",
           display: "flex",
-          alignItems: "center",
           justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
         <div>
-          <div style={{ fontSize: "14px", fontWeight: 700, color: "#2E7D32", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#2E7D32", textTransform: "uppercase" }}>
             Immediate Walk-In Window
           </div>
           <div style={{ fontSize: "22px", fontWeight: 800, color: "#1B5E20", marginTop: "4px" }}>
@@ -105,7 +114,7 @@ export function WorkspaceDurationPicker({
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
           gap: "16px",
-          marginBottom: "36px",
+          marginBottom: "24px",
         }}
       >
         {DURATION_OPTIONS.map((hours) => {
@@ -115,7 +124,10 @@ export function WorkspaceDurationPicker({
             <button
               key={hours}
               type="button"
-              onClick={() => onSelectDuration(hours)}
+              onClick={() => {
+                onSelectDuration(hours);
+                setCustomInputStr(String(hours));
+              }}
               style={{
                 padding: "24px 16px",
                 borderRadius: "18px",
@@ -145,23 +157,83 @@ export function WorkspaceDurationPicker({
         })}
       </div>
 
+      {/* Custom Duration Input */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "32px",
+          padding: "16px 20px",
+          background: "#FFFFFF",
+          borderRadius: "16px",
+          border: "1px solid #E1E9E3",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: "16px", fontWeight: 700, color: "#12251A" }}>Custom Duration</div>
+          <div style={{ fontSize: "13px", color: "#65736A" }}>Or enter the exact number of hours you need:</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label="Custom duration in hours"
+            value={customInputStr}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const sanitized = raw.replace(/\D/g, "").replace(/^0+/, "");
+              setCustomInputStr(sanitized);
+              if (sanitized === "") {
+                onSelectDuration(0);
+              } else {
+                const parsed = parseInt(sanitized, 10);
+                onSelectDuration(parsed > 0 ? parsed : 0);
+              }
+            }}
+            onKeyDown={handleNumericKeyDown}
+            placeholder="Hours"
+            style={{
+              width: "90px",
+              padding: "10px 12px",
+              borderRadius: "12px",
+              border: "1px solid #C5D6C9",
+              fontSize: "16px",
+              fontWeight: 800,
+              textAlign: "center",
+              color: "#12251A",
+              outline: "none",
+            }}
+          />
+          <span style={{ fontSize: "15px", fontWeight: 700, color: "#12251A" }}>
+            {durationHours === 1 ? "Hour" : "Hours"}
+          </span>
+        </div>
+      </div>
+
       <button
         type="button"
-        onClick={onNext}
+        disabled={durationHours <= 0}
+        onClick={() => {
+          if (durationHours <= 0) return;
+          onNext();
+        }}
         style={{
           width: "100%",
           padding: "22px",
           borderRadius: "16px",
-          background: "#0C3B27",
+          background: durationHours <= 0 ? "#8FA89B" : "#0C3B27",
           color: "#FFFFFF",
           border: "none",
           fontSize: "22px",
           fontWeight: 800,
-          cursor: "pointer",
-          boxShadow: "0 8px 24px rgba(12, 59, 39, 0.2)",
+          cursor: durationHours <= 0 ? "not-allowed" : "pointer",
+          boxShadow: durationHours <= 0 ? "none" : "0 8px 24px rgba(12, 59, 39, 0.2)",
+          opacity: durationHours <= 0 ? 0.6 : 1,
         }}
       >
-        Continue to Pick a Spot →
+        {durationHours <= 0 ? "Select at least 1 hour" : "Continue to Pick a Spot →"}
       </button>
     </main>
   );

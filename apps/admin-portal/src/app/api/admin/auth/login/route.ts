@@ -192,6 +192,7 @@ export async function POST(request: NextRequest) {
         email: trimmedEmail,
         role: profile.role.toLowerCase(),
         displayName: profile.display_name,
+        isSuperAdmin: Boolean(profile.is_super_admin ?? (profile.created_by_admin_id === null)),
       },
       token: authData.access_token,
     });

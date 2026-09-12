@@ -15,6 +15,6 @@ export interface GuestReservationTrackingRecord {
 export interface GuestReservationTrackingRepository {
   findGuestReservationTrackingRecord(input: {
     referenceCode: string;
-    customerEmail: string;
+    customerEmail?: string;
   }): Promise<GuestReservationTrackingRecord | null>;
 }

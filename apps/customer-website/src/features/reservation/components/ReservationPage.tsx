@@ -38,6 +38,7 @@ import {
   fetchTimeAvailability,
   fetchTemplateAvailability,
 } from "@/app/lib/availabilityApi";
+import { handleNumericKeyDown } from "@deskatlas/ui";
 
 export interface SelectedCandidate {
   rank: 0 | 1 | 2;
@@ -77,10 +78,20 @@ function formatTime12Hour(time24: string): string {
   const [hStr, mStr] = time24.split(":");
   let hour = parseInt(hStr, 10);
   const minute = mStr || "00";
+  if (hour === 24) hour = 0;
   const period = hour >= 12 ? "PM" : "AM";
   if (hour === 0) hour = 12;
   else if (hour > 12) hour -= 12;
   return `${hour}:${minute} ${period}`;
+}
+
+function formatTimeRangeDisplay(startTime: string, endTime: string, durationHours?: number): string {
+  if (!startTime || !endTime) return "";
+  const [sh, sm] = startTime.split(":").map(Number);
+  const dur = durationHours ?? 0;
+  const isNextDay = dur > 0 ? sh * 60 + sm + dur * 60 >= 1440 : false;
+  const endDisplay = formatTime12Hour(endTime);
+  return `${formatTime12Hour(startTime)} – ${endDisplay}${isNextDay ? " (Next Day)" : ""}`;
 }
 
 function formatDateDisplay(dateStr: string): string {
@@ -241,6 +252,7 @@ export function ReservationPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<WorkspaceTemplateSummary | null>(null);
   const [catDate, setCatDate] = useState<string>(getTodayManila());
   const [catDurationHours, setCatDurationHours] = useState<number>(2);
+  const [catDurationInput, setCatDurationInput] = useState<string>("2");
   const [catStartTime, setCatStartTime] = useState<string | null>(null);
 
   // Month navigation state for Category flow
@@ -648,7 +660,7 @@ export function ReservationPage() {
     if (!catStartTime) return null;
     const [h, m] = catStartTime.split(":").map(Number);
     const endMinutes = h * 60 + m + catDurationHours * 60;
-    const endH = Math.floor(endMinutes / 60);
+    const endH = Math.floor(endMinutes / 60) % 24;
     const endM = endMinutes % 60;
     return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
   }, [catStartTime, catDurationHours]);
@@ -784,6 +796,7 @@ export function ReservationPage() {
     }
     setCatDate(mainCandidate.date);
     setCatDurationHours(mainCandidate.durationHours);
+    setCatDurationInput(String(mainCandidate.durationHours));
     setCatStartTime(mainCandidate.startTime);
 
     if (discoveryMode === "category") {
@@ -843,12 +856,16 @@ export function ReservationPage() {
     setSubmitErrorMessage(null);
 
     try {
-      const candidatesPayload = candidates.map((c) => ({
-        rank: c.rank,
-        workspaceInstanceId: c.workspace.workspaceInstanceId,
-        startAt: zonedDateTimeToUtc(c.date, c.startTime, "Asia/Manila").toISOString(),
-        endAt: zonedDateTimeToUtc(c.date, c.endTime, "Asia/Manila").toISOString(),
-      }));
+      const candidatesPayload = candidates.map((c) => {
+        const startUtc = zonedDateTimeToUtc(c.date, c.startTime, "Asia/Manila");
+        const endUtc = new Date(startUtc.getTime() + c.durationHours * 60 * 60 * 1000);
+        return {
+          rank: c.rank,
+          workspaceInstanceId: c.workspace.workspaceInstanceId,
+          startAt: startUtc.toISOString(),
+          endAt: endUtc.toISOString(),
+        };
+      });
 
       const response = await fetch("/api/reservations", {
         method: "POST",
@@ -1963,7 +1980,7 @@ export function ReservationPage() {
                       </p>
                     </div>
                     <span className="rounded-full bg-[var(--da-info)] px-3 py-1 text-xs font-extrabold text-[var(--da-primary)]">
-                      {catDurationHours} {catDurationHours === 1 ? "Hour" : "Hours"}
+                      {catDurationHours > 0 ? `${catDurationHours} ${catDurationHours === 1 ? "Hour" : "Hours"}` : "Select Duration"}
                     </span>
                   </div>
 
@@ -1977,7 +1994,10 @@ export function ReservationPage() {
                           type="button"
                           disabled={isDisabled}
                           onClick={() => {
-                            if (activeRank === 0) setCatDurationHours(hours);
+                            if (activeRank === 0) {
+                              setCatDurationHours(hours);
+                              setCatDurationInput(String(hours));
+                            }
                           }}
                           className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-bold transition ${isSelected
                             ? "bg-[var(--da-primary)] text-white shadow-sm ring-2 ring-[var(--da-accent)]"
@@ -1993,6 +2013,41 @@ export function ReservationPage() {
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* Custom Duration Input */}
+                  <div className="mt-4 pt-3 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-[var(--da-text-secondary)]">
+                      {activeRank > 0 ? "Custom duration locked to Main" : "Or enter custom duration:"}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        aria-label="Custom duration in hours"
+                        disabled={activeRank > 0}
+                        value={catDurationInput}
+                        onChange={(e) => {
+                          if (activeRank > 0) return;
+                          const raw = e.target.value;
+                          const sanitized = raw.replace(/\D/g, "").replace(/^0+/, "");
+                          setCatDurationInput(sanitized);
+                          if (sanitized === "") {
+                            setCatDurationHours(0);
+                          } else {
+                            const parsed = parseInt(sanitized, 10);
+                            setCatDurationHours(parsed > 0 ? parsed : 0);
+                          }
+                        }}
+                        onKeyDown={handleNumericKeyDown}
+                        placeholder="Hours"
+                        className="w-20 rounded-xl border border-[var(--da-border)] bg-white px-3 py-1.5 text-center text-sm font-extrabold text-[var(--da-brand-dark)] placeholder:text-slate-400 focus:border-[var(--da-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--da-primary)]/20 disabled:opacity-40 disabled:bg-slate-100"
+                      />
+                      <span className="text-xs font-bold text-[var(--da-brand-dark)]">
+                        {catDurationHours === 1 ? "hr" : "hrs"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2069,6 +2124,10 @@ export function ReservationPage() {
                               </div>
                               <span className="text-[10px] opacity-80 mt-0.5">
                                 to {formatTime12Hour(slot.endTime)}
+                                {(() => {
+                                  const [sh, sm] = slot.startTime.split(":").map(Number);
+                                  return sh * 60 + sm + catDurationHours * 60 >= 1440 ? " (Next Day)" : "";
+                                })()}
                               </span>
                             </button>
                           );
@@ -2099,7 +2158,7 @@ export function ReservationPage() {
                       <span>Time Range:</span>
                       <span className="font-bold text-[var(--da-brand-dark)]">
                         {catStartTime && catEndTime
-                          ? `${formatTime12Hour(catStartTime)} – ${formatTime12Hour(catEndTime)}`
+                          ? formatTimeRangeDisplay(catStartTime, catEndTime, catDurationHours)
                           : "Please select start time"}
                       </span>
                     </div>
@@ -2113,10 +2172,14 @@ export function ReservationPage() {
 
                   <button
                     type="button"
-                    disabled={!catDate || !catStartTime}
-                    onClick={() => setStep("category-instances")}
-                    className={`da-primary-button w-full justify-center py-3 text-sm font-bold ${!catDate || !catStartTime ? "opacity-50 cursor-not-allowed" : ""
-                      }`}
+                    disabled={!catDate || !catStartTime || !catDurationHours || catDurationHours <= 0}
+                    onClick={() => {
+                      if (!catDurationHours || catDurationHours <= 0) return;
+                      setStep("category-instances");
+                    }}
+                    className={`da-primary-button w-full justify-center py-3 text-sm font-bold ${
+                      !catDate || !catStartTime || !catDurationHours || catDurationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                   >
                     {catStartTime ? "Find Available Spots →" : "Select a Start Time to Proceed"}
                   </button>
@@ -2137,7 +2200,7 @@ export function ReservationPage() {
                     Available {selectedTemplate.name} Desks
                   </h2>
                   <p className="mt-1 text-xs text-[var(--da-text-secondary)]">
-                    Showing real-time availability for <strong>{formatDateDisplay(catDate)}</strong> from <strong>{formatTime12Hour(catStartTime)} to {formatTime12Hour(catEndTime || "")}</strong> ({catDurationHours} hrs).
+                    Showing real-time availability for <strong>{formatDateDisplay(catDate)}</strong> from <strong>{formatTimeRangeDisplay(catStartTime, catEndTime || "", catDurationHours)}</strong> ({catDurationHours} hrs).
                   </p>
                 </div>
 
@@ -2361,7 +2424,7 @@ export function ReservationPage() {
                       <div className="flex justify-between">
                         <span className="text-[var(--da-text-secondary)]">Time:</span>
                         <span className="font-bold">
-                          {formatTime12Hour(backup1Candidate.startTime)} – {formatTime12Hour(backup1Candidate.endTime)}
+                          {formatTimeRangeDisplay(backup1Candidate.startTime, backup1Candidate.endTime, backup1Candidate.durationHours)}
                         </span>
                       </div>
                     </div>
@@ -2416,7 +2479,7 @@ export function ReservationPage() {
                       <div className="flex justify-between">
                         <span className="text-[var(--da-text-secondary)]">Time:</span>
                         <span className="font-bold">
-                          {formatTime12Hour(backup2Candidate.startTime)} – {formatTime12Hour(backup2Candidate.endTime)}
+                          {formatTimeRangeDisplay(backup2Candidate.startTime, backup2Candidate.endTime, backup2Candidate.durationHours)}
                         </span>
                       </div>
                     </div>
@@ -2616,7 +2679,7 @@ export function ReservationPage() {
                             </span>
                             <span>•</span>
                             <span className="font-medium">
-                              🕒 {formatTime12Hour(cand.startTime)} – {formatTime12Hour(cand.endTime)} ({cand.durationHours} hr{cand.durationHours > 1 ? "s" : ""})
+                              🕒 {formatTimeRangeDisplay(cand.startTime, cand.endTime, cand.durationHours)} ({cand.durationHours} hr{cand.durationHours > 1 ? "s" : ""})
                             </span>
                           </div>
                         </div>

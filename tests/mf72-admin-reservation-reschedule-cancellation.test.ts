@@ -452,10 +452,11 @@ describe('MF-72: Admin Reservation Reschedule and Cancellation Workflow', () => 
 
       expect(rendered.subject).toContain('DA-RES-5678');
       expect(rendered.html).toContain('Bob Jones');
-      expect(rendered.html).toContain('Sep 16, 14:00 - 16:00');
-      expect(rendered.html).toContain('Sep 15, 09:00 - 11:00');
+      expect(rendered.html).toContain('Sep 16, 2:00 PM - 4:00 PM');
+      expect(rendered.html).toContain('Sep 15, 9:00 AM - 11:00 AM');
       expect(rendered.html).toContain('Desk D-02');
-      expect(rendered.html).toContain('https://deskatlas.test/booking/tok-123');
+      expect(rendered.html).toContain('Digital Access QR Pass');
+      expect(rendered.html).not.toContain('View Digital Access Pass');
       expect(rendered.text).toContain('DA-RES-5678');
     });
   });

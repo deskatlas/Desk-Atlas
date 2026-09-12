@@ -464,9 +464,12 @@ export class ReservationMemoryRepository
       .filter((detail): detail is PaymentReviewDetail => detail !== null)
       .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, refundStatus: _refundStatus, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem)
       .sort((a, b) => {
-        const aTime = a.proofSubmittedAt ?? "";
-        const bTime = b.proofSubmittedAt ?? "";
-        return aTime.localeCompare(bTime);
+        const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+        if (aTime !== bTime) {
+          return aTime - bTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
       });
   }
 
@@ -629,6 +632,15 @@ export class ReservationMemoryRepository
           reservation.status = "CHECKED_IN";
           reservation.confirmedAt = reservation.confirmedAt ?? input.processedAt;
           reservation.checkedInAt = reservation.checkedInAt ?? input.processedAt;
+
+          this.recordOperationalAudit({
+            reservation,
+            action: "CHECK_IN",
+            actedAt: input.processedAt,
+            actorRole: "STAFF",
+            actorUserId: input.actorUserId,
+            reentry: false,
+          });
         } else {
           reservation.status = "NEEDS_MANUAL_RESOLUTION";
         }
@@ -724,6 +736,7 @@ export class ReservationMemoryRepository
     actorUserId?: string | null;
     actorRole?: "ADMIN" | "STAFF" | "SYSTEM" | null;
     reentry?: boolean;
+    checkIn?: boolean;
   }): Promise<void> {
     this.bookingScanEvents.push({
       reservationId: input.reservationId,
@@ -731,9 +744,21 @@ export class ReservationMemoryRepository
       accessState: input.accessState,
     });
 
-    if (input.reentry) {
-      const reservation = this.reservations.find((r) => r.id === input.reservationId);
-      if (reservation) {
+    const reservation = this.reservations.find((r) => r.id === input.reservationId);
+    if (reservation) {
+      if (input.checkIn) {
+        reservation.status = "CHECKED_IN";
+        reservation.checkedInAt = reservation.checkedInAt ?? input.scannedAt;
+        reservation.updatedAt = input.scannedAt;
+        this.recordOperationalAudit({
+          reservation,
+          action: "CHECK_IN",
+          actedAt: input.scannedAt,
+          actorRole: (input.actorRole === "ADMIN" || input.actorRole === "STAFF") ? input.actorRole : "STAFF",
+          actorUserId: input.actorUserId ?? "scanner",
+          reentry: false,
+        });
+      } else if (input.reentry) {
         this.recordOperationalAudit({
           reservation,
           action: "CHECK_IN",
@@ -775,7 +800,8 @@ export class ReservationMemoryRepository
         (reservation) =>
           reservation.bookingStartAt !== null &&
           reservation.bookingEndAt !== null &&
-          reservation.bookingStartAt <= nowIso &&
+          (reservation.reservationStatus === "CHECKED_IN" ||
+            (reservation.bookingStartAt <= nowIso && nowIso <= reservation.bookingEndAt)) &&
           nowIso <= reservation.bookingEndAt
       )
       .map(
@@ -863,12 +889,14 @@ export class ReservationMemoryRepository
 
   async findGuestReservationTrackingRecord(input: {
     referenceCode: string;
-    customerEmail: string;
+    customerEmail?: string;
   }): Promise<GuestReservationTrackingRecord | null> {
+    const targetRef = input.referenceCode.trim().toUpperCase();
+    const targetEmail = input.customerEmail?.trim().toLowerCase();
     const reservation = this.reservations.find(
       (entry) =>
-        entry.referenceCode.toUpperCase() === input.referenceCode &&
-        entry.customerEmail.trim().toLowerCase() === input.customerEmail
+        entry.referenceCode.toUpperCase() === targetRef &&
+        (!targetEmail || entry.customerEmail.trim().toLowerCase() === targetEmail)
     );
 
     if (!reservation) {

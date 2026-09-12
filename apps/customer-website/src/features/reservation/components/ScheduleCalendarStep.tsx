@@ -7,6 +7,7 @@ import {
 } from "@/features/workspace-discovery";
 import type { AvailableTimeSlot, AvailableDate } from "@deskatlas/domain";
 import { fetchDateAvailability, fetchTimeAvailability } from "@/app/lib/availabilityApi";
+import { handleNumericKeyDown } from "@deskatlas/ui";
 
 interface ScheduleCalendarStepProps {
   workspace: WorkspaceMapViewModel;
@@ -28,9 +29,11 @@ interface ScheduleCalendarStepProps {
 
 // Format 24-hour HH:mm to friendly 12-hour (e.g. "09:00" -> "9:00 AM", "13:00" -> "1:00 PM")
 function formatTime12Hour(time24: string): string {
+  if (!time24) return "";
   const [hStr, mStr] = time24.split(":");
   let hour = parseInt(hStr, 10);
   const minute = mStr || "00";
+  if (hour === 24) hour = 0;
   const period = hour >= 12 ? "PM" : "AM";
   if (hour === 0) hour = 12;
   else if (hour > 12) hour -= 12;
@@ -92,6 +95,9 @@ export function ScheduleCalendarStep({
   const [selectedDate, setSelectedDate] = useState<string>(initialDate);
   const [selectedDurationHours, setSelectedDurationHours] = useState<number>(
     lockedSchedule?.durationHours || 2
+  );
+  const [durationInputStr, setDurationInputStr] = useState<string>(
+    String(lockedSchedule?.durationHours || 2)
   );
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(initialStartTimeVal);
 
@@ -222,7 +228,7 @@ export function ScheduleCalendarStep({
     // Fallback if not found in cached slots
     const [h, m] = selectedStartTime.split(":").map(Number);
     const endMinutes = h * 60 + m + selectedDurationHours * 60;
-    const endH = Math.floor(endMinutes / 60);
+    const endH = Math.floor(endMinutes / 60) % 24;
     const endM = endMinutes % 60;
     const endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
     return {
@@ -237,7 +243,7 @@ export function ScheduleCalendarStep({
 
 
   const handleContinue = () => {
-    if (!selectedDate || !selectedStartTime || !selectedSlot) return;
+    if (!selectedDate || !selectedStartTime || !selectedSlot || !selectedDurationHours || selectedDurationHours <= 0) return;
     onContinue({
       date: selectedDate,
       durationHours: selectedDurationHours,
@@ -438,7 +444,7 @@ export function ScheduleCalendarStep({
                 </p>
               </div>
               <span className="rounded-full bg-[var(--da-info)] px-3 py-1 text-xs font-extrabold text-[var(--da-primary)]">
-                {selectedDurationHours} {selectedDurationHours === 1 ? "Hour" : "Hours"}
+                {selectedDurationHours > 0 ? `${selectedDurationHours} ${selectedDurationHours === 1 ? "Hour" : "Hours"}` : "Select Duration"}
               </span>
             </div>
 
@@ -454,6 +460,7 @@ export function ScheduleCalendarStep({
                     onClick={() => {
                       if (!lockedSchedule) {
                         setSelectedDurationHours(hours);
+                        setDurationInputStr(String(hours));
                       }
                     }}
                     className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-bold transition ${
@@ -471,6 +478,41 @@ export function ScheduleCalendarStep({
                   </button>
                 );
               })}
+            </div>
+
+            {/* Custom Duration Input */}
+            <div className="mt-4 pt-3 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs font-bold text-[var(--da-text-secondary)]">
+                {lockedSchedule ? "Custom duration locked to Main" : "Or enter custom duration:"}
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  aria-label="Custom duration in hours"
+                  disabled={Boolean(lockedSchedule)}
+                  value={durationInputStr}
+                  onChange={(e) => {
+                    if (lockedSchedule) return;
+                    const raw = e.target.value;
+                    const sanitized = raw.replace(/\D/g, "").replace(/^0+/, "");
+                    setDurationInputStr(sanitized);
+                    if (sanitized === "") {
+                      setSelectedDurationHours(0);
+                    } else {
+                      const parsed = parseInt(sanitized, 10);
+                      setSelectedDurationHours(parsed > 0 ? parsed : 0);
+                    }
+                  }}
+                  onKeyDown={handleNumericKeyDown}
+                  placeholder="Hours"
+                  className="w-20 rounded-xl border border-[var(--da-border)] bg-white px-3 py-1.5 text-center text-sm font-extrabold text-[var(--da-brand-dark)] placeholder:text-slate-400 focus:border-[var(--da-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--da-primary)]/20 disabled:opacity-40 disabled:bg-slate-100"
+                />
+                <span className="text-xs font-bold text-[var(--da-brand-dark)]">
+                  {selectedDurationHours === 1 ? "hr" : "hrs"}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -555,6 +597,10 @@ export function ScheduleCalendarStep({
                         </div>
                         <span className="text-[10px] opacity-80 mt-0.5">
                           to {formatTime12Hour(slot.endTime)}
+                          {(() => {
+                            const [sh, sm] = slot.startTime.split(":").map(Number);
+                            return sh * 60 + sm + selectedDurationHours * 60 >= 1440 ? " (Next Day)" : "";
+                          })()}
                         </span>
                       </button>
                     );
@@ -593,7 +639,10 @@ export function ScheduleCalendarStep({
                   {selectedSlot
                     ? `${formatTime12Hour(selectedSlot.startTime)} – ${formatTime12Hour(
                         selectedSlot.endTime
-                      )}`
+                      )}${(() => {
+                        const [sh, sm] = selectedSlot.startTime.split(":").map(Number);
+                        return sh * 60 + sm + selectedDurationHours * 60 >= 1440 ? " (Next Day)" : "";
+                      })()}`
                     : "Please select start time"}
                 </span>
               </div>
@@ -626,10 +675,10 @@ export function ScheduleCalendarStep({
             {/* Continue Button */}
             <button
               type="button"
-              disabled={!selectedDate || !selectedStartTime}
+              disabled={!selectedDate || !selectedStartTime || !selectedDurationHours || selectedDurationHours <= 0}
               onClick={handleContinue}
               className={`da-primary-button w-full justify-center py-3 text-sm font-bold ${
-                !selectedDate || !selectedStartTime ? "opacity-50 cursor-not-allowed" : ""
+                !selectedDate || !selectedStartTime || !selectedDurationHours || selectedDurationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
               }`}
             >
               {selectedStartTime

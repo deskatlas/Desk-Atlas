@@ -34,6 +34,10 @@ export async function PATCH(
 
     const actorUserId = request.headers.get("x-user-id") ?? body.actorUserId ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? body.actorRole ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin =
+      request.headers.get("x-user-is-super-admin") === "true" ||
+      body.actorIsSuperAdmin === true ||
+      body.actorIsSuperAdmin === "true";
 
     const service = getStaffManagementService();
     const updated = await service.updateStaff({
@@ -44,6 +48,7 @@ export async function PATCH(
       password,
       actorUserId,
       actorRole,
+      actorIsSuperAdmin,
     });
 
     return NextResponse.json({ staff: updated });
@@ -74,11 +79,12 @@ export async function GET(
 
     const actorUserId = request.headers.get("x-user-id") ?? undefined;
     const actorRole = (request.headers.get("x-user-role") ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin = request.headers.get("x-user-is-super-admin") === "true";
 
     const service = getStaffManagementService();
     const staff = await service.getStaffById(
       id,
-      actorUserId ? { userId: actorUserId, role: actorRole } : undefined
+      actorUserId ? { userId: actorUserId, role: actorRole, isSuperAdmin: actorIsSuperAdmin } : undefined
     );
 
     if (!staff) {
@@ -87,7 +93,7 @@ export async function GET(
 
     const deletionCheck = await service.checkStaffDeletionEligibility(
       id,
-      actorUserId ? { userId: actorUserId, role: actorRole } : undefined
+      actorUserId ? { userId: actorUserId, role: actorRole, isSuperAdmin: actorIsSuperAdmin } : undefined
     );
 
     return NextResponse.json({
@@ -122,11 +128,13 @@ export async function DELETE(
 
     const actorUserId = request.headers.get("x-user-id") ?? "system-admin";
     const actorRole = (request.headers.get("x-user-role") ?? "ADMIN") as "ADMIN" | "STAFF";
+    const actorIsSuperAdmin = request.headers.get("x-user-is-super-admin") === "true";
 
     const service = getStaffManagementService();
     const result = await service.deleteStaff(id, {
       userId: actorUserId,
       role: actorRole,
+      isSuperAdmin: actorIsSuperAdmin,
     });
 
     return NextResponse.json(result);
