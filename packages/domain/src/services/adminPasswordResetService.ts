@@ -166,7 +166,7 @@ export class SupabaseAdminPasswordResetRepository implements AdminPasswordResetR
     const cleanEmail = email.toLowerCase().trim();
 
     try {
-      // 1. Find user in auth.users via RPC or REST query on staff_profiles joined with users
+      // 1. Find user in auth.users via RPC admin_get_admin_by_email
       const rpcRes = await fetch(`${this.supabaseUrl}/rest/v1/rpc/admin_get_admin_by_email`, {
         method: 'POST',
         headers: {
@@ -194,19 +194,36 @@ export class SupabaseAdminPasswordResetRepository implements AdminPasswordResetR
     }
 
     try {
-      // Fallback: Check staff_profiles directly
-      const profiles = await this.request<any[]>(
-        `/staff_profiles?role=eq.ADMIN&is_active=eq.true&select=*`
-      );
+      // 2. Query GoTrue Admin API to find user by email
+      const authRes = await fetch(`${this.supabaseUrl}/auth/v1/admin/users`, {
+        headers: {
+          apikey: this.serviceRoleKey,
+          Authorization: `Bearer ${this.serviceRoleKey}`,
+        },
+        cache: 'no-store',
+      });
 
-      if (Array.isArray(profiles) && profiles.length > 0) {
-        // Look up auth user via auth admin endpoint if available
-        const profile = profiles[0];
-        return {
-          userId: profile.user_id,
-          email: cleanEmail,
-          displayName: profile.display_name || 'Admin',
-        };
+      if (authRes.ok) {
+        const authData = await authRes.json();
+        const matchingUser = (authData.users || []).find(
+          (u: any) => u.email?.toLowerCase().trim() === cleanEmail
+        );
+
+        if (matchingUser) {
+          // Check that staff_profiles confirms this user is an active ADMIN
+          const profiles = await this.request<any[]>(
+            `/staff_profiles?user_id=eq.${encodeURIComponent(matchingUser.id)}&role=eq.ADMIN&is_active=eq.true&select=*`
+          );
+
+          if (Array.isArray(profiles) && profiles.length > 0) {
+            const profile = profiles[0];
+            return {
+              userId: matchingUser.id,
+              email: matchingUser.email,
+              displayName: profile.display_name || matchingUser.user_metadata?.full_name || 'Admin',
+            };
+          }
+        }
       }
     } catch {
       // ignore
@@ -333,8 +350,59 @@ export class SupabaseAdminPasswordResetRepository implements AdminPasswordResetR
   }
 
   async completeReset(token: string, newPassword: string, userId: string): Promise<boolean> {
+    if (!this.supabaseUrl || !this.serviceRoleKey) {
+      throw new Error('Supabase configuration missing (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)');
+    }
+
+    // 1. Primary: Update user password in Supabase Auth via GoTrue Admin API
+    const authRes = await fetch(
+      `${this.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+      {
+        method: 'PUT',
+        headers: {
+          apikey: this.serviceRoleKey,
+          Authorization: `Bearer ${this.serviceRoleKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: newPassword }),
+        cache: 'no-store',
+      }
+    );
+
+    if (!authRes.ok) {
+      const errBody = await authRes.text().catch(() => '');
+      console.error(
+        '[SupabaseAdminPasswordResetRepository] Auth admin update password failed:',
+        authRes.status,
+        errBody
+      );
+      throw new Error(`Failed to update administrator password in authentication service: ${authRes.status}`);
+    }
+
+    // 2. Mark reset token as USED in admin_password_resets table
+    await this.request(`/admin_password_resets?token=eq.${encodeURIComponent(token)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'USED',
+        used_at: new Date().toISOString(),
+      }),
+    });
+
+    // 3. Record audit log entry
+    await this.appendAuditLog({
+      actorUserId: userId,
+      actorRole: 'ADMIN',
+      action: 'ADMIN_PASSWORD_RESET',
+      entityType: 'staff_profiles',
+      entityId: userId,
+      metadata: {
+        method: 'password_reset_flow',
+      },
+    });
+
+    // 4. Optionally invoke admin_complete_password_reset RPC for database-side consistency
     try {
-      const rpcRes = await fetch(`${this.supabaseUrl}/rest/v1/rpc/admin_complete_password_reset`, {
+      await fetch(`${this.supabaseUrl}/rest/v1/rpc/admin_complete_password_reset`, {
         method: 'POST',
         headers: {
           apikey: this.serviceRoleKey,
@@ -347,32 +415,9 @@ export class SupabaseAdminPasswordResetRepository implements AdminPasswordResetR
         }),
         cache: 'no-store',
       });
-
-      if (rpcRes.ok) {
-        const res = await rpcRes.json();
-        return Boolean(res.success);
-      }
     } catch {
-      // fallback
+      // Non-blocking since auth and database record are already updated
     }
-
-    // Fallback: update status and log audit
-    await this.request(`/admin_password_resets?token=eq.${encodeURIComponent(token)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        status: 'USED',
-        used_at: new Date().toISOString(),
-      }),
-    });
-
-    await this.appendAuditLog({
-      actorUserId: userId,
-      actorRole: 'ADMIN',
-      action: 'ADMIN_PASSWORD_RESET',
-      entityType: 'staff_profiles',
-      entityId: userId,
-      metadata: { method: 'password_reset_flow' },
-    });
 
     return true;
   }

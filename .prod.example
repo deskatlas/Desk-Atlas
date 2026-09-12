@@ -1,0 +1,28 @@
+# ============================================================================
+# DeskAtlas Environment Configuration (Production Reference)
+# ============================================================================
+
+# Supabase Backend Connection
+# SUPABASE_SERVICE_ROLE_KEY is server-only. Never expose it to client-side code.
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+
+# Initial Administrator Bootstrap (used by `pnpm bootstrap:admin` / `pnpm seed:admin`)
+ADMIN_EMAIL=admin@thedeskatlas.com
+ADMIN_PASSWORD=AdminPassword123!
+ADMIN_DISPLAY_NAME="Admin User"
+
+# Resend Transactional Email (server-only)
+RESEND_API_KEY=your-resend-api-key
+RESEND_FROM_EMAIL="DeskAtlas <bookings@thedeskatlas.com>"
+TRANSACTIONAL_EMAIL_WEBHOOK_URL=https://admin.thedeskatlas.com/api/webhooks/resend
+SURVEY_FORM_URL="https://forms.gle/LogUg86kGi2pveEZ8"
+
+# Application URLs (Production)
+NEXT_PUBLIC_ADMIN_PORTAL_URL=https://admin.thedeskatlas.com
+DESKATLAS_PUBLIC_APP_URL=https://www.thedeskatlas.com
+TRACKING_BASE_URL=https://www.thedeskatlas.com
+NEXT_PUBLIC_KIOSK_URL=https://kiosk.thedeskatlas.com/kiosk
+NEXT_PUBLIC_STAFF_PORTAL_URL=https://staff.thedeskatlas.com
+BOOKING_ACCESS_BASE_URL=https://www.thedeskatlas.com/api/booking

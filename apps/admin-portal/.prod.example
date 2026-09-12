@@ -1,0 +1,23 @@
+# ============================================================================
+# Admin Portal - Production Configuration
+# Use these environment variables in your production hosting provider
+# ============================================================================
+
+# Supabase Backend Connection
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+
+# Transactional Email (Resend)
+RESEND_API_KEY=your-resend-api-key
+RESEND_FROM_EMAIL="DeskAtlas <bookings@thedeskatlas.com>"
+
+# Google Form Survey URL
+SURVEY_FORM_URL="https://forms.gle/LogUg86kGi2pveEZ8"
+
+# Application URLs (Production)
+NEXT_PUBLIC_ADMIN_PORTAL_URL=https://admin.thedeskatlas.com
+NEXT_PUBLIC_STAFF_PORTAL_URL=https://staff.thedeskatlas.com
+DESKATLAS_PUBLIC_APP_URL=https://www.thedeskatlas.com
+TRACKING_BASE_URL=https://www.thedeskatlas.com
+BOOKING_ACCESS_BASE_URL=https://www.thedeskatlas.com/api/booking

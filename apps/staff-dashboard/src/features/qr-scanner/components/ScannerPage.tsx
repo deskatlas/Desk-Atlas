@@ -260,8 +260,15 @@ export function ScannerPage() {
                   </div>
                 )}
 
+                {/* Initial Check-In notice */}
+                {result.accessState === 'ACTIVE' && !result.reentry && result.checkInState === 'CHECKED_IN' && (
+                  <div style={{ padding: '12px 16px', background: '#D1FAE5', border: '1px solid #A7F3D0', borderRadius: '8px', color: '#065F46', fontSize: '13px', fontWeight: 600, marginBottom: '18px' }}>
+                    Active Guest: Guest successfully checked in. Entry authorized during active window.
+                  </div>
+                )}
+
                 {/* Active Re-entry notice */}
-                {result.accessState === 'ACTIVE' && result.checkInState === 'CHECKED_IN' && (
+                {result.accessState === 'ACTIVE' && result.reentry && (
                   <div style={{ padding: '12px 16px', background: '#E0F2FE', border: '1px solid #BAE6FD', borderRadius: '8px', color: '#0369A1', fontSize: '13px', fontWeight: 600, marginBottom: '18px' }}>
                     Active Guest (Re-entry): Guest is currently checked in. Re-entry authorized during active window.
                   </div>

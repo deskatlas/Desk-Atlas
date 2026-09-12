@@ -27,7 +27,15 @@ export class PaymentReviewService {
   ) {}
 
   async listPaymentReviewQueue(): Promise<PaymentReviewQueueItem[]> {
-    return this.paymentReviewRepository.listPaymentReviewQueue();
+    const queue = await this.paymentReviewRepository.listPaymentReviewQueue();
+    return [...queue].sort((a, b) => {
+      const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+      const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+      return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+    });
   }
 
   async getPaymentReviewDetail(paymentAttemptId: string): Promise<PaymentReviewDetail> {

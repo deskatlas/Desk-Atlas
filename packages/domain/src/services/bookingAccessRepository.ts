@@ -46,5 +46,6 @@ export interface BookingAccessRepository {
     actorUserId?: string | null;
     actorRole?: "ADMIN" | "STAFF" | "SYSTEM" | null;
     reentry?: boolean;
+    checkIn?: boolean;
   }): Promise<void>;
 }

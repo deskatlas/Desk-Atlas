@@ -7,11 +7,18 @@ import { PasswordRequirementsChecklist, PasswordInput } from '@deskatlas/ui';
 import { useAuth } from '@/features/auth';
 
 export function StaffManagement() {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const isSuperAdmin = Boolean(
+    user?.isSuperAdmin ||
+    staffList.find((s) => s.id === user?.id)?.isSuperAdmin ||
+    staffList.find((s) => s.id === user?.id && s.createdByAdminId === null && s.rawRole === 'ADMIN') ||
+    (staffList.length > 0 && staffList[0].id === user?.id && staffList[0].rawRole === 'ADMIN')
+  );
 
   // Helper for auth headers
   const getAuthHeaders = () => {
@@ -21,6 +28,9 @@ export function StaffManagement() {
     if (user?.id) {
       headers['x-user-id'] = user.id;
       headers['x-user-role'] = 'ADMIN';
+      if (user.isSuperAdmin || isSuperAdmin) {
+        headers['x-user-is-super-admin'] = 'true';
+      }
     }
     return headers;
   };
@@ -70,7 +80,20 @@ export function StaffManagement() {
         throw new Error(errData.error || `Failed to load staff accounts (${resStaff.status})`);
       }
       const dataStaff = await resStaff.json();
-      setStaffList(dataStaff.staff ?? []);
+      const loadedStaff: StaffMember[] = dataStaff.staff ?? [];
+      setStaffList(loadedStaff);
+
+      const myRecord = loadedStaff.find((s) => s.id === user?.id);
+      if (myRecord && (myRecord.isSuperAdmin || (myRecord.createdByAdminId === null && myRecord.rawRole === 'ADMIN'))) {
+        if (!user?.isSuperAdmin) {
+          login(user?.role || 'admin', user?.name, {
+            id: user?.id,
+            email: user?.email,
+            token: user?.token,
+            isSuperAdmin: true,
+          });
+        }
+      }
 
       if (resInv.ok) {
         const dataInv = await resInv.json();
@@ -126,11 +149,19 @@ export function StaffManagement() {
   }
 
   async function handleToggleActive(st: StaffMember) {
+    if (st.isSuperAdmin) {
+      alert('Superadmin account cannot be deactivated.');
+      return;
+    }
     try {
       const res = await fetch(`/api/admin/staff/${encodeURIComponent(st.id)}`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ isActive: !st.isActive, actorUserId: user?.id }),
+        body: JSON.stringify({
+          isActive: !st.isActive,
+          actorUserId: user?.id,
+          actorIsSuperAdmin: Boolean(user?.isSuperAdmin),
+        }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -234,6 +265,7 @@ export function StaffManagement() {
           role: addRole,
           actorUserId: user?.id,
           actorRole: 'ADMIN',
+          actorIsSuperAdmin: Boolean(user?.isSuperAdmin),
         }),
       });
 
@@ -281,11 +313,12 @@ export function StaffManagement() {
         headers: getAuthHeaders(),
         body: JSON.stringify({
           displayName: manageName.trim(),
-          role: manageRole,
-          isActive: manageIsActive,
+          role: editingStaff.isSuperAdmin ? undefined : manageRole,
+          isActive: editingStaff.isSuperAdmin ? true : manageIsActive,
           password: managePassword.trim() || undefined,
           actorUserId: user?.id,
           actorRole: 'ADMIN',
+          actorIsSuperAdmin: Boolean(user?.isSuperAdmin),
         }),
       });
 
@@ -308,14 +341,20 @@ export function StaffManagement() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Staff Accounts</h1>
-          <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>Admins manage settings and maps; staff handle the front desk</div>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>
+            {isSuperAdmin ? 'Team & Staff Accounts' : 'Staff Accounts'}
+          </h1>
+          <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
+            {isSuperAdmin
+              ? 'Superadmin manages admins and staff; admins manage staff and desk operations'
+              : 'Admins manage settings and maps; staff handle the front desk'}
+          </div>
         </div>
         <button
           onClick={openAddModal}
           style={{ background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '9px', fontWeight: 700, fontSize: '12px', cursor: 'pointer', boxShadow: '0 4px 10px 1px rgba(12,59,39,.16)' }}
         >
-          + Add Staff
+          {isSuperAdmin ? '+ Add Staff / Admin' : '+ Add Staff'}
         </button>
       </div>
 
@@ -339,7 +378,7 @@ export function StaffManagement() {
           </div>
         ) : staffList.length === 0 ? (
           <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px' }}>
-            No staff accounts found. Click <strong>+ Add Staff</strong> to invite one.
+            No accounts found. Click <strong>{isSuperAdmin ? '+ Add Staff / Admin' : '+ Add Staff'}</strong> to invite one.
           </div>
         ) : (
           staffList.map((st) => (
@@ -351,30 +390,46 @@ export function StaffManagement() {
                 <span style={{ fontWeight: 700 }}>{st.name}</span>
               </div>
               <span style={{ color: 'var(--da-text-primary)' }}>{st.email}</span>
-              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--da-text-primary)', background: 'var(--da-bg)', borderRadius: '6px', padding: '3px 8px', width: 'fit-content' }}>
-                {st.role}
-              </span>
+              {st.isSuperAdmin ? (
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#065F46', background: '#D1FAE5', borderRadius: '6px', padding: '3px 8px', width: 'fit-content' }}>
+                  SUPERADMIN
+                </span>
+              ) : st.rawRole === 'ADMIN' ? (
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#1D4ED8', background: '#DBEAFE', borderRadius: '6px', padding: '3px 8px', width: 'fit-content' }}>
+                  ADMIN
+                </span>
+              ) : (
+                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--da-text-primary)', background: 'var(--da-bg)', borderRadius: '6px', padding: '3px 8px', width: 'fit-content' }}>
+                  STAFF
+                </span>
+              )}
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '9999px', whiteSpace: 'nowrap', width: 'fit-content', ...st.statusStyle }}>
                 <span aria-hidden="true" style={{ fontSize: '10px', lineHeight: 1 }}>{st.mark}</span>{st.status}
               </span>
               <span style={{ color: 'var(--da-text-primary)' }}>{st.lastActive}</span>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => handleToggleActive(st)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: st.isActive ? '#DC2626' : '#059669',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    padding: 0,
-                    fontSize: '12px',
-                  }}
-                  title={st.isActive ? 'Deactivate staff account' : 'Reactivate staff account'}
-                >
-                  {st.isActive ? 'Deactivate' : 'Reactivate'}
-                </button>
+                {st.isSuperAdmin ? (
+                  <span style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontStyle: 'italic' }}>
+                    {st.id === user?.id ? 'Current User' : 'Primary Admin'}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleActive(st)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: st.isActive ? '#DC2626' : '#059669',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontSize: '12px',
+                    }}
+                    title={st.isActive ? 'Deactivate account' : 'Reactivate account'}
+                  >
+                    {st.isActive ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                )}
                 <button
                   onClick={() => openManageModal(st)}
                   style={{ background: 'transparent', border: 'none', color: 'var(--da-brand-dark)', fontWeight: 700, textAlign: 'right', cursor: 'pointer', padding: 0, fontSize: '12px' }}
@@ -463,7 +518,7 @@ export function StaffManagement() {
                     {createdInvitation.verificationCode}
                   </div>
                   <p style={{ fontSize: '11px', color: 'var(--da-text-secondary)', margin: '8px 0 0' }}>
-                    The invited staff member must enter this code via the verification link sent to their email.
+                    Please provide this 2FA code directly to the staff member. For security, it is not included in their invitation email.
                   </p>
                 </div>
 
@@ -491,7 +546,9 @@ export function StaffManagement() {
             ) : (
               /* Step 1: Input Form */
               <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>Invite Staff Member</h2>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>
+                  {user?.isSuperAdmin ? 'Invite Team Member (Staff / Admin)' : 'Invite Staff Member'}
+                </h2>
                 <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 18px' }}>
                   Sends an invitation email with a confirmation link and generates a 2FA activation code.
                 </p>
@@ -540,14 +597,20 @@ export function StaffManagement() {
 
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>ROLE</label>
-                    <select
-                      value={addRole}
-                      onChange={(e) => setAddRole(e.target.value as StaffRole)}
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box', background: '#fff' }}
-                    >
-                      <option value="STAFF">Staff (Front desk, check-in, counter)</option>
-                      <option value="ADMIN">Admin (Full access, maps, settings, staff)</option>
-                    </select>
+                    {isSuperAdmin ? (
+                      <select
+                        value={addRole}
+                        onChange={(e) => setAddRole(e.target.value as StaffRole)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box', background: '#fff' }}
+                      >
+                        <option value="STAFF">Staff (Front desk, check-in, counter)</option>
+                        <option value="ADMIN">Admin (Full access, maps, settings, staff)</option>
+                      </select>
+                    ) : (
+                      <div style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', background: '#F9FAFB', color: 'var(--da-text-secondary)' }}>
+                        Staff (Front desk, check-in, counter)
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
@@ -575,12 +638,12 @@ export function StaffManagement() {
       )}
 
       {/* Modal: Manage Staff */}
-
-      {/* Modal: Manage Staff */}
       {editingStaff && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
           <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '440px', width: '100%', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>Manage Staff</h2>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>
+              {editingStaff.isSuperAdmin ? 'Manage Superadmin' : editingStaff.rawRole === 'ADMIN' ? 'Manage Administrator' : 'Manage Staff'}
+            </h2>
             <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 18px' }}>
               {editingStaff.email}
             </p>
@@ -605,36 +668,74 @@ export function StaffManagement() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>ROLE</label>
-                <select
-                  value={manageRole}
-                  onChange={(e) => setManageRole(e.target.value as StaffRole)}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box', background: '#fff' }}
-                >
-                  <option value="STAFF">Staff</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
+                {editingStaff.isSuperAdmin ? (
+                  <div style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', background: '#F0FDF4', color: '#065F46', fontWeight: 700 }}>
+                    SUPERADMIN (Primary Account - Role cannot be changed)
+                  </div>
+                ) : isSuperAdmin ? (
+                  <div>
+                    <select
+                      value={manageRole}
+                      onChange={(e) => setManageRole(e.target.value as StaffRole)}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box', background: '#fff' }}
+                    >
+                      <option value="STAFF">Staff (Front desk, check-in, counter)</option>
+                      <option value="ADMIN">Admin (Full administrative access)</option>
+                    </select>
+                    {manageRole === 'ADMIN' && (
+                      <div style={{ marginTop: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setManageRole('STAFF')}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid #F59E0B',
+                            background: '#FEF3C7',
+                            color: '#B45309',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Remove Admin Access (Demote to Staff)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', background: '#F9FAFB', color: 'var(--da-text-secondary)' }}>
+                    Staff
+                  </div>
+                )}
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>ACCOUNT STATUS</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setManageIsActive(!manageIsActive)}
-                    style={{
-                      padding: '7px 14px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      border: manageIsActive ? '1px solid #10B981' : '1px solid #EF4444',
-                      background: manageIsActive ? '#D1FAE5' : '#FEE2E2',
-                      color: manageIsActive ? '#065F46' : '#991B1B',
-                    }}
-                  >
-                    {manageIsActive ? '✓ Active (Click to Deactivate)' : '! Inactive (Click to Activate)'}
-                  </button>
-                </div>
+                {editingStaff.isSuperAdmin ? (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#D1FAE5', color: '#065F46', fontSize: '12px', fontWeight: 700 }}>
+                    ✓ Active (Superadmin account cannot be deactivated)
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setManageIsActive(!manageIsActive)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: manageIsActive ? '1px solid #10B981' : '1px solid #EF4444',
+                        background: manageIsActive ? '#D1FAE5' : '#FEE2E2',
+                        color: manageIsActive ? '#065F46' : '#991B1B',
+                      }}
+                    >
+                      {manageIsActive ? '✓ Active (Click to Deactivate)' : '! Inactive (Click to Activate)'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -650,7 +751,11 @@ export function StaffManagement() {
 
               <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '14px', marginTop: '4px' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>PERMANENT REMOVAL</label>
-                {deletionEligibility && !deletionEligibility.canDelete ? (
+                {editingStaff.isSuperAdmin ? (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#F9FAFB', border: '1px solid var(--da-border-light)', fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                    Superadmin account cannot be deleted.
+                  </div>
+                ) : deletionEligibility && !deletionEligibility.canDelete ? (
                   <div
                     title={deletionEligibility.reason || 'Staff has historical records. Deactivate instead.'}
                     style={{

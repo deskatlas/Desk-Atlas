@@ -173,4 +173,14 @@ describe("MF-66: Fix Early Checkout Ambiguous Column Reference", () => {
       /Reservation was not found/
     );
   });
+
+  it("verifies assert_reservation_candidate_set permits duration deviation for finalized reservations", () => {
+    const filePath = path.resolve(__dirname, "../supabase/001_schema.sql");
+    assert.ok(fs.existsSync(filePath), `Expected ${filePath} to exist`);
+    const content = fs.readFileSync(filePath, "utf-8");
+    assert.ok(
+      content.includes("IF v_status IN ('CONFIRMED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED') THEN"),
+      `Expected ${path.basename(filePath)} to check finalized status to allow early checkout workspace release`
+    );
+  });
 });

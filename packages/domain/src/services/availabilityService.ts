@@ -277,7 +277,17 @@ async function listTimeSlotsForDate(
   }
 
   const rangeStart = zonedDateTimeToUtc(date, '00:00', settings.timezone);
-  const rangeEnd = zonedDateTimeToUtc(addDays(date, 1), '00:00', settings.timezone);
+  const extraDays = Math.ceil(durationMinutes / MINUTES_PER_DAY) + 1;
+  const rangeEnd = zonedDateTimeToUtc(addDays(date, extraDays), '00:00', settings.timezone);
+
+  const operatingHoursByDay = new Map<number, OperatingHoursInterval[]>();
+  operatingHoursByDay.set(dayOfWeek, intervals);
+
+  const daysToFetch = new Set<number>();
+  for (let i = 1; i <= extraDays; i++) {
+    daysToFetch.add((dayOfWeek + i) % 7);
+  }
+
   const [blocks, reservations] = await Promise.all([
     repository.listScheduleBlocks(
       workspaceInstanceId,
@@ -289,6 +299,12 @@ async function listTimeSlotsForDate(
       rangeStart.toISOString(),
       rangeEnd.toISOString()
     ),
+    ...Array.from(daysToFetch).map(async (d) => {
+      const dayIntervals = (await repository.listOperatingHours(d))
+        .filter((interval) => interval.isActive)
+        .sort((left, right) => left.opensAt.localeCompare(right.opensAt));
+      operatingHoursByDay.set(d, dayIntervals);
+    }),
   ]);
 
   const slots: AvailableTimeSlot[] = [];
@@ -303,6 +319,7 @@ async function listTimeSlotsForDate(
         now,
         blocks,
         reservations,
+        operatingHoursByDay,
       })
     );
   }
@@ -319,10 +336,19 @@ function buildIntervalSlots(input: {
   now: Date;
   blocks: ScheduleBlock[];
   reservations: BlockingReservationWindow[];
+  operatingHoursByDay: Map<number, OperatingHoursInterval[]>;
 }): AvailableTimeSlot[] {
   const intervalStartMinutes = parseTimeToMinutes(input.interval.opensAt);
   const intervalEndMinutes = parseTimeToMinutes(input.interval.closesAt);
-  const latestStartMinutes = intervalEndMinutes - input.durationMinutes;
+
+  let latestStartMinutes: number;
+  if (intervalEndMinutes >= MINUTES_PER_DAY) {
+    // When interval extends to midnight (24:00), allow start times up to the last interval slot of the day
+    latestStartMinutes = MINUTES_PER_DAY - input.bookingIntervalMinutes;
+  } else {
+    // When interval closes before midnight, booking must complete before interval closes
+    latestStartMinutes = intervalEndMinutes - input.durationMinutes;
+  }
 
   if (latestStartMinutes < intervalStartMinutes) {
     return [];
@@ -340,10 +366,18 @@ function buildIntervalSlots(input: {
     const slotStart = zonedDateTimeToUtc(input.date, startTime, input.timezone);
     const slotEnd = new Date(slotStart.getTime() + input.durationMinutes * 60_000);
 
+    const isCovered = checkOperatingHoursCoverage({
+      date: input.date,
+      startMinutes,
+      durationMinutes: input.durationMinutes,
+      operatingHoursByDay: input.operatingHoursByDay,
+    });
+
     const blockingReason = getSlotBlockingReason(
       slotStart,
       slotEnd,
       input.now,
+      isCovered,
       input.blocks,
       input.reservations
     );
@@ -359,15 +393,56 @@ function buildIntervalSlots(input: {
   return slots;
 }
 
+function checkOperatingHoursCoverage(input: {
+  date: string;
+  startMinutes: number;
+  durationMinutes: number;
+  operatingHoursByDay: Map<number, OperatingHoursInterval[]>;
+}): boolean {
+  let remainingMinutes = input.durationMinutes;
+  let currentStartMinutes = input.startMinutes;
+  let currentDate = input.date;
+
+  while (remainingMinutes > 0) {
+    const minutesUntilMidnight = MINUTES_PER_DAY - currentStartMinutes;
+    const minutesInThisDay = Math.min(remainingMinutes, minutesUntilMidnight);
+    const currentEndMinutes = currentStartMinutes + minutesInThisDay;
+
+    const currentDayOfWeek = getDayOfWeek(currentDate);
+    const intervals = input.operatingHoursByDay.get(currentDayOfWeek) || [];
+
+    const isCovered = intervals.some((interval) => {
+      const openMin = parseTimeToMinutes(interval.opensAt);
+      const closeMin = parseTimeToMinutes(interval.closesAt);
+      return openMin <= currentStartMinutes && closeMin >= currentEndMinutes;
+    });
+
+    if (!isCovered) {
+      return false;
+    }
+
+    remainingMinutes -= minutesInThisDay;
+    currentStartMinutes = 0;
+    currentDate = addDays(currentDate, 1);
+  }
+
+  return true;
+}
+
 function getSlotBlockingReason(
   slotStart: Date,
   slotEnd: Date,
   now: Date,
+  isCoveredByOperatingHours: boolean,
   blocks: ScheduleBlock[],
   reservations: BlockingReservationWindow[]
 ) {
   if (slotStart.getTime() + 60_000 <= now.getTime()) {
     return 'PAST_TIME' as const;
+  }
+
+  if (!isCoveredByOperatingHours) {
+    return 'BUSINESS_CLOSED' as const;
   }
 
   if (blocks.some((block) => rangesOverlap(slotStart, slotEnd, new Date(block.startAt), new Date(block.endAt)))) {

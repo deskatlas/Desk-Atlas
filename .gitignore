@@ -34,10 +34,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-Environment files
+# Environment files
 .env
 .env.*
 !.env.example
+.env.prod.example
+!.prod.example
 
 Vercel
 .vercel/

@@ -81,6 +81,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     const displayName = row.display_name ?? 'Unnamed Staff';
     const roleUpper = (row.role ?? 'STAFF').toUpperCase();
     const isRoleAdmin = roleUpper === 'ADMIN';
+    const isSuperAdmin = Boolean(row.is_super_admin ?? (row.created_by_admin_id === null && isRoleAdmin));
 
     return {
       id: row.id ?? row.user_id,
@@ -99,10 +100,28 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       createdAt: row.created_at ?? now.toISOString(),
       updatedAt: row.updated_at ?? now.toISOString(),
       createdByAdminId: row.created_by_admin_id ?? null,
+      isSuperAdmin,
     };
   }
 
-  async listStaff(actorUserId?: string): Promise<StaffMember[]> {
+  async listStaff(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffMember[]> {
+    let isSuperAdmin = actorIsSuperAdmin;
+    if (actorUserId && isSuperAdmin !== true) {
+      try {
+        const actorRows = await this.request<any[]>(
+          `/staff_profiles?user_id=eq.${encodeURIComponent(actorUserId)}&select=role,created_by_admin_id,is_active&limit=1`
+        );
+        if (actorRows && actorRows.length > 0) {
+          const ap = actorRows[0];
+          if (ap.role?.toUpperCase() === 'ADMIN' && (ap.created_by_admin_id === null || ap.is_super_admin === true)) {
+            isSuperAdmin = true;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     try {
       // 1. Try RPC first
       const rows = await this.request<any[]>('/rpc/admin_list_staff', {
@@ -112,15 +131,21 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         }),
       });
 
-      return rows.map((r) => this.mapRowToStaffMember(r));
+      return rows
+        .map((r) => this.mapRowToStaffMember(r))
+        .sort((a, b) => {
+          if (a.isSuperAdmin && !b.isSuperAdmin) return -1;
+          if (!a.isSuperAdmin && b.isSuperAdmin) return 1;
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
     } catch (rpcErr) {
       if (rpcErr instanceof Error && rpcErr.message.includes('Only active ADMIN profiles')) {
         throw new StaffManagementAuthorizationError(rpcErr.message);
       }
       // 2. Fallback to direct REST table queries
-      const endpoint = actorUserId
-        ? `/staff_profiles?created_by_admin_id=eq.${encodeURIComponent(actorUserId)}&select=*&order=created_at.asc`
-        : '/staff_profiles?select=*&order=created_at.asc';
+      const endpoint = (isSuperAdmin || !actorUserId)
+        ? '/staff_profiles?select=*&order=created_at.asc'
+        : `/staff_profiles?or=(user_id.eq.${encodeURIComponent(actorUserId)},created_by_admin_id.eq.${encodeURIComponent(actorUserId)})&select=*&order=created_at.asc`;
       const profiles = await this.request<any[]>(endpoint);
 
       // Fetch users from auth admin if available
@@ -375,8 +400,8 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     return found ?? null;
   }
 
-  async listActiveStaff(actorUserId?: string): Promise<StaffMember[]> {
-    const list = await this.listStaff(actorUserId);
+  async listActiveStaff(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffMember[]> {
+    const list = await this.listStaff(actorUserId, actorIsSuperAdmin);
     return list.filter((s) => s.isActive);
   }
 
@@ -448,15 +473,15 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     } catch (err: any) {
       return {
         canDelete: false,
-        reason: err?.message || 'Failed to check staff deletion eligibility.',
+        reason: 'Failed to verify deletion eligibility. Deactivate instead.',
       };
     }
   }
 
-  async deleteStaff(staffUserId: string, actorUserId?: string): Promise<{ success: boolean }> {
+  async deleteStaff(staffUserId: string, actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<{ success: boolean }> {
     try {
       // 1. Try RPC first
-      await this.request<any>('/rpc/admin_delete_staff', {
+      await this.request('/rpc/admin_delete_staff', {
         method: 'POST',
         body: JSON.stringify({
           p_actor_user_id: actorUserId ?? null,
@@ -464,12 +489,21 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         }),
       });
       return { success: true };
-    } catch (rpcErr: any) {
-      if (rpcErr instanceof StaffManagementConflictError) {
-        throw rpcErr;
-      }
-      if (rpcErr instanceof StaffManagementAuthorizationError) {
-        throw rpcErr;
+    } catch (rpcErr) {
+      if (rpcErr instanceof Error) {
+        if (
+          rpcErr.message.includes('Admin cannot manage staff created by another admin') ||
+          rpcErr.message.includes('Only active ADMIN profiles') ||
+          rpcErr.message.includes('Only the Superadmin')
+        ) {
+          throw new StaffManagementAuthorizationError(rpcErr.message);
+        }
+        if (
+          rpcErr.message.includes('Cannot delete') ||
+          rpcErr.message.includes('historical records')
+        ) {
+          throw new StaffManagementConflictError(rpcErr.message);
+        }
       }
 
       // 2. Fallback: Check eligibility first
@@ -489,7 +523,16 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       }
       const profile = existingProfiles[0];
 
+      if (profile.is_super_admin) {
+        throw new StaffManagementError('Cannot delete the Superadmin account.');
+      }
+
+      if (profile.role === 'ADMIN' && !actorIsSuperAdmin) {
+        throw new StaffManagementAuthorizationError('Only the Superadmin can delete administrator accounts.');
+      }
+
       if (
+        !actorIsSuperAdmin &&
         actorUserId &&
         profile.created_by_admin_id &&
         profile.created_by_admin_id !== actorUserId
@@ -638,12 +681,12 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     return this.mapRowToStaffInvitation(rows[0]);
   }
 
-  async listPendingInvitations(actorUserId?: string): Promise<StaffInvitation[]> {
-    const endpoint = actorUserId
-      ? `/staff_invitations?created_by_admin_id=eq.${encodeURIComponent(
+  async listPendingInvitations(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffInvitation[]> {
+    const endpoint = (actorIsSuperAdmin || !actorUserId)
+      ? '/staff_invitations?select=*&order=created_at.desc'
+      : `/staff_invitations?created_by_admin_id=eq.${encodeURIComponent(
           actorUserId
-        )}&select=*&order=created_at.desc`
-      : '/staff_invitations?select=*&order=created_at.desc';
+        )}&role=eq.STAFF&select=*&order=created_at.desc`;
 
     const rows = await this.request<any[]>(endpoint);
     const now = this.nowProvider().getTime();
@@ -695,6 +738,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       password,
       actorUserId: row.created_by_admin_id ?? undefined,
       actorRole: 'ADMIN',
+      actorIsSuperAdmin: true,
     });
 
     // Mark invitation confirmed
@@ -713,14 +757,14 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
     };
   }
 
-  async cancelStaffInvitation(id: string, actorUserId?: string): Promise<boolean> {
+  async cancelStaffInvitation(id: string, actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<boolean> {
     const rows = await this.request<any[]>(
       `/staff_invitations?id=eq.${encodeURIComponent(id)}&select=*&limit=1`
     );
     if (!rows || rows.length === 0) return false;
 
     const row = rows[0];
-    if (actorUserId && row.created_by_admin_id && row.created_by_admin_id !== actorUserId) {
+    if (!actorIsSuperAdmin && actorUserId && row.created_by_admin_id && row.created_by_admin_id !== actorUserId) {
       throw new StaffManagementAuthorizationError(
         'Admin cannot cancel invitation created by another admin'
       );
@@ -728,12 +772,8 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
 
     await this.request(`/staff_invitations?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        status: 'CANCELLED',
-        updated_at: this.nowProvider().toISOString(),
-      }),
+      body: JSON.stringify({ status: 'CANCELLED', updated_at: this.nowProvider().toISOString() }),
     });
     return true;
   }
 }
-

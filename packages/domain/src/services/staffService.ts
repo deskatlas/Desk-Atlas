@@ -46,6 +46,7 @@ export class InMemoryStaffRepository implements StaffRepository {
       displayName: input.displayName?.trim() || input.email.split('@')[0] || 'Admin',
       role: 'ADMIN',
       isActive: true,
+      isSuperAdmin: true,
       createdAt: now,
       updatedAt: now,
     };
@@ -171,6 +172,7 @@ export class SupabaseStaffRepository implements StaffRepository {
             role: 'ADMIN',
             displayName: row.display_name,
             isActive: Boolean(row.is_active),
+            isSuperAdmin: Boolean(row.is_super_admin ?? true),
             createdAt: row.created_at,
             updatedAt: row.updated_at,
           };
@@ -207,6 +209,7 @@ export class SupabaseStaffRepository implements StaffRepository {
         role: 'ADMIN',
         display_name: displayName,
         is_active: true,
+        is_super_admin: true,
       }),
     });
 
@@ -226,6 +229,7 @@ export class SupabaseStaffRepository implements StaffRepository {
       role: 'ADMIN',
       displayName: row.display_name,
       isActive: Boolean(row.is_active),
+      isSuperAdmin: true,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

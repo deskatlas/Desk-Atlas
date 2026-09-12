@@ -30,7 +30,7 @@ export class StaffManagementService {
     if (actor && actor.role !== 'ADMIN') {
       throw new StaffManagementAuthorizationError('Only ADMIN profiles may manage staff.');
     }
-    return this.repository.listStaff(actor?.userId);
+    return this.repository.listStaff(actor?.userId, actor?.isSuperAdmin);
   }
 
   async getStaffById(id: string, actor?: StaffManagementActor): Promise<StaffMember | null> {
@@ -38,8 +38,16 @@ export class StaffManagementService {
       throw new StaffManagementError('Staff ID is required.');
     }
     const staff = await this.repository.getStaffById(id.trim());
-    if (staff && actor && actor.role === 'ADMIN' && staff.createdByAdminId && staff.createdByAdminId !== actor.userId) {
-      throw new StaffManagementAuthorizationError('Admin cannot view staff created by another admin');
+    if (staff && actor && actor.role === 'ADMIN') {
+      if (actor.isSuperAdmin) {
+        return staff;
+      }
+      if (staff.rawRole === 'ADMIN' && staff.id !== actor.userId) {
+        throw new StaffManagementAuthorizationError('Admin cannot view other administrators');
+      }
+      if (staff.createdByAdminId && staff.createdByAdminId !== actor.userId) {
+        throw new StaffManagementAuthorizationError('Admin cannot view staff created by another admin');
+      }
     }
     return staff;
   }
@@ -47,6 +55,10 @@ export class StaffManagementService {
   async createStaff(input: CreateStaffInput): Promise<StaffMember> {
     if (input.actorRole && input.actorRole !== 'ADMIN') {
       throw new StaffManagementAuthorizationError('Only ADMIN profiles may create staff accounts.');
+    }
+
+    if (input.role === 'ADMIN' && !input.actorIsSuperAdmin) {
+      throw new StaffManagementAuthorizationError('Only the Superadmin can add administrator accounts.');
     }
 
     const email = input.email ? input.email.trim().toLowerCase() : '';
@@ -93,7 +105,31 @@ export class StaffManagementService {
       throw new StaffManagementError('Staff member not found');
     }
 
+    // Protection for Superadmin account
+    if (existing.isSuperAdmin) {
+      if (input.role !== undefined && input.role !== 'ADMIN') {
+        throw new StaffManagementAuthorizationError('The superadmin account role cannot be changed or demoted.');
+      }
+      if (input.isActive === false) {
+        throw new StaffManagementAuthorizationError('The superadmin account cannot be deactivated.');
+      }
+      if (input.actorUserId && input.actorUserId !== existing.id) {
+        throw new StaffManagementAuthorizationError('Cannot modify the Superadmin account.');
+      }
+    }
+
+    // Admin target validation: Only superadmin or self can update an admin account
+    if (existing.rawRole === 'ADMIN' && !input.actorIsSuperAdmin && input.actorUserId !== existing.id) {
+      throw new StaffManagementAuthorizationError('Only the Superadmin can manage administrator accounts.');
+    }
+
+    // Promoting to Admin validation
+    if (input.role === 'ADMIN' && existing.rawRole !== 'ADMIN' && !input.actorIsSuperAdmin) {
+      throw new StaffManagementAuthorizationError('Only the Superadmin can promote accounts to administrator.');
+    }
+
     if (
+      !input.actorIsSuperAdmin &&
       input.actorUserId &&
       existing.createdByAdminId &&
       existing.createdByAdminId !== input.actorUserId
@@ -127,6 +163,7 @@ export class StaffManagementService {
       isActive: false,
       actorUserId: actor.userId,
       actorRole: actor.role,
+      actorIsSuperAdmin: actor.isSuperAdmin,
     });
   }
 
@@ -136,6 +173,7 @@ export class StaffManagementService {
       isActive: true,
       actorUserId: actor.userId,
       actorRole: actor.role,
+      actorIsSuperAdmin: actor.isSuperAdmin,
     });
   }
 
@@ -143,7 +181,7 @@ export class StaffManagementService {
     if (actor && actor.role !== 'ADMIN') {
       throw new StaffManagementAuthorizationError('Only ADMIN profiles may manage staff.');
     }
-    return this.repository.listActiveStaff(actor?.userId);
+    return this.repository.listActiveStaff(actor?.userId, actor?.isSuperAdmin);
   }
 
   async checkStaffDeletionEligibility(staffUserId: string, actor?: StaffManagementActor): Promise<StaffDeletionCheckResult> {
@@ -152,6 +190,13 @@ export class StaffManagementService {
     }
     if (!staffUserId || !staffUserId.trim()) {
       throw new StaffManagementError('Staff user ID is required.');
+    }
+    const existing = await this.repository.getStaffById(staffUserId.trim());
+    if (existing?.isSuperAdmin) {
+      return { canDelete: false, reason: 'Superadmin account cannot be deleted.' };
+    }
+    if (existing?.rawRole === 'ADMIN' && !actor?.isSuperAdmin) {
+      return { canDelete: false, reason: 'Only the Superadmin can delete administrator accounts.' };
     }
     return this.repository.checkStaffDeletionEligibility(staffUserId.trim());
   }
@@ -163,7 +208,14 @@ export class StaffManagementService {
     if (!staffUserId || !staffUserId.trim()) {
       throw new StaffManagementError('Staff user ID is required.');
     }
-    return this.repository.deleteStaff(staffUserId.trim(), actor.userId);
+    const existing = await this.repository.getStaffById(staffUserId.trim());
+    if (existing?.isSuperAdmin) {
+      throw new StaffManagementAuthorizationError('Superadmin account cannot be deleted.');
+    }
+    if (existing?.rawRole === 'ADMIN' && !actor.isSuperAdmin) {
+      throw new StaffManagementAuthorizationError('Only the Superadmin can delete administrator accounts.');
+    }
+    return this.repository.deleteStaff(staffUserId.trim(), actor.userId, actor.isSuperAdmin);
   }
 
   // --------------------------------------------------------------------------
@@ -173,6 +225,10 @@ export class StaffManagementService {
   async inviteStaff(input: CreateStaffInvitationInput): Promise<{ invitation: StaffInvitation; emailSent: boolean }> {
     if (input.actorRole && input.actorRole !== 'ADMIN') {
       throw new StaffManagementAuthorizationError('Only ADMIN profiles may invite staff.');
+    }
+
+    if (input.role === 'ADMIN' && !input.actorIsSuperAdmin) {
+      throw new StaffManagementAuthorizationError('Only the Superadmin can invite administrator accounts.');
     }
 
     const email = input.email ? input.email.trim().toLowerCase() : '';
@@ -228,7 +284,6 @@ export class StaffManagementService {
         displayName,
         role: input.role,
         invitationUrl,
-        verificationCode,
         expiresAt: expiresAt.toISOString(),
       });
       emailSent = emailResult.success;
@@ -250,7 +305,7 @@ export class StaffManagementService {
     if (actor && actor.role !== 'ADMIN') {
       throw new StaffManagementAuthorizationError('Only ADMIN profiles may view staff invitations.');
     }
-    return this.repository.listPendingInvitations(actor?.userId);
+    return this.repository.listPendingInvitations(actor?.userId, actor?.isSuperAdmin);
   }
 
   async confirmStaffInvitation(input: ConfirmStaffInvitationInput): Promise<{ staff: StaffMember; invitation: StaffInvitation }> {

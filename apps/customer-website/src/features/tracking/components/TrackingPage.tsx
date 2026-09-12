@@ -14,8 +14,17 @@ export function TrackingPage() {
       const params = new URLSearchParams(window.location.search);
       const codeFromUrl =
         params.get("code") || params.get("reference") || params.get("referenceCode");
+      const emailFromUrl = params.get("email") || params.get("customerEmail");
       if (codeFromUrl) {
-        setReferenceCode(codeFromUrl.trim().toUpperCase());
+        const cleanedCode = codeFromUrl.trim().toUpperCase();
+        setReferenceCode(cleanedCode);
+        if (emailFromUrl) {
+          setCustomerEmail(emailFromUrl.trim());
+        }
+        trackReservation({
+          referenceCode: cleanedCode,
+          customerEmail: emailFromUrl?.trim() || undefined,
+        });
       }
     }
   }, []);

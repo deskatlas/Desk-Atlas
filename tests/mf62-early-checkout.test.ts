@@ -81,6 +81,8 @@ async function createTestContext() {
   return {
     reservationRepo,
     workspaceRepo,
+    template,
+    floor,
     instance,
     setTime: (date: Date) => {
       currentTime = date;
@@ -298,5 +300,72 @@ describe("MF-62: Early Manual Checkout Error Fix", () => {
 
     assert.equal(result.reservationStatus, "COMPLETED");
     assert.equal(result.actorRole, "STAFF");
+  });
+
+  it("allows early checkout when reservation has alternative candidates without duration mismatch error", async () => {
+    const ctx = await createTestContext();
+    const instance2 = await ctx.workspaceRepo.createInstance({
+      templateId: ctx.template.id,
+      floorId: ctx.floor.id,
+      instanceCode: "HD-02",
+      displayName: "Hot Desk 2",
+    });
+
+    // Create reservation with Main (rank 0) + Alt 1 (rank 1)
+    const res = await ctx.reservationService.createReservation(
+      {
+        source: "WEB",
+        customerFirstName: "Alice",
+        customerLastName: "Alt",
+        customerEmail: "alice.alt@example.com",
+        candidates: [
+          {
+            rank: 0,
+            workspaceInstanceId: ctx.instance.id,
+            startAt: "2026-08-27T10:00:00.000Z",
+            endAt: "2026-08-27T14:00:00.000Z",
+          },
+          {
+            rank: 1,
+            workspaceInstanceId: instance2.id,
+            startAt: "2026-08-27T10:00:00.000Z",
+            endAt: "2026-08-27T14:00:00.000Z",
+          },
+        ],
+      },
+      { paymentLinkBaseUrl: "https://deskatlas.test/pay" }
+    );
+
+    await ctx.paymentSessionService.submitPaymentProof({
+      token: res.paymentSession!.token,
+      paymentMethodId: "pm-gcash",
+      proofStoragePath: "proofs/alice.png",
+    });
+    const session = await ctx.paymentSessionService.getPaymentSession(res.paymentSession!.token);
+    await ctx.paymentReviewService.reviewPayment({
+      paymentAttemptId: session.paymentAttemptId,
+      actor: { userId: "admin-1", role: "ADMIN" },
+      decision: "APPROVE",
+    });
+
+    // Check in at 10:05
+    ctx.setTime(new Date("2026-08-27T10:05:00.000Z"));
+    await ctx.staffOperationsService.checkInReservation({
+      reservationId: res.id,
+      actor: { userId: "staff-1", role: "STAFF" },
+    });
+
+    // Early checkout at 11:30 (before 14:00)
+    ctx.setTime(new Date("2026-08-27T11:30:00.000Z"));
+    const result = await ctx.staffOperationsService.checkOutReservation({
+      reservationId: res.id,
+      actor: { userId: "staff-1", role: "STAFF" },
+    });
+
+    assert.equal(result.reservationStatus, "COMPLETED");
+    assert.equal(result.actedAt, "2026-08-27T11:30:00.000Z");
+
+    const detail = await ctx.reservationRepo.getAdminReservationDetail(res.id);
+    assert.equal(detail?.checkedOutAt, "2026-08-27T11:30:00.000Z");
   });
 });

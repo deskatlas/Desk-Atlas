@@ -57,6 +57,13 @@
     "test:mf66": "vitest run tests/mf66-early-checkout-fix.test.ts",
     "test:mf67": "vitest run tests/mf67-initial-admin-password-creation.test.ts",
     "test:mf68": "vitest run tests/mf68-password-input-eye-toggle.test.ts",
+    "test:mf69": "vitest run tests/mf69-admin-forgot-password.test.ts",
+    "test:mf74": "vitest run tests/mf74-admin-password-reset-fix.test.ts",
+    "test:mf75": "vitest run tests/mf75-kiosk-automatic-check-in.test.ts",
+    "test:mf76": "vitest run tests/mf76-staff-invitation-email-2fa-security.test.ts",
+    "test:mf77": "vitest run tests/mf77-revoked-staff-invitation.test.ts",
+    "test:mf79": "vitest run tests/mf79-admin-payments-proof-order.test.ts",
+    "test:mf80": "vitest run tests/mf80-scanner-auto-check-in.test.ts",
     "test:mf41": "vitest run tests/t12-customer-reserve-ui-integration.test.ts",
     "test:mf20": "vitest run tests/t03-availability-business-hours.test.ts",
     "test:mf21": "vitest run tests/mf64-remove-custom-start-time.test.ts",
@@ -76,7 +83,8 @@
     "test:m11": "vitest run tests/t07-kiosk-reservation-flow.test.ts",
     "test:mf16": "vitest run tests/t07-kiosk-reservation-flow.test.ts",
     "test:mf42": "vitest run tests/t07-kiosk-reservation-flow.test.ts",
-    "test:workspace-status": "vitest run tests/mf65-workspace-operational-status.test.ts"
+    "test:workspace-status": "vitest run tests/mf65-workspace-operational-status.test.ts",
+    "test:mf81": "vitest run tests/mf81-schedule-duration-custom-input.test.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.4",

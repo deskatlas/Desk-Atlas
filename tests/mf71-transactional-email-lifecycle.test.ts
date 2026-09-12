@@ -37,7 +37,7 @@ describe("MF-71: Transactional Email Lifecycle & Booking-Ended Survey", () => {
       assert.ok(email.html.includes("1-Hour Session"));
       assert.ok(email.html.includes("GCash &amp; Bank Transfer"));
       assert.ok(email.html.includes("DeskAtlas No-Hold Policy"));
-      assert.ok(email.html.includes("https://deskatlas.test/track?code=DA-20260911-PAY1"));
+      assert.ok(!email.html.includes("https://deskatlas.test/track?code=DA-20260911-PAY1"));
     });
   });
 

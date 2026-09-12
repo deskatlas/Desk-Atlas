@@ -10,12 +10,13 @@ type User = {
   role: Role;
   name?: string;
   token?: string;
+  isSuperAdmin?: boolean;
 } | null;
 
 type AuthContextType = {
   user: User;
   loading: boolean;
-  login: (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string }) => void;
+  login: (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string; isSuperAdmin?: boolean }) => void;
   logout: () => void;
 };
 
@@ -50,6 +51,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.role === 'admin') {
           setUser(parsed);
+          // If isSuperAdmin is not set on stored user, auto-sync from staff endpoint
+          if (parsed.id && parsed.isSuperAdmin === undefined) {
+            fetch(`/api/admin/staff/${encodeURIComponent(parsed.id)}`, {
+              headers: { 'x-user-id': parsed.id, 'x-user-role': 'ADMIN' },
+            })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => {
+                if (d?.staff?.isSuperAdmin) {
+                  const updated = { ...parsed, isSuperAdmin: true };
+                  setUser(updated);
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+                }
+              })
+              .catch(() => {});
+          }
         } else {
           setUser(null);
           localStorage.removeItem(STORAGE_KEY);
@@ -62,7 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string }) => {
+  const login = (
+    role: Exclude<Role, null>,
+    name?: string,
+    details?: { id?: string; email?: string; token?: string; isSuperAdmin?: boolean }
+  ) => {
     const u = { role, name, ...details } as User;
     setUser(u);
     try {

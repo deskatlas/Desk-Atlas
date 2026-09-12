@@ -35,7 +35,16 @@ export function PaymentQueue() {
         throw new Error(`Failed to load payment review queue (${res.status})`);
       }
       const data = await res.json();
-      setQueue(data.queue || []);
+      const rawQueue: PaymentReviewQueueItem[] = data.queue || [];
+      const sortedQueue = [...rawQueue].sort((a, b) => {
+        const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+        if (aTime !== bTime) {
+          return aTime - bTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
+      setQueue(sortedQueue);
     } catch (err: any) {
       setError(err.message || 'Failed to load payments.');
     } finally {
@@ -50,8 +59,32 @@ export function PaymentQueue() {
   return (
     <main data-screen-label="Payments" style={{ padding: '26px 28px 40px' }}>
       <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Online Payments</h1>
-      <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '22px' }}>Review submitted proofs and allocate workspaces</div>
+      <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '16px' }}>Review submitted proofs and allocate workspaces</div>
       
+      <div
+        data-testid="admin-payments-proof-sort-notice"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: '#F8FAFC',
+          border: '1px solid var(--da-border)',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          marginBottom: '20px',
+          fontSize: '12px',
+          color: 'var(--da-text-secondary)',
+          fontFamily: 'var(--da-font-family)',
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style={{ color: 'var(--da-brand-dark)', flexShrink: 0 }}>
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+        <span>
+          <strong>Notice:</strong> Payments are sorted by proof upload time (earliest first) so you can review who uploaded their payment proof first.
+        </span>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '12px' }}>
         <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>AWAITING REVIEW</span>
         <span style={{ fontSize: '10px', fontWeight: 800, background: '#FFF8E8', color: 'var(--da-brand-dark)', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 8px', fontFamily: 'var(--da-font-family)' }}>{queue.length}</span>
@@ -77,17 +110,35 @@ export function PaymentQueue() {
         </div>
       )}
 
-      {!loading && !error && queue.map((p) => {
+      {!loading && !error && queue.map((p, index) => {
         const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
         const formattedTime = formatTimeAgo(p.proofSubmittedAt);
         const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
         const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();
+        const queueNumber = index + 1;
 
         return (
           <div key={p.paymentAttemptId} style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', boxShadow: 'var(--da-shadow-sm)', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '11px', background: '#FFF8E8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <div style={{ width: '16px', height: '16px', border: '2.5px solid var(--da-brand-dark)', borderRadius: '50%' }}></div>
+              <div
+                data-testid="payment-queue-number"
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '11px',
+                  background: '#FFF8E8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  fontWeight: 800,
+                  fontSize: '15px',
+                  color: 'var(--da-brand-dark)',
+                  fontFamily: 'var(--da-font-family)',
+                  border: '1px solid rgba(12,59,39,0.08)',
+                }}
+              >
+                #{queueNumber}
               </div>
               <div>
                 <div style={{ fontWeight: 800, color: 'var(--da-brand-dark)', fontSize: '14px' }}>{refDisplay}</div>

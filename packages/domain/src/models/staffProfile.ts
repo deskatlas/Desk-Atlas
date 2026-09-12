@@ -4,6 +4,7 @@ export interface StaffProfile {
   role: 'ADMIN' | 'STAFF';
   displayName: string;
   isActive: boolean;
+  isSuperAdmin?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

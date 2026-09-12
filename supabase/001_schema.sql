@@ -142,6 +142,7 @@ CREATE TABLE public.staff_profiles (
   role public.staff_role NOT NULL,
   display_name text NOT NULL,
   is_active boolean NOT NULL DEFAULT true,
+  is_super_admin boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -1250,6 +1251,10 @@ FOR EACH ROW EXECUTE FUNCTION public.validate_map_element_integrity();
 -- 16. Reservation Candidate-Set Validation Triggers
 -- ---------------------------------------------------------------------------
 
+-- Validates candidate set invariants (1-3 candidates, single rank-0 main, matching template, date, duration).
+-- For finalized reservations (CONFIRMED, CHECKED_IN, COMPLETED, CANCELLED), candidate allocation has concluded.
+-- Early checkout updates end_at on the assigned candidate to release physical inventory early while unassigned
+-- alternatives retain original duration; candidate uniformity across inactive alternatives is therefore bypassed.
 CREATE OR REPLACE FUNCTION public.assert_reservation_candidate_set(p_reservation_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -1262,8 +1267,26 @@ DECLARE
   v_date_count integer;
   v_duration_count integer;
   v_timezone text;
+  v_status public.reservation_status;
 BEGIN
   IF p_reservation_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT status INTO v_status
+  FROM public.reservations
+  WHERE id = p_reservation_id;
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- Once a reservation is CONFIRMED, CHECKED_IN, COMPLETED, or CANCELLED,
+  -- candidate allocation has already concluded. In particular, early checkout updates end_at
+  -- on the assigned candidate to release physical inventory early, and admin operations
+  -- may adjust schedule times. Candidate set uniformity across unassigned alternatives
+  -- no longer applies.
+  IF v_status IN ('CONFIRMED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED') THEN
     RETURN;
   END IF;
 
@@ -1712,8 +1735,23 @@ CREATE INDEX IF NOT EXISTS idx_operating_hours_day_active
 CREATE INDEX IF NOT EXISTS idx_floors_active_display 
   ON public.floors (is_active, display_order, name);
 
--- 7. Staff Profiles Scoping
+-- 7. Staff Profiles Scoping & Superadmin
 CREATE INDEX IF NOT EXISTS idx_staff_profiles_created_by_admin
   ON public.staff_profiles (created_by_admin_id);
+
+CREATE INDEX IF NOT EXISTS idx_staff_profiles_is_super_admin
+  ON public.staff_profiles (is_super_admin);
+
+-- ---------------------------------------------------------------------------
+-- 8. Essential Service Role & Schema Grants
+-- ---------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO postgres, service_role;
 
 COMMIT;

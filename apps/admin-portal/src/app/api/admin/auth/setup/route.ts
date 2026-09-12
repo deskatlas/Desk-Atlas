@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
         email: profile.email,
         role: 'admin',
         displayName: profile.displayName,
+        isSuperAdmin: true,
       },
       token: sessionToken,
     });
