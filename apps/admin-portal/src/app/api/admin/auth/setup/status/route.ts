@@ -1,12 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createStaffService } from '@deskatlas/domain';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId') || undefined;
+
     const staffService = createStaffService();
-    const status = await staffService.getSetupStatus();
+    const status = await staffService.getSetupStatus(userId);
 
     return NextResponse.json(status, {
       headers: {

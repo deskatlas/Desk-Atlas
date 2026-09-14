@@ -246,6 +246,9 @@ export interface PaymentProofRejectedEmailInput {
   rejectionReason?: string;
   paymentUrl?: string;
   trackingUrl?: string;
+  businessName?: string;
+  businessEmail?: string;
+  businessPhone?: string;
 }
 
 export interface ReservationTrackingCandidate {
@@ -716,7 +719,7 @@ DeskAtlas Workspace Reservation System
 
 export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Payment Proof Update - Reservation ${input.referenceCode}`;
+  const subject = `Payment Proof Rejected - Reservation ${input.referenceCode}`;
   const reason = input.rejectionReason || 'The payment proof could not be verified by the admin team.';
 
   const html = `
@@ -738,15 +741,35 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">Payment Proof Update</div>
+      <div class="title">Payment Proof Rejected</div>
     </div>
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
-      <p>Your payment proof for reservation <strong>${escapeHtml(input.referenceCode)}</strong> could not be verified.</p>
+      <p>Your payment proof for reservation <strong>${escapeHtml(input.referenceCode)}</strong> could not be verified and has been rejected.</p>
       
       <div class="reason-box">
-        <strong>Reason:</strong> ${escapeHtml(reason)}
+        <strong>Reason for Rejection:</strong><br>
+        ${escapeHtml(reason)}
       </div>
+
+      ${(input.businessEmail || input.businessPhone) ? `
+      <div class="contact-box" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Have Inquiries?</div>
+        <p style="margin: 0 0 10px 0; font-size: 14px; color: #334155;">If you have inquiries regarding your reservation or payment, please contact us:</p>
+        ${input.businessEmail ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500;">Email:</span>
+          <a href="mailto:${escapeHtml(input.businessEmail)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;">${escapeHtml(input.businessEmail)}</a>
+        </div>
+        ` : ''}
+        ${input.businessPhone ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500;">Call / Text:</span>
+          <span style="color: #0f172a; font-weight: 600; margin-left: 6px;">${escapeHtml(input.businessPhone)}</span>
+        </div>
+        ` : ''}
+      </div>
+      ` : ''}
 
       ${input.paymentUrl ? `
       <p>If your 1-hour session is still active, you may re-submit a valid payment proof using the link below:</p>
@@ -757,7 +780,7 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
 
       ${input.trackingUrl ? `
       <p style="font-size: 13px; color: #475569; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-        Track live reservation status: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
+        Track reservation status: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(input.trackingUrl)}</a>
       </p>
       ` : ''}
     </div>
@@ -770,15 +793,16 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
   `.trim();
 
   const text = `
-Payment Proof Update - DeskAtlas
+Payment Proof Rejected - DeskAtlas
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
 
-Your payment proof for reservation ${input.referenceCode} could not be verified.
+Your payment proof for reservation ${input.referenceCode} could not be verified and has been rejected.
 
 Reason: ${reason}
-${input.paymentUrl ? `Re-submit proof (if session is active): ${input.paymentUrl}\n` : ''}${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}DeskAtlas Workspace Reservation System
+${input.paymentUrl ? `\nRe-submit proof (if session is active): ${input.paymentUrl}\n` : ''}${(input.businessEmail || input.businessPhone) ? `\nIf you have inquiries, please contact us:\n${input.businessEmail ? `Email: ${input.businessEmail}\n` : ''}${input.businessPhone ? `Call / Text: ${input.businessPhone}\n` : ''}` : ''}${input.trackingUrl ? `\nTrack Reservation: ${input.trackingUrl}\n` : ''}
+DeskAtlas Workspace Reservation System
   `.trim();
 
   return { subject, html, text };

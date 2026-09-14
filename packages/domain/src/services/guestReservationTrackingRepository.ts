@@ -10,6 +10,8 @@ export interface GuestReservationTrackingRecord {
   confirmedAt: string | null;
   checkedOutAt: string | null;
   finalAssignment: GuestReservationAssignmentSummary | null;
+  paymentStatus?: string | null;
+  rejectionReason?: string | null;
 }
 
 export interface GuestReservationTrackingRepository {

@@ -3,36 +3,29 @@ import {
   AuthError,
   SupabaseAuthRepository,
   createAuthService,
+  loginRateLimiter,
 } from '@deskatlas/domain';
 
 export const runtime = 'nodejs';
 
-// In-memory rate limiter for login
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const MAX_ATTEMPTS = 10;
-const WINDOW_MS = 5 * 60 * 1000;
-
-function checkRateLimit(key: string): { allowed: boolean; retryAfterSeconds?: number } {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return { allowed: true };
-  }
-
-  if (entry.count >= MAX_ATTEMPTS) {
-    const retryAfterSeconds = Math.ceil((entry.resetAt - now) / 1000);
-    return { allowed: false, retryAfterSeconds };
-  }
-
-  entry.count += 1;
-  return { allowed: true };
+export async function GET(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
+  const { searchParams } = new URL(request.url);
+  const email = searchParams.get('email') || '';
+  const status = loginRateLimiter.checkRateLimit('staff', email, ip);
+  return NextResponse.json({
+    locked: !status.allowed,
+    remainingAttempts: status.remainingAttempts,
+    retryAfterSeconds: status.retryAfterSeconds,
+    lockedUntil: status.lockedUntil,
+  });
 }
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
+  let trimmedEmail = '';
+
   try {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
     const body = await request.json().catch(() => ({}));
     const { email, password } = body;
 
@@ -43,14 +36,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
-    const rateLimitKey = `${ip}:${trimmedEmail}`;
-    const rateCheck = checkRateLimit(rateLimitKey);
+    trimmedEmail = email.trim().toLowerCase();
+    const rateCheck = loginRateLimiter.checkRateLimit('staff', trimmedEmail, ip);
 
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
           error: `Too many failed login attempts. Please try again in ${rateCheck.retryAfterSeconds} seconds.`,
+          retryAfterSeconds: rateCheck.retryAfterSeconds,
+          lockedUntil: rateCheck.lockedUntil,
+          attemptsRemaining: 0,
         },
         {
           status: 429,
@@ -66,13 +61,28 @@ export async function POST(request: NextRequest) {
 
     // Verify role is STAFF or ADMIN
     if (session.actor.role !== 'STAFF' && session.actor.role !== 'ADMIN') {
+      const failResult = loginRateLimiter.recordFailedAttempt('staff', trimmedEmail, ip);
+      if (failResult.locked) {
+        return NextResponse.json(
+          {
+            error: `Too many failed login attempts. Please try again in ${failResult.retryAfterSeconds} seconds.`,
+            retryAfterSeconds: failResult.retryAfterSeconds,
+            lockedUntil: failResult.lockedUntil,
+            attemptsRemaining: 0,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(failResult.retryAfterSeconds) },
+          }
+        );
+      }
       return NextResponse.json(
         { error: 'Account is not authorized for staff access' },
         { status: 403 }
       );
     }
 
-    rateLimitMap.delete(rateLimitKey);
+    loginRateLimiter.recordSuccessfulLogin('staff', trimmedEmail, ip);
 
     return NextResponse.json({
       user: {
@@ -84,8 +94,30 @@ export async function POST(request: NextRequest) {
       token: session.token,
     });
   } catch (error: any) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    if (trimmedEmail) {
+      const failResult = loginRateLimiter.recordFailedAttempt('staff', trimmedEmail, ip);
+      if (failResult.locked) {
+        return NextResponse.json(
+          {
+            error: `Too many failed login attempts. Please try again in ${failResult.retryAfterSeconds} seconds.`,
+            retryAfterSeconds: failResult.retryAfterSeconds,
+            lockedUntil: failResult.lockedUntil,
+            attemptsRemaining: 0,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(failResult.retryAfterSeconds) },
+          }
+        );
+      }
+      const rawMessage = error instanceof Error ? error.message : 'Invalid credentials';
+      return NextResponse.json(
+        {
+          error: `${rawMessage}. ${failResult.remainingAttempts} attempt${failResult.remainingAttempts === 1 ? '' : 's'} remaining.`,
+          attemptsRemaining: failResult.remainingAttempts,
+        },
+        { status: error instanceof AuthError ? error.statusCode : 401 }
+      );
     }
 
     const message = error instanceof Error ? error.message : 'Login failed';

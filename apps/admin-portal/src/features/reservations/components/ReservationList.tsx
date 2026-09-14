@@ -107,6 +107,7 @@ export function ReservationList() {
     { label: 'Upcoming', filter: 'upcoming' },
     { label: 'Awaiting Proof', filter: 'awaiting_proof' },
     { label: 'Expired', filter: 'expired' },
+    { label: 'Rejected', filter: 'rejected' },
   ];
 
   const pages = [

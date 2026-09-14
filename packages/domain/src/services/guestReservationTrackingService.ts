@@ -57,6 +57,8 @@ export class GuestReservationTrackingService {
       confirmedAt: record.confirmedAt,
       completedAt: record.checkedOutAt,
       finalAssignment: record.finalAssignment,
+      paymentStatus: record.paymentStatus ?? null,
+      rejectionReason: record.rejectionReason ?? null,
     };
   }
 }
@@ -64,6 +66,9 @@ export class GuestReservationTrackingService {
 function mapGuestTrackingStatus(
   record: GuestReservationTrackingRecord
 ): GuestReservationTrackingStatus {
+  if (record.paymentStatus === "REJECTED" || record.reservationStatus === "REJECTED") {
+    return "REJECTED";
+  }
   switch (record.reservationStatus) {
     case "PENDING_PAYMENT":
       return "PENDING_PAYMENT";
@@ -81,6 +86,8 @@ function mapGuestTrackingStatus(
       return "EXPIRED";
     case "COMPLETED":
       return "COMPLETED";
+    case "REJECTED":
+      return "REJECTED";
     default:
       throw new GuestReservationTrackingError("Unsupported reservation tracking status.");
   }

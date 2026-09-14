@@ -2,6 +2,7 @@ import type {
   DateAvailabilityResult,
   TimeAvailabilityResult,
   TemplateAvailabilityResult,
+  NextUpcomingBookingResult,
 } from '@deskatlas/domain';
 
 export async function fetchDateAvailability(input: {
@@ -86,12 +87,16 @@ export async function fetchTemplateAvailability(input: {
 
 export async function fetchOccupiedInstances(input?: {
   nowIso?: string;
+  durationMinutes?: number;
 }): Promise<{ occupiedInstanceIds: string[]; asOf: string }> {
   const params = new URLSearchParams({
     occupiedNow: 'true',
   });
   if (input?.nowIso) {
     params.set('nowIso', input.nowIso);
+  }
+  if (input?.durationMinutes) {
+    params.set('durationMinutes', String(input.durationMinutes));
   }
   const response = await fetch(`/api/availability?${params.toString()}`, {
     cache: 'no-store',
@@ -103,5 +108,28 @@ export async function fetchOccupiedInstances(input?: {
   }
 
   return body as { occupiedInstanceIds: string[]; asOf: string };
+}
+
+export async function fetchNextUpcomingBooking(input: {
+  workspaceInstanceId: string;
+  nowIso?: string;
+}): Promise<NextUpcomingBookingResult> {
+  const params = new URLSearchParams({
+    upcoming: 'true',
+    workspaceInstanceId: input.workspaceInstanceId,
+  });
+  if (input.nowIso) {
+    params.set('nowIso', input.nowIso);
+  }
+  const response = await fetch(`/api/availability?${params.toString()}`, {
+    cache: 'no-store',
+  });
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(body.error ?? `Upcoming booking request failed with status ${response.status}`);
+  }
+
+  return body as NextUpcomingBookingResult;
 }
 

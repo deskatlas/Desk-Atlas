@@ -25,11 +25,13 @@ export function useCheckInActions() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to ${action}`);
+        const actionErr: any = new Error(data.error || `Failed to ${action}`);
+        if (data.code) actionErr.code = data.code;
+        throw actionErr;
       }
 
       return await res.json();
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(msg);
       throw err;
@@ -40,6 +42,7 @@ export function useCheckInActions() {
 
   const checkIn = (id: string) => performAction(id, 'check-in');
   const checkOut = (id: string) => performAction(id, 'check-out');
+  const clearError = () => setError(null);
 
-  return { checkIn, checkOut, loading, error };
+  return { checkIn, checkOut, loading, error, clearError };
 }

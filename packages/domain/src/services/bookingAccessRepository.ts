@@ -39,6 +39,7 @@ export interface BookingAccessRepository {
     issuedAt: string;
   }): Promise<boolean>;
   findBookingAccessByTokenHash(tokenHash: string): Promise<BookingAccessRecord | null>;
+  findBookingAccessByReferenceOrId?(identifier: string): Promise<BookingAccessRecord | null>;
   recordBookingScan(input: {
     reservationId: string;
     scannedAt: string;

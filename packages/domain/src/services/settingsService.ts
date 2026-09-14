@@ -213,7 +213,16 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       }
 
       const businessSettings = await repository.getBusinessSettings();
-      const timezone = businessSettings.timezone;
+      const timezone = businessSettings.timezone || 'Asia/Manila';
+      const todayStr = getTodayDateInTimezone(timezone);
+
+      if (input.date < todayStr) {
+        throw new SettingsValidationError('Closures and holidays cannot be set for past dates');
+      }
+
+      if (input.endDate && input.endDate < todayStr) {
+        throw new SettingsValidationError('Closure end date cannot be in the past');
+      }
 
       if (input.closureType === 'FULL_DAY') {
         const startDate = input.date;
@@ -396,6 +405,26 @@ function normalizeBusinessSettingsInput(
 
   if (!input.timezone || typeof input.timezone !== 'string' || !input.timezone.trim()) {
     throw new SettingsValidationError('Timezone is required');
+  }
+
+  const emailTrimmed = input.contactEmail && typeof input.contactEmail === 'string' && input.contactEmail.trim()
+    ? input.contactEmail.trim()
+    : null;
+  const phoneTrimmed = input.contactPhone && typeof input.contactPhone === 'string' && input.contactPhone.trim()
+    ? input.contactPhone.trim()
+    : null;
+
+  if (input.contactEmail !== undefined || input.contactPhone !== undefined) {
+    if (!emailTrimmed && !phoneTrimmed) {
+      throw new SettingsValidationError('At least one contact method (email or contact number) is required');
+    }
+  }
+
+  if (emailTrimmed) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailTrimmed)) {
+      throw new SettingsValidationError('Invalid contact email format');
+    }
   }
 
   try {
@@ -593,6 +622,19 @@ function normalizeCreatePaymentMethodInput(input: CreatePaymentMethodInput): Cre
     throw new SettingsValidationError('Base64 image blobs are not permitted for QR images; upload QR code to storage first');
   }
 
+  if (input.methodType !== 'CASH') {
+    if (!input.accountName || typeof input.accountName !== 'string' || !input.accountName.trim()) {
+      throw new SettingsValidationError('Account/Receiver name is required');
+    }
+    if (!input.accountNumber || typeof input.accountNumber !== 'string' || !input.accountNumber.trim()) {
+      throw new SettingsValidationError('Account/Mobile number is required');
+    }
+  }
+
+  if (input.accountNumber && input.accountNumber.trim() && !/^[0-9-]+$/.test(input.accountNumber.trim())) {
+    throw new SettingsValidationError('Account/mobile number can only contain numerical digits and dashes (-)');
+  }
+
   const displayOrder =
     input.displayOrder !== undefined && Number.isInteger(input.displayOrder) && input.displayOrder >= 0
       ? input.displayOrder
@@ -627,6 +669,19 @@ function normalizePaymentMethodInput(input: UpdatePaymentMethodInput): UpdatePay
 
   if (input.qrImagePath && input.qrImagePath.startsWith('data:')) {
     throw new SettingsValidationError('Base64 image blobs are not permitted for QR images; upload QR code to storage first');
+  }
+
+  if (input.methodType !== 'CASH') {
+    if (!input.accountName || typeof input.accountName !== 'string' || !input.accountName.trim()) {
+      throw new SettingsValidationError('Account/Receiver name is required');
+    }
+    if (!input.accountNumber || typeof input.accountNumber !== 'string' || !input.accountNumber.trim()) {
+      throw new SettingsValidationError('Account/Mobile number is required');
+    }
+  }
+
+  if (input.accountNumber && input.accountNumber.trim() && !/^[0-9-]+$/.test(input.accountNumber.trim())) {
+    throw new SettingsValidationError('Account/mobile number can only contain numerical digits and dashes (-)');
   }
 
   return {
@@ -670,6 +725,25 @@ function parseTimeToMinutes(timeStr: string): number {
   const match = timeStr.match(/^(\d{2}):(\d{2})/);
   if (!match) return 0;
   return Number(match[1]) * 60 + Number(match[2]);
+}
+
+export function getTodayDateInTimezone(timezone: string = 'Asia/Manila'): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().split('T')[0]!;
+  }
+}
+
+export function isDateInPast(dateStr: string, timezone: string = 'Asia/Manila'): boolean {
+  if (!dateStr) return false;
+  const todayStr = getTodayDateInTimezone(timezone);
+  return dateStr < todayStr;
 }
 
 export function isValidDateString(dateStr: string): boolean {

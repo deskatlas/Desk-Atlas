@@ -15,13 +15,14 @@ import {
   type PublishedFloorMap,
   type PublishedMapElement,
   type AvailableInstanceSummary,
+  type NextUpcomingBookingResult,
 } from "@deskatlas/domain";
 import {
   SpotDetailModal,
   type WorkspaceMapViewModel,
   getWorkspacePhotoObjectPosition,
 } from "../../features/reservation/SpotDetailModal";
-import { fetchTemplateAvailability, fetchOccupiedInstances } from "../../lib/availabilityApi";
+import { fetchTemplateAvailability, fetchOccupiedInstances, fetchNextUpcomingBooking } from "../../lib/availabilityApi";
 import { handleNumericKeyDown } from "@deskatlas/ui";
 
 export interface WorkspaceTemplateSummary {
@@ -236,6 +237,7 @@ export default function KioskReservePage() {
   const router = useRouter();
 
   // Dual Discovery Mode: "map" vs "category"
+  const MAX_KIOSK_DURATION_HOURS = 24;
   const [discoveryMode, setDiscoveryMode] = useState<"map" | "category">("map");
 
   // Step state: "discovery" | "duration" | "category-instances" | "details" | "code"
@@ -293,9 +295,9 @@ export default function KioskReservePage() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [floorId, setFloorId] = useState<string>("");
   const [published, setPublished] = useState<PublishedFloorMap | null>(null);
+  const [publishedFloors, setPublishedFloors] = useState<PublishedFloorMap[]>([]);
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [allFloorWorkspaces, setAllFloorWorkspaces] = useState<WorkspaceMapViewModel[]>([]);
   const [occupiedInstanceIds, setOccupiedInstanceIds] = useState<Set<string>>(new Set());
 
   // Real-time instances for category flow
@@ -308,9 +310,13 @@ export default function KioskReservePage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const fetchOccupiedData = async () => {
+  const fetchOccupiedData = async (durMin?: number) => {
     try {
-      const res = await fetchOccupiedInstances();
+      const minutes = durMin ?? Math.max(durationHours || 1, 1) * 60;
+      const res = await fetchOccupiedInstances({
+        durationMinutes: minutes,
+        nowIso: getNowWithLeewayDate().toISOString(),
+      });
       if (res?.occupiedInstanceIds) {
         setOccupiedInstanceIds(new Set(res.occupiedInstanceIds));
       }
@@ -320,10 +326,53 @@ export default function KioskReservePage() {
   };
 
   useEffect(() => {
-    fetchOccupiedData();
-    const interval = setInterval(fetchOccupiedData, 15000);
+    fetchOccupiedData(Math.max(durationHours || 1, 1) * 60);
+    const interval = setInterval(() => fetchOccupiedData(Math.max(durationHours || 1, 1) * 60), 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [durationHours]);
+
+  // Upcoming booking & availability limits for selected workspace
+  const [upcomingBooking, setUpcomingBooking] = useState<NextUpcomingBookingResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUpcoming = async () => {
+      try {
+        const res = await fetchNextUpcomingBooking({
+          workspaceInstanceId: selectedWorkspace?.workspaceInstanceId || "",
+          nowIso: getNowWithLeewayDate().toISOString(),
+        });
+        if (!cancelled) {
+          setUpcomingBooking(res);
+          // If current duration exceeds maxAvailableHours, clamp down to max available hours if >= 1
+          if (
+            res.maxAvailableHours !== null &&
+            res.maxAvailableHours !== undefined &&
+            res.maxAvailableHours >= 1 &&
+            durationHours > res.maxAvailableHours
+          ) {
+            setDurationHours(res.maxAvailableHours);
+            setDurationInputStr(String(res.maxAvailableHours));
+          } else if (
+            res.maxAvailableHours === 0 ||
+            (res.maxAvailableMinutes !== null && res.maxAvailableMinutes !== undefined && res.maxAvailableMinutes < 60)
+          ) {
+            setDurationHours(0);
+            setDurationInputStr("0");
+          }
+        }
+      } catch {
+        // Silently preserve state on fetch error
+      }
+    };
+
+    loadUpcoming();
+    const interval = setInterval(loadUpcoming, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [selectedWorkspace?.workspaceInstanceId, step]);
 
   // Fetch published map
   const fetchMapData = async (targetFloorId?: string) => {
@@ -353,17 +402,18 @@ export default function KioskReservePage() {
               const r = await fetch(`/api/published-map?floorId=${encodeURIComponent(f.id)}`, {
                 cache: "no-store",
               });
-              if (!r.ok) return [];
+              if (!r.ok) return null;
               const resData = await r.json();
-              return resData.published ? mapPublishedFloorToWorkspaceCards(resData.published, occupiedInstanceIds) : [];
+              return (resData.published as PublishedFloorMap) || null;
             } catch {
-              return [];
+              return null;
             }
           })
         );
-        setAllFloorWorkspaces(results.flat());
+        const validFloors = results.filter((p): p is PublishedFloorMap => Boolean(p));
+        setPublishedFloors(validFloors);
       } else if (data.published) {
-        setAllFloorWorkspaces(mapPublishedFloorToWorkspaceCards(data.published, occupiedInstanceIds));
+        setPublishedFloors([data.published]);
       }
     } catch (err: any) {
       setMapError(err.message || "Failed to load floor map.");
@@ -371,6 +421,10 @@ export default function KioskReservePage() {
       setMapLoading(false);
     }
   };
+
+  const allFloorWorkspaces = useMemo(() => {
+    return publishedFloors.flatMap((pub) => mapPublishedFloorToWorkspaceCards(pub, occupiedInstanceIds));
+  }, [publishedFloors, occupiedInstanceIds]);
 
   useEffect(() => {
     fetchMapData();
@@ -503,6 +557,7 @@ export default function KioskReservePage() {
 
   // Spot click on map
   const handleSpotClick = (workspace: WorkspaceMapViewModel) => {
+    if (occupiedInstanceIds.has(workspace.workspaceInstanceId)) return;
     setSelectedWorkspace(workspace);
     const tpl = availableTemplates.find((t) => t.id === workspace.templateId);
     if (tpl) setSelectedTemplate(tpl);
@@ -532,6 +587,7 @@ export default function KioskReservePage() {
     setIsSubmitting(false);
     setSubmitError(null);
     setReferenceCode(null);
+    setUpcomingBooking(null);
   };
 
   const handleCancel = () => {
@@ -579,6 +635,9 @@ export default function KioskReservePage() {
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
           durationHours,
           durationMinutes: durationHours * 60,
+          date: todayDate,
+          startTime: nowTime,
+          startAt: getNowWithLeewayDate().toISOString(),
           paymentMethod,
         }),
       });
@@ -1010,7 +1069,9 @@ export default function KioskReservePage() {
                                 >
                                   <button
                                     type="button"
+                                    disabled={!isAvailable}
                                     onClick={() => {
+                                      if (!isAvailable) return;
                                       if (wsModel) handleSpotClick(wsModel);
                                     }}
                                     className={`group h-full w-full flex flex-col items-center justify-center p-1 text-center transition-all duration-150 relative ${
@@ -1115,10 +1176,20 @@ export default function KioskReservePage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setStep("duration")}
-                          className="da-primary-button text-xs font-bold px-4 py-2"
+                          disabled={occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)}
+                          onClick={() => {
+                            if (occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) return;
+                            setStep("duration");
+                          }}
+                          className={`da-primary-button text-xs font-bold px-4 py-2 ${
+                            occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
                         >
-                          Proceed to Duration →
+                          {occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                            ? "Spot Occupied"
+                            : "Proceed to Duration →"}
                         </button>
                       </div>
                     )}
@@ -1273,26 +1344,63 @@ export default function KioskReservePage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3">
                   {DURATION_OPTIONS.map((hours) => {
                     const isSelected = durationHours === hours;
+                    const durMinutes = hours * 60;
+                    const isLocked = Boolean(
+                      hours > MAX_KIOSK_DURATION_HOURS ||
+                      (upcomingBooking?.maxAvailableMinutes !== null &&
+                        upcomingBooking?.maxAvailableMinutes !== undefined &&
+                        (durMinutes > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60))
+                    );
+
                     return (
                       <button
                         key={hours}
                         type="button"
+                        disabled={isLocked}
+                        title={
+                          isLocked
+                            ? upcomingBooking?.nextBooking
+                              ? `Reserved at ${upcomingBooking.nextBooking.startTimeFormatted}`
+                              : upcomingBooking?.minutesUntilClosing !== null
+                              ? `Space closes at operating hours limit`
+                              : `Unavailable for ${hours} hours`
+                            : undefined
+                        }
                         onClick={() => {
+                          if (isLocked) return;
                           setDurationHours(hours);
                           setDurationInputStr(String(hours));
                         }}
-                        className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all ${isSelected
+                        className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all relative ${
+                          isLocked
+                            ? "bg-slate-100/90 text-slate-400 border-slate-200 cursor-not-allowed opacity-60"
+                            : isSelected
                             ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-md ring-2 ring-[var(--da-accent)]"
                             : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
-                          }`}
+                        }`}
                       >
-                        <span className="text-2xl font-extrabold">{hours}</span>
+                        {isLocked && (
+                          <span className="absolute top-1.5 right-1.5 text-xs" aria-hidden="true" title="Locked due to upcoming reservation">
+                            🔒
+                          </span>
+                        )}
+                        <span className={`text-2xl font-extrabold ${isLocked ? "line-through opacity-70" : ""}`}>
+                          {hours}
+                        </span>
                         <span className="text-xs font-semibold opacity-90">
                           {hours === 1 ? "Hour" : "Hours"}
                         </span>
-                        <span className="mt-2 text-[10px] font-bold opacity-75">
-                          ₱{(currentRate * hours).toFixed(2)}
-                        </span>
+                        {isLocked ? (
+                          <span className="mt-2 text-[9px] font-bold text-rose-600 truncate max-w-full px-1">
+                            {upcomingBooking?.nextBooking
+                              ? `Booked ${upcomingBooking.nextBooking.startTimeFormatted}`
+                              : "Limit reached"}
+                          </span>
+                        ) : (
+                          <span className="mt-2 text-[10px] font-bold opacity-75">
+                            ₱{(currentRate * hours).toFixed(2)}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -1302,7 +1410,7 @@ export default function KioskReservePage() {
                 <div className="mt-6 pt-4 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <span className="text-sm font-bold text-[var(--da-brand-dark)] block">
-                      Custom Duration
+                       Custom Duration
                     </span>
                     <span className="text-xs text-[var(--da-text-secondary)]">
                       Or enter the exact number of hours you need:
@@ -1336,6 +1444,33 @@ export default function KioskReservePage() {
                   </div>
                 </div>
 
+                {/* Custom Hour Input Warning if Exceeds Availability, 24h Limit, or Spot Unavailable */}
+                {(durationHours > MAX_KIOSK_DURATION_HOURS ||
+                  (upcomingBooking?.maxAvailableMinutes !== null &&
+                    upcomingBooking?.maxAvailableMinutes !== undefined &&
+                    (upcomingBooking.maxAvailableMinutes < 60 || durationHours * 60 > upcomingBooking.maxAvailableMinutes))) && (
+                  <div className="mt-4 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span>
+                      {durationHours > MAX_KIOSK_DURATION_HOURS
+                        ? `Walk-in reservations cannot exceed ${MAX_KIOSK_DURATION_HOURS} hours.`
+                        : upcomingBooking?.maxAvailableMinutes !== null &&
+                          upcomingBooking?.maxAvailableMinutes !== undefined &&
+                          upcomingBooking.maxAvailableMinutes < 60
+                        ? upcomingBooking.nextBooking
+                          ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
+                            ? `Facility Closed: Scheduled closure starts in ${upcomingBooking.maxAvailableMinutes} mins (${upcomingBooking.nextBooking.startTimeFormatted}). Minimum stay is 1 hour.`
+                            : `Desk Unavailable: Upcoming reservation starts in ${upcomingBooking.maxAvailableMinutes} mins (${upcomingBooking.nextBooking.startTimeFormatted}). Minimum stay is 1 hour.`
+                          : `Desk Unavailable: The space closes in ${upcomingBooking.maxAvailableMinutes} mins.`
+                        : upcomingBooking?.nextBooking
+                        ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
+                          ? `The requested duration extends into a scheduled facility closure starting at ${upcomingBooking.nextBooking.startTimeFormatted}. Maximum available stay is ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)} ${(upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)) === 1 ? "hour" : "hours"}.`
+                          : `This desk has an upcoming reservation starting at ${upcomingBooking.nextBooking.startTimeFormatted}. Maximum available stay is ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)} ${(upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)) === 1 ? "hour" : "hours"}.`
+                        : `The requested duration exceeds today's remaining operating hours (Maximum ${upcomingBooking?.maxAvailableHours ?? Math.floor((upcomingBooking?.maxAvailableMinutes ?? 0) / 60)} ${(upcomingBooking?.maxAvailableHours ?? Math.floor((upcomingBooking?.maxAvailableMinutes ?? 0) / 60)) === 1 ? "hour" : "hours"}).`}
+                    </span>
+                  </div>
+                )}
+
                 {/* Immediate Schedule Preview */}
                 {durationHours > 0 ? (
                   <div className="mt-6 rounded-2xl bg-[var(--da-canvas)] border border-[var(--da-border-light)] p-5 flex flex-wrap items-center justify-between gap-4">
@@ -1364,7 +1499,24 @@ export default function KioskReservePage() {
                   </div>
                 ) : (
                   <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-center text-xs font-bold text-amber-800">
-                    Please select or enter a duration of at least 1 hour to continue.
+                    {selectedWorkspace &&
+                    upcomingBooking?.maxAvailableMinutes !== null &&
+                    upcomingBooking?.maxAvailableMinutes !== undefined &&
+                    upcomingBooking.maxAvailableMinutes < 60
+                      ? upcomingBooking.nextBooking
+                        ? `Desk is unavailable: An upcoming reservation starts at ${upcomingBooking.nextBooking.startTimeFormatted} (${upcomingBooking.maxAvailableMinutes} mins away).`
+                        : `Desk is unavailable: The space closes in ${upcomingBooking.maxAvailableMinutes} mins.`
+                      : "Please select or enter a duration of at least 1 hour to continue."}
+                  </div>
+                )}
+
+                {/* Conflict Notice if Selected Workspace is Occupied for this Duration */}
+                {selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId) && (
+                  <div className="mt-6 rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs font-bold text-rose-800 flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span>
+                      This desk has an upcoming reservation and cannot accommodate a {durationHours} {durationHours === 1 ? "hour" : "hours"} stay. Please select a shorter duration or pick another desk.
+                    </span>
                   </div>
                 )}
 
@@ -1372,9 +1524,28 @@ export default function KioskReservePage() {
                 <div className="mt-6 flex justify-end">
                   <button
                     type="button"
-                    disabled={!durationHours || durationHours <= 0}
+                    disabled={
+                      !durationHours ||
+                      durationHours <= 0 ||
+                      durationHours > MAX_KIOSK_DURATION_HOURS ||
+                      Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
+                      Boolean(
+                        upcomingBooking?.maxAvailableMinutes !== null &&
+                          upcomingBooking?.maxAvailableMinutes !== undefined &&
+                          (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
+                      )
+                    }
                     onClick={() => {
                       if (!durationHours || durationHours <= 0) return;
+                      if (durationHours > MAX_KIOSK_DURATION_HOURS) return;
+                      if (selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) return;
+                      if (
+                        upcomingBooking?.maxAvailableMinutes !== null &&
+                        upcomingBooking?.maxAvailableMinutes !== undefined &&
+                        (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
+                      ) {
+                        return;
+                      }
                       if (selectedWorkspace) {
                         setStep("details");
                       } else {
@@ -1382,10 +1553,38 @@ export default function KioskReservePage() {
                       }
                     }}
                     className={`da-primary-button text-sm font-extrabold px-8 py-3 ${
-                      !durationHours || durationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                      !durationHours ||
+                      durationHours <= 0 ||
+                      durationHours > MAX_KIOSK_DURATION_HOURS ||
+                      Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
+                      Boolean(
+                        upcomingBooking?.maxAvailableMinutes !== null &&
+                          upcomingBooking?.maxAvailableMinutes !== undefined &&
+                          (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
+                      )
+                        ? "opacity-50 cursor-not-allowed"
+                        : ""
                     }`}
                   >
-                    {selectedWorkspace ? "Proceed to Customer Details →" : "Select Available Desk for Now →"}
+                    {durationHours > MAX_KIOSK_DURATION_HOURS
+                      ? `Duration Exceeds Maximum (Max ${MAX_KIOSK_DURATION_HOURS}h)`
+                      : upcomingBooking?.maxAvailableMinutes !== null &&
+                        upcomingBooking?.maxAvailableMinutes !== undefined &&
+                        upcomingBooking.maxAvailableMinutes < 60
+                      ? upcomingBooking.nextBooking
+                        ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
+                          ? `Facility Closed in ${upcomingBooking.maxAvailableMinutes} mins`
+                          : `Desk Unavailable: Upcoming Reservation in ${upcomingBooking.maxAvailableMinutes} mins`
+                        : `Desk Unavailable: Closing in ${upcomingBooking.maxAvailableMinutes} mins`
+                      : upcomingBooking?.maxAvailableMinutes !== null &&
+                        upcomingBooking?.maxAvailableMinutes !== undefined &&
+                        durationHours * 60 > upcomingBooking.maxAvailableMinutes
+                      ? `Duration Exceeds Availability (Max ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes / 60)}h)`
+                      : selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                      ? "Desk Unavailable for Duration"
+                      : selectedWorkspace
+                        ? "Proceed to Customer Details →"
+                        : "Select Available Desk for Now →"}
                   </button>
                 </div>
               </div>
@@ -1822,9 +2021,11 @@ export default function KioskReservePage() {
         {/* Spot Detail Modal */}
         <SpotDetailModal
           workspace={modalWorkspace}
+          isOccupied={Boolean(modalWorkspace && occupiedInstanceIds.has(modalWorkspace.workspaceInstanceId))}
           open={isModalOpen}
           onOpenChange={setIsModalOpen}
           onProceed={(ws) => {
+            if (occupiedInstanceIds.has(ws.workspaceInstanceId)) return;
             setSelectedWorkspace(ws);
             setIsModalOpen(false);
             setStep("duration");

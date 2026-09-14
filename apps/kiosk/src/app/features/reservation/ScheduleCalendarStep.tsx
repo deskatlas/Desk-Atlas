@@ -502,7 +502,11 @@ export function ScheduleCalendarStep({
                       setSelectedDurationHours(0);
                     } else {
                       const parsed = parseInt(sanitized, 10);
-                      setSelectedDurationHours(parsed > 0 ? parsed : 0);
+                      const clamped = Math.min(24, parsed > 0 ? parsed : 0);
+                      setSelectedDurationHours(clamped);
+                      if (parsed > 24) {
+                        setDurationInputStr(String(clamped));
+                      }
                     }
                   }}
                   onKeyDown={handleNumericKeyDown}

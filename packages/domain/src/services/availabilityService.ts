@@ -13,6 +13,9 @@ import type {
   ScheduleBlock,
   BlockingReservationWindow,
   OccupiedInstancesResult,
+  NextUpcomingBookingResult,
+  ValidateReservationWindowQuery,
+  ReservationWindowValidationResult,
 } from '../models/availability';
 import { getWorkspaceAvailabilityStatus } from './workspaceService';
 
@@ -74,7 +77,8 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
         instance.id,
         normalized.date,
         normalized.durationMinutes,
-        normalized.nowIso ? new Date(normalized.nowIso) : new Date()
+        normalized.nowIso ? new Date(normalized.nowIso) : new Date(),
+        normalized.minimumLeadMinutes
       );
 
       return {
@@ -138,13 +142,49 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
           instance.id,
           normalized.date,
           normalized.durationMinutes,
-          now
+          now,
+          normalized.minimumLeadMinutes
         );
 
         if (normalized.startTime) {
           const targetSlot = slots.find((s) => s.startTime === normalized.startTime);
-          const isAvailable = Boolean(targetSlot && targetSlot.isAvailable);
-          const blockingReason = isAvailable ? null : (targetSlot?.blockingReason ?? 'UNAVAILABLE');
+          let isAvailable = Boolean(targetSlot && targetSlot.isAvailable);
+          let blockingReason = isAvailable ? null : (targetSlot?.blockingReason ?? 'UNAVAILABLE');
+
+          if (!targetSlot) {
+            const dayOfWeek = getDayOfWeek(normalized.date);
+            const intervals = (await repository.listOperatingHours(dayOfWeek)).filter((i) => i.isActive);
+            const startMinutes = parseTimeToMinutes(normalized.startTime);
+            const operatingHoursByDay = new Map<number, OperatingHoursInterval[]>();
+            operatingHoursByDay.set(dayOfWeek, intervals);
+
+            const isCovered = checkOperatingHoursCoverage({
+              date: normalized.date,
+              startMinutes,
+              durationMinutes: normalized.durationMinutes,
+              operatingHoursByDay,
+            });
+
+            const slotStart = zonedDateTimeToUtc(normalized.date, normalized.startTime, settings.timezone);
+            const slotEnd = new Date(slotStart.getTime() + normalized.durationMinutes * 60_000);
+
+            const [blocks, reservations] = await Promise.all([
+              repository.listScheduleBlocks(instance.id, slotStart.toISOString(), slotEnd.toISOString()),
+              repository.listBlockingReservations(instance.id, slotStart.toISOString(), slotEnd.toISOString()),
+            ]);
+
+            const reason = getSlotBlockingReason(
+              slotStart,
+              slotEnd,
+              now,
+              isCovered,
+              blocks,
+              reservations,
+              normalized.minimumLeadMinutes
+            );
+            isAvailable = reason === null;
+            blockingReason = reason;
+          }
 
           allInstances.push({
             workspaceInstanceId: instance.id,
@@ -203,11 +243,14 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       };
     },
 
-    async listOccupiedInstances(query?: { nowIso?: string }): Promise<OccupiedInstancesResult> {
+    async listOccupiedInstances(query?: { nowIso?: string; durationMinutes?: number }): Promise<OccupiedInstancesResult> {
       const now = query?.nowIso ? new Date(query.nowIso) : new Date();
-      const fiveMinLater = new Date(now.getTime() + 5 * 60 * 1000);
+      const durationMs = query?.durationMinutes && query.durationMinutes > 0
+        ? query.durationMinutes * 60 * 1000
+        : 5 * 60 * 1000;
+      const endWindow = new Date(now.getTime() + durationMs);
       const rangeStartIso = now.toISOString();
-      const rangeEndIso = fiveMinLater.toISOString();
+      const rangeEndIso = endWindow.toISOString();
 
       if (repository.listOccupiedInstances) {
         const ids = await repository.listOccupiedInstances(rangeStartIso, rangeEndIso);
@@ -215,6 +258,231 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       }
 
       return { occupiedInstanceIds: [], asOf: rangeStartIso };
+    },
+
+    async getNextUpcomingBooking(
+      workspaceInstanceId: string,
+      nowIso?: string
+    ): Promise<NextUpcomingBookingResult> {
+      const now = nowIso ? new Date(nowIso) : new Date();
+      const startIso = now.toISOString();
+      const endWindow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const settings = await repository.getBusinessSettings();
+      const timezone = settings.timezone || 'Asia/Manila';
+
+      const [blocking, scheduleBlocks] = await Promise.all([
+        workspaceInstanceId
+          ? repository.listBlockingReservations(workspaceInstanceId, startIso, endWindow)
+          : Promise.resolve([]),
+        repository.listScheduleBlocks(workspaceInstanceId || '', startIso, endWindow),
+      ]);
+
+      const allUpcoming = [
+        ...blocking.map((b) => ({
+          startAt: b.startAt,
+          endAt: b.endAt,
+          type: 'RESERVATION' as const,
+        })),
+        ...scheduleBlocks
+          .filter((s) => s.scope === 'BUSINESS' || s.workspaceInstanceId === workspaceInstanceId)
+          .map((s) => ({
+            startAt: s.startAt,
+            endAt: s.endAt,
+            type: 'SCHEDULE_BLOCK' as const,
+            blockType: s.blockType,
+            reason: s.reason,
+          })),
+      ]
+        .filter((item) => new Date(item.endAt).getTime() > now.getTime())
+        .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+      const next = allUpcoming[0] ?? null;
+      let minutesUntilNextBooking: number | null = null;
+      if (next) {
+        const diffMs = new Date(next.startAt).getTime() - now.getTime();
+        minutesUntilNextBooking = Math.max(0, Math.floor(diffMs / (60 * 1000)));
+      }
+
+      // Check operating hours closing time
+      const { dateStr, dayOfWeek } = getDatePartsInTz(now, timezone);
+      const dayIntervals = (await repository.listOperatingHours(dayOfWeek))
+        .filter((i) => i.isActive)
+        .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+
+      let operatingHoursCloseAt: string | null = null;
+      let minutesUntilClosing: number | null = null;
+
+      if (dayIntervals.length > 0) {
+        const lastInterval = dayIntervals[dayIntervals.length - 1];
+        const closeUtc = zonedDateTimeToUtc(dateStr, lastInterval.closesAt, timezone);
+        operatingHoursCloseAt = closeUtc.toISOString();
+        const diffCloseMs = closeUtc.getTime() - now.getTime();
+        minutesUntilClosing = Math.max(0, Math.floor(diffCloseMs / (60 * 1000)));
+      } else {
+        // Venue is closed for the entire day
+        operatingHoursCloseAt = null;
+        minutesUntilClosing = 0;
+      }
+
+      // Kiosk walk-in sessions cap at max 24 hours (1440 minutes) or closing time
+      let maxAvailableMinutes: number | null = 24 * 60;
+      if (minutesUntilClosing !== null) {
+        maxAvailableMinutes = Math.min(maxAvailableMinutes, minutesUntilClosing);
+      }
+      if (minutesUntilNextBooking !== null) {
+        maxAvailableMinutes = Math.min(maxAvailableMinutes, minutesUntilNextBooking);
+      }
+
+      const maxAvailableHours = maxAvailableMinutes !== null ? Math.floor(maxAvailableMinutes / 60) : null;
+
+      const formatTimeInTz = (iso: string) => {
+        try {
+          return new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          }).format(new Date(iso));
+        } catch {
+          return iso;
+        }
+      };
+
+      return {
+        workspaceInstanceId,
+        nowIso: startIso,
+        nextBooking: next
+          ? {
+              startAt: next.startAt,
+              endAt: next.endAt,
+              type: next.type,
+              startTimeFormatted: formatTimeInTz(next.startAt),
+              blockType: 'blockType' in next ? (next as any).blockType : undefined,
+              reason: 'reason' in next ? (next as any).reason : undefined,
+            }
+          : null,
+        minutesUntilNextBooking,
+        operatingHoursCloseAt,
+        minutesUntilClosing,
+        maxAvailableMinutes,
+        maxAvailableHours,
+      };
+    },
+
+    async validateReservationWindow(
+      query: ValidateReservationWindowQuery
+    ): Promise<ReservationWindowValidationResult> {
+      const { workspaceInstanceId, startAt, endAt, maxDurationMinutes = 24 * 60 } = query;
+      const startMs = new Date(startAt).getTime();
+      const endMs = new Date(endAt).getTime();
+      const durationMinutes = Math.round((endMs - startMs) / 60000);
+
+      if (durationMinutes <= 0) {
+        return {
+          isValid: false,
+          conflictType: 'MAX_DURATION_EXCEEDED',
+          errorMessage: 'Invalid reservation duration.',
+        };
+      }
+
+      if (durationMinutes > maxDurationMinutes) {
+        return {
+          isValid: false,
+          conflictType: 'MAX_DURATION_EXCEEDED',
+          errorMessage:
+            'The requested duration extends into a scheduled facility closure or non-operational period.',
+        };
+      }
+
+      const settings = await repository.getBusinessSettings();
+      const timezone = settings.timezone || 'Asia/Manila';
+
+      // 1. Check schedule blocks across [startAt, endAt)
+      const scheduleBlocks = await repository
+        .listScheduleBlocks(workspaceInstanceId, startAt, endAt)
+        .catch(() => []);
+
+      const closureBlock = scheduleBlocks.find(
+        (b) => b.scope === 'BUSINESS' || b.blockType === 'CLOSURE'
+      );
+      if (closureBlock) {
+        return {
+          isValid: false,
+          conflictType: 'FACILITY_CLOSURE',
+          errorMessage:
+            'The requested duration extends into a scheduled facility closure or non-operational period.',
+        };
+      }
+
+      const maintenanceBlock = scheduleBlocks.find((b) => b.blockType === 'MAINTENANCE');
+      if (maintenanceBlock) {
+        return {
+          isValid: false,
+          conflictType: 'MAINTENANCE_BLOCK',
+          errorMessage:
+            'The selected workspace is unavailable for the requested time window due to a scheduled maintenance block.',
+        };
+      }
+
+      // 2. Check operating hours coverage
+      const { dateStr: startDateStr, timeStr: startTimeStr } = getDatePartsInTz(
+        new Date(startMs),
+        timezone
+      );
+      const startDayOfWeek = getDayOfWeek(startDateStr);
+      const startMinutes = parseTimeToMinutes(startTimeStr);
+
+      const extraDays = Math.ceil(durationMinutes / MINUTES_PER_DAY) + 1;
+      const operatingHoursByDay = new Map<number, OperatingHoursInterval[]>();
+
+      const daysToFetch = new Set<number>();
+      for (let i = 0; i <= extraDays; i++) {
+        daysToFetch.add((startDayOfWeek + i) % 7);
+      }
+
+      await Promise.all(
+        Array.from(daysToFetch).map(async (d) => {
+          const intervals = (await repository.listOperatingHours(d))
+            .filter((interval) => interval.isActive)
+            .sort((left, right) => left.opensAt.localeCompare(right.opensAt));
+          operatingHoursByDay.set(d, intervals);
+        })
+      );
+
+      const isCovered = checkOperatingHoursCoverage({
+        date: startDateStr,
+        startMinutes,
+        durationMinutes,
+        operatingHoursByDay,
+      });
+
+      if (!isCovered) {
+        return {
+          isValid: false,
+          conflictType: 'BUSINESS_CLOSED',
+          errorMessage:
+            'The requested duration extends into a scheduled facility closure or non-operational period.',
+        };
+      }
+
+      // 3. Check blocking reservations
+      if (workspaceInstanceId) {
+        const blocking = await repository
+          .listBlockingReservations(workspaceInstanceId, startAt, endAt)
+          .catch(() => []);
+
+        if (blocking.length > 0) {
+          return {
+            isValid: false,
+            conflictType: 'RESERVATION_CONFLICT',
+            errorMessage:
+              'The selected workspace is unavailable for the requested time window due to an existing reservation.',
+          };
+        }
+      }
+
+      return { isValid: true };
     },
   };
 }
@@ -237,7 +505,8 @@ async function listDateAvailabilityForRange(
       query.workspaceInstanceId,
       currentDate,
       query.durationMinutes,
-      now
+      now,
+      query.minimumLeadMinutes
     );
 
     const firstAvailable = slots.find((slot) => slot.isAvailable);
@@ -261,7 +530,8 @@ async function listTimeSlotsForDate(
   workspaceInstanceId: string,
   date: string,
   durationMinutes: number,
-  now: Date
+  now: Date,
+  minimumLeadMinutes: number = 0
 ): Promise<AvailableTimeSlot[]> {
   if (!workspaceIsBookable) {
     return [];
@@ -320,6 +590,7 @@ async function listTimeSlotsForDate(
         blocks,
         reservations,
         operatingHoursByDay,
+        minimumLeadMinutes,
       })
     );
   }
@@ -337,6 +608,7 @@ function buildIntervalSlots(input: {
   blocks: ScheduleBlock[];
   reservations: BlockingReservationWindow[];
   operatingHoursByDay: Map<number, OperatingHoursInterval[]>;
+  minimumLeadMinutes?: number;
 }): AvailableTimeSlot[] {
   const intervalStartMinutes = parseTimeToMinutes(input.interval.opensAt);
   const intervalEndMinutes = parseTimeToMinutes(input.interval.closesAt);
@@ -379,7 +651,8 @@ function buildIntervalSlots(input: {
       input.now,
       isCovered,
       input.blocks,
-      input.reservations
+      input.reservations,
+      input.minimumLeadMinutes ?? 0
     );
 
     slots.push({
@@ -435,10 +708,15 @@ function getSlotBlockingReason(
   now: Date,
   isCoveredByOperatingHours: boolean,
   blocks: ScheduleBlock[],
-  reservations: BlockingReservationWindow[]
+  reservations: BlockingReservationWindow[],
+  minimumLeadMinutes: number = 0
 ) {
   if (slotStart.getTime() + 60_000 <= now.getTime()) {
     return 'PAST_TIME' as const;
+  }
+
+  if (minimumLeadMinutes > 0 && slotStart.getTime() - now.getTime() < minimumLeadMinutes * 60_000) {
+    return 'IMMEDIATE_WALK_IN_ONLY' as const;
   }
 
   if (!isCoveredByOperatingHours) {
@@ -490,6 +768,16 @@ function dedupeSlots(slots: AvailableTimeSlot[]): AvailableTimeSlot[] {
   return deduped.sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
+function resolveMinimumLeadMinutes(channel?: 'ONLINE' | 'KIOSK', minimumLeadMinutes?: number): number {
+  if (minimumLeadMinutes !== undefined) {
+    return Math.max(0, minimumLeadMinutes);
+  }
+  if (channel === 'ONLINE') {
+    return 30;
+  }
+  return 0;
+}
+
 function normalizeDateAvailabilityQuery(query: DateAvailabilityQuery): Required<DateAvailabilityQuery> {
   const workspaceInstanceId = requireNonBlank(query.workspaceInstanceId, 'Workspace instance id');
   const startDate = requireDateString(query.startDate, 'Start date');
@@ -506,6 +794,8 @@ function normalizeDateAvailabilityQuery(query: DateAvailabilityQuery): Required<
     endDate,
     durationMinutes,
     nowIso: query.nowIso ?? new Date().toISOString(),
+    channel: query.channel ?? (query.minimumLeadMinutes !== undefined && query.minimumLeadMinutes > 0 ? 'ONLINE' : 'KIOSK'),
+    minimumLeadMinutes: resolveMinimumLeadMinutes(query.channel, query.minimumLeadMinutes),
   };
 }
 
@@ -515,6 +805,8 @@ function normalizeTimeAvailabilityQuery(query: TimeAvailabilityQuery): Required<
     date: requireDateString(query.date, 'Date'),
     durationMinutes: requirePositiveMinutes(query.durationMinutes, 'Duration'),
     nowIso: query.nowIso ?? new Date().toISOString(),
+    channel: query.channel ?? (query.minimumLeadMinutes !== undefined && query.minimumLeadMinutes > 0 ? 'ONLINE' : 'KIOSK'),
+    minimumLeadMinutes: resolveMinimumLeadMinutes(query.channel, query.minimumLeadMinutes),
   };
 }
 
@@ -537,6 +829,8 @@ function normalizeTemplateAvailabilityQuery(query: TemplateAvailabilityQuery): R
     durationMinutes: requirePositiveMinutes(query.durationMinutes, 'Duration'),
     nowIso: query.nowIso ?? new Date().toISOString(),
     startTime,
+    channel: query.channel ?? (query.minimumLeadMinutes !== undefined && query.minimumLeadMinutes > 0 ? 'ONLINE' : 'KIOSK'),
+    minimumLeadMinutes: resolveMinimumLeadMinutes(query.channel, query.minimumLeadMinutes),
   };
 }
 
@@ -596,6 +890,33 @@ function addDays(date: string, days: number): string {
 function getDayOfWeek(date: string): number {
   const [year, month, day] = date.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+export function getDatePartsInTz(
+  date: Date,
+  timezone: string
+): { dateStr: string; dayOfWeek: number; timeStr: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const year = parts.find((p) => p.type === 'year')?.value ?? '2026';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '01';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '01';
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+
+  const dateStr = `${year}-${month}-${day}`;
+  const dayOfWeek = getDayOfWeek(dateStr);
+  const timeStr = `${hour}:${minute}`;
+
+  return { dateStr, dayOfWeek, timeStr };
 }
 
 function rangesOverlap(

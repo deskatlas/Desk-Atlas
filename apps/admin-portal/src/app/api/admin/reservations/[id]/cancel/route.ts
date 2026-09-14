@@ -27,11 +27,43 @@ export async function POST(
       );
     }
 
+    let actorUserId =
+      request.headers.get("x-user-id") ??
+      (typeof body.actorUserId === "string" ? body.actorUserId.trim() : undefined);
+
+    if (!actorUserId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
+      const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && serviceRoleKey) {
+        try {
+          const res = await fetch(
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?select=user_id&role=eq.ADMIN&is_active=eq.true&limit=1`,
+            {
+              headers: {
+                apikey: serviceRoleKey,
+                Authorization: `Bearer ${serviceRoleKey}`,
+              },
+              cache: "no-store",
+            }
+          );
+          if (res.ok) {
+            const adminProfiles = await res.json();
+            if (Array.isArray(adminProfiles) && adminProfiles[0]?.user_id) {
+              actorUserId = adminProfiles[0].user_id;
+            }
+          }
+        } catch {
+          // fallback
+        }
+      }
+    }
+
     const service = getAdminReservationService();
     const result = await service.cancelReservation({
       reservationId: id,
       reason,
       notes,
+      actorUserId,
       actorRole: "ADMIN",
     });
 

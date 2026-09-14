@@ -73,7 +73,8 @@ type BlockingReservationRow = {
   end_at: string;
   reservation: {
     id: string;
-    status: 'CONFIRMED' | 'CHECKED_IN';
+    status: string;
+    created_at?: string;
   } | null;
 };
 
@@ -203,15 +204,39 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     rangeStartIso: string,
     rangeEndIso: string
   ): Promise<BlockingReservationWindow[]> {
-    const rows = await this.request<BlockingReservationRow[]>(
-      `/reservation_candidates?select=start_at,end_at,reservation:reservations!inner(id,status)&workspace_instance_id=eq.${encodeURIComponent(
-        workspaceInstanceId
-      )}&start_at=lt.${encodeURIComponent(rangeEndIso)}&end_at=gt.${encodeURIComponent(
-        rangeStartIso
-      )}&reservation.status=in.(CONFIRMED,CHECKED_IN)`
-    );
+    const [assignedRows, pendingRows] = await Promise.all([
+      this.request<BlockingReservationRow[]>(
+        `/reservation_candidates?select=start_at,end_at,reservation:reservations!inner(id,status,created_at)&workspace_instance_id=eq.${encodeURIComponent(
+          workspaceInstanceId
+        )}&start_at=lt.${encodeURIComponent(rangeEndIso)}&end_at=gt.${encodeURIComponent(
+          rangeStartIso
+        )}&is_assigned=eq.true&reservation.status=in.(CONFIRMED,CHECKED_IN)`
+      ),
+      this.request<BlockingReservationRow[]>(
+        `/reservation_candidates?select=start_at,end_at,reservation:reservations!inner(id,status,created_at)&workspace_instance_id=eq.${encodeURIComponent(
+          workspaceInstanceId
+        )}&start_at=lt.${encodeURIComponent(rangeEndIso)}&end_at=gt.${encodeURIComponent(
+          rangeStartIso
+        )}&reservation.status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION)`
+      ).catch(() => []),
+    ]);
 
-    return rows
+    const nowMs = Date.now();
+    const validPendingRows = (pendingRows || []).filter((row) => {
+      if (!row.reservation) return false;
+      if (row.reservation.status === 'PENDING_PAYMENT' && row.reservation.created_at) {
+        const createdAtMs = new Date(row.reservation.created_at).getTime();
+        // 1 hour (60 minutes) payment session window
+        if (nowMs - createdAtMs > 60 * 60 * 1000) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const combined = [...(assignedRows || []), ...validPendingRows];
+
+    return combined
       .filter((row) => row.reservation)
       .map((row) => ({
         reservationId: row.reservation!.id,
@@ -225,7 +250,7 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     rangeStartIso: string,
     rangeEndIso: string
   ): Promise<string[]> {
-    const [candidateRows, blockRows] = await Promise.all([
+    const [candidateRows, pendingRows, blockRows] = await Promise.all([
       this.request<Array<{ workspace_instance_id: string }>>(
         `/reservation_candidates?select=workspace_instance_id,start_at,end_at,is_assigned,reservation:reservations!inner(id,status)&start_at=lt.${encodeURIComponent(
           rangeEndIso
@@ -233,8 +258,15 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
           rangeStartIso
         )}&is_assigned=eq.true&reservation.status=in.(CONFIRMED,CHECKED_IN)`
       ),
-      this.request<Array<{ workspace_instance_id: string | null }>>(
-        `/schedule_blocks?select=workspace_instance_id,start_at,end_at,scope&scope=eq.WORKSPACE&start_at=lt.${encodeURIComponent(
+      this.request<Array<{ workspace_instance_id: string; reservation?: { id: string; status: string; created_at?: string } }>>(
+        `/reservation_candidates?select=workspace_instance_id,start_at,end_at,reservation:reservations!inner(id,status,created_at)&start_at=lt.${encodeURIComponent(
+          rangeEndIso
+        )}&end_at=gt.${encodeURIComponent(
+          rangeStartIso
+        )}&reservation.status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION)`
+      ).catch(() => []),
+      this.request<Array<{ workspace_instance_id: string | null; scope: string }>>(
+        `/schedule_blocks?select=workspace_instance_id,start_at,end_at,scope&start_at=lt.${encodeURIComponent(
           rangeEndIso
         )}&end_at=gt.${encodeURIComponent(
           rangeStartIso
@@ -243,10 +275,31 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     ]);
 
     const occupied = new Set<string>();
-    for (const r of candidateRows) {
+    for (const r of candidateRows || []) {
       if (r.workspace_instance_id) occupied.add(r.workspace_instance_id);
     }
-    for (const b of blockRows) {
+    const nowMs = Date.now();
+    for (const p of pendingRows || []) {
+      if (p.workspace_instance_id && p.reservation) {
+        if (p.reservation.status === 'PENDING_PAYMENT' && p.reservation.created_at) {
+          const createdAtMs = new Date(p.reservation.created_at).getTime();
+          if (nowMs - createdAtMs > 60 * 60 * 1000) {
+            continue;
+          }
+        }
+        occupied.add(p.workspace_instance_id);
+      }
+    }
+    const hasBusinessClosure = (blockRows || []).some((b) => b.scope === 'BUSINESS');
+    if (hasBusinessClosure) {
+      const allInstances = await this.request<Array<{ id: string }>>(
+        `/workspace_instances?select=id&operational_status=neq.INACTIVE`
+      ).catch(() => []);
+      for (const inst of allInstances) {
+        occupied.add(inst.id);
+      }
+    }
+    for (const b of blockRows || []) {
       if (b.workspace_instance_id) occupied.add(b.workspace_instance_id);
     }
 

@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import jsQR from 'jsqr';
 import { useBookingLookup, extractBookingToken } from '../hooks/useBookingLookup';
-import { useCheckInActions } from '@/features/check-in/hooks/useCheckInActions';
+import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '@/features/check-in';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 
@@ -14,9 +14,10 @@ export function ScannerPage() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
+  const [showEarlyModal, setShowEarlyModal] = useState(false);
   
   const { lookupToken, result, loading: lookupLoading, error: lookupError, clear } = useBookingLookup();
-  const { checkIn, checkOut, loading: actionLoading, error: actionError } = useCheckInActions();
+  const { checkIn, checkOut, loading: actionLoading, error: actionError, clearError } = useCheckInActions();
   const router = useRouter();
 
   const stopStream = useCallback(() => {
@@ -107,7 +108,12 @@ export function ScannerPage() {
     try {
       await checkIn(id);
       router.push(`/manage/reservations/${id}`);
-    } catch (e) {}
+    } catch (e: any) {
+      if (isEarlyCheckInError(e)) {
+        setShowEarlyModal(true);
+        clearError();
+      }
+    }
   };
 
   const handleCheckOut = async (id: string) => {
@@ -120,6 +126,7 @@ export function ScannerPage() {
   const resumeScanning = () => {
     clear();
     setManualCode('');
+    setShowManualInput(false);
     setScanning(true);
   };
 
@@ -156,9 +163,8 @@ export function ScannerPage() {
       case 'EXPIRED':
         return 'EXPIRED';
       case 'INVALID':
-        return 'INVALID / CANCELLED';
       default:
-        return accessState;
+        return 'INVALID / UNCONFIRMED';
     }
   };
 
@@ -185,27 +191,46 @@ export function ScannerPage() {
             <div style={{ marginTop: '20px', width: '100%', maxWidth: '400px' }}>
               {!showManualInput ? (
                 <button
+                  type="button"
                   onClick={() => setShowManualInput(true)}
                   style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px dashed var(--da-border)', borderRadius: '8px', color: 'var(--da-text-secondary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                 >
-                  Enter Token / Code Manually
+                  Enter Reference Code or ID Manually
                 </button>
               ) : (
-                <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Enter QR token or URL"
-                    value={manualCode}
-                    onChange={(e) => setManualCode(e.target.value)}
-                    style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--da-border)', borderRadius: '8px', fontSize: '13px' }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!manualCode.trim()}
-                    style={{ padding: '10px 16px', background: 'var(--da-brand-dark)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: manualCode.trim() ? 'pointer' : 'not-allowed' }}
-                  >
-                    Lookup
-                  </button>
+                <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Reference Code or Reservation ID
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="e.g. DA-2026-01234 or Reservation ID"
+                      value={manualCode}
+                      onChange={(e) => setManualCode(e.target.value)}
+                      style={{ flex: 1, padding: '10px 12px', border: '1px solid var(--da-border)', borderRadius: '8px', fontSize: '13px' }}
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      disabled={!manualCode.trim()}
+                      style={{ padding: '10px 18px', background: 'var(--da-brand-dark)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: manualCode.trim() ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}
+                    >
+                      Check In
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowManualInput(false);
+                        setManualCode('');
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--da-text-secondary)', fontSize: '12px', cursor: 'pointer', padding: '2px 0' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </form>
               )}
             </div>
@@ -256,7 +281,9 @@ export function ScannerPage() {
                 )}
                 {result.accessState === 'INVALID' && (
                   <div style={{ padding: '12px 16px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', color: '#991B1B', fontSize: '13px', fontWeight: 600, marginBottom: '18px' }}>
-                    Invalid: Reservation is cancelled or QR token has been revoked. Entry cannot be granted.
+                    {result.reservationStatus === 'PENDING_PAYMENT' || result.reservationStatus === 'PAYMENT_UNDER_REVIEW' || result.reservationStatus === 'PENDING_COUNTER_CONFIRMATION'
+                      ? `Unconfirmed: Reservation payment is ${result.reservationStatus.replace(/_/g, ' ').toLowerCase()}. Entry cannot be granted until confirmed.`
+                      : 'Invalid: Reservation is cancelled or invalid. Entry cannot be granted.'}
                   </div>
                 )}
 
@@ -306,14 +333,17 @@ export function ScannerPage() {
                   </div>
                 </div>
 
-                {actionError && (
-                  <div style={{ color: 'var(--da-danger)', fontSize: '13px', marginBottom: '16px', background: '#FEE2E2', padding: '12px', borderRadius: '6px' }}>
-                    {actionError}
-                  </div>
-                )}
+                {(() => {
+                  const displayActionError = isEarlyCheckInError(actionError) ? null : actionError;
+                  return displayActionError ? (
+                    <div style={{ color: 'var(--da-danger)', fontSize: '13px', marginBottom: '16px', background: '#FEE2E2', padding: '12px', borderRadius: '6px' }}>
+                      {displayActionError}
+                    </div>
+                  ) : null;
+                })()}
 
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  {result.accessState === 'ACTIVE' && result.checkInState !== 'CHECKED_IN' && result.reservationStatus === 'CONFIRMED' && (
+                  {result.checkInState !== 'CHECKED_IN' && (result.reservationStatus === 'CONFIRMED' || result.accessState === 'ACTIVE' || result.accessState === 'NOT_ACTIVE') && (
                     <button 
                       onClick={() => handleCheckIn(result.reservationId)}
                       disabled={actionLoading}
@@ -344,6 +374,21 @@ export function ScannerPage() {
           </div>
         )}
       </div>
+
+      {result && (
+        <EarlyCheckInModal
+          isOpen={showEarlyModal}
+          onClose={() => {
+            setShowEarlyModal(false);
+            clearError();
+          }}
+          customerName={result.customerName}
+          referenceCode={result.referenceCode}
+          workspaceName={result.workspaceDisplayName || result.workspaceTemplateName}
+          bookingStartAt={result.bookingStartAt}
+          bookingEndAt={result.bookingEndAt}
+        />
+      )}
     </main>
   );
 }

@@ -47,6 +47,24 @@ class CustomerWorkspaceRepo {
 
 export async function POST(request: NextRequest) {
   try {
+    const body: CreateReservationRequest = await request.json();
+
+    if (body.candidates && Array.isArray(body.candidates)) {
+      const now = Date.now();
+      for (const candidate of body.candidates) {
+        const candidateStartTime = new Date(candidate.startAt).getTime();
+        if (isNaN(candidateStartTime) || candidateStartTime - now < 30 * 60 * 1000) {
+          return NextResponse.json(
+            {
+              error:
+                'Online reservations must be made at least 30 minutes in advance. For immediate bookings, please use the in-house kiosk.',
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -65,7 +83,6 @@ export async function POST(request: NextRequest) {
       paymentSessionService
     );
 
-    const body: CreateReservationRequest = await request.json();
     const paymentLinkBaseUrl =
       process.env.PAYMENT_SESSION_BASE_URL ??
       `${request.nextUrl.origin.replace(/\/$/, '')}/pay`;

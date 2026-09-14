@@ -27,6 +27,7 @@ export function AdminSetupPassword() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isSealed, setIsSealed] = useState(false);
 
   // Load session from query params or sessionStorage on mount
   useEffect(() => {
@@ -61,28 +62,59 @@ export function AdminSetupPassword() {
     const finalUserId = qUserId || sUserId;
     const finalEmail = qEmail || sEmail;
 
-    if (!finalUserId && !finalEmail) {
-      // If neither session nor query params exist, check setup status
-      fetch('/api/admin/auth/setup/status', { cache: 'no-store' })
-        .then((res) => res.json())
-        .then((data) => {
+    // Query setup status to verify if setup is sealed
+    const statusUrl = finalUserId
+      ? `/api/admin/auth/setup/status?userId=${encodeURIComponent(finalUserId)}`
+      : '/api/admin/auth/setup/status';
+
+    fetch(statusUrl, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        // If password is already configured or setup is sealed, permanently block access
+        if (data && (data.isPasswordConfigured || (data.hasAdmin && !data.setupAllowed))) {
+          setIsSealed(true);
+          setSessionLoaded(true);
+          if (typeof window !== 'undefined') {
+            try {
+              sessionStorage.removeItem('da_admin_setup_user');
+            } catch {}
+          }
+          return;
+        }
+
+        // If no credentials exist:
+        if (!finalUserId && !finalEmail) {
           if (data && data.hasAdmin) {
             router.push('/manage/login');
           } else {
             router.push('/manage/setup');
           }
-        })
-        .catch(() => {
-          router.push('/manage/setup');
-        });
-      return;
-    }
+          return;
+        }
 
-    setUserId(finalUserId);
-    setEmail(finalEmail);
-    setDisplayName(sDisplayName);
-    setToken(sToken);
-    setSessionLoaded(true);
+        // If no admin was bootstrapped yet, redirect to initial setup
+        if (data && !data.hasAdmin) {
+          router.push('/manage/setup');
+          return;
+        }
+
+        setUserId(finalUserId);
+        setEmail(finalEmail);
+        setDisplayName(sDisplayName);
+        setToken(sToken);
+        setSessionLoaded(true);
+      })
+      .catch(() => {
+        if (!finalUserId && !finalEmail) {
+          router.push('/manage/setup');
+        } else {
+          setUserId(finalUserId);
+          setEmail(finalEmail);
+          setDisplayName(sDisplayName);
+          setToken(sToken);
+          setSessionLoaded(true);
+        }
+      });
   }, [user, router, searchParams, success]);
 
   // Validation rules evaluation
@@ -113,15 +145,19 @@ export function AdminSetupPassword() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (res.status === 403 || data.error?.includes('already exists') || data.error?.includes('sealed')) {
+          setIsSealed(true);
+        }
         setErrorMsg(data.error || 'Failed to set admin password. Please try again.');
         setLoading(false);
         return;
       }
 
-      // Clean up temporary setup session storage
+      // Clean up temporary setup session storage and scrub query params
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem('da_admin_setup_user');
+          window.history.replaceState({}, '', '/manage/setup/password');
         } catch {
           // ignore
         }
@@ -177,6 +213,108 @@ export function AdminSetupPassword() {
             Preparing password setup session...
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  if (isSealed) {
+    return (
+      <div
+        data-screen-label="Admin Password Setup Sealed"
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'radial-gradient(ellipse at top, #143527 0%, #0c1c15 50%, #070f0b 100%)',
+          padding: '24px',
+          fontFamily: 'var(--da-font-family, system-ui, sans-serif)',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '440px',
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '16px',
+            padding: '40px 32px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(239, 68, 68, 0.1)',
+            backdropFilter: 'blur(16px)',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: '56px',
+              height: '56px',
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              color: '#ef4444',
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+
+          <span
+            style={{
+              display: 'inline-block',
+              background: 'rgba(239, 68, 68, 0.15)',
+              color: '#f87171',
+              fontSize: '11px',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '4px 10px',
+              borderRadius: '999px',
+              marginBottom: '12px',
+            }}
+          >
+            HTTP 403 • Setup Sealed
+          </span>
+
+          <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#f8fafc', margin: '0 0 10px' }}>
+            Setup Unavailable
+          </h2>
+          <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 24px' }}>
+            An administrator account already exists and password configuration has been completed for this deployment. For security, setup is permanently sealed.
+          </p>
+
+          <button
+            onClick={() => router.push('/manage/login')}
+            style={{
+              width: '100%',
+              background: '#059669',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '12px 18px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 14px rgba(5, 150, 105, 0.3)',
+              transition: 'background 0.2s',
+            }}
+          >
+            Proceed to Admin Login
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </button>
         </div>
       </div>
     );

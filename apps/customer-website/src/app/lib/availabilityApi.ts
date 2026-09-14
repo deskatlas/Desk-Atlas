@@ -15,6 +15,7 @@ export async function fetchDateAvailability(input: {
     startDate: input.startDate,
     endDate: input.endDate,
     durationMinutes: String(input.durationMinutes),
+    channel: 'ONLINE',
   });
   const response = await fetch(`/api/availability?${params.toString()}`, {
     cache: 'no-store',
@@ -38,6 +39,7 @@ export async function fetchTimeAvailability(input: {
     workspaceInstanceId: input.workspaceInstanceId,
     date: input.date,
     durationMinutes: String(input.durationMinutes),
+    channel: 'ONLINE',
   });
   if (input.nowIso) {
     params.set('nowIso', input.nowIso);
@@ -65,6 +67,7 @@ export async function fetchTemplateAvailability(input: {
     templateId: input.templateId,
     date: input.date,
     durationMinutes: String(input.durationMinutes),
+    channel: 'ONLINE',
   });
   if (input.startTime) {
     params.set('startTime', input.startTime);

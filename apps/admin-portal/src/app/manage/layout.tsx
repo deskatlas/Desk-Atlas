@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/features/auth';
-import { NotificationCenter } from '@/features/notifications';
+import { NotificationCenter, UrgentPaymentModal } from '@/features/notifications';
 import { SearchProvider, useSearch } from '@deskatlas/ui';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -265,6 +265,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* PAGE CONTENT */}
         {children}
+
+        {/* URGENT PAYMENT NOTIFICATION MODAL */}
+        <UrgentPaymentModal />
       </div>
     </div>
   );

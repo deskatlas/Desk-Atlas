@@ -49,6 +49,7 @@ interface SpotDetailModalProps {
   onProceed: (workspace: WorkspaceMapViewModel) => void;
   candidateRank?: 0 | 1 | 2;
   mainTemplateName?: string;
+  isOccupied?: boolean;
 }
 
 export function SpotDetailModal({
@@ -58,15 +59,18 @@ export function SpotDetailModal({
   onProceed,
   candidateRank = 0,
   mainTemplateName,
+  isOccupied = false,
 }: SpotDetailModalProps) {
   const [imageError, setImageError] = useState(false);
 
   if (!workspace) return null;
 
-  const isAvailable = workspace.status === "available";
+  const effectiveStatus = isOccupied ? "occupied" : workspace.status;
+  const isAvailable = workspace.status === "available" && !isOccupied;
+  const effectiveStatusLabel = isOccupied ? "Occupied" : workspace.statusLabel;
 
   const getStatusBadgeStyle = () => {
-    switch (workspace.status) {
+    switch (effectiveStatus) {
       case "available":
         return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "maintenance":
@@ -98,12 +102,12 @@ export function SpotDetailModal({
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${isAvailable
                       ? "bg-emerald-500"
-                      : workspace.status === "maintenance"
+                      : effectiveStatus === "maintenance"
                         ? "bg-amber-500"
                         : "bg-slate-400"
                     }`}
                 />
-                {workspace.statusLabel}
+                {effectiveStatusLabel}
               </span>
               {candidateRank > 0 ? (
                 <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs font-extrabold text-amber-800">
@@ -238,7 +242,7 @@ export function SpotDetailModal({
             className={`da-primary-button px-5 py-2.5 text-xs font-bold ${!isAvailable ? "opacity-50 cursor-not-allowed" : ""
               }`}
           >
-            {isAvailable ? "Proceed with this Spot →" : workspace.status === "occupied" ? "Currently Occupied" : "Currently Unavailable"}
+            {isAvailable ? "Proceed with this Spot →" : effectiveStatus === "occupied" ? "Currently Occupied" : "Currently Unavailable"}
           </button>
         </div>
       </DialogContent>

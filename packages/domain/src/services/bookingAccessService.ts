@@ -64,15 +64,19 @@ export class BookingAccessService {
   async getBookingAccess(token: string): Promise<BookingScanResult> {
     const normalizedToken = token.trim();
     if (!normalizedToken) {
-      throw new BookingAccessError("Booking token is required.");
+      throw new BookingAccessError("Booking token or reference code is required.");
     }
 
     const now = this.nowProvider();
     const tokenHash = hashBookingToken(normalizedToken);
-    const record = await this.bookingAccessRepository.findBookingAccessByTokenHash(tokenHash);
+    let record = await this.bookingAccessRepository.findBookingAccessByTokenHash(tokenHash);
+
+    if (!record && this.bookingAccessRepository.findBookingAccessByReferenceOrId) {
+      record = await this.bookingAccessRepository.findBookingAccessByReferenceOrId(normalizedToken);
+    }
 
     if (!record) {
-      throw new BookingAccessError("Invalid booking token.");
+      throw new BookingAccessError("Invalid booking token or reference code.");
     }
 
     const accessState = getBookingAccessState(record, now);
@@ -121,16 +125,20 @@ export class BookingAccessService {
   ): Promise<BookingScanResult> {
     const normalizedToken = token.trim();
     if (!normalizedToken) {
-      throw new BookingAccessError("Booking token is required.");
+      throw new BookingAccessError("Booking token or reference code is required.");
     }
 
     const now = this.nowProvider();
     const nowIso = now.toISOString();
     const tokenHash = hashBookingToken(normalizedToken);
-    const record = await this.bookingAccessRepository.findBookingAccessByTokenHash(tokenHash);
+    let record = await this.bookingAccessRepository.findBookingAccessByTokenHash(tokenHash);
+
+    if (!record && this.bookingAccessRepository.findBookingAccessByReferenceOrId) {
+      record = await this.bookingAccessRepository.findBookingAccessByReferenceOrId(normalizedToken);
+    }
 
     if (!record) {
-      throw new BookingAccessError("Invalid booking token.");
+      throw new BookingAccessError("Invalid booking token or reference code.");
     }
 
     const accessState = getBookingAccessState(record, now);
@@ -207,20 +215,28 @@ function getBookingAccessState(
   },
   now: Date
 ): BookingAccessState {
-  if (record.qrRevokedAt || record.reservationStatus === "CANCELLED") {
+  if (
+    record.qrRevokedAt ||
+    record.reservationStatus === "CANCELLED" ||
+    record.reservationStatus === "REJECTED"
+  ) {
     return "INVALID";
   }
 
   const startAt = new Date(record.assignedStartAt);
   const endAt = new Date(record.assignedEndAt);
 
-  if (now > endAt) {
+  if (now > endAt || record.reservationStatus === "COMPLETED") {
     return "EXPIRED";
   }
 
   // If already checked in (e.g. automatic kiosk check-in), access is ACTIVE immediately
   if (record.reservationStatus === "CHECKED_IN" || Boolean(record.checkedInAt)) {
     return "ACTIVE";
+  }
+
+  if (record.reservationStatus !== "CONFIRMED") {
+    return "INVALID";
   }
 
   if (now < startAt) {
@@ -264,6 +280,9 @@ export function extractBookingToken(input: string): string {
       if (parsed.accessUrl) return extractBookingToken(String(parsed.accessUrl));
       if (parsed.url) return extractBookingToken(String(parsed.url));
       if (parsed.bookingToken) return extractBookingToken(String(parsed.bookingToken));
+      if (parsed.referenceCode) return extractBookingToken(String(parsed.referenceCode));
+      if (parsed.code) return extractBookingToken(String(parsed.code));
+      if (parsed.id) return extractBookingToken(String(parsed.id));
     } catch {
       // ignore
     }
@@ -272,6 +291,14 @@ export function extractBookingToken(input: string): string {
   try {
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       const url = new URL(trimmed);
+      const queryParam =
+        url.searchParams.get("code") ||
+        url.searchParams.get("reference") ||
+        url.searchParams.get("referenceCode") ||
+        url.searchParams.get("id");
+      if (queryParam) {
+        return queryParam.trim();
+      }
       const segments = url.pathname.split("/").filter(Boolean);
       return segments[segments.length - 1] || "";
     }
