@@ -405,7 +405,7 @@ export function ReservationFilterModal({
               <option value="under_review">Payment Review</option>
               <option value="pending">Pending Payment</option>
               <option value="expired">Expired</option>
-              <option value="rejected">Refunded / Rejected</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
 

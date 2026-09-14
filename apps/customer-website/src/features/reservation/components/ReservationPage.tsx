@@ -1138,7 +1138,14 @@ export function ReservationPage() {
                 {submittedReservation?.referenceCode ? (
                   <button
                     type="button"
-                    onClick={() => router.push(`/track/${submittedReservation.referenceCode}`)}
+                    onClick={() => {
+                      const emailParam = (submittedReservation.customerEmail || customerEmail.trim().toLowerCase());
+                      router.push(
+                        `/track?code=${encodeURIComponent(submittedReservation.referenceCode)}${
+                          emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""
+                        }`
+                      );
+                    }}
                     className="da-secondary-button w-full sm:w-auto text-sm font-bold px-6 py-3.5"
                   >
                     Track Reservation Status
@@ -2087,13 +2094,32 @@ export function ReservationPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
+                      <div className="rounded-xl bg-amber-50/80 border border-amber-200/80 p-3 text-[11px] leading-relaxed text-amber-900 flex items-center gap-2">
+                        <span className="shrink-0 text-sm">💡</span>
+                        <span>For immediate bookings (within 30 minutes), please proceed to walk in using our in-house kiosk.</span>
+                      </div>
                       <div className="grid grid-cols-2 gap-2 max-h-[240px] overflow-y-auto pr-1">
                         {catTimeSlots.map((slot) => {
                           const isSelected = catStartTime === slot.startTime;
-                          const isAvailable = slot.isAvailable;
+
+                          const isWithin30Mins = (() => {
+                            if (catDate !== todayStr) return false;
+                            const [sh, sm] = slot.startTime.split(":").map(Number);
+                            if (isNaN(sh) || isNaN(sm)) return false;
+                            const now = new Date();
+                            const slotDate = new Date();
+                            slotDate.setHours(sh, sm, 0, 0);
+                            return slotDate.getTime() - now.getTime() < 30 * 60 * 1000;
+                          })();
+
+                          const isImmediateWalkIn =
+                            slot.blockingReason === "IMMEDIATE_WALK_IN_ONLY" ||
+                            (catDate === todayStr && isWithin30Mins && slot.blockingReason !== "PAST_TIME");
+                          const isAvailable = slot.isAvailable && !isImmediateWalkIn;
 
                           let reasonLabel = "Reserved";
                           if (slot.blockingReason === "PAST_TIME") reasonLabel = "Past";
+                          else if (isImmediateWalkIn) reasonLabel = "Walk-in Only";
                           else if (slot.blockingReason === "BUSINESS_CLOSED") reasonLabel = "Closed";
                           else if (slot.blockingReason === "SCHEDULE_BLOCKED") reasonLabel = "Blocked";
 
@@ -2102,6 +2128,7 @@ export function ReservationPage() {
                               key={slot.startTime}
                               type="button"
                               disabled={!isAvailable}
+                              title={isImmediateWalkIn ? "For immediate bookings (within 30 minutes), please proceed to walk in using our in-house kiosk." : undefined}
                               onClick={() => {
                                 setCatStartTime(slot.startTime);
                               }}
@@ -2133,8 +2160,6 @@ export function ReservationPage() {
                           );
                         })}
                       </div>
-
-
                     </div>
                   )}
                 </div>

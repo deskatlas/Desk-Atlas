@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import {
   createStaffOperationsService,
   ReservationSupabaseRepository,
@@ -9,7 +9,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(
-  request: NextRequest,
+  request: Request,
   context: {
     params: Promise<{
       reservationId: string;
@@ -59,8 +59,17 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof StaffOperationsError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    const isEarlyCheckIn = rawMsg.includes("Reservation is not currently active for check-in");
+
+    if (error instanceof StaffOperationsError || isEarlyCheckIn) {
+      const message = isEarlyCheckIn
+        ? "Reservation is not currently active for check-in."
+        : error instanceof Error ? error.message : "Staff operation error.";
+      return NextResponse.json({
+        error: message,
+        code: isEarlyCheckIn ? "EARLY_CHECK_IN" : "STAFF_OPERATIONS_ERROR",
+      }, { status: 400 });
     }
 
     if (error instanceof StaffOperationsConflictError) {

@@ -591,12 +591,17 @@ export function ReservationDetail({ id }: { id: string }) {
                 <div key={pa.id || i} style={{ borderLeft: '3px solid var(--da-border)', padding: '8px 10px', marginBottom: '8px', background: '#F8FAFC', borderRadius: '6px', fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--da-text-primary)' }}>
                     <span>{pa.channel} Attempt</span>
-                    <span style={{ color: pa.status === 'APPROVED' ? 'var(--da-success)' : pa.status === 'EXPIRED' ? 'var(--da-text-secondary)' : 'var(--da-brand-dark)' }}>{pa.status}</span>
+                    <span style={{ color: pa.status === 'APPROVED' ? 'var(--da-success)' : pa.status === 'EXPIRED' ? 'var(--da-text-secondary)' : pa.status === 'REJECTED' ? 'var(--da-danger)' : 'var(--da-brand-dark)' }}>{pa.status}</span>
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
                     {pa.proofSubmittedAt ? `Proof uploaded: ${formatTimelineDate(pa.proofSubmittedAt)}` : 'No proof submitted'}
                     {pa.expiresAt ? ` • Expired: ${formatTimelineDate(pa.expiresAt)}` : ''}
                   </div>
+                  {pa.rejectionReason && (
+                    <div style={{ fontSize: '11px', color: 'var(--da-danger)', marginTop: '2px', fontWeight: 600 }}>
+                      Rejection reason: {pa.rejectionReason}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

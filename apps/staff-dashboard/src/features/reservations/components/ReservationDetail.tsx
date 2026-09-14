@@ -2,15 +2,16 @@
 
 import React, { useState } from 'react';
 import { useReservationDetail } from '../hooks/useReservations';
-import { useCheckInActions } from '@/features/check-in/hooks/useCheckInActions';
+import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '@/features/check-in';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 
 export function ReservationDetail({ id }: { id: string }) {
   const { reservation, loading, error, refetch } = useReservationDetail(id);
-  const { checkIn, checkOut, loading: actionLoading, error: actionError } = useCheckInActions();
+  const { checkIn, checkOut, loading: actionLoading, error: actionError, clearError } = useCheckInActions();
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [showEarlyModal, setShowEarlyModal] = useState(false);
   const router = useRouter();
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
@@ -45,8 +46,11 @@ export function ReservationDetail({ id }: { id: string }) {
     try {
       await checkIn(id);
       refetch();
-    } catch (e) {
-      // Error is handled in UI below
+    } catch (e: any) {
+      if (isEarlyCheckInError(e)) {
+        setShowEarlyModal(true);
+        clearError();
+      }
     }
   };
 
@@ -104,11 +108,14 @@ export function ReservationDetail({ id }: { id: string }) {
         </div>
 
         <div style={{ padding: '24px', borderTop: '1px solid var(--da-border)', background: 'var(--da-canvas)' }}>
-          {(actionError || confirmError) && (
-            <div style={{ color: 'var(--da-danger)', fontSize: '13px', marginBottom: '16px', background: '#FEE2E2', padding: '12px', borderRadius: '6px' }}>
-              {actionError || confirmError}
-            </div>
-          )}
+          {(() => {
+            const displayActionError = isEarlyCheckInError(actionError) ? null : actionError;
+            return (displayActionError || confirmError) ? (
+              <div style={{ color: 'var(--da-danger)', fontSize: '13px', marginBottom: '16px', background: '#FEE2E2', padding: '12px', borderRadius: '6px' }}>
+                {displayActionError || confirmError}
+              </div>
+            ) : null;
+          })()}
 
           <div style={{ display: 'flex', gap: '12px' }}>
             {reservation.reservationStatus === 'PENDING_COUNTER_CONFIRMATION' && (
@@ -150,6 +157,19 @@ export function ReservationDetail({ id }: { id: string }) {
           </div>
         </div>
       </div>
+
+      <EarlyCheckInModal
+        isOpen={showEarlyModal}
+        onClose={() => {
+          setShowEarlyModal(false);
+          clearError();
+        }}
+        customerName={`${reservation.customerFirstName} ${reservation.customerLastName}`.trim()}
+        referenceCode={reservation.referenceCode}
+        workspaceName={reservation.workspaceDisplayName || reservation.workspaceInstanceCode || undefined}
+        bookingStartAt={reservation.bookingStartAt}
+        bookingEndAt={reservation.bookingEndAt}
+      />
     </main>
   );
 }

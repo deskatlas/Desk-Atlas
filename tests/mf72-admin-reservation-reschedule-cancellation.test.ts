@@ -12,6 +12,7 @@ import {
   renderReservationRescheduledEmail,
   AdminReservationDetail,
   zonedDateTimeToUtc,
+  ReservationSupabaseRepository,
 } from '@deskatlas/domain';
 
 describe('MF-72: Admin Reservation Reschedule and Cancellation Workflow', () => {
@@ -458,6 +459,90 @@ describe('MF-72: Admin Reservation Reschedule and Cancellation Workflow', () => 
       expect(rendered.html).toContain('Digital Access QR Pass');
       expect(rendered.html).not.toContain('View Digital Access Pass');
       expect(rendered.text).toContain('DA-RES-5678');
+    });
+  });
+
+  describe('ReservationSupabaseRepository cancelReservation', () => {
+    it('calls /rpc/cancel_reservation with proper parameters', async () => {
+      const supabaseRepo = new ReservationSupabaseRepository({
+        supabaseUrl: 'https://mock.supabase.co',
+        serviceRoleKey: 'mock-key',
+      });
+
+      const calledEndpoints: { endpoint: string; options?: any }[] = [];
+
+      let reservationStatus = 'CONFIRMED';
+      (supabaseRepo as any).request = async (endpoint: string, options?: any) => {
+        calledEndpoints.push({ endpoint, options });
+        if (endpoint === '/rpc/cancel_reservation') {
+          reservationStatus = 'CANCELLED';
+          return [
+            {
+              reservation_id: '7a4a7405-1ed2-4c18-aee5-880f57014bf4',
+              reference_code: '941648',
+              reservation_status: 'CANCELLED',
+            },
+          ];
+        }
+        if (endpoint.includes('/reservations?select=*')) {
+          return [
+            {
+              id: '7a4a7405-1ed2-4c18-aee5-880f57014bf4',
+              reference_code: '941648',
+              status: reservationStatus,
+              customer_first_name: 'John',
+              customer_last_name: 'Doe',
+              customer_email: 'john@example.com',
+              cancellation_reason: 'Customer Request',
+              cancelled_at: '2026-09-15T10:00:00.000Z',
+            },
+          ];
+        }
+        return [];
+      };
+
+      const result = await supabaseRepo.cancelReservation({
+        reservationId: '7a4a7405-1ed2-4c18-aee5-880f57014bf4',
+        reason: 'Customer Request',
+        notes: 'Requested via call',
+        actorUserId: 'admin-uuid-1',
+        actorRole: 'ADMIN',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.reservation.reservationStatus).toBe('CANCELLED');
+
+      const rpcCall = calledEndpoints.find((c) => c.endpoint === '/rpc/cancel_reservation');
+      expect(rpcCall).toBeDefined();
+      const body = JSON.parse(rpcCall!.options.body);
+      expect(body.p_reservation_id).toBe('7a4a7405-1ed2-4c18-aee5-880f57014bf4');
+      expect(body.p_cancellation_reason).toBe('Customer Request - Requested via call');
+      expect(body.p_actor_user_id).toBe('admin-uuid-1');
+      expect(body.p_actor_role).toBe('ADMIN');
+    });
+
+    it('throws actionable error message if public.cancel_reservation RPC is missing', async () => {
+      const supabaseRepo = new ReservationSupabaseRepository({
+        supabaseUrl: 'https://mock.supabase.co',
+        serviceRoleKey: 'mock-key',
+      });
+
+      (supabaseRepo as any).request = async (endpoint: string) => {
+        if (endpoint.includes('/reservations?select=*')) {
+          return [{ id: 'res-1', reference_code: 'REF1', status: 'CONFIRMED' }];
+        }
+        if (endpoint === '/rpc/cancel_reservation') {
+          throw new Error('Supabase request failed (404): {"code":"PGRST202","message":"Could not find the function public.cancel_reservation"}');
+        }
+        return [];
+      };
+
+      await expect(
+        supabaseRepo.cancelReservation({
+          reservationId: 'res-1',
+          reason: 'Customer Request',
+        })
+      ).rejects.toThrow('Database function public.cancel_reservation is missing in Supabase');
     });
   });
 });

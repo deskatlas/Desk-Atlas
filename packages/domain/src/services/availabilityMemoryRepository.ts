@@ -123,8 +123,10 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
     rangeStartIso: string,
     rangeEndIso: string
   ): Promise<BlockingReservationWindow[]> {
+    const nonBlockingStatuses = new Set(['CANCELLED', 'EXPIRED', 'REJECTED']);
     return this.reservations
       .filter((reservation) => {
+        if (nonBlockingStatuses.has(reservation.reservationStatus)) return false;
         return (
           reservation.workspaceInstanceId === workspaceInstanceId &&
           overlaps(reservation.startAt, reservation.endAt, rangeStartIso, rangeEndIso)
@@ -138,21 +140,30 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
     rangeEndIso: string
   ): Promise<string[]> {
     const occupied = new Set<string>();
+    const blockingStatuses = new Set([
+      'CONFIRMED',
+      'CHECKED_IN',
+      'PENDING_PAYMENT',
+      'PAYMENT_UNDER_REVIEW',
+      'PENDING_COUNTER_CONFIRMATION',
+    ]);
     for (const res of this.reservations) {
       if (
-        (res.reservationStatus === 'CONFIRMED' || res.reservationStatus === 'CHECKED_IN') &&
+        blockingStatuses.has(res.reservationStatus) &&
         overlaps(res.startAt, res.endAt, rangeStartIso, rangeEndIso)
       ) {
         occupied.add(res.workspaceInstanceId);
       }
     }
     for (const block of this.scheduleBlocks) {
-      if (
-        block.scope === 'WORKSPACE' &&
-        block.workspaceInstanceId &&
-        overlaps(block.startAt, block.endAt, rangeStartIso, rangeEndIso)
-      ) {
-        occupied.add(block.workspaceInstanceId);
+      if (overlaps(block.startAt, block.endAt, rangeStartIso, rangeEndIso)) {
+        if (block.scope === 'BUSINESS') {
+          for (const inst of this.instances.values()) {
+            occupied.add(inst.id);
+          }
+        } else if (block.workspaceInstanceId) {
+          occupied.add(block.workspaceInstanceId);
+        }
       }
     }
     return Array.from(occupied);

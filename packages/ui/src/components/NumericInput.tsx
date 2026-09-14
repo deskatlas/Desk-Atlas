@@ -3,6 +3,7 @@ import React from 'react';
 export interface NumericInputKeyOptions {
   allowDecimal?: boolean;
   allowNegative?: boolean;
+  allowDash?: boolean;
 }
 
 /**
@@ -12,12 +13,13 @@ export interface NumericInputKeyOptions {
  * - editing keys (Backspace, Delete)
  * - tab and enter
  * - standard copy/cut/paste/select-all shortcuts (Ctrl/Cmd + A, C, V, X, Z)
+ * - dash/hyphen when allowDash is enabled
  */
 export function handleNumericKeyDown(
   e: React.KeyboardEvent<HTMLInputElement>,
   options: NumericInputKeyOptions = {}
 ): void {
-  const { allowDecimal = false, allowNegative = false } = options;
+  const { allowDecimal = false, allowNegative = false, allowDash = false } = options;
 
   // Allow modifier keys (Ctrl, Cmd, Alt) for shortcuts like Ctrl+A, Ctrl+C, Ctrl+V, etc.
   if (e.ctrlKey || e.metaKey || e.altKey) {
@@ -57,8 +59,11 @@ export function handleNumericKeyDown(
     return;
   }
 
-  // Allow minus sign if configured and at the beginning
-  if (e.key === '-') {
+  // Allow minus sign / dash if configured
+  if (e.key === '-' || e.key === 'Subtract') {
+    if (allowDash) {
+      return;
+    }
     if (!allowNegative || e.currentTarget.selectionStart !== 0 || e.currentTarget.value.includes('-')) {
       e.preventDefault();
     }

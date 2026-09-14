@@ -54,10 +54,27 @@ export class AdminReservationService {
     const now = this.nowProvider();
     const nowMs = now.getTime();
 
-    const isAwaitingProofExpired = (r: AdminReservationSummary): boolean => {
+    const isReservationExpired = (r: AdminReservationSummary): boolean => {
       if (r.reservationStatus === "EXPIRED") {
         return true;
       }
+      if (
+        r.reservationStatus === "CANCELLED" ||
+        r.paymentAttemptStatus === "REJECTED" ||
+        r.status.toLowerCase() === "rejected"
+      ) {
+        return false;
+      }
+
+      // Check if booking end time has elapsed (e.g. autocheckout upon end time)
+      if (r.endAt) {
+        const endMs = new Date(r.endAt).getTime();
+        if (!isNaN(endMs) && endMs <= nowMs) {
+          return true;
+        }
+      }
+
+      // Check if awaiting proof payment window expired
       if (r.reservationStatus === "PENDING_PAYMENT") {
         if (r.paymentExpiresAt) {
           const expMs = new Date(r.paymentExpiresAt).getTime();
@@ -75,7 +92,21 @@ export class AdminReservationService {
     };
 
     const mappedList = list.map((r) => {
-      if (isAwaitingProofExpired(r)) {
+      if (
+        r.paymentAttemptStatus === "REJECTED" ||
+        (r.reservationStatus === "CANCELLED" && r.paymentAttemptStatus === "REJECTED")
+      ) {
+        const pres = mapStatusPresentation(r.reservationStatus, "REJECTED");
+        return {
+          ...r,
+          status: pres.label,
+          statusStyle: pres.style,
+          mark: pres.mark,
+          paymentStatus: pres.payment,
+          paymentColor: pres.paymentColor,
+        };
+      }
+      if (isReservationExpired(r)) {
         const pres = mapStatusPresentation("EXPIRED");
         return {
           ...r,
@@ -93,16 +124,28 @@ export class AdminReservationService {
     let filtered = mappedList;
 
     if (filter === "active") {
-      filtered = filtered.filter((r) => r.reservationStatus !== "EXPIRED" && r.reservationStatus !== "CANCELLED");
+      filtered = filtered.filter(
+        (r) =>
+          r.reservationStatus !== "EXPIRED" &&
+          r.reservationStatus !== "CANCELLED" &&
+          r.reservationStatus !== "COMPLETED" &&
+          r.status.toLowerCase() !== "rejected"
+      );
     } else if (filter === "expired") {
       filtered = filtered.filter((r) => r.reservationStatus === "EXPIRED");
     } else if (filter === "checked_in") {
       filtered = filtered.filter(
-        (r) => r.reservationStatus === "CHECKED_IN" || (r.checkedInAt !== null && r.checkedOutAt === null)
+        (r) =>
+          r.reservationStatus !== "EXPIRED" &&
+          (r.reservationStatus === "CHECKED_IN" || (r.checkedInAt !== null && r.checkedOutAt === null))
       );
     } else if (filter === "upcoming") {
       filtered = filtered.filter((r) => {
-        if (r.reservationStatus === "EXPIRED" || r.reservationStatus === "CANCELLED") {
+        if (
+          r.reservationStatus === "EXPIRED" ||
+          r.reservationStatus === "CANCELLED" ||
+          r.status.toLowerCase() === "rejected"
+        ) {
           return false;
         }
         if (r.reservationStatus === "CONFIRMED" || r.reservationStatus === "CHECKED_IN") {
@@ -114,10 +157,20 @@ export class AdminReservationService {
         return false;
       });
     } else if (filter === "awaiting_proof") {
-      filtered = filtered.filter((r) =>
-        ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PENDING_COUNTER_CONFIRMATION"].includes(
-          r.reservationStatus
-        ) && r.reservationStatus !== "EXPIRED"
+      filtered = filtered.filter(
+        (r) =>
+          ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PENDING_COUNTER_CONFIRMATION"].includes(
+            r.reservationStatus
+          ) &&
+          r.reservationStatus !== "EXPIRED" &&
+          r.status.toLowerCase() !== "rejected"
+      );
+    } else if (filter === "rejected") {
+      filtered = filtered.filter(
+        (r) =>
+          r.status.toLowerCase() === "rejected" ||
+          r.paymentStatus.toLowerCase().includes("rejected") ||
+          (r.paymentAttemptStatus ?? "").toLowerCase() === "rejected"
       );
     }
     // "all": retains all items in mappedList (both active and expired)
@@ -148,41 +201,84 @@ export class AdminReservationService {
     const now = this.nowProvider();
     const nowMs = now.getTime();
 
+    const isPaymentRejected =
+      detail.paymentAttemptStatus === "REJECTED" ||
+      detail.status === "Rejected" ||
+      (detail.reservationStatus === "CANCELLED" &&
+        (detail.paymentAttempts?.some((a) => a.status === "REJECTED") ||
+          detail.paymentAttemptStatus === "REJECTED"));
+
+    if (isPaymentRejected) {
+      const pres = mapStatusPresentation(detail.reservationStatus, "REJECTED");
+      return {
+        ...detail,
+        status: pres.label,
+        statusStyle: pres.style,
+        mark: pres.mark,
+        paymentStatus: `${pres.payment} (${formatAmountWithCurrency(detail.amountDue, detail.currency)})`,
+        paymentColor: pres.paymentColor,
+      };
+    }
+
+    const effectiveEndAt =
+      detail.endAt ??
+      detail.assignedCandidate?.endAt ??
+      detail.candidates?.find((c) => c.isAssigned)?.endAt ??
+      detail.candidates?.find((c) => c.rank === 0)?.endAt ??
+      detail.candidates?.[0]?.endAt ??
+      null;
+
+    const isEndTimeExpired = Boolean(
+      effectiveEndAt &&
+      !isNaN(new Date(effectiveEndAt).getTime()) &&
+      new Date(effectiveEndAt).getTime() <= nowMs &&
+      detail.reservationStatus !== "CANCELLED"
+    );
+
+    let isAwaitingProofExpired = false;
+    let expIso = detail.updatedAt;
     if (detail.reservationStatus === "PENDING_PAYMENT") {
-      let isExpired = false;
-      let expIso = detail.updatedAt;
       if (detail.paymentExpiresAt) {
         const expMs = new Date(detail.paymentExpiresAt).getTime();
         if (!isNaN(expMs) && expMs <= nowMs) {
-          isExpired = true;
+          isAwaitingProofExpired = true;
           expIso = detail.paymentExpiresAt;
         }
       } else if (detail.createdAt) {
         const createdMs = new Date(detail.createdAt).getTime();
         if (!isNaN(createdMs) && createdMs + 60 * 60 * 1000 <= nowMs) {
-          isExpired = true;
+          isAwaitingProofExpired = true;
           expIso = new Date(createdMs + 60 * 60 * 1000).toISOString();
         }
       }
+    }
 
-      if (isExpired) {
-        const pres = mapStatusPresentation("EXPIRED");
-        const timeline = [...detail.timeline];
-        if (!timeline.some((t) => t.toLowerCase().includes("expired"))) {
-          timeline.push(`${formatTimelineDate(expIso)} - Payment session expired`);
-        }
-        return {
-          ...detail,
-          reservationStatus: "EXPIRED",
-          status: pres.label,
-          statusStyle: pres.style,
-          mark: pres.mark,
-          paymentStatus: `${pres.payment} (${formatAmountWithCurrency(detail.amountDue, detail.currency)})`,
-          paymentColor: pres.paymentColor,
-          expiryReason: detail.expiryReason ?? "1-hour payment window expired without payment proof submission",
-          timeline,
-        };
+    if (isEndTimeExpired || isAwaitingProofExpired) {
+      const pres = mapStatusPresentation("EXPIRED");
+      const timeline = [...detail.timeline];
+      const expiryReason = isEndTimeExpired
+        ? (detail.expiryReason ?? "Booking period ended")
+        : (detail.expiryReason ?? "1-hour payment window expired without payment proof submission");
+
+      const timelineMsg = isEndTimeExpired
+        ? `${formatTimelineDate(effectiveEndAt!)} - Booking period ended (Expired)`
+        : `${formatTimelineDate(expIso)} - Payment session expired`;
+
+      if (!timeline.some((t) => t.toLowerCase().includes("expired") || t.toLowerCase().includes("booking period ended"))) {
+        timeline.push(timelineMsg);
       }
+
+      return {
+        ...detail,
+        reservationStatus: "EXPIRED",
+        status: pres.label,
+        statusStyle: pres.style,
+        mark: pres.mark,
+        paymentStatus: `${pres.payment} (${formatAmountWithCurrency(detail.amountDue, detail.currency)})`,
+        paymentColor: pres.paymentColor,
+        expiryReason,
+        timeline,
+      };
     }
 
     return detail;
@@ -313,7 +409,23 @@ export function createAdminReservationService(
 }
 
 // Utility formatting helpers for repository implementations
-export function mapStatusPresentation(status: ReservationStatus) {
+export function mapStatusPresentation(
+  status: ReservationStatus,
+  paymentAttemptStatus?: string | null
+) {
+  if (
+    paymentAttemptStatus === "REJECTED" ||
+    (status === "CANCELLED" && paymentAttemptStatus === "REJECTED")
+  ) {
+    return {
+      label: "Rejected",
+      mark: "✕",
+      style: { background: "#FEE2E2", color: "#991B1B" },
+      payment: "Rejected",
+      paymentColor: "var(--da-danger)",
+    };
+  }
+
   switch (status) {
     case "CHECKED_IN":
       return {

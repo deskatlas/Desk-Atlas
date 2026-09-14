@@ -736,6 +736,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_actor_role public.staff_role;
   v_actor_active boolean;
@@ -758,10 +759,10 @@ BEGIN
     RAISE EXCEPTION 'rejection_reason is required';
   END IF;
 
-  SELECT role, is_active
+  SELECT sp.role, sp.is_active
     INTO v_actor_role, v_actor_active
-  FROM public.staff_profiles
-  WHERE user_id = p_processed_by_user_id
+  FROM public.staff_profiles sp
+  WHERE sp.user_id = p_processed_by_user_id
   FOR UPDATE;
 
   IF NOT FOUND OR v_actor_role <> 'ADMIN' OR v_actor_active IS DISTINCT FROM true THEN
@@ -770,9 +771,9 @@ BEGIN
 
   SELECT *
     INTO v_attempt
-  FROM public.payment_attempts
-  WHERE id = p_payment_attempt_id
-    AND channel = 'WEB'
+  FROM public.payment_attempts pa
+  WHERE pa.id = p_payment_attempt_id
+    AND pa.channel = 'WEB'
   FOR UPDATE;
 
   IF NOT FOUND THEN
@@ -781,8 +782,8 @@ BEGIN
 
   SELECT *
     INTO v_reservation
-  FROM public.reservations
-  WHERE id = v_attempt.reservation_id
+  FROM public.reservations r
+  WHERE r.id = v_attempt.reservation_id
   FOR UPDATE;
 
   IF v_attempt.status <> 'UNDER_REVIEW' AND v_attempt.status <> 'REJECTED' THEN
@@ -790,13 +791,30 @@ BEGIN
   END IF;
 
   IF v_attempt.status = 'UNDER_REVIEW' THEN
-    UPDATE public.payment_attempts
+    UPDATE public.payment_attempts pa
     SET
       status = 'REJECTED',
       processed_by_user_id = p_processed_by_user_id,
       processed_at = p_processed_at,
       rejection_reason = btrim(p_rejection_reason)
-    WHERE id = v_attempt.id;
+    WHERE pa.id = v_attempt.id;
+
+    UPDATE public.reservation_candidates rc
+    SET
+      is_assigned = false,
+      updated_at = p_processed_at
+    WHERE rc.reservation_id = v_reservation.id
+      AND rc.is_assigned = true;
+
+    UPDATE public.reservations r
+    SET
+      status = 'CANCELLED',
+      cancelled_at = p_processed_at,
+      cancellation_reason = 'Payment proof rejected: ' || btrim(p_rejection_reason),
+      cancelled_by_user_id = p_processed_by_user_id,
+      qr_revoked_at = CASE WHEN r.booking_token_hash IS NOT NULL THEN p_processed_at ELSE r.qr_revoked_at END,
+      updated_at = p_processed_at
+    WHERE r.id = v_reservation.id;
 
     INSERT INTO public.audit_logs (
       actor_user_id,
@@ -818,12 +836,34 @@ BEGIN
         'rejection_reason', btrim(p_rejection_reason)
       )
     );
+  ELSIF v_reservation.status <> 'CANCELLED' THEN
+    UPDATE public.reservation_candidates rc
+    SET
+      is_assigned = false,
+      updated_at = p_processed_at
+    WHERE rc.reservation_id = v_reservation.id
+      AND rc.is_assigned = true;
+
+    UPDATE public.reservations r
+    SET
+      status = 'CANCELLED',
+      cancelled_at = p_processed_at,
+      cancellation_reason = 'Payment proof rejected: ' || btrim(p_rejection_reason),
+      cancelled_by_user_id = p_processed_by_user_id,
+      qr_revoked_at = CASE WHEN r.booking_token_hash IS NOT NULL THEN p_processed_at ELSE r.qr_revoked_at END,
+      updated_at = p_processed_at
+    WHERE r.id = v_reservation.id;
   END IF;
 
   SELECT *
     INTO v_attempt
-  FROM public.payment_attempts
-  WHERE id = p_payment_attempt_id;
+  FROM public.payment_attempts pa
+  WHERE pa.id = p_payment_attempt_id;
+
+  SELECT *
+    INTO v_reservation
+  FROM public.reservations r
+  WHERE r.id = v_attempt.reservation_id;
 
   payment_attempt_id := v_attempt.id;
   reservation_id := v_reservation.id;
@@ -1417,6 +1457,159 @@ REVOKE ALL ON FUNCTION public.check_out_reservation(uuid, uuid, timestamptz) FRO
 REVOKE ALL ON FUNCTION public.check_out_reservation(uuid, uuid, timestamptz) FROM anon;
 REVOKE ALL ON FUNCTION public.check_out_reservation(uuid, uuid, timestamptz) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.check_out_reservation(uuid, uuid, timestamptz) TO service_role;
+
+-- ----------------------------------------------------------------------------
+-- 6.1. Reservation Cancellation RPC
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.cancel_reservation(
+  p_reservation_id uuid,
+  p_cancellation_reason text,
+  p_cancelled_at timestamptz DEFAULT now(),
+  p_actor_user_id uuid DEFAULT NULL,
+  p_actor_role text DEFAULT 'ADMIN'
+)
+RETURNS TABLE (
+  reservation_id uuid,
+  reference_code text,
+  reservation_status public.reservation_status,
+  cancelled_at timestamptz,
+  cancellation_reason text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_reservation public.reservations%ROWTYPE;
+  v_actor_user_id uuid := NULL;
+  v_actor_role public.audit_actor_role := 'ADMIN';
+BEGIN
+  IF p_reservation_id IS NULL THEN
+    RAISE EXCEPTION 'Reservation ID is required';
+  END IF;
+
+  IF p_cancellation_reason IS NULL OR btrim(p_cancellation_reason) = '' THEN
+    RAISE EXCEPTION 'Cancellation reason is required';
+  END IF;
+
+  SELECT *
+    INTO v_reservation
+  FROM public.reservations
+  WHERE id = p_reservation_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Reservation was not found';
+  END IF;
+
+  IF v_reservation.status = 'CANCELLED' THEN
+    SELECT
+      v_reservation.id,
+      v_reservation.reference_code,
+      v_reservation.status,
+      v_reservation.cancelled_at,
+      v_reservation.cancellation_reason
+    INTO
+      reservation_id,
+      reference_code,
+      reservation_status,
+      cancelled_at,
+      cancellation_reason;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  IF p_actor_user_id IS NOT NULL THEN
+    PERFORM 1 FROM public.staff_profiles WHERE user_id = p_actor_user_id;
+    IF FOUND THEN
+      v_actor_user_id := p_actor_user_id;
+    END IF;
+  END IF;
+
+  IF v_actor_user_id IS NULL THEN
+    SELECT user_id INTO v_actor_user_id
+    FROM public.staff_profiles
+    WHERE role = 'ADMIN' AND is_active = true
+    LIMIT 1;
+  END IF;
+
+  IF p_actor_role IS NOT NULL AND p_actor_role IN ('ADMIN', 'STAFF', 'SYSTEM') THEN
+    v_actor_role := p_actor_role::public.audit_actor_role;
+  END IF;
+
+  IF v_actor_user_id IS NULL THEN
+    v_actor_role := 'SYSTEM';
+  END IF;
+
+  -- 1. Unassign all candidates to release physical workspace inventory
+  UPDATE public.reservation_candidates
+  SET
+    is_assigned = false,
+    updated_at = COALESCE(p_cancelled_at, now())
+  WHERE reservation_id = v_reservation.id
+    AND is_assigned = true;
+
+  -- 2. Update reservation status to CANCELLED and record cancellation details
+  UPDATE public.reservations
+  SET
+    status = 'CANCELLED',
+    cancelled_at = COALESCE(p_cancelled_at, now()),
+    cancellation_reason = btrim(p_cancellation_reason),
+    cancelled_by_user_id = v_actor_user_id,
+    qr_revoked_at = COALESCE(p_cancelled_at, now()),
+    updated_at = COALESCE(p_cancelled_at, now())
+  WHERE id = v_reservation.id;
+
+  -- 3. Create audit log entry
+  INSERT INTO public.audit_logs (
+    actor_user_id,
+    actor_role,
+    action,
+    entity_type,
+    entity_id,
+    metadata
+  )
+  VALUES (
+    v_actor_user_id,
+    v_actor_role,
+    'reservation_cancelled',
+    'reservation',
+    v_reservation.id,
+    jsonb_build_object(
+      'reason', btrim(p_cancellation_reason),
+      'reference_code', v_reservation.reference_code,
+      'previous_status', v_reservation.status,
+      'cancelled_at', COALESCE(p_cancelled_at, now())
+    )
+  );
+
+  SELECT
+    r.id,
+    r.reference_code,
+    r.status,
+    r.cancelled_at,
+    r.cancellation_reason
+  INTO
+    reservation_id,
+    reference_code,
+    reservation_status,
+    cancelled_at,
+    cancellation_reason
+  FROM public.reservations r
+  WHERE r.id = v_reservation.id;
+
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.cancel_reservation(uuid, text, timestamptz, uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.cancel_reservation(uuid, text, timestamptz, uuid, text) FROM anon;
+REVOKE ALL ON FUNCTION public.cancel_reservation(uuid, text, timestamptz, uuid, text) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.cancel_reservation(uuid, text, timestamptz, uuid, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.cancel_reservation(uuid, text, timestamptz, uuid, text) TO authenticated;
+
 
 -- ----------------------------------------------------------------------------
 -- 7. Staff Authentication Login Verification RPC
@@ -2089,6 +2282,40 @@ $$;
 
 REVOKE ALL ON FUNCTION public.admin_has_existing_admin() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_has_existing_admin() TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.admin_check_password_configured(p_user_id uuid DEFAULT NULL)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_configured boolean;
+BEGIN
+  IF p_user_id IS NOT NULL THEN
+    SELECT (encrypted_password IS NOT NULL AND encrypted_password <> '') INTO v_configured
+    FROM auth.users
+    WHERE id = p_user_id;
+    RETURN COALESCE(v_configured, false);
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM auth.users u
+    INNER JOIN public.staff_profiles sp ON sp.user_id = u.id
+    WHERE sp.role = 'ADMIN'
+      AND sp.is_active = true
+      AND u.encrypted_password IS NOT NULL
+      AND u.encrypted_password <> ''
+  ) INTO v_configured;
+
+  RETURN COALESCE(v_configured, false);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_check_password_configured(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_check_password_configured(uuid) TO anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.admin_bootstrap_initial_admin(
   p_user_id uuid,

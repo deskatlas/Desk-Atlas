@@ -31,6 +31,9 @@ export interface Reservation {
   qrRevokedAt?: string | null;
   checkedInAt?: string | null;
   checkedOutAt?: string | null;
+  cancellationReason?: string | null;
+  cancelledByUserId?: string | null;
+  cancelledAt?: string | null;
 }
 
 export type CandidateRank = 0 | 1 | 2;
@@ -328,7 +331,8 @@ export type GuestReservationTrackingStatus =
   | "NEEDS_MANUAL_RESOLUTION"
   | "CANCELLED"
   | "EXPIRED"
-  | "COMPLETED";
+  | "COMPLETED"
+  | "REJECTED";
 
 export interface GuestReservationAssignmentSummary {
   workspaceInstanceId: string;
@@ -349,9 +353,11 @@ export interface GuestReservationTrackingResult {
   confirmedAt: string | null;
   completedAt: string | null;
   finalAssignment: GuestReservationAssignmentSummary | null;
+  paymentStatus?: string | null;
+  rejectionReason?: string | null;
 }
 
-export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired";
+export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected";
 
 export interface AdminReservationSummary {
   id: string;
@@ -437,6 +443,8 @@ export interface AdminReservationDetail {
   mark: string;
   schedule: string;
   duration: string;
+  startAt?: string | null;
+  endAt?: string | null;
   paymentStatus: string;
   paymentColor: string;
   amountDue: number;

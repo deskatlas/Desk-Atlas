@@ -18,7 +18,7 @@ export function useBookingLookup() {
 
     const token = extractBookingToken(rawInput);
     if (!token) {
-      const msg = "Invalid booking QR token.";
+      const msg = "Invalid booking QR token or reference code.";
       setError(msg);
       setLoading(false);
       throw new Error(msg);

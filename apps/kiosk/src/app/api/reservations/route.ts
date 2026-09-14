@@ -5,6 +5,8 @@ import {
   CreateReservationRequest,
   ReservationError,
   ReservationSupabaseRepository,
+  SupabaseAvailabilityRepository,
+  createAvailabilityService,
   zonedDateTimeToUtc,
 } from "@deskatlas/domain";
 
@@ -151,6 +153,28 @@ export async function POST(request: NextRequest) {
           },
         ],
       };
+    }
+
+    const availabilityRepo = new SupabaseAvailabilityRepository({
+      supabaseUrl,
+      serviceRoleKey: supabaseKey,
+    });
+    const availabilityService = createAvailabilityService(availabilityRepo);
+
+    for (const cand of createRequest.candidates) {
+      const validation = await availabilityService.validateReservationWindow({
+        workspaceInstanceId: cand.workspaceInstanceId,
+        startAt: cand.startAt,
+        endAt: cand.endAt,
+        maxDurationMinutes: 24 * 60,
+      });
+
+      if (!validation.isValid) {
+        return NextResponse.json(
+          { error: validation.errorMessage || "The requested time window is unavailable." },
+          { status: 409 }
+        );
+      }
     }
 
     const reservation = await reservationService.createReservation(createRequest);

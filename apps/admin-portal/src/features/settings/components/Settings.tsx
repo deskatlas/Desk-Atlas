@@ -34,6 +34,181 @@ const TIMEZONES = [
   { value: 'UTC', label: 'UTC' },
 ];
 
+export function sanitizeAccountNumber(val: string | null | undefined): string {
+  if (!val) return '';
+  return val.replace(/[^0-9-]/g, '');
+}
+
+export function validatePaymentMethodRequiredFields(method: {
+  accountName?: string | null;
+  accountNumber?: string | null;
+  methodType?: string;
+}): { isValid: boolean; error?: string } {
+  if (method.methodType === 'CASH') {
+    return { isValid: true };
+  }
+  if (!method.accountName || !method.accountName.trim()) {
+    return { isValid: false, error: 'Account/Receiver name is required' };
+  }
+  if (!method.accountNumber || !method.accountNumber.trim()) {
+    return { isValid: false, error: 'Account/Mobile number is required' };
+  }
+  return { isValid: true };
+}
+
+export function isValidEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const trimmed = email.trim();
+  if (!trimmed) return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(trimmed);
+}
+
+export function validateContactEmail(email: string | null | undefined): { isValid: boolean; error?: string } {
+  if (!email || !email.trim()) {
+    return { isValid: false, error: 'Contact email is required.' };
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email.trim())) {
+    return { isValid: false, error: 'Please enter a valid contact email address.' };
+  }
+  return { isValid: true };
+}
+
+export function canSaveBusinessProfile(params: {
+  businessName?: string | null;
+  contactEmail?: string | null;
+  phoneDigits?: string | null;
+  contactPhone?: string | null;
+}): { canSave: boolean; reason?: string } {
+  if (!params.businessName || !params.businessName.trim()) {
+    return { canSave: false, reason: 'Business name is required' };
+  }
+
+  const hasEmail = Boolean(params.contactEmail && params.contactEmail.trim());
+  const phone = params.phoneDigits !== undefined ? params.phoneDigits : params.contactPhone;
+  const hasPhone = Boolean(phone && phone.trim());
+
+  if (!hasEmail && !hasPhone) {
+    return { canSave: false, reason: 'At least one contact method (email or contact number) is required' };
+  }
+
+  if (hasEmail && !isValidEmail(params.contactEmail)) {
+    return { canSave: false, reason: 'Please enter a valid contact email address' };
+  }
+
+  if (hasPhone) {
+    const rawDigits = phone!.replace(/\D/g, '');
+    const cleanDigits = rawDigits.startsWith('63') && rawDigits.length > 10
+      ? rawDigits.slice(2)
+      : (rawDigits.startsWith('0') && rawDigits.length === 11 ? rawDigits.slice(1) : rawDigits);
+    if (cleanDigits.length !== 10) {
+      return { canSave: false, reason: 'Contact number must be exactly 10 digits (e.g., 9171234567)' };
+    }
+  }
+
+  return { canSave: true };
+}
+
+export function extractTenDigitPhone(phone: string | null | undefined): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('63') && digits.length > 10) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('0') && digits.length === 11) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(0, 10);
+}
+
+export function getMinClosingTime(opensAt: string): string {
+  if (!opensAt) return '00:01';
+  const match = opensAt.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '00:01';
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const totalMinutes = hours * 60 + minutes + 1;
+  if (totalMinutes >= 24 * 60) {
+    return '23:59';
+  }
+  const nextHour = Math.floor(totalMinutes / 60);
+  const nextMin = totalMinutes % 60;
+  return `${String(nextHour).padStart(2, '0')}:${String(nextMin).padStart(2, '0')}`;
+}
+
+export function getDefaultClosingTime(opensAt: string, currentClosesAt?: string): string {
+  if (!opensAt) return currentClosesAt || '18:00';
+  if (currentClosesAt && currentClosesAt > opensAt) {
+    return currentClosesAt;
+  }
+  const match = opensAt.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '18:00';
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const totalMinutes = hours * 60 + minutes + 60;
+  if (totalMinutes >= 24 * 60) {
+    return '24:00';
+  }
+  const nextHour = Math.floor(totalMinutes / 60);
+  const nextMin = totalMinutes % 60;
+  return `${String(nextHour).padStart(2, '0')}:${String(nextMin).padStart(2, '0')}`;
+}
+
+export function isClosingTimeValid(opensAt: string, closesAt: string): boolean {
+  if (!opensAt || !closesAt) return false;
+  return closesAt > opensAt;
+}
+
+export function getTimeOptions(include24 = false, extraValue?: string): string[] {
+  const options: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  if (include24) {
+    options.push('24:00');
+  }
+  if (extraValue && !options.includes(extraValue)) {
+    options.push(extraValue);
+    options.sort();
+  }
+  return options;
+}
+
+export function getTimeLabel(timeStr: string): string {
+  if (!timeStr) return '';
+  if (timeStr === '24:00') return '24:00 (12:00 AM Next Day)';
+  if (timeStr === '00:00') return '00:00 (12:00 AM)';
+  const [hStr, mStr] = timeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr || '0', 10);
+  if (isNaN(h)) return timeStr;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  const formatted12 = `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+  return `${timeStr} (${formatted12})`;
+}
+
+export function getTodayDateString(timezone: string = 'Asia/Manila'): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().split('T')[0]!;
+  }
+}
+
+export function isPastDate(dateStr: string, timezone: string = 'Asia/Manila'): boolean {
+  if (!dateStr) return false;
+  const todayStr = getTodayDateString(timezone);
+  return dateStr < todayStr;
+}
+
 export function Settings() {
   const [activeTab, setActiveTab] = useState<
     'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings'
@@ -65,6 +240,8 @@ export function Settings() {
     landingPreviewPhotos: [],
   });
 
+  const [phoneDigits, setPhoneDigits] = useState<string>('');
+
   const [landingPreviewPhotos, setLandingPreviewPhotos] = useState<LandingPreviewPhoto[]>([]);
   const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
   const [adjustingSlot, setAdjustingSlot] = useState<number | null>(null);
@@ -92,6 +269,10 @@ export function Settings() {
 
   const [paymentMethods, setPaymentMethods] = useState<AdminPaymentMethod[]>([]);
   const [isAddPaymentModalOpen, setIsAddPaymentModalOpen] = useState(false);
+  const [missingContactModal, setMissingContactModal] = useState<{
+    isOpen: boolean;
+    missingType: 'email' | 'phone' | null;
+  }>({ isOpen: false, missingType: null });
   const [uploadingQrId, setUploadingQrId] = useState<string | null>(null);
   const [viewingQrUrl, setViewingQrUrl] = useState<string | null>(null);
   const [addPaymentForm, setAddPaymentForm] = useState<{
@@ -122,7 +303,7 @@ export function Settings() {
   const [closuresLoading, setClosuresLoading] = useState(false);
 
   // Closures Calendar & Form State
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0] ?? '');
+  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString('Asia/Manila'));
   const [isMultiDay, setIsMultiDay] = useState(false);
   const [closureEndDate, setClosureEndDate] = useState<string>('');
   const [closureType, setClosureType] = useState<BusinessClosureType>('FULL_DAY');
@@ -149,6 +330,7 @@ export function Settings() {
 
       if (overview?.businessSettings) {
         setBusinessSettings(overview.businessSettings);
+        setPhoneDigits(extractTenDigitPhone(overview.businessSettings.contactPhone));
         if (Array.isArray(overview.businessSettings.landingPreviewPhotos)) {
           setLandingPreviewPhotos(overview.businessSettings.landingPreviewPhotos);
         }
@@ -413,6 +595,33 @@ export function Settings() {
       return;
     }
 
+    const todayStr = getTodayDateString(businessSettings.timezone);
+    if (selectedDate < todayStr) {
+      setErrorMsg('Closures and holidays cannot be set for past dates.');
+      return;
+    }
+
+    if (isMultiDay && closureEndDate && closureEndDate < todayStr) {
+      setErrorMsg('Closure end date cannot be in the past.');
+      return;
+    }
+
+    if (isMultiDay && closureEndDate && closureEndDate < selectedDate) {
+      setErrorMsg('Closure end date must be on or after the start date.');
+      return;
+    }
+
+    if (closureType === 'SPECIAL_HOURS') {
+      if (!specialOpensAt || !specialClosesAt) {
+        setErrorMsg('Please specify both opening and closing times for special hours.');
+        return;
+      }
+      if (specialOpensAt >= specialClosesAt) {
+        setErrorMsg(`Closing time (${specialClosesAt}) must be strictly after opening time (${specialOpensAt}).`);
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       setErrorMsg(null);
@@ -474,9 +683,54 @@ export function Settings() {
   }
 
 
+  function handlePhoneChange(val: string) {
+    let digits = val.replace(/\D/g, '');
+    if (digits.startsWith('63') && digits.length > 10) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith('0') && digits.length === 11) {
+      digits = digits.slice(1);
+    }
+    const clean = digits.slice(0, 10);
+    setPhoneDigits(clean);
+    setBusinessSettings((prev) => ({
+      ...prev,
+      contactPhone: clean ? `+63${clean}` : null,
+    }));
+  }
+
   // Handle Business Profile / Kiosk Save
-  async function handleSaveProfile(e?: React.FormEvent) {
+  function handleSaveProfile(e?: React.FormEvent) {
     if (e) e.preventDefault();
+    setErrorMsg(null);
+
+    const check = canSaveBusinessProfile({
+      businessName: businessSettings.businessName,
+      contactEmail: businessSettings.contactEmail,
+      phoneDigits,
+    });
+
+    if (!check.canSave) {
+      setErrorMsg(check.reason || 'Please fill in all required fields.');
+      return;
+    }
+
+    const hasEmail = Boolean(businessSettings.contactEmail && businessSettings.contactEmail.trim());
+    const hasPhone = Boolean(phoneDigits && phoneDigits.trim());
+
+    if (hasEmail && !hasPhone) {
+      setMissingContactModal({ isOpen: true, missingType: 'phone' });
+      return;
+    }
+
+    if (!hasEmail && hasPhone) {
+      setMissingContactModal({ isOpen: true, missingType: 'email' });
+      return;
+    }
+
+    executeSaveProfile();
+  }
+
+  async function executeSaveProfile() {
     try {
       setSaving(true);
       setErrorMsg(null);
@@ -490,6 +744,8 @@ export function Settings() {
 
       const payload = {
         ...businessSettings,
+        contactEmail: businessSettings.contactEmail?.trim() || null,
+        contactPhone: phoneDigits ? `+63${phoneDigits}` : null,
         paymentExpiryMinutes: normalizedExpiry,
         kioskTimeoutMinutes: normalizedTimeout,
       };
@@ -507,6 +763,8 @@ export function Settings() {
 
       const json = await res.json();
       setBusinessSettings(json.data);
+      setPhoneDigits(extractTenDigitPhone(json.data.contactPhone));
+      setMissingContactModal({ isOpen: false, missingType: null });
       showSuccess('Business settings updated successfully!');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to save business settings');
@@ -568,6 +826,25 @@ export function Settings() {
     try {
       setSaving(true);
       setErrorMsg(null);
+
+      if (hoursMode === 'CUSTOM_HOURS') {
+        for (const s of daySchedules) {
+          if (s.isOpen && !s.is24Hours) {
+            if (!s.opensAt || !s.closesAt) {
+              setErrorMsg(`Please specify opening and closing times for ${DAY_NAMES[s.dayOfWeek]}.`);
+              setSaving(false);
+              return;
+            }
+            if (s.opensAt >= s.closesAt) {
+              setErrorMsg(
+                `${DAY_NAMES[s.dayOfWeek]} closing time (${s.closesAt}) must be strictly after opening time (${s.opensAt}).`
+              );
+              setSaving(false);
+              return;
+            }
+          }
+        }
+      }
 
       const schedulesToSubmit = daySchedules.map((s) => {
         if (!s.isOpen) {
@@ -837,6 +1114,12 @@ export function Settings() {
       return;
     }
 
+    const fieldValidation = validatePaymentMethodRequiredFields(addPaymentForm);
+    if (!fieldValidation.isValid) {
+      setErrorMsg(fieldValidation.error || 'Account/Receiver name and Account/Mobile number are required');
+      return;
+    }
+
     try {
       setSaving(true);
       setErrorMsg(null);
@@ -848,7 +1131,7 @@ export function Settings() {
           methodType: addPaymentForm.methodType,
           displayName: addPaymentForm.displayName.trim(),
           accountName: addPaymentForm.accountName.trim() || null,
-          accountNumber: addPaymentForm.accountNumber.trim() || null,
+          accountNumber: sanitizeAccountNumber(addPaymentForm.accountNumber.trim()) || null,
           instructions: addPaymentForm.instructions.trim() || null,
           qrImagePath: addPaymentForm.qrImagePath,
           allowWeb: true,
@@ -948,12 +1231,20 @@ export function Settings() {
 
   // Save Payment Method
   async function handleSavePaymentMethod(method: AdminPaymentMethod) {
+    const fieldValidation = validatePaymentMethodRequiredFields(method);
+    if (!fieldValidation.isValid) {
+      setErrorMsg(fieldValidation.error || 'Account/Receiver name and Account/Mobile number are required');
+      return;
+    }
+
     try {
       setSaving(true);
       setErrorMsg(null);
 
       const methodToSave = {
         ...method,
+        accountName: method.accountName ? method.accountName.trim() : null,
+        accountNumber: sanitizeAccountNumber(method.accountNumber) || null,
         allowWeb: method.methodType !== 'CASH',
         allowKiosk: true,
       };
@@ -1062,18 +1353,69 @@ export function Settings() {
                     placeholder="contact@example.com"
                     style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
                   />
+                  {businessSettings.contactEmail && !isValidEmail(businessSettings.contactEmail) && (
+                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                      Please enter a valid email address (e.g., contact@example.com).
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Phone</label>
-                  <input 
-                    type="text" 
-                    value={businessSettings.contactPhone || ''}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, contactPhone: e.target.value || null })}
-                    placeholder="+63 917 123 4567"
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Number</label>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      border: '1px solid var(--da-border)', 
+                      borderRadius: '8px', 
+                      overflow: 'hidden', 
+                      background: '#fff',
+                    }}
+                  >
+                    <span 
+                      style={{ 
+                        padding: '10px 12px 10px 14px', 
+                        fontSize: '13px', 
+                        fontWeight: 600, 
+                        color: 'var(--da-text-secondary)', 
+                        background: '#f8fafc', 
+                        borderRight: '1px solid var(--da-border)', 
+                        userSelect: 'none',
+                        lineHeight: 1,
+                      }}
+                    >
+                      +63
+                    </span>
+                    <input 
+                      type="tel" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      value={phoneDigits}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      onKeyDown={(e) => handleNumericKeyDown(e)}
+                      placeholder="9171234567"
+                      style={{ 
+                        width: '100%', 
+                        border: 'none', 
+                        outline: 'none', 
+                        padding: '10px 14px', 
+                        fontSize: '13px', 
+                        fontFamily: 'var(--da-font-family)', 
+                        background: 'transparent',
+                      }} 
+                    />
+                  </div>
+                  <div style={{ fontSize: '11px', color: phoneDigits && phoneDigits.length !== 10 ? '#ef4444' : 'var(--da-text-secondary)', marginTop: '4px' }}>
+                    10-digit mobile number (e.g., 9171234567)
+                  </div>
                 </div>
               </div>
+
+              {!businessSettings.contactEmail?.trim() && !phoneDigits && (
+                <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '-6px' }}>
+                  * At least one contact method (contact email or contact number) is required.
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
@@ -1130,17 +1472,30 @@ export function Settings() {
                 </div>
               </div>
 
-              <button 
-                type="submit"
-                disabled={saving}
-                style={{ 
-                  background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px', 
-                  borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
-                  marginTop: '8px', opacity: saving ? 0.7 : 1 
-                }}
-              >
-                {saving ? 'Saving...' : 'Save Business Profile'}
-              </button>
+              {(() => {
+                const check = canSaveBusinessProfile({
+                  businessName: businessSettings.businessName,
+                  contactEmail: businessSettings.contactEmail,
+                  phoneDigits,
+                });
+                const isDisabled = saving || !check.canSave;
+                return (
+                  <button 
+                    type="submit"
+                    disabled={isDisabled}
+                    title={!check.canSave ? check.reason : undefined}
+                    style={{ 
+                      background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px', 
+                      borderRadius: '8px', fontWeight: 700, fontSize: '13px', 
+                      cursor: isDisabled ? 'not-allowed' : 'pointer', 
+                      marginTop: '8px', 
+                      opacity: isDisabled ? 0.6 : 1 
+                    }}
+                  >
+                    {saving ? 'Saving...' : 'Save Business Profile'}
+                  </button>
+                );
+              })()}
             </form>
           )}
 
@@ -1279,27 +1634,75 @@ export function Settings() {
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <input 
-                              type="time" 
+                            <select 
+                              aria-label={`${DAY_NAMES[schedule.dayOfWeek]} Opening Time`}
                               value={schedule.opensAt}
                               onChange={(e) => {
+                                const newOpensAt = e.target.value;
                                 const updated = [...daySchedules];
-                                updated[idx] = { ...schedule, opensAt: e.target.value };
+                                let newClosesAt = schedule.closesAt;
+                                if (newOpensAt && newClosesAt && newClosesAt <= newOpensAt) {
+                                  newClosesAt = getDefaultClosingTime(newOpensAt);
+                                }
+                                updated[idx] = { ...schedule, opensAt: newOpensAt, closesAt: newClosesAt };
                                 setDaySchedules(updated);
                               }}
-                              style={{ border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px' }}
-                            />
+                              style={{ 
+                                border: '1px solid var(--da-border)', 
+                                borderRadius: '6px', 
+                                padding: '6px 10px', 
+                                fontSize: '12px',
+                                background: '#fff',
+                                color: '#0F172A',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {getTimeOptions(false, schedule.opensAt).map((t) => (
+                                <option key={t} value={t}>
+                                  {getTimeLabel(t)}
+                                </option>
+                              ))}
+                            </select>
                             <span style={{ fontSize: '12px', color: '#64748B' }}>to</span>
-                            <input 
-                              type="time" 
+                            <select 
+                              aria-label={`${DAY_NAMES[schedule.dayOfWeek]} Closing Time`}
                               value={schedule.closesAt}
                               onChange={(e) => {
+                                const newClosesAt = e.target.value;
+                                if (newClosesAt && schedule.opensAt && newClosesAt <= schedule.opensAt) {
+                                  return;
+                                }
                                 const updated = [...daySchedules];
-                                updated[idx] = { ...schedule, closesAt: e.target.value };
+                                updated[idx] = { ...schedule, closesAt: newClosesAt };
                                 setDaySchedules(updated);
                               }}
-                              style={{ border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px' }}
-                            />
+                              style={{ 
+                                border: '1px solid var(--da-border)', 
+                                borderRadius: '6px', 
+                                padding: '6px 10px', 
+                                fontSize: '12px',
+                                background: '#fff',
+                                color: '#0F172A',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {getTimeOptions(true, schedule.closesAt).map((t) => {
+                                const isUnavailable = schedule.opensAt ? t <= schedule.opensAt : false;
+                                return (
+                                  <option 
+                                    key={t} 
+                                    value={t} 
+                                    disabled={isUnavailable}
+                                    style={{
+                                      color: isUnavailable ? '#94A3B8' : '#0F172A',
+                                      backgroundColor: isUnavailable ? '#F8FAFC' : '#FFFFFF',
+                                    }}
+                                  >
+                                    {getTimeLabel(t)} {isUnavailable ? '— Unavailable' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
                             <button
                               type="button"
                               onClick={() => {
@@ -1489,33 +1892,37 @@ export function Settings() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                            Account / Receiver Name
+                            Account / Receiver Name <span style={{ color: '#EF4444' }}>*</span>
                           </label>
                           <input 
                             type="text"
                             value={method.accountName || ''}
                             onChange={(e) => {
                               const updated = [...paymentMethods];
-                              updated[idx] = { ...method, accountName: e.target.value || null };
+                              updated[idx] = { ...method, accountName: e.target.value };
                               setPaymentMethods(updated);
                             }}
                             placeholder="e.g. DeskAtlas Manila Inc."
+                            required={method.methodType !== 'CASH'}
                             style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}
                           />
                         </div>
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                            Account / Mobile Number
+                            Account / Mobile Number <span style={{ color: '#EF4444' }}>*</span>
                           </label>
                           <input 
                             type="text"
                             value={method.accountNumber || ''}
+                            onKeyDown={(e) => handleNumericKeyDown(e, { allowDash: true })}
                             onChange={(e) => {
+                              const sanitized = sanitizeAccountNumber(e.target.value);
                               const updated = [...paymentMethods];
-                              updated[idx] = { ...method, accountNumber: e.target.value || null };
+                              updated[idx] = { ...method, accountNumber: sanitized };
                               setPaymentMethods(updated);
                             }}
                             placeholder="e.g. 09171234567 or 1234-5678-9012"
+                            required={method.methodType !== 'CASH'}
                             style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}
                           />
                         </div>
@@ -1638,18 +2045,25 @@ export function Settings() {
 
                       {/* Bottom bar: Save button */}
                       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderTop: '1px solid var(--da-border-light)', paddingTop: '12px', flexWrap: 'wrap', gap: '10px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleSavePaymentMethod(method)}
-                          disabled={saving}
-                          style={{ 
-                            background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '7px 18px', 
-                            borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
-                            opacity: saving ? 0.7 : 1,
-                          }}
-                        >
-                          {saving ? 'Saving...' : 'Save Method'}
-                        </button>
+                        {(() => {
+                          const isInvalid = !validatePaymentMethodRequiredFields(method).isValid;
+                          const isDisabled = saving || isInvalid;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleSavePaymentMethod(method)}
+                              disabled={isDisabled}
+                              title={isInvalid ? 'Account/Receiver name and Account/Mobile number are required' : undefined}
+                              style={{ 
+                                background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '7px 18px', 
+                                borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                opacity: isDisabled ? 0.6 : 1,
+                              }}
+                            >
+                              {saving ? 'Saving...' : 'Save Method'}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -1705,6 +2119,9 @@ export function Settings() {
               return false;
             });
 
+            const todayStr = getTodayDateString(businessSettings.timezone);
+            const isSelectedDatePast = isPastDate(selectedDate, businessSettings.timezone);
+
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', lineHeight: '1.5' }}>
@@ -1755,14 +2172,19 @@ export function Settings() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
                     {calendarDays.map((cell, idx) => {
                       const isSelected = cell.dateStr === selectedDate;
-                      const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
+                      const todayStr = getTodayDateString(businessSettings.timezone);
+                      const isToday = cell.dateStr === todayStr;
+                      const isPast = cell.dateStr < todayStr;
                       const hasClosure = Boolean(cell.exception);
                       const isFullDay = cell.exception?.closureType === 'FULL_DAY';
+                      const isCellDisabled = isPast && !hasClosure;
 
                       return (
                         <button
                           key={idx}
                           type="button"
+                          disabled={isCellDisabled}
+                          title={isCellDisabled ? 'Past dates cannot be selected for closures or holidays' : undefined}
                           onClick={() => {
                             setSelectedDate(cell.dateStr);
                             if (cell.exception) {
@@ -1783,6 +2205,8 @@ export function Settings() {
                               ? isFullDay
                                 ? '#FEF2F2'
                                 : '#FFFBEB'
+                              : isPast
+                              ? '#F1F5F9'
                               : cell.isCurrentMonth
                               ? '#FFFFFF'
                               : '#F8FAFC',
@@ -1795,11 +2219,11 @@ export function Settings() {
                               : '1px solid var(--da-border-light)',
                             borderRadius: '8px',
                             textAlign: 'left',
-                            cursor: 'pointer',
+                            cursor: isCellDisabled ? 'not-allowed' : 'pointer',
                             display: 'flex',
                             flexDirection: 'column',
                             justifyContent: 'space-between',
-                            opacity: cell.isCurrentMonth ? 1 : 0.45,
+                            opacity: isCellDisabled ? 0.35 : cell.isCurrentMonth ? 1 : 0.45,
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1857,6 +2281,26 @@ export function Settings() {
                   </div>
 
                   <form onSubmit={handleSaveClosure} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {isSelectedDatePast && (
+                      <div
+                        style={{
+                          background: '#FEF2F2',
+                          border: '1px solid #FECACA',
+                          borderRadius: '8px',
+                          padding: '10px 14px',
+                          color: '#991B1B',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <span>⚠️</span>
+                        <span>Closures and holidays cannot be set or modified for past dates.</span>
+                      </div>
+                    )}
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
@@ -1864,8 +2308,16 @@ export function Settings() {
                         </label>
                         <input
                           type="date"
+                          min={todayStr}
                           value={selectedDate}
-                          onChange={(e) => setSelectedDate(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val && val < todayStr) {
+                              setErrorMsg('Closures and holidays cannot be set for past dates.');
+                              return;
+                            }
+                            setSelectedDate(val);
+                          }}
                           required
                           style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
                         />
@@ -1932,9 +2384,17 @@ export function Settings() {
                             </label>
                             <input
                               type="date"
-                              min={selectedDate}
+                              min={selectedDate && selectedDate > todayStr ? selectedDate : todayStr}
                               value={closureEndDate}
-                              onChange={(e) => setClosureEndDate(e.target.value)}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const minAllowed = selectedDate && selectedDate > todayStr ? selectedDate : todayStr;
+                                if (val && val < minAllowed) {
+                                  setErrorMsg('Closure end date cannot be in the past or before the start date.');
+                                  return;
+                                }
+                                setClosureEndDate(val);
+                              }}
                               required={isMultiDay}
                               style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
                             />
@@ -1947,25 +2407,58 @@ export function Settings() {
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                             Opening Time on this Date
                           </label>
-                          <input
-                            type="time"
+                          <select
                             value={specialOpensAt}
-                            onChange={(e) => setSpecialOpensAt(e.target.value)}
+                            onChange={(e) => {
+                              const newOpensAt = e.target.value;
+                              setSpecialOpensAt(newOpensAt);
+                              if (newOpensAt && specialClosesAt && specialClosesAt <= newOpensAt) {
+                                setSpecialClosesAt(getDefaultClosingTime(newOpensAt));
+                              }
+                            }}
                             required
-                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
-                          />
+                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
+                          >
+                            {getTimeOptions(false, specialOpensAt).map((t) => (
+                              <option key={t} value={t}>
+                                {getTimeLabel(t)}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                             Closing Time on this Date
                           </label>
-                          <input
-                            type="time"
+                          <select
                             value={specialClosesAt}
-                            onChange={(e) => setSpecialClosesAt(e.target.value)}
+                            onChange={(e) => {
+                              const newClosesAt = e.target.value;
+                              if (newClosesAt && specialOpensAt && newClosesAt <= specialOpensAt) {
+                                return;
+                              }
+                              setSpecialClosesAt(newClosesAt);
+                            }}
                             required
-                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
-                          />
+                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
+                          >
+                            {getTimeOptions(true, specialClosesAt).map((t) => {
+                              const isUnavailable = specialOpensAt ? t <= specialOpensAt : false;
+                              return (
+                                <option
+                                  key={t}
+                                  value={t}
+                                  disabled={isUnavailable}
+                                  style={{
+                                    color: isUnavailable ? '#94A3B8' : '#0F172A',
+                                    backgroundColor: isUnavailable ? '#F8FAFC' : '#FFFFFF',
+                                  }}
+                                >
+                                  {getTimeLabel(t)} {isUnavailable ? '— Unavailable' : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
                         </div>
                       </div>
                     )}
@@ -1986,20 +2479,20 @@ export function Settings() {
                     <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                       <button
                         type="submit"
-                        disabled={saving}
+                        disabled={saving || isSelectedDatePast}
                         style={{
-                          background: 'var(--da-brand-dark)',
+                          background: isSelectedDatePast ? '#94A3B8' : 'var(--da-brand-dark)',
                           color: '#fff',
                           border: 'none',
                           padding: '10px 18px',
                           borderRadius: '8px',
                           fontWeight: 700,
                           fontSize: '13px',
-                          cursor: saving ? 'not-allowed' : 'pointer',
-                          opacity: saving ? 0.7 : 1,
+                          cursor: (saving || isSelectedDatePast) ? 'not-allowed' : 'pointer',
+                          opacity: (saving || isSelectedDatePast) ? 0.6 : 1,
                         }}
                       >
-                        {saving ? 'Saving...' : 'Save Date Exception'}
+                        {isSelectedDatePast ? 'Cannot Set Past Date' : saving ? 'Saving...' : 'Save Date Exception'}
                       </button>
                       {selectedException && (
                         <button
@@ -2549,25 +3042,28 @@ export function Settings() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                    RECEIVER / ACCOUNT NAME
+                    RECEIVER / ACCOUNT NAME <span style={{ color: '#EF4444' }}>*</span>
                   </label>
                   <input
                     type="text"
                     value={addPaymentForm.accountName}
                     onChange={(e) => setAddPaymentForm({ ...addPaymentForm, accountName: e.target.value })}
                     placeholder="e.g. DeskAtlas Manila Inc."
+                    required
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                    ACCOUNT / MOBILE NUMBER
+                    ACCOUNT / MOBILE NUMBER <span style={{ color: '#EF4444' }}>*</span>
                   </label>
                   <input
                     type="text"
                     value={addPaymentForm.accountNumber}
-                    onChange={(e) => setAddPaymentForm({ ...addPaymentForm, accountNumber: e.target.value })}
+                    onKeyDown={(e) => handleNumericKeyDown(e, { allowDash: true })}
+                    onChange={(e) => setAddPaymentForm({ ...addPaymentForm, accountNumber: sanitizeAccountNumber(e.target.value) })}
                     placeholder="e.g. 09171234567 or 1234-5678-9012"
+                    required
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -2673,17 +3169,24 @@ export function Settings() {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  style={{
-                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none',
-                    padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700,
-                    cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1
-                  }}
-                >
-                  {saving ? 'Creating...' : 'Create Payment Method'}
-                </button>
+                {(() => {
+                  const isInvalid = !validatePaymentMethodRequiredFields(addPaymentForm).isValid;
+                  const isDisabled = saving || isInvalid;
+                  return (
+                    <button
+                      type="submit"
+                      disabled={isDisabled}
+                      title={isInvalid ? 'Account/Receiver name and Account/Mobile number are required' : undefined}
+                      style={{
+                        background: 'var(--da-brand-dark)', color: '#fff', border: 'none',
+                        padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700,
+                        cursor: isDisabled ? 'not-allowed' : 'pointer', opacity: isDisabled ? 0.6 : 1
+                      }}
+                    >
+                      {saving ? 'Creating...' : 'Create Payment Method'}
+                    </button>
+                  );
+                })()}
               </div>
             </form>
           </div>
@@ -2725,6 +3228,83 @@ export function Settings() {
               alt="Full QR Preview"
               style={{ width: '100%', maxHeight: '300px', objectFit: 'contain', borderRadius: '8px' }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Missing Contact Method Confirmation */}
+      {missingContactModal.isOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1100, padding: '16px'
+        }}>
+          <div style={{
+            background: '#FFFFFF', borderRadius: '16px', maxWidth: '460px', width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>
+                  Save Without Contact {missingContactModal.missingType === 'phone' ? 'Number' : 'Email'}?
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: 0 }}>
+                  Confirmation required for business profile settings
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMissingContactModal({ isOpen: false, missingType: null })}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94A3B8' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: 'var(--da-text-primary)', lineHeight: 1.5, margin: '14px 0 16px' }}>
+              Are you sure you want to save without a contact {missingContactModal.missingType === 'phone' ? 'number' : 'email'}?
+            </p>
+
+            <div style={{
+              background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px',
+              padding: '12px 14px', marginBottom: '22px', fontSize: '12px', color: '#B45309',
+              display: 'flex', alignItems: 'flex-start', gap: '8px', lineHeight: 1.4
+            }}>
+              <span style={{ fontSize: '14px', lineHeight: 1 }}>⚠️</span>
+              <span>
+                {missingContactModal.missingType === 'phone'
+                  ? 'Customers and staff will only be able to reach your workspace via email.'
+                  : 'Customers and staff will only be able to reach your workspace via phone.'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setMissingContactModal({ isOpen: false, missingType: null })}
+                disabled={saving}
+                style={{
+                  padding: '9px 16px', borderRadius: '8px', border: '1px solid var(--da-border)',
+                  background: '#fff', fontSize: '13px', fontWeight: 600, color: 'var(--da-text-secondary)',
+                  cursor: saving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => executeSaveProfile()}
+                disabled={saving}
+                style={{
+                  padding: '9px 18px', borderRadius: '8px', border: 'none',
+                  background: 'var(--da-brand-dark)', fontSize: '13px', fontWeight: 700, color: '#fff',
+                  cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1
+                }}
+              >
+                {saving ? 'Saving...' : 'Confirm & Save'}
+              </button>
+            </div>
           </div>
         </div>
       )}

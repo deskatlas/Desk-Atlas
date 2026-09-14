@@ -24,10 +24,9 @@ export async function POST(
     const { paymentAttemptId } = await context.params;
     const body = await request.json();
     const paymentReviewService = getAdminPaymentReviewService();
-    const reviewDetail =
-      body.decision === "APPROVE"
-        ? await paymentReviewService.getPaymentReviewDetail(paymentAttemptId)
-        : null;
+    const reviewDetail = await paymentReviewService
+      .getPaymentReviewDetail(paymentAttemptId)
+      .catch(() => null);
     let actorUserId = String(body.actorUserId ?? "").trim();
     if (!actorUserId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
       const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -142,6 +141,46 @@ export async function POST(
         customerFirstName: reviewDetail.customerFirstName,
         customerLastName: reviewDetail.customerLastName,
         referenceCode: result.reservationReferenceCode,
+        businessName,
+        businessEmail,
+        businessPhone,
+        trackingUrl,
+      });
+    } else if ((body.decision === "REJECT" || result.paymentStatus === "REJECTED") && reviewDetail) {
+      const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3000$/, ":3001").replace(/\/$/, "");
+      const trackingBaseUrl =
+        process.env.TRACKING_BASE_URL ??
+        process.env.DESKATLAS_PUBLIC_APP_URL ??
+        defaultCustomerOrigin;
+      const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, result.reservationReferenceCode);
+
+      let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
+      let businessName = "DeskAtlas";
+      let businessPhone: string | undefined;
+
+      try {
+        const settingsRepo = new SupabaseSettingsRepository();
+        const settings = await settingsRepo.getBusinessSettings();
+        if (settings.contactEmail) {
+          businessEmail = settings.contactEmail;
+        }
+        if (settings.businessName) {
+          businessName = settings.businessName;
+        }
+        if (settings.contactPhone) {
+          businessPhone = settings.contactPhone;
+        }
+      } catch {
+        // fallback to default/env values
+      }
+
+      const emailService = createTransactionalEmailService();
+      await emailService.sendPaymentProofRejectedEmail({
+        to: reviewDetail.customerEmail,
+        customerFirstName: reviewDetail.customerFirstName,
+        customerLastName: reviewDetail.customerLastName,
+        referenceCode: result.reservationReferenceCode,
+        rejectionReason: String(body.rejectionReason ?? result.rejectionReason ?? "").trim() || undefined,
         businessName,
         businessEmail,
         businessPhone,

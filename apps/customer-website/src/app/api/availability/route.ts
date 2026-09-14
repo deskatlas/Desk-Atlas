@@ -15,6 +15,11 @@ export async function GET(request: NextRequest) {
     const workspaceInstanceId = searchParams.get('workspaceInstanceId') ?? '';
     const durationMinutes = Number(searchParams.get('durationMinutes') ?? '');
     const nowIso = searchParams.get('nowIso') ?? undefined;
+    const channelParam = searchParams.get('channel') as 'ONLINE' | 'KIOSK' | null;
+    const channel: 'ONLINE' | 'KIOSK' = channelParam || 'ONLINE';
+    const minimumLeadMinutes = searchParams.has('minimumLeadMinutes')
+      ? Number(searchParams.get('minimumLeadMinutes'))
+      : (channel === 'ONLINE' ? 30 : 0);
 
     if (templateId) {
       const result = await service.listTemplateAvailability({
@@ -23,6 +28,8 @@ export async function GET(request: NextRequest) {
         durationMinutes,
         startTime: searchParams.get('startTime') ?? undefined,
         nowIso,
+        channel,
+        minimumLeadMinutes,
       });
       return NextResponse.json(result);
     }
@@ -33,6 +40,8 @@ export async function GET(request: NextRequest) {
         date: searchParams.get('date') ?? '',
         durationMinutes,
         nowIso,
+        channel,
+        minimumLeadMinutes,
       });
       return NextResponse.json(result);
     }
@@ -43,6 +52,8 @@ export async function GET(request: NextRequest) {
       endDate: searchParams.get('endDate') ?? '',
       durationMinutes,
       nowIso,
+      channel,
+      minimumLeadMinutes,
     });
     return NextResponse.json(result);
   } catch (error) {

@@ -73,6 +73,7 @@ export interface AvailableDate {
 export type TimeSlotBlockingReason =
   | 'WORKSPACE_NOT_BOOKABLE'
   | 'PAST_TIME'
+  | 'IMMEDIATE_WALK_IN_ONLY'
   | 'BUSINESS_CLOSED'
   | 'SCHEDULE_BLOCKED'
   | 'RESERVATION_CONFLICT';
@@ -90,6 +91,8 @@ export interface DateAvailabilityQuery {
   endDate: string;
   durationMinutes: number;
   nowIso?: string;
+  channel?: 'ONLINE' | 'KIOSK';
+  minimumLeadMinutes?: number;
 }
 
 export interface TimeAvailabilityQuery {
@@ -97,6 +100,8 @@ export interface TimeAvailabilityQuery {
   date: string;
   durationMinutes: number;
   nowIso?: string;
+  channel?: 'ONLINE' | 'KIOSK';
+  minimumLeadMinutes?: number;
 }
 
 export interface DateAvailabilityResult {
@@ -124,6 +129,8 @@ export interface TemplateAvailabilityQuery {
   durationMinutes: number;
   startTime?: string;
   nowIso?: string;
+  channel?: 'ONLINE' | 'KIOSK';
+  minimumLeadMinutes?: number;
 }
 
 export interface AvailableInstanceSummary {
@@ -155,3 +162,42 @@ export interface TemplateAvailabilityResult {
   availableInstances: AvailableInstanceSummary[];
   allInstances: AvailableInstanceSummary[];
 }
+
+export interface UpcomingBookingInfo {
+  startAt: string;
+  endAt: string;
+  type: 'RESERVATION' | 'SCHEDULE_BLOCK';
+  startTimeFormatted: string;
+  blockType?: string;
+  reason?: string | null;
+}
+
+export interface NextUpcomingBookingResult {
+  workspaceInstanceId: string;
+  nowIso: string;
+  nextBooking: UpcomingBookingInfo | null;
+  minutesUntilNextBooking: number | null;
+  operatingHoursCloseAt: string | null;
+  minutesUntilClosing: number | null;
+  maxAvailableMinutes: number | null;
+  maxAvailableHours: number | null;
+}
+
+export interface ValidateReservationWindowQuery {
+  workspaceInstanceId: string;
+  startAt: string;
+  endAt: string;
+  maxDurationMinutes?: number;
+}
+
+export interface ReservationWindowValidationResult {
+  isValid: boolean;
+  conflictType?:
+    | 'MAX_DURATION_EXCEEDED'
+    | 'FACILITY_CLOSURE'
+    | 'BUSINESS_CLOSED'
+    | 'MAINTENANCE_BLOCK'
+    | 'RESERVATION_CONFLICT';
+  errorMessage?: string;
+}
+

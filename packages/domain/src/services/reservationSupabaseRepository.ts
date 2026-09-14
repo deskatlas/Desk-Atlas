@@ -568,21 +568,173 @@ export class ReservationSupabaseRepository
     processedAt: string;
     rejectionReason: string;
   }): Promise<PaymentReviewDecisionResult> {
-    const result = await this.request<any[]>("/rpc/reject_online_payment_attempt", {
-      method: "POST",
-      body: JSON.stringify({
-        p_payment_attempt_id: input.paymentAttemptId,
-        p_processed_by_user_id: input.actorUserId,
-        p_processed_at: input.processedAt,
-        p_rejection_reason: input.rejectionReason,
-      }),
-    });
+    const trimmedReason = input.rejectionReason.trim();
+    let result: any[] | null = null;
 
-    if (!Array.isArray(result) || result.length === 0) {
-      throw new Error("Failed to reject payment review.");
+    try {
+      result = await this.request<any[]>("/rpc/reject_online_payment_attempt", {
+        method: "POST",
+        body: JSON.stringify({
+          p_payment_attempt_id: input.paymentAttemptId,
+          p_processed_by_user_id: input.actorUserId,
+          p_processed_at: input.processedAt,
+          p_rejection_reason: trimmedReason,
+        }),
+      });
+    } catch (rpcError: any) {
+      const isRecoverableError =
+        rpcError?.message?.includes("23514") ||
+        rpcError?.message?.includes("42702") ||
+        rpcError?.message?.includes("reservations_cancellation_requirements") ||
+        rpcError?.message?.includes("PGRST202");
+
+      if (isRecoverableError) {
+        return await this.fallbackRejectPaymentAttempt(input, trimmedReason);
+      }
+      throw rpcError;
     }
 
-    return this.mapDecisionResult(result[0]);
+    if (!Array.isArray(result) || result.length === 0) {
+      return await this.fallbackRejectPaymentAttempt(input, trimmedReason);
+    }
+
+    const decisionResult = this.mapDecisionResult(result[0]);
+
+    if (decisionResult.reservationStatus !== "CANCELLED") {
+      try {
+        await fetch(
+          `${this.restUrl}/reservations?id=eq.${encodeURIComponent(decisionResult.reservationId)}`,
+          {
+            method: "PATCH",
+            headers: {
+              apikey: this.serviceRoleKey,
+              Authorization: `Bearer ${this.serviceRoleKey}`,
+              "Content-Type": "application/json",
+              Prefer: "return=minimal",
+            },
+            cache: "no-store",
+            body: JSON.stringify({
+              status: "CANCELLED",
+              cancelled_at: input.processedAt,
+              cancellation_reason: `Payment proof rejected: ${trimmedReason}`,
+              cancelled_by_user_id: input.actorUserId,
+              updated_at: input.processedAt,
+            }),
+          }
+        );
+        decisionResult.reservationStatus = "CANCELLED";
+      } catch {
+        // ignore
+      }
+    }
+
+    return decisionResult;
+  }
+
+  private async fallbackRejectPaymentAttempt(
+    input: {
+      paymentAttemptId: string;
+      actorUserId: string;
+      processedAt: string;
+      rejectionReason: string;
+    },
+    trimmedReason: string
+  ): Promise<PaymentReviewDecisionResult> {
+    const attempts = await this.request<any[]>(
+      `/payment_attempts?id=eq.${encodeURIComponent(input.paymentAttemptId)}&limit=1`
+    );
+    if (!attempts || attempts.length === 0) {
+      throw new Error(`Payment attempt not found: ${input.paymentAttemptId}`);
+    }
+    const attempt = attempts[0];
+
+    // Update payment attempt to REJECTED
+    await this.request(
+      `/payment_attempts?id=eq.${encodeURIComponent(input.paymentAttemptId)}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          status: "REJECTED",
+          processed_by_user_id: input.actorUserId,
+          processed_at: input.processedAt,
+          rejection_reason: trimmedReason,
+        }),
+      }
+    );
+
+    // Unassign candidates if any
+    try {
+      await this.request(
+        `/reservation_candidates?reservation_id=eq.${encodeURIComponent(attempt.reservation_id)}&is_assigned=eq.true`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            is_assigned: false,
+            updated_at: input.processedAt,
+          }),
+        }
+      );
+    } catch {
+      // non-blocking
+    }
+
+    // Update reservation to CANCELLED with cancellation requirements satisfied
+    await this.request(
+      `/reservations?id=eq.${encodeURIComponent(attempt.reservation_id)}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          status: "CANCELLED",
+          cancelled_at: input.processedAt,
+          cancellation_reason: `Payment proof rejected: ${trimmedReason}`,
+          cancelled_by_user_id: input.actorUserId,
+          updated_at: input.processedAt,
+        }),
+      }
+    );
+
+    // Audit log
+    try {
+      await this.request("/audit_logs", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          actor_user_id: input.actorUserId,
+          actor_role: "ADMIN",
+          action: "payment_review_completed",
+          entity_type: "payment_attempt",
+          entity_id: input.paymentAttemptId,
+          metadata: {
+            decision: "REJECT",
+            reservation_id: attempt.reservation_id,
+            rejection_reason: trimmedReason,
+          },
+        }),
+      });
+    } catch {
+      // non-blocking
+    }
+
+    const reservations = await this.request<any[]>(
+      `/reservations?id=eq.${encodeURIComponent(attempt.reservation_id)}&limit=1`
+    );
+
+    return {
+      paymentAttemptId: input.paymentAttemptId,
+      reservationId: attempt.reservation_id,
+      reservationReferenceCode: reservations?.[0]?.reference_code ?? "",
+      reservationStatus: "CANCELLED",
+      paymentStatus: "REJECTED",
+      refundStatus: attempt.refund_status ?? "NONE",
+      assignedCandidate: null,
+      assignedCandidateRank: null,
+      rejectionReason: trimmedReason,
+      processedAt: input.processedAt,
+      processedByUserId: input.actorUserId,
+    };
   }
 
   async confirmCounterPaymentAndAllocate(input: {
@@ -788,6 +940,82 @@ export class ReservationSupabaseRepository
       bookingToken: reservation.booking_token ?? null,
       qrIssuedAt: reservation.qr_issued_at,
       qrRevokedAt: reservation.qr_revoked_at,
+      checkedInAt: reservation.checked_in_at,
+      checkedOutAt: reservation.checked_out_at,
+      assignedWorkspaceInstanceId: assignedCandidate.workspace_instance_id,
+      assignedWorkspaceDisplayName:
+        workspaceInstance?.display_name ?? workspaceInstance?.instance_code ?? assignedCandidate.workspace_instance_id,
+      assignedWorkspaceInstanceCode:
+        workspaceInstance?.instance_code ?? assignedCandidate.workspace_instance_id,
+      assignedWorkspaceTemplateName: workspaceTemplate?.name ?? "Workspace",
+      assignedFloorName: floor?.name ?? "Unknown Floor",
+      assignedStartAt: assignedCandidate.start_at,
+      assignedEndAt: assignedCandidate.end_at,
+    };
+  }
+
+  async findBookingAccessByReferenceOrId(identifier: string): Promise<BookingAccessRecord | null> {
+    const trimmed = identifier.trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+    const filter = isUuid
+      ? `/reservations?select=*&or=(id.eq.${encodeURIComponent(trimmed)},reference_code.ilike.${encodeURIComponent(trimmed)})&limit=1`
+      : `/reservations?select=*&reference_code=ilike.${encodeURIComponent(trimmed)}&limit=1`;
+
+    const reservationRows = await this.request<any[]>(filter);
+    if (!reservationRows || reservationRows.length === 0) {
+      return null;
+    }
+
+    const reservation = reservationRows[0];
+    let assignedCandidate = (
+      await this.request<any[]>(
+        `/reservation_candidates?select=*&reservation_id=eq.${encodeURIComponent(reservation.id)}&is_assigned=eq.true&limit=1`
+      )
+    )?.[0];
+
+    if (!assignedCandidate) {
+      assignedCandidate = (
+        await this.request<any[]>(
+          `/reservation_candidates?select=*&reservation_id=eq.${encodeURIComponent(reservation.id)}&order=candidate_order.asc&limit=1`
+        )
+      )?.[0];
+    }
+
+    if (!assignedCandidate) {
+      return null;
+    }
+
+    const workspaceInstance = (
+      await this.request<any[]>(
+        `/workspace_instances?select=*&id=eq.${encodeURIComponent(assignedCandidate.workspace_instance_id)}&limit=1`
+      )
+    )?.[0];
+    const workspaceTemplate = workspaceInstance
+      ? (
+        await this.request<any[]>(
+          `/workspace_templates?select=*&id=eq.${encodeURIComponent(workspaceInstance.template_id)}&limit=1`
+        )
+      )?.[0]
+      : null;
+    const floor = workspaceInstance
+      ? (
+        await this.request<any[]>(
+          `/floors?select=*&id=eq.${encodeURIComponent(workspaceInstance.floor_id)}&limit=1`
+        )
+      )?.[0]
+      : null;
+
+    return {
+      reservationId: reservation.id,
+      referenceCode: reservation.reference_code,
+      reservationStatus: reservation.status,
+      customerFirstName: reservation.customer_first_name,
+      customerLastName: reservation.customer_last_name,
+      customerEmail: reservation.customer_email,
+      bookingTokenHash: reservation.booking_token_hash ?? "",
+      bookingToken: reservation.booking_token ?? null,
+      qrIssuedAt: reservation.qr_issued_at ?? reservation.created_at,
+      qrRevokedAt: reservation.qr_revoked_at ?? null,
       checkedInAt: reservation.checked_in_at,
       checkedOutAt: reservation.checked_out_at,
       assignedWorkspaceInstanceId: assignedCandidate.workspace_instance_id,
@@ -1134,6 +1362,12 @@ export class ReservationSupabaseRepository
       )?.[0]
       : null;
 
+    const paymentAttempt = (
+      await this.request<any[]>(
+        `/payment_attempts?select=*&reservation_id=eq.${encodeURIComponent(reservation.id)}&order=created_at.desc&limit=1`
+      )
+    )?.[0];
+
     return {
       reservationId: reservation.id,
       referenceCode: reservation.reference_code,
@@ -1158,6 +1392,8 @@ export class ReservationSupabaseRepository
           bookingEndAt: candidate.end_at,
         }
         : null,
+      paymentStatus: paymentAttempt?.status ?? null,
+      rejectionReason: paymentAttempt?.rejection_reason ?? null,
     };
   }
 
@@ -1167,14 +1403,32 @@ export class ReservationSupabaseRepository
     actorRole: "ADMIN" | "STAFF";
     actedAt: string;
   }): Promise<ReservationOperationalActionResult> {
-    const result = await this.request<any[]>("/rpc/check_in_reservation", {
-      method: "POST",
-      body: JSON.stringify({
-        p_reservation_id: input.reservationId,
-        p_actor_user_id: input.actorUserId,
-        p_acted_at: input.actedAt,
-      }),
-    });
+    let result: any[];
+    try {
+      result = await this.request<any[]>("/rpc/check_in_reservation", {
+        method: "POST",
+        body: JSON.stringify({
+          p_reservation_id: input.reservationId,
+          p_actor_user_id: input.actorUserId,
+          p_acted_at: input.actedAt,
+        }),
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("Reservation is not currently active for check-in")) {
+        throw new StaffOperationsError("Reservation is not currently active for check-in.");
+      }
+      if (msg.includes("Reservation was not found")) {
+        throw new StaffOperationsError("Reservation was not found.");
+      }
+      if (msg.includes("Reservation has no assigned workspace to check in")) {
+        throw new StaffOperationsError("Reservation has no assigned workspace to check in.");
+      }
+      if (msg.includes("Reservation is not in a check-in state")) {
+        throw new StaffOperationsConflictError("Reservation is not in a check-in state.");
+      }
+      throw error;
+    }
 
     if (!Array.isArray(result) || result.length === 0) {
       throw new Error("Failed to check in reservation.");
@@ -1610,7 +1864,7 @@ export class ReservationSupabaseRepository
         ? paymentMethodsById.get(latestAttempt.payment_method_id)
         : null;
 
-      const pres = mapStatusPresentation(r.status);
+      const pres = mapStatusPresentation(r.status, latestAttempt?.status);
       const customerName = `${r.customer_first_name} ${r.customer_last_name}`.trim();
       const customerInitials = formatInitials(r.customer_first_name, r.customer_last_name);
       const schedule = formatSchedule(targetCandidate?.start_at, targetCandidate?.end_at);
@@ -1730,13 +1984,17 @@ export class ReservationSupabaseRepository
     const main = candidateList.find((c) => c.rank === 0) ?? candidateList[0] ?? null;
     const effective = assigned ?? main;
 
-    const pres = mapStatusPresentation(r.status);
+    const latestAttempt = (paymentAttempts ?? [])[0] ?? null;
+    const isPaymentRejected =
+      latestAttempt?.status === "REJECTED" ||
+      (r.status === "CANCELLED" && (paymentAttempts ?? []).some((a) => a.status === "REJECTED"));
+
+    const pres = mapStatusPresentation(r.status, isPaymentRejected ? "REJECTED" : latestAttempt?.status);
     const customerName = `${r.customer_first_name} ${r.customer_last_name}`.trim();
     const customerInitials = formatInitials(r.customer_first_name, r.customer_last_name);
     const schedule = formatSchedule(effective?.startAt, effective?.endAt);
     const duration = formatDuration(effective?.startAt, effective?.endAt);
 
-    const latestAttempt = (paymentAttempts ?? [])[0] ?? null;
     const proofAttempt = (paymentAttempts ?? []).find((a) => a.proof_submitted_at !== null) ?? null;
     const paymentExpiresAt = latestAttempt?.expires_at ?? null;
     const proofSubmittedAt = proofAttempt?.proof_submitted_at ?? null;
@@ -1839,6 +2097,8 @@ export class ReservationSupabaseRepository
       mark: pres.mark,
       schedule,
       duration,
+      startAt: effective?.startAt ?? null,
+      endAt: effective?.endAt ?? null,
       paymentStatus: formattedPaymentStatus,
       paymentColor: pres.paymentColor,
       amountDue,
@@ -1890,42 +2150,29 @@ export class ReservationSupabaseRepository
     const nowIso = new Date().toISOString();
     const fullReason = input.notes ? `${input.reason} - ${input.notes}` : input.reason;
 
-    await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        status: "CANCELLED",
-        cancelled_at: nowIso,
-        cancellation_reason: fullReason,
-        cancelled_by_user_id: input.actorUserId ?? null,
-        qr_revoked_at: nowIso,
-        updated_at: nowIso,
-      }),
-    });
-
-    await this.request(`/reservation_candidates?reservation_id=eq.${encodeURIComponent(r.id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        is_assigned: false,
-      }),
-    }).catch(() => {});
-
-    await this.request("/audit_logs", {
-      method: "POST",
-      body: JSON.stringify({
-        actor_user_id: input.actorUserId ?? null,
-        actor_role: input.actorRole ?? "ADMIN",
-        action: "reservation_cancelled",
-        entity_type: "reservation",
-        entity_id: r.id,
-        metadata: {
-          reason: input.reason,
-          notes: input.notes,
-          reference_code: r.reference_code,
-          previous_status: r.status,
-          cancelled_at: nowIso,
-        },
-      }),
-    }).catch(() => {});
+    try {
+      await this.request("/rpc/cancel_reservation", {
+        method: "POST",
+        body: JSON.stringify({
+          p_reservation_id: r.id,
+          p_cancellation_reason: fullReason,
+          p_cancelled_at: nowIso,
+          p_actor_user_id: input.actorUserId ?? null,
+          p_actor_role: input.actorRole ?? "ADMIN",
+        }),
+      });
+    } catch (rpcErr: any) {
+      if (
+        rpcErr?.message?.includes("PGRST202") ||
+        rpcErr?.message?.includes("Could not find the function") ||
+        rpcErr?.message?.includes("404")
+      ) {
+        throw new Error(
+          "Database function public.cancel_reservation is missing in Supabase. Please run the migration in supabase/002_functions.sql in your Supabase SQL Editor to enable reservation cancellation."
+        );
+      }
+      throw rpcErr;
+    }
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {

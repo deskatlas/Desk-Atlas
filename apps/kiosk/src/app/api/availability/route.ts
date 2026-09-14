@@ -16,9 +16,18 @@ export async function GET(request: NextRequest) {
     const durationMinutes = Number(searchParams.get('durationMinutes') ?? '');
     const nowIso = searchParams.get('nowIso') ?? undefined;
     const occupiedNow = searchParams.get('occupiedNow') === 'true' || searchParams.get('scope') === 'occupied_now';
+    const upcoming = searchParams.get('upcoming') === 'true' || searchParams.get('nextReservation') === 'true';
+
+    if (upcoming) {
+      const result = await service.getNextUpcomingBooking(workspaceInstanceId, nowIso);
+      return NextResponse.json(result);
+    }
 
     if (occupiedNow) {
-      const result = await service.listOccupiedInstances({ nowIso });
+      const result = await service.listOccupiedInstances({
+        nowIso,
+        durationMinutes: !isNaN(durationMinutes) && durationMinutes > 0 ? durationMinutes : undefined,
+      });
       return NextResponse.json(result);
     }
 

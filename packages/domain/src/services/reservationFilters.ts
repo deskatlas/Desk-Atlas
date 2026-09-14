@@ -246,15 +246,16 @@ export function matchesReservationFilters(
         resStatus === "EXPIRED" ||
         attemptStatus === "expired" ||
         paymentStatus.includes("expired");
-    } else if (
-      targetStatus === "rejected" ||
-      targetStatus === "refunded" ||
-      targetStatus === "cancelled"
-    ) {
+    } else if (targetStatus === "rejected") {
       matchesPayment =
         attemptStatus === "rejected" ||
+        paymentStatus.includes("rejected") ||
+        item.status.toLowerCase() === "rejected";
+    } else if (targetStatus === "refunded" || targetStatus === "cancelled") {
+      matchesPayment =
         resStatus === "CANCELLED" ||
-        paymentStatus.includes("cancelled");
+        paymentStatus.includes("cancelled") ||
+        paymentStatus.includes("refunded");
     } else {
       matchesPayment =
         paymentStatus.includes(targetStatus) ||

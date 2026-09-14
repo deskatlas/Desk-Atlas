@@ -48,7 +48,7 @@ import { ReservationPaymentRepository, CreateWebPaymentSessionInput } from "./pa
 import { PaymentReviewRepository } from "./paymentReviewRepository";
 import { ReportsRepository } from "./reportsRepository";
 import { StaffOperationsRepository } from "./staffOperationsRepository";
-import { StaffOperationsConflictError } from "./staffOperationsService";
+import { StaffOperationsError, StaffOperationsConflictError } from "./staffOperationsService";
 import { randomUUID } from "crypto";
 
 interface StoredPaymentAttempt {
@@ -558,6 +558,10 @@ export class ReservationMemoryRepository
       attempt.processedByUserId = input.actorUserId;
       attempt.processedAt = input.processedAt;
       attempt.rejectionReason = input.rejectionReason;
+      reservation.status = "CANCELLED";
+      (reservation as any).cancelledAt = input.processedAt;
+      (reservation as any).cancellationReason = `Payment proof rejected: ${input.rejectionReason}`;
+      (reservation as any).cancelledByUserId = input.actorUserId;
       reservation.updatedAt = input.processedAt;
 
       return this.buildDecisionResult(attempt, input.actorUserId);
@@ -716,6 +720,49 @@ export class ReservationMemoryRepository
       bookingTokenHash: reservation.bookingTokenHash,
       bookingToken: reservation.bookingToken ?? null,
       qrIssuedAt: reservation.qrIssuedAt,
+      qrRevokedAt: reservation.qrRevokedAt ?? null,
+      checkedInAt: reservation.checkedInAt ?? null,
+      checkedOutAt: reservation.checkedOutAt ?? null,
+      assignedWorkspaceInstanceId: assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceDisplayName: assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceInstanceCode: assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceTemplateName: "Workspace",
+      assignedFloorName: "Unknown Floor",
+      assignedStartAt: assignedCandidate.startAt,
+      assignedEndAt: assignedCandidate.endAt,
+    };
+  }
+
+  async findBookingAccessByReferenceOrId(identifier: string): Promise<BookingAccessRecord | null> {
+    const trimmed = identifier.trim();
+    const normalizedUpper = trimmed.toUpperCase();
+    const reservation = this.reservations.find(
+      (entry) =>
+        entry.referenceCode.toUpperCase() === normalizedUpper ||
+        entry.id.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (!reservation) {
+      return null;
+    }
+
+    let assignedCandidate = (reservation.candidates ?? []).find((c) => c.isAssigned);
+    if (!assignedCandidate && (reservation.candidates ?? []).length > 0) {
+      assignedCandidate = reservation.candidates![0];
+    }
+    if (!assignedCandidate) {
+      return null;
+    }
+
+    return {
+      reservationId: reservation.id,
+      referenceCode: reservation.referenceCode,
+      reservationStatus: reservation.status,
+      customerFirstName: reservation.customerFirstName,
+      customerLastName: reservation.customerLastName,
+      customerEmail: reservation.customerEmail,
+      bookingTokenHash: reservation.bookingTokenHash ?? "",
+      bookingToken: reservation.bookingToken ?? null,
+      qrIssuedAt: reservation.qrIssuedAt ?? reservation.createdAt,
       qrRevokedAt: reservation.qrRevokedAt ?? null,
       checkedInAt: reservation.checkedInAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
@@ -904,6 +951,9 @@ export class ReservationMemoryRepository
     }
 
     const assignedCandidate = (reservation.candidates ?? []).find((candidate) => candidate.isAssigned);
+    const latestAttempt = Array.from(this.paymentAttempts.values())
+      .reverse()
+      .find((entry) => entry.reservationId === reservation.id);
 
     return {
       reservationId: reservation.id,
@@ -925,6 +975,8 @@ export class ReservationMemoryRepository
           bookingEndAt: assignedCandidate.endAt,
         }
         : null,
+      paymentStatus: latestAttempt?.status ?? null,
+      rejectionReason: latestAttempt?.rejectionReason ?? null,
     };
   }
 
@@ -963,11 +1015,11 @@ export class ReservationMemoryRepository
       }
 
       if (reservation.status !== "CONFIRMED") {
-        throw new Error("Reservation is not in a check-in state.");
+        throw new StaffOperationsConflictError("Reservation is not in a check-in state.");
       }
 
       if (input.actedAt < summary.bookingStartAt || input.actedAt > summary.bookingEndAt) {
-        throw new Error("Reservation is not currently active for check-in.");
+        throw new StaffOperationsError("Reservation is not currently active for check-in.");
       }
 
       reservation.status = "CHECKED_IN";
@@ -1256,9 +1308,17 @@ export class ReservationMemoryRepository
       const candidates = r.candidates ?? [];
       const assignedCandidate = candidates.find((c) => c.isAssigned) ?? null;
       const mainCandidate = candidates.find((c) => c.rank === 0) ?? candidates[0] ?? null;
-      const targetCandidate = assignedCandidate ?? mainCandidate;
+      const attempts = Array.from(this.paymentAttempts.values())
+        .filter((a) => a.reservationId === r.id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const latestAttempt = attempts[0] ?? null;
+      const paymentExpiresAt = latestAttempt?.expiresAt ?? null;
 
-      const pres = mapStatusPresentation(r.status);
+      const isPaymentRejected =
+        latestAttempt?.status === "REJECTED" ||
+        (r.status === "CANCELLED" && attempts.some((a) => a.status === "REJECTED"));
+      const targetCandidate = assignedCandidate ?? mainCandidate;
+      const pres = mapStatusPresentation(r.status, isPaymentRejected ? "REJECTED" : latestAttempt?.status);
       const customerName = `${r.customerFirstName} ${r.customerLastName}`.trim();
       const customerInitials = formatInitials(r.customerFirstName, r.customerLastName);
       const schedule = formatSchedule(targetCandidate?.startAt, targetCandidate?.endAt);
@@ -1268,12 +1328,6 @@ export class ReservationMemoryRepository
         : candidates.length > 1
           ? "Multiple Candidates"
           : mainCandidate?.workspaceInstanceId ?? "Unassigned";
-
-      const attempts = Array.from(this.paymentAttempts.values())
-        .filter((a) => a.reservationId === r.id)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const latestAttempt = attempts[0] ?? null;
-      const paymentExpiresAt = latestAttempt?.expiresAt ?? null;
 
       const method = latestAttempt?.paymentMethodId
         ? this.paymentMethods.find((m) => m.id === latestAttempt.paymentMethodId)
@@ -1308,6 +1362,7 @@ export class ReservationMemoryRepository
         checkedInAt: r.checkedInAt,
         checkedOutAt: r.checkedOutAt,
         paymentExpiresAt,
+        paymentAttemptStatus: latestAttempt?.status ?? null,
         paymentMethodId: latestAttempt?.paymentMethodId ?? null,
         paymentMethodType: method?.methodType ?? null,
         paymentMethodDisplayName: method?.displayName ?? null,
@@ -1331,7 +1386,19 @@ export class ReservationMemoryRepository
     const main = candidateList.find((c) => c.rank === 0) ?? candidateList[0] ?? null;
     const effective = assigned ?? main;
 
-    const pres = mapStatusPresentation(r.status);
+    // Check payment attempts for proof and history
+    const attempts = Array.from(this.paymentAttempts.values())
+      .filter((a) => a.reservationId === r.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const latestAttempt = attempts[0] ?? null;
+    const proofAttempt = attempts.find((a) => a.proofSubmittedAt !== null) ?? null;
+    const paymentExpiresAt = latestAttempt?.expiresAt ?? null;
+    const proofSubmittedAt = proofAttempt?.proofSubmittedAt ?? null;
+
+    const isPaymentRejected =
+      latestAttempt?.status === "REJECTED" ||
+      (r.status === "CANCELLED" && attempts.some((a) => a.status === "REJECTED"));
+    const pres = mapStatusPresentation(r.status, isPaymentRejected ? "REJECTED" : latestAttempt?.status);
     const customerName = `${r.customerFirstName} ${r.customerLastName}`.trim();
     const customerInitials = formatInitials(r.customerFirstName, r.customerLastName);
     const schedule = formatSchedule(effective?.startAt, effective?.endAt);
@@ -1376,15 +1443,6 @@ export class ReservationMemoryRepository
     timeline.push(
       `${formatTimelineDate(r.createdAt)} - Reservation requested (${r.source === "KIOSK" ? "Kiosk" : "Web"})`
     );
-
-    // Check payment attempts for proof and history
-    const attempts = Array.from(this.paymentAttempts.values())
-      .filter((a) => a.reservationId === r.id)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const latestAttempt = attempts[0] ?? null;
-    const proofAttempt = attempts.find((a) => a.proofSubmittedAt !== null) ?? null;
-    const paymentExpiresAt = latestAttempt?.expiresAt ?? null;
-    const proofSubmittedAt = proofAttempt?.proofSubmittedAt ?? null;
 
     const paymentAttemptsSummary: AdminReservationPaymentAttemptSummary[] = attempts.map((a) => {
       const aMethod = a.paymentMethodId
@@ -1480,6 +1538,8 @@ export class ReservationMemoryRepository
       mark: pres.mark,
       schedule,
       duration,
+      startAt: effective?.startAt ?? null,
+      endAt: effective?.endAt ?? null,
       paymentStatus: formattedPaymentStatus,
       paymentColor: pres.paymentColor,
       amountDue: r.amountDue,

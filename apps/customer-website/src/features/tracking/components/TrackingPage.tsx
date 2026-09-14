@@ -4,30 +4,48 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useReservationTracking } from "../hooks/useReservationTracking";
 
-export function TrackingPage() {
-  const [referenceCode, setReferenceCode] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
+interface TrackingPageProps {
+  initialReferenceCode?: string;
+  initialEmail?: string;
+}
+
+export function TrackingPage({
+  initialReferenceCode = "",
+  initialEmail = "",
+}: TrackingPageProps = {}) {
+  const [referenceCode, setReferenceCode] = useState(initialReferenceCode);
+  const [customerEmail, setCustomerEmail] = useState(initialEmail);
   const { data, loading, error, trackReservation } = useReservationTracking();
 
   useEffect(() => {
+    let code = initialReferenceCode;
+    let email = initialEmail;
+
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const codeFromUrl =
         params.get("code") || params.get("reference") || params.get("referenceCode");
       const emailFromUrl = params.get("email") || params.get("customerEmail");
       if (codeFromUrl) {
-        const cleanedCode = codeFromUrl.trim().toUpperCase();
-        setReferenceCode(cleanedCode);
-        if (emailFromUrl) {
-          setCustomerEmail(emailFromUrl.trim());
-        }
-        trackReservation({
-          referenceCode: cleanedCode,
-          customerEmail: emailFromUrl?.trim() || undefined,
-        });
+        code = codeFromUrl;
+      }
+      if (emailFromUrl) {
+        email = emailFromUrl;
       }
     }
-  }, []);
+
+    if (code) {
+      const cleanedCode = code.trim().toUpperCase();
+      setReferenceCode(cleanedCode);
+      if (email) {
+        setCustomerEmail(email.trim());
+      }
+      trackReservation({
+        referenceCode: cleanedCode,
+        customerEmail: email?.trim() || undefined,
+      });
+    }
+  }, [initialReferenceCode, initialEmail]);
 
   return (
     <main className="min-h-screen bg-[var(--da-canvas)] px-6 py-12">
@@ -82,45 +100,61 @@ export function TrackingPage() {
           </div>
         ) : null}
 
-        {data ? (
-          <div className="mt-8 rounded-[24px] bg-[var(--da-canvas)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
-                  Reference
-                </p>
-                <p className="mt-1 text-lg font-extrabold text-[var(--da-brand-dark)]">
-                  {data.referenceCode}
-                </p>
-              </div>
-              <span className="rounded-full bg-[var(--da-info)] px-4 py-2 text-xs font-bold text-[var(--da-primary)]">
-                {data.status}
-              </span>
-            </div>
+        {data ? (() => {
+          const isRejected =
+            data.status === "REJECTED" ||
+            data.paymentStatus === "REJECTED" ||
+            (data.status === "CANCELLED" && (!data.confirmedAt || data.paymentStatus === "REJECTED"));
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <InfoCard label="Amount due" value={`${data.currency} ${data.amountDue}`} />
-              <InfoCard
-                label="Confirmed at"
-                value={data.confirmedAt ? formatDateTime(data.confirmedAt) : "Pending"}
-              />
-              <InfoCard
-                label="Final workspace"
-                value={data.finalAssignment?.workspaceDisplayName ?? "Not assigned yet"}
-              />
-              <InfoCard
-                label="Booking time"
-                value={
-                  data.finalAssignment
-                    ? `${formatDateTime(data.finalAssignment.bookingStartAt)} to ${formatTime(
-                      data.finalAssignment.bookingEndAt
-                    )}`
-                    : "Not assigned yet"
-                }
-              />
+          const confirmedAtValue = isRejected
+            ? "Rejected"
+            : data.confirmedAt
+            ? formatDateTime(data.confirmedAt)
+            : "Pending";
+
+          const finalWorkspaceValue = isRejected
+            ? "Rejected"
+            : (data.finalAssignment?.workspaceDisplayName ?? "Not assigned yet");
+
+          const bookingTimeValue = isRejected
+            ? "Rejected"
+            : data.finalAssignment
+            ? `${formatDateTime(data.finalAssignment.bookingStartAt)} to ${formatTime(
+                data.finalAssignment.bookingEndAt
+              )}`
+            : "Not assigned yet";
+
+          return (
+            <div className="mt-8 rounded-[24px] bg-[var(--da-canvas)] p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
+                    Reference
+                  </p>
+                  <p className="mt-1 text-lg font-extrabold text-[var(--da-brand-dark)]">
+                    {data.referenceCode}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-4 py-2 text-xs font-bold ${
+                    isRejected
+                      ? "bg-red-100 text-red-700"
+                      : "bg-[var(--da-info)] text-[var(--da-primary)]"
+                  }`}
+                >
+                  {isRejected ? "REJECTED" : data.status}
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <InfoCard label="Amount due" value={`${data.currency} ${data.amountDue}`} />
+                <InfoCard label="Confirmed at" value={confirmedAtValue} />
+                <InfoCard label="Final workspace" value={finalWorkspaceValue} />
+                <InfoCard label="Booking time" value={bookingTimeValue} />
+              </div>
             </div>
-          </div>
-        ) : null}
+          );
+        })() : null}
       </div>
     </main>
   );

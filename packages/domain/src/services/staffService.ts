@@ -10,6 +10,7 @@ import { assertValidPassword } from './passwordPolicyService';
 
 export interface StaffRepository {
   hasAdmin(): Promise<boolean>;
+  isPasswordConfigured(userId?: string): Promise<boolean>;
   bootstrapInitialAdmin(input: AdminSetupInput): Promise<StaffProfile>;
   getProfileByUserId(userId: string): Promise<StaffProfile | null>;
   setAdminPassword(userId: string, password: string): Promise<boolean>;
@@ -27,6 +28,18 @@ export class InMemoryStaffRepository implements StaffRepository {
   async hasAdmin(): Promise<boolean> {
     for (const p of this.profiles.values()) {
       if (p.role === 'ADMIN' && p.isActive) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async isPasswordConfigured(userId?: string): Promise<boolean> {
+    if (userId) {
+      return this.passwords.has(userId);
+    }
+    for (const p of this.profiles.values()) {
+      if (p.role === 'ADMIN' && p.isActive && this.passwords.has(p.userId)) {
         return true;
       }
     }
@@ -271,6 +284,60 @@ export class SupabaseStaffRepository implements StaffRepository {
     }
   }
 
+  async isPasswordConfigured(userId?: string): Promise<boolean> {
+    if (!this.supabaseUrl || !this.serviceRoleKey) {
+      return false;
+    }
+
+    try {
+      // 1. Try RPC admin_check_password_configured first
+      const rpcRes = await fetch(`${this.supabaseUrl}/rest/v1/rpc/admin_check_password_configured`, {
+        method: 'POST',
+        headers: {
+          apikey: this.serviceRoleKey,
+          Authorization: `Bearer ${this.serviceRoleKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ p_user_id: userId || null }),
+        cache: 'no-store',
+      });
+
+      if (rpcRes.ok) {
+        const result = await rpcRes.json();
+        return Boolean(result);
+      }
+    } catch {
+      // ignore and try fallback
+    }
+
+    // 2. Fallback: If userId is provided, check via Supabase GoTrue admin user API
+    if (userId) {
+      try {
+        const userRes = await fetch(`${this.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+          headers: {
+            apikey: this.serviceRoleKey,
+            Authorization: `Bearer ${this.serviceRoleKey}`,
+          },
+          cache: 'no-store',
+        });
+
+        if (userRes.ok) {
+          const authUser = await userRes.json();
+          if (authUser?.user_metadata?.password_configured || authUser?.user_metadata?.password_set) {
+            return true;
+          }
+          if (authUser?.encrypted_password && authUser.encrypted_password.length > 0) {
+            return true;
+          }
+        }
+      } catch {
+        // ignore fallback error
+      }
+    }
+
+    return false;
+  }
+
   async setAdminPassword(userId: string, password: string): Promise<boolean> {
     if (!this.supabaseUrl || !this.serviceRoleKey) {
       throw new AdminSetupError('Supabase configuration missing', 500);
@@ -284,7 +351,10 @@ export class SupabaseStaffRepository implements StaffRepository {
           Authorization: `Bearer ${this.serviceRoleKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({
+          password,
+          user_metadata: { password_configured: true, password_set: true },
+        }),
       });
 
       if (!res.ok) {
@@ -307,12 +377,16 @@ export class StaffService {
     return this.repository.hasAdmin();
   }
 
-  async getSetupStatus(): Promise<AdminSetupStatus> {
+  async getSetupStatus(userId?: string): Promise<AdminSetupStatus> {
     const hasAdmin = await this.repository.hasAdmin();
-    return {
+    const result: AdminSetupStatus = {
       hasAdmin,
       setupAllowed: !hasAdmin,
     };
+    if (userId !== undefined) {
+      result.isPasswordConfigured = await this.repository.isPasswordConfigured(userId);
+    }
+    return result;
   }
 
   async setupInitialAdmin(input: AdminSetupInput): Promise<StaffProfile> {
@@ -358,6 +432,13 @@ export class StaffService {
       if (existing.role !== 'ADMIN' || !existing.isActive) {
         throw new AdminSetupError('Profile is not an active administrator', 403);
       }
+
+      // MF-90: If password has already been configured for this administrator, setup is sealed
+      const alreadyConfigured = await this.repository.isPasswordConfigured(existing.userId);
+      if (alreadyConfigured) {
+        throw new AdminAlreadyExistsError('Administrator account already exists. Setup is sealed.');
+      }
+
       profile = existing;
     } else {
       // Check single-use guard
