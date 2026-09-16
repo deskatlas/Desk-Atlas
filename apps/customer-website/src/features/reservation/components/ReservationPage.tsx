@@ -28,6 +28,7 @@ import {
   clearSessionExpiry,
   CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS,
   CUSTOMER_RESERVATION_SESSION_WARNING_SECONDS,
+  validatePersonName,
 } from "@deskatlas/domain";
 import { useRouter } from "next/navigation";
 import { SpotDetailModal } from "./SpotDetailModal";
@@ -828,11 +829,13 @@ export function ReservationPage() {
     if (e) e.preventDefault();
 
     const errors: { firstName?: string; lastName?: string; email?: string } = {};
-    if (!customerFirstName.trim()) {
-      errors.firstName = "First name is required.";
+    const firstNameValidation = validatePersonName(customerFirstName, "First name");
+    if (!firstNameValidation.isValid) {
+      errors.firstName = firstNameValidation.error;
     }
-    if (!customerLastName.trim()) {
-      errors.lastName = "Last name is required.";
+    const lastNameValidation = validatePersonName(customerLastName, "Last name");
+    if (!lastNameValidation.isValid) {
+      errors.lastName = lastNameValidation.error;
     }
     const emailVal = customerEmail.trim();
     if (!emailVal) {

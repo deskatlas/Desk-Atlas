@@ -16,6 +16,7 @@ import {
   type PublishedMapElement,
   type AvailableInstanceSummary,
   type NextUpcomingBookingResult,
+  validatePersonName,
 } from "@deskatlas/domain";
 import {
   SpotDetailModal,
@@ -601,11 +602,13 @@ export default function KioskReservePage() {
     if (!selectedWorkspace) return;
 
     const errors: { firstName?: string; lastName?: string; email?: string } = {};
-    if (!customerFirstName.trim()) {
-      errors.firstName = "First name is required.";
+    const firstNameValidation = validatePersonName(customerFirstName, "First name");
+    if (!firstNameValidation.isValid) {
+      errors.firstName = firstNameValidation.error;
     }
-    if (!customerLastName.trim()) {
-      errors.lastName = "Last name is required.";
+    const lastNameValidation = validatePersonName(customerLastName, "Last name");
+    if (!lastNameValidation.isValid) {
+      errors.lastName = lastNameValidation.error;
     }
     const emailVal = customerEmail.trim();
     if (!emailVal) {

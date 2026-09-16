@@ -4,6 +4,7 @@ import { WorkspaceRepository } from "../models/workspace";
 import { validateCandidates, CandidateValidationContext } from "./candidateValidationService";
 import { createPaymentSessionService, PaymentSessionService } from "./paymentSessionService";
 import { ReservationPaymentRepository } from "./paymentSessionRepository";
+import { validatePersonName } from "./personNameValidationService";
 
 export class ReservationError extends Error {
   constructor(message: string) {
@@ -26,11 +27,13 @@ export class ReservationService {
       paymentLinkBaseUrl?: string;
     }
   ): Promise<ReservationResponseDTO> {
-    if (!request.customerFirstName || request.customerFirstName.trim() === "") {
-      throw new ReservationError("First name is required.");
+    const firstNameValidation = validatePersonName(request.customerFirstName, "First name");
+    if (!firstNameValidation.isValid) {
+      throw new ReservationError(firstNameValidation.error!);
     }
-    if (!request.customerLastName || request.customerLastName.trim() === "") {
-      throw new ReservationError("Last name is required.");
+    const lastNameValidation = validatePersonName(request.customerLastName, "Last name");
+    if (!lastNameValidation.isValid) {
+      throw new ReservationError(lastNameValidation.error!);
     }
     if (!request.customerEmail || request.customerEmail.trim() === "") {
       throw new ReservationError("Email is required.");

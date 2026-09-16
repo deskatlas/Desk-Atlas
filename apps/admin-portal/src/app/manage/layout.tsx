@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/features/auth';
 import { NotificationCenter, UrgentPaymentModal } from '@/features/notifications';
-import { SearchProvider, useSearch } from '@deskatlas/ui';
+import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
+
 import { useRouter, usePathname } from 'next/navigation';
 
 function AdminShell({ children }: { children: React.ReactNode }) {
@@ -251,16 +252,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               {currentTime ? `${currentTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}` : 'Loading...'}
             </div>
             <NotificationCenter />
-            <div onClick={logout} style={{ display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: '14px', borderLeft: '1px solid var(--da-border)', cursor: 'pointer' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--da-brand-dark)', color: 'var(--da-brand-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800 }}>
-                {user.name?.[0] || 'A'}
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', lineHeight: 1.2 }}>{user.name}</div>
-                <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', textTransform: 'capitalize' }}>{user.role}</div>
-              </div>
-            </div>
+            <ProfileDropdown user={user} onLogout={logout} />
           </div>
+
         </div>
 
         {/* PAGE CONTENT */}

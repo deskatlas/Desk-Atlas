@@ -61,23 +61,8 @@ export async function POST(request: NextRequest) {
 
     // Verify role is STAFF or ADMIN
     if (session.actor.role !== 'STAFF' && session.actor.role !== 'ADMIN') {
-      const failResult = loginRateLimiter.recordFailedAttempt('staff', trimmedEmail, ip);
-      if (failResult.locked) {
-        return NextResponse.json(
-          {
-            error: `Too many failed login attempts. Please try again in ${failResult.retryAfterSeconds} seconds.`,
-            retryAfterSeconds: failResult.retryAfterSeconds,
-            lockedUntil: failResult.lockedUntil,
-            attemptsRemaining: 0,
-          },
-          {
-            status: 429,
-            headers: { 'Retry-After': String(failResult.retryAfterSeconds) },
-          }
-        );
-      }
       return NextResponse.json(
-        { error: 'Account is not authorized for staff access' },
+        { error: 'Account deactivated or not authorized' },
         { status: 403 }
       );
     }
@@ -110,13 +95,23 @@ export async function POST(request: NextRequest) {
           }
         );
       }
-      const rawMessage = error instanceof Error ? error.message : 'Invalid credentials';
+
+      const isDeactivatedOrUnauthorized =
+        error?.name === 'DeactivatedAccountError' ||
+        (error instanceof AuthError && error.statusCode === 403) ||
+        error?.message?.toLowerCase().includes('deactivated') ||
+        error?.message?.toLowerCase().includes('not authorized');
+
+      const rawMessage = isDeactivatedOrUnauthorized
+        ? 'Account deactivated or not authorized'
+        : (error instanceof Error ? error.message : 'Invalid credentials');
+
       return NextResponse.json(
         {
           error: `${rawMessage}. ${failResult.remainingAttempts} attempt${failResult.remainingAttempts === 1 ? '' : 's'} remaining.`,
           attemptsRemaining: failResult.remainingAttempts,
         },
-        { status: error instanceof AuthError ? error.statusCode : 401 }
+        { status: isDeactivatedOrUnauthorized ? 403 : (error instanceof AuthError ? error.statusCode : 401) }
       );
     }
 

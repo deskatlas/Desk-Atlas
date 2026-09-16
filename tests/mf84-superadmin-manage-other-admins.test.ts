@@ -93,20 +93,21 @@ describe("MF-84: Superadmin Manage Other Admins and Remove Admin Access", () => 
       }
     );
 
-    // 3. Superadmin successfully invites and creates an ADMIN
+    // 3. Superadmin successfully creates and invites an ADMIN
     const createdAdmin = await service.createStaff({
-      email: "new.admin@example.com",
-      displayName: "New Admin",
+      email: "third.admin@example.com",
+      displayName: "Third Admin",
       password: "Password123!",
       role: "ADMIN",
       actorUserId: "superadmin-1",
       actorRole: "ADMIN",
       actorIsSuperAdmin: true,
     });
-    assert.equal(createdAdmin.rawRole, "ADMIN");
+    assert.strictEqual(createdAdmin.role, "Admin");
+    assert.strictEqual(createdAdmin.rawRole, "ADMIN");
     assert.equal(createdAdmin.isSuperAdmin, false);
 
-    const { invitation } = await service.inviteStaff({
+    const { invitation: superInvitedAdmin } = await service.inviteStaff({
       email: "invited.admin@example.com",
       displayName: "Invited Admin",
       role: "ADMIN",
@@ -114,10 +115,10 @@ describe("MF-84: Superadmin Manage Other Admins and Remove Admin Access", () => 
       actorRole: "ADMIN",
       actorIsSuperAdmin: true,
     });
-    assert.equal(invitation.role, "ADMIN");
+    assert.equal(superInvitedAdmin.role, "ADMIN");
   });
 
-  it("superadmin can list all admins and staff, while regular admin only sees staff created by them", async () => {
+  it("superadmin and regular admin can list all admins and staff in proper order (MF-107)", async () => {
     const memoryRepo = new StaffManagementMemoryRepository(
       [
         {
@@ -168,15 +169,19 @@ describe("MF-84: Superadmin Manage Other Admins and Remove Admin Access", () => 
     // Superadmin is first
     assert.equal(superList[0].id, "superadmin-1");
     assert.equal(superList[0].isSuperAdmin, true);
+    // Admin is second
+    assert.equal(superList[1].id, "admin-2");
+    assert.equal(superList[1].rawRole, "ADMIN");
 
-    // Regular admin 2 listing -> only their own staff
+    // Regular admin 2 listing -> sees full team roster (Super Admin, Admins, Staff)
     const admin2List = await service.listStaff({
       userId: "admin-2",
       role: "ADMIN",
       isSuperAdmin: false,
     });
-    assert.equal(admin2List.length, 1);
-    assert.equal(admin2List[0].id, "staff-admin2");
+    assert.equal(admin2List.length, 4);
+    assert.equal(admin2List[0].id, "superadmin-1");
+    assert.equal(admin2List[1].id, "admin-2");
   });
 
   it("superadmin can remove admin access (demote to STAFF) and manage other admins", async () => {
@@ -343,7 +348,7 @@ describe("MF-84: Superadmin Manage Other Admins and Remove Admin Access", () => 
     );
     const service = createStaffManagementService(memoryRepo, nowProvider);
 
-    // Admin 2 tries to modify Admin 3
+    // Admin 2 tries to modify Admin 3 -> Forbidden
     await assert.rejects(
       async () => {
         await service.updateStaff({
@@ -361,7 +366,7 @@ describe("MF-84: Superadmin Manage Other Admins and Remove Admin Access", () => 
       }
     );
 
-    // Admin 2 tries to delete Admin 3
+    // Admin 2 tries to delete Admin 3 -> Forbidden
     await assert.rejects(
       async () => {
         await service.deleteStaff("admin-3", {
@@ -373,6 +378,40 @@ describe("MF-84: Superadmin Manage Other Admins and Remove Admin Access", () => 
       (err: any) => {
         assert(err instanceof StaffManagementAuthorizationError);
         assert(err.message.toLowerCase().includes("only the superadmin can delete administrator accounts"));
+        return true;
+      }
+    );
+
+    // Admin 2 tries to modify Superadmin -> Rejected
+    await assert.rejects(
+      async () => {
+        await service.updateStaff({
+          staffUserId: "superadmin-1",
+          displayName: "Hacked Super",
+          actorUserId: "admin-2",
+          actorRole: "ADMIN",
+          actorIsSuperAdmin: false,
+        });
+      },
+      (err: any) => {
+        assert(err instanceof StaffManagementAuthorizationError);
+        assert(err.message.toLowerCase().includes("cannot modify the superadmin account"));
+        return true;
+      }
+    );
+
+    // Admin 2 tries to delete Superadmin -> Rejected
+    await assert.rejects(
+      async () => {
+        await service.deleteStaff("superadmin-1", {
+          userId: "admin-2",
+          role: "ADMIN",
+          isSuperAdmin: false,
+        });
+      },
+      (err: any) => {
+        assert(err instanceof StaffManagementAuthorizationError);
+        assert(err.message.toLowerCase().includes("superadmin account cannot be deleted"));
         return true;
       }
     );

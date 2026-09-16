@@ -1693,55 +1693,36 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth, extensions
 AS $$
-DECLARE
-  v_is_super_admin boolean := false;
 BEGIN
   IF p_actor_user_id IS NOT NULL THEN
-    SELECT COALESCE(sp.is_super_admin, false) INTO v_is_super_admin
-    FROM public.staff_profiles sp
-    WHERE sp.user_id = p_actor_user_id
-      AND sp.role = 'ADMIN'
-      AND sp.is_active = true;
-
-    IF NOT FOUND THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.staff_profiles sp
+      WHERE sp.user_id = p_actor_user_id
+        AND sp.role = 'ADMIN'
+        AND sp.is_active = true
+    ) THEN
       RAISE EXCEPTION 'Only active ADMIN profiles may view staff management';
     END IF;
   END IF;
 
-  IF v_is_super_admin OR p_actor_user_id IS NULL THEN
-    RETURN QUERY
-    SELECT
-      p.user_id AS id,
-      COALESCE(u.email, 'unknown@deskatlas.com')::text AS email,
-      p.role,
-      p.display_name,
-      p.is_active,
-      p.created_at,
-      p.updated_at,
-      u.last_sign_in_at,
-      p.created_by_admin_id,
-      COALESCE(p.is_super_admin, false) AS is_super_admin
-    FROM public.staff_profiles p
-    LEFT JOIN auth.users u ON u.id = p.user_id
-    ORDER BY p.is_super_admin DESC, p.created_at ASC;
-  ELSE
-    RETURN QUERY
-    SELECT
-      p.user_id AS id,
-      COALESCE(u.email, 'unknown@deskatlas.com')::text AS email,
-      p.role,
-      p.display_name,
-      p.is_active,
-      p.created_at,
-      p.updated_at,
-      u.last_sign_in_at,
-      p.created_by_admin_id,
-      COALESCE(p.is_super_admin, false) AS is_super_admin
-    FROM public.staff_profiles p
-    LEFT JOIN auth.users u ON u.id = p.user_id
-    WHERE p.created_by_admin_id = p_actor_user_id
-    ORDER BY p.created_at ASC;
-  END IF;
+  RETURN QUERY
+  SELECT
+    p.user_id AS id,
+    COALESCE(u.email, 'unknown@deskatlas.com')::text AS email,
+    p.role,
+    p.display_name,
+    p.is_active,
+    p.created_at,
+    p.updated_at,
+    u.last_sign_in_at,
+    p.created_by_admin_id,
+    COALESCE(p.is_super_admin, false) AS is_super_admin
+  FROM public.staff_profiles p
+  LEFT JOIN auth.users u ON u.id = p.user_id
+  ORDER BY
+    COALESCE(p.is_super_admin, false) DESC,
+    CASE WHEN p.role = 'ADMIN' THEN 0 ELSE 1 END ASC,
+    p.created_at ASC;
 END;
 $$;
 
@@ -1948,7 +1929,7 @@ DECLARE
   v_actor_is_super_admin boolean := false;
 BEGIN
   IF p_actor_user_id IS NOT NULL THEN
-    SELECT COALESCE(sp.is_super_admin, false) INTO v_actor_is_super_admin
+    SELECT (COALESCE(sp.is_super_admin, false) OR sp.created_by_admin_id IS NULL) INTO v_actor_is_super_admin
     FROM public.staff_profiles sp
     WHERE sp.user_id = p_actor_user_id
       AND sp.role = 'ADMIN'
@@ -1975,28 +1956,16 @@ BEGIN
     IF p_is_active IS NOT NULL AND p_is_active = false THEN
       RAISE EXCEPTION 'Cannot deactivate the Superadmin account';
     END IF;
-    IF p_actor_user_id IS NOT NULL AND p_actor_user_id <> p_target_user_id THEN
-      RAISE EXCEPTION 'Cannot modify the Superadmin account';
-    END IF;
   END IF;
 
-  -- Scoping validation:
-  -- If target is an ADMIN and caller is not Superadmin, reject
-  IF v_current_profile.role = 'ADMIN' AND NOT v_actor_is_super_admin AND p_actor_user_id <> p_target_user_id THEN
+  -- Non-superadmin cannot manage other admin accounts
+  IF v_current_profile.role = 'ADMIN' AND NOT v_actor_is_super_admin AND p_actor_user_id IS NOT NULL AND p_actor_user_id <> p_target_user_id THEN
     RAISE EXCEPTION 'Only the Superadmin can manage administrator accounts';
   END IF;
 
-  -- If promoting to ADMIN and caller is not Superadmin, reject
-  IF p_role = 'ADMIN' AND NOT v_actor_is_super_admin THEN
+  -- Non-superadmin cannot promote to admin
+  IF p_role = 'ADMIN' AND v_current_profile.role <> 'ADMIN' AND NOT v_actor_is_super_admin THEN
     RAISE EXCEPTION 'Only the Superadmin can promote accounts to administrator';
-  END IF;
-
-  -- Scoping validation for regular staff: Admin cannot modify staff created by another admin (unless actor is Superadmin)
-  IF NOT v_actor_is_super_admin
-     AND p_actor_user_id IS NOT NULL
-     AND v_current_profile.created_by_admin_id IS NOT NULL
-     AND v_current_profile.created_by_admin_id <> p_actor_user_id THEN
-    RAISE EXCEPTION 'Admin cannot manage staff created by another admin';
   END IF;
 
   IF p_display_name IS NOT NULL AND btrim(p_display_name) = '' THEN
@@ -2180,7 +2149,7 @@ DECLARE
   v_check RECORD;
 BEGIN
   IF p_actor_user_id IS NOT NULL THEN
-    SELECT COALESCE(sp.is_super_admin, false) INTO v_actor_is_super_admin
+    SELECT (COALESCE(sp.is_super_admin, false) OR sp.created_by_admin_id IS NULL) INTO v_actor_is_super_admin
     FROM public.staff_profiles sp
     WHERE sp.user_id = p_actor_user_id
       AND sp.role = 'ADMIN'
@@ -2205,13 +2174,6 @@ BEGIN
 
   IF v_profile.role = 'ADMIN' AND NOT v_actor_is_super_admin THEN
     RAISE EXCEPTION 'Only the Superadmin can delete administrator accounts';
-  END IF;
-
-  IF NOT v_actor_is_super_admin
-     AND p_actor_user_id IS NOT NULL
-     AND v_profile.created_by_admin_id IS NOT NULL
-     AND v_profile.created_by_admin_id <> p_actor_user_id THEN
-    RAISE EXCEPTION 'Admin cannot manage staff created by another admin';
   END IF;
 
   SELECT * INTO v_check

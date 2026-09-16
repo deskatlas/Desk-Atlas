@@ -182,7 +182,7 @@ describe("MF-46: Password Policy Enforcement (PRD-F13)", () => {
         () =>
           service.createStaff({
             email: "weak1@deskatlas.com",
-            displayName: "Weak 1",
+            displayName: "Weak One",
             password: "Aa1!",
             role: "STAFF",
             actorUserId: adminActor.userId,
@@ -196,7 +196,7 @@ describe("MF-46: Password Policy Enforcement (PRD-F13)", () => {
         () =>
           service.createStaff({
             email: "weak2@deskatlas.com",
-            displayName: "Weak 2",
+            displayName: "Weak Two",
             password: "weakpassword123!",
             role: "STAFF",
             actorUserId: adminActor.userId,
@@ -210,7 +210,7 @@ describe("MF-46: Password Policy Enforcement (PRD-F13)", () => {
         () =>
           service.createStaff({
             email: "weak3@deskatlas.com",
-            displayName: "Weak 3",
+            displayName: "Weak Three",
             password: "NoNumbersInThis!",
             role: "STAFF",
             actorUserId: adminActor.userId,
@@ -224,7 +224,7 @@ describe("MF-46: Password Policy Enforcement (PRD-F13)", () => {
         () =>
           service.createStaff({
             email: "weak4@deskatlas.com",
-            displayName: "Weak 4",
+            displayName: "Weak Four",
             password: "NoSpecialCharacter123",
             role: "STAFF",
             actorUserId: adminActor.userId,

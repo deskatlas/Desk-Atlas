@@ -69,21 +69,19 @@ describe("MF-44: Admin-Scoped Staff Accounts", () => {
     });
     assert.equal(staffB1.createdByAdminId, adminB.userId);
 
-    // Admin A queries staff: only returns staff created by Admin A
+    // MF-107: Admin A and Admin B have full team read visibility, displaying all admins and staff
     const listA = await service.listStaff(adminA);
-    assert.equal(listA.length, 2);
+    assert.equal(listA.length, 5); // 2 admins + 3 staff
     assert.deepEqual(
-      listA.map((s) => s.email).sort(),
-      ["alex@deskatlas.com", "alice@deskatlas.com"]
+      listA.filter((s) => s.rawRole === 'STAFF').map((s) => s.email).sort(),
+      ["alex@deskatlas.com", "alice@deskatlas.com", "bob@deskatlas.com"]
     );
 
-    // Admin B queries staff: only returns staff created by Admin B
     const listB = await service.listStaff(adminB);
-    assert.equal(listB.length, 1);
-    assert.equal(listB[0].email, "bob@deskatlas.com");
+    assert.equal(listB.length, 5);
   });
 
-  it("denies cross-admin viewing, updating, and deactivation", async () => {
+  it("allows cross-admin viewing (MF-107) and cross-admin staff management (MF-108)", async () => {
     const memoryRepo = new StaffManagementMemoryRepository(
       [
         {
@@ -115,29 +113,22 @@ describe("MF-44: Admin-Scoped Staff Accounts", () => {
       actorRole: adminA.role,
     });
 
-    // Admin B cannot view staff created by Admin A via getStaffById with actor
-    await assert.rejects(
-      () => service.getStaffById(staffA.id, adminB),
-      StaffManagementAuthorizationError
-    );
+    // MF-107: Admin B CAN view staff created by Admin A via getStaffById
+    const viewed = await service.getStaffById(staffA.id, adminB);
+    assert.equal(viewed?.email, "claire@deskatlas.com");
 
-    // Admin B cannot update staff created by Admin A
-    await assert.rejects(
-      () =>
-        service.updateStaff({
-          staffUserId: staffA.id,
-          displayName: "Hacked Name",
-          actorUserId: adminB.userId,
-          actorRole: adminB.role,
-        }),
-      StaffManagementAuthorizationError
-    );
+    // MF-108: Admin B CAN update staff created by Admin A
+    const updated = await service.updateStaff({
+      staffUserId: staffA.id,
+      displayName: "Updated by Admin B",
+      actorUserId: adminB.userId,
+      actorRole: adminB.role,
+    });
+    assert.equal(updated.name, "Updated by Admin B");
 
-    // Admin B cannot deactivate staff created by Admin A
-    await assert.rejects(
-      () => service.deactivateStaff(staffA.id, adminB),
-      StaffManagementAuthorizationError
-    );
+    // MF-108: Admin B CAN deactivate staff created by Admin A
+    const deactivated = await service.deactivateStaff(staffA.id, adminB);
+    assert.equal(deactivated.isActive, false);
   });
 
   it("preserves ownership immutability across legitimate updates", async () => {

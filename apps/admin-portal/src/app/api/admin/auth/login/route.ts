@@ -94,6 +94,11 @@ export async function POST(request: NextRequest) {
             token: `da_session_${Date.now()}_${result.user.id}`,
           });
         } else {
+          const rawErr = String(result.error || '');
+          const isDeactivated =
+            rawErr.toLowerCase().includes('deactivated') ||
+            rawErr.toLowerCase().includes('not authorized');
+
           const failResult = loginRateLimiter.recordFailedAttempt('admin', trimmedEmail, ip);
           if (failResult.locked) {
             return NextResponse.json(
@@ -109,6 +114,17 @@ export async function POST(request: NextRequest) {
               }
             );
           }
+
+          if (isDeactivated) {
+            return NextResponse.json(
+              {
+                error: `Account deactivated or not authorized. ${failResult.remainingAttempts} attempt${failResult.remainingAttempts === 1 ? '' : 's'} remaining.`,
+                attemptsRemaining: failResult.remainingAttempts,
+              },
+              { status: 403 }
+            );
+          }
+
           return NextResponse.json(
             {
               error: `Invalid email or password. ${failResult.remainingAttempts} attempt${failResult.remainingAttempts === 1 ? '' : 's'} remaining.`,
@@ -197,8 +213,26 @@ export async function POST(request: NextRequest) {
     const profile = staffProfiles[0];
 
     if (!profile || !profile.is_active) {
+      const failResult = loginRateLimiter.recordFailedAttempt('admin', trimmedEmail, ip);
+      if (failResult.locked) {
+        return NextResponse.json(
+          {
+            error: `Too many failed login attempts. Please try again in ${failResult.retryAfterSeconds} seconds.`,
+            retryAfterSeconds: failResult.retryAfterSeconds,
+            lockedUntil: failResult.lockedUntil,
+            attemptsRemaining: 0,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(failResult.retryAfterSeconds) },
+          }
+        );
+      }
       return NextResponse.json(
-        { error: 'Account is not authorized or is deactivated' },
+        {
+          error: `Account deactivated or not authorized. ${failResult.remainingAttempts} attempt${failResult.remainingAttempts === 1 ? '' : 's'} remaining.`,
+          attemptsRemaining: failResult.remainingAttempts,
+        },
         { status: 403 }
       );
     }
@@ -224,6 +258,15 @@ export async function POST(request: NextRequest) {
       token: authData.access_token,
     });
   } catch (error: any) {
+    if (
+      error?.message?.toLowerCase().includes('deactivated') ||
+      error?.message?.toLowerCase().includes('not authorized')
+    ) {
+      return NextResponse.json(
+        { error: 'Account deactivated or not authorized' },
+        { status: 403 }
+      );
+    }
     console.error('[Auth Login] Unexpected error:', error);
     return NextResponse.json(
       { error: error?.message || 'Internal server error during login' },

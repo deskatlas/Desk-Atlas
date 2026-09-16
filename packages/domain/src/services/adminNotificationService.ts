@@ -263,7 +263,7 @@ export function createAdminNotificationService(
         });
       }
 
-      // 4. Workspace operational status changes from audit logs
+      // 4. Workspace operational status changes & staff/admin invitations from audit logs
       for (const log of auditLogs) {
         const isWorkspaceUpdate =
           log.action === "workspace.instance.updated" ||
@@ -296,6 +296,38 @@ export function createAdminNotificationService(
               },
             });
           }
+        }
+
+        const isInvitationAccepted =
+          log.action === "ACCEPT_STAFF_INVITATION" ||
+          log.action === "INVITATION_ACCEPTED" ||
+          log.action === "admin.invitation.accepted" ||
+          log.action === "staff.invitation.accepted";
+
+        if (isInvitationAccepted && log.metadata) {
+          const role = (log.metadata.role as string) || (log.actorRole === "ADMIN" ? "ADMIN" : "STAFF");
+          const isAdmin = role.toUpperCase() === "ADMIN";
+          const displayName =
+            (log.metadata.displayName as string) ||
+            (isAdmin ? "Administrator" : "Staff");
+          const email = (log.metadata.email as string) || "";
+          const emailDisplay = email ? ` (${email})` : "";
+          const time = log.createdAt ?? new Date().toISOString();
+
+          addNotification({
+            id: `staff-inv-${log.entityId}-${time}`,
+            type: isAdmin ? "ADMIN_INVITATION_ACCEPTED" : "STAFF_INVITATION_ACCEPTED",
+            title: isAdmin ? "New Administrator Joined" : "New Staff Joined",
+            description: `${displayName}${emailDisplay} has accepted your invitation and activated their ${isAdmin ? "administrator" : "staff"} account.`,
+            link: "/manage/staff",
+            timestamp: time,
+            metadata: {
+              userId: log.entityId,
+              email,
+              displayName,
+              role,
+            },
+          });
         }
       }
 

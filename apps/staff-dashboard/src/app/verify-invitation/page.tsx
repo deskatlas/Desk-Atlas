@@ -73,16 +73,19 @@ function InvitationVerifyForm() {
       return;
     }
 
-    if (newPassword) {
-      const validation = validatePassword(newPassword);
-      if (!validation.isValid) {
-        setSubmitError(`Password does not meet requirements: ${validation.errors.join(' ')}`);
-        return;
-      }
-      if (newPassword !== confirmPassword) {
-        setSubmitError('Passwords do not match.');
-        return;
-      }
+    if (!newPassword) {
+      setSubmitError('Please create a password for your account.');
+      return;
+    }
+
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      setSubmitError(`Password does not meet requirements: ${validation.errors.join(' ')}`);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setSubmitError('Passwords do not match.');
+      return;
     }
 
     setSubmitting(true);
@@ -95,7 +98,7 @@ function InvitationVerifyForm() {
         body: JSON.stringify({
           token,
           verificationCode: code.trim(),
-          password: newPassword || undefined,
+          password: newPassword,
         }),
       });
 
@@ -274,31 +277,35 @@ function InvitationVerifyForm() {
 
         <div>
           <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-            SET PERMANENT PASSWORD (OPTIONAL)
+            CREATE YOUR PASSWORD *
           </label>
           <PasswordInput
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Leave blank to use pre-set password"
+            placeholder="Enter your new password"
+            required
             style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
           />
-          {newPassword ? <PasswordRequirementsChecklist password={newPassword} /> : null}
+          <p style={{ fontSize: '11px', color: 'var(--da-text-secondary)', margin: '4px 0 0' }}>
+            Please create your personal password so you can sign in to the {invitation.role === 'ADMIN' ? 'Admin Portal' : 'Staff Dashboard'} at any time.
+          </p>
+          <div style={{ marginTop: '8px' }}>
+            <PasswordRequirementsChecklist password={newPassword} />
+          </div>
         </div>
 
-        {newPassword && (
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-              CONFIRM PERMANENT PASSWORD
-            </label>
-            <PasswordInput
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              required
-              style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
-            />
-          </div>
-        )}
+        <div>
+          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
+            CONFIRM PASSWORD *
+          </label>
+          <PasswordInput
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm your new password"
+            required
+            style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
+          />
+        </div>
 
         <button
           type="submit"

@@ -13,6 +13,7 @@ import {
 } from '../models/staffManagement';
 import { StaffManagementRepository } from './staffManagementRepository';
 import { validatePassword } from './passwordPolicyService';
+import { validatePersonName } from './personNameValidationService';
 import { TransactionalEmailService, createTransactionalEmailService } from './transactionalEmailService';
 
 export class StaffManagementService {
@@ -37,18 +38,10 @@ export class StaffManagementService {
     if (!id || !id.trim()) {
       throw new StaffManagementError('Staff ID is required.');
     }
-    const staff = await this.repository.getStaffById(id.trim());
-    if (staff && actor && actor.role === 'ADMIN') {
-      if (actor.isSuperAdmin) {
-        return staff;
-      }
-      if (staff.rawRole === 'ADMIN' && staff.id !== actor.userId) {
-        throw new StaffManagementAuthorizationError('Admin cannot view other administrators');
-      }
-      if (staff.createdByAdminId && staff.createdByAdminId !== actor.userId) {
-        throw new StaffManagementAuthorizationError('Admin cannot view staff created by another admin');
-      }
+    if (actor && actor.role !== 'ADMIN') {
+      throw new StaffManagementAuthorizationError('Only ADMIN profiles may manage staff.');
     }
+    const staff = await this.repository.getStaffById(id.trim());
     return staff;
   }
 
@@ -66,10 +59,11 @@ export class StaffManagementService {
       throw new StaffManagementError('A valid email address is required.');
     }
 
-    const displayName = input.displayName ? input.displayName.trim() : '';
-    if (!displayName) {
-      throw new StaffManagementError('Display name cannot be blank.');
+    const nameValidation = validatePersonName(input.displayName, 'Display name');
+    if (!nameValidation.isValid) {
+      throw new StaffManagementError(nameValidation.error!);
     }
+    const displayName = input.displayName.trim();
 
     if (input.role !== 'ADMIN' && input.role !== 'STAFF') {
       throw new StaffManagementError('Role must be either ADMIN or STAFF.');
@@ -105,6 +99,14 @@ export class StaffManagementService {
       throw new StaffManagementError('Staff member not found');
     }
 
+    let isSuperAdmin = Boolean(input.actorIsSuperAdmin);
+    if (!isSuperAdmin && input.actorUserId) {
+      const actorProfile = await this.repository.getStaffById(input.actorUserId);
+      if (actorProfile) {
+        isSuperAdmin = Boolean(actorProfile.isSuperAdmin);
+      }
+    }
+
     // Protection for Superadmin account
     if (existing.isSuperAdmin) {
       if (input.role !== undefined && input.role !== 'ADMIN') {
@@ -113,32 +115,26 @@ export class StaffManagementService {
       if (input.isActive === false) {
         throw new StaffManagementAuthorizationError('The superadmin account cannot be deactivated.');
       }
-      if (input.actorUserId && input.actorUserId !== existing.id) {
+      if (!isSuperAdmin) {
         throw new StaffManagementAuthorizationError('Cannot modify the Superadmin account.');
       }
     }
 
     // Admin target validation: Only superadmin or self can update an admin account
-    if (existing.rawRole === 'ADMIN' && !input.actorIsSuperAdmin && input.actorUserId !== existing.id) {
+    if (existing.rawRole === 'ADMIN' && !isSuperAdmin && input.actorUserId !== existing.id) {
       throw new StaffManagementAuthorizationError('Only the Superadmin can manage administrator accounts.');
     }
 
     // Promoting to Admin validation
-    if (input.role === 'ADMIN' && existing.rawRole !== 'ADMIN' && !input.actorIsSuperAdmin) {
+    if (input.role === 'ADMIN' && existing.rawRole !== 'ADMIN' && !isSuperAdmin) {
       throw new StaffManagementAuthorizationError('Only the Superadmin can promote accounts to administrator.');
     }
 
-    if (
-      !input.actorIsSuperAdmin &&
-      input.actorUserId &&
-      existing.createdByAdminId &&
-      existing.createdByAdminId !== input.actorUserId
-    ) {
-      throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
-    }
-
-    if (input.displayName !== undefined && !input.displayName.trim()) {
-      throw new StaffManagementError('Display name cannot be blank.');
+    if (input.displayName !== undefined) {
+      const nameValidation = validatePersonName(input.displayName, 'Display name');
+      if (!nameValidation.isValid) {
+        throw new StaffManagementError(nameValidation.error!);
+      }
     }
 
     if (input.role !== undefined && input.role !== 'ADMIN' && input.role !== 'STAFF') {
@@ -154,7 +150,10 @@ export class StaffManagementService {
       }
     }
 
-    return this.repository.updateStaff(input);
+    return this.repository.updateStaff({
+      ...input,
+      actorIsSuperAdmin: isSuperAdmin,
+    });
   }
 
   async deactivateStaff(staffUserId: string, actor: StaffManagementActor): Promise<StaffMember> {
@@ -236,10 +235,11 @@ export class StaffManagementService {
       throw new StaffManagementError('A valid email address is required.');
     }
 
-    const displayName = input.displayName ? input.displayName.trim() : '';
-    if (!displayName) {
-      throw new StaffManagementError('Display name cannot be blank.');
+    const nameValidation = validatePersonName(input.displayName, 'Display name');
+    if (!nameValidation.isValid) {
+      throw new StaffManagementError(nameValidation.error!);
     }
+    const displayName = input.displayName.trim();
 
     if (input.role !== 'ADMIN' && input.role !== 'STAFF') {
       throw new StaffManagementError('Role must be either ADMIN or STAFF.');

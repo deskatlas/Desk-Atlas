@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { StaffMember, StaffRole } from '@deskatlas/domain';
-import { validatePassword } from '@deskatlas/domain';
+import { validatePassword, validatePersonName } from '@deskatlas/domain';
 import { PasswordRequirementsChecklist, PasswordInput } from '@deskatlas/ui';
 import { useAuth } from '@/features/auth';
 
@@ -160,7 +160,7 @@ export function StaffManagement() {
         body: JSON.stringify({
           isActive: !st.isActive,
           actorUserId: user?.id,
-          actorIsSuperAdmin: Boolean(user?.isSuperAdmin),
+          actorIsSuperAdmin: Boolean(user?.isSuperAdmin || isSuperAdmin),
         }),
       });
       if (!res.ok) {
@@ -174,6 +174,9 @@ export function StaffManagement() {
   }
 
   async function openManageModal(st: StaffMember) {
+    if (st.isSuperAdmin && !isSuperAdmin && st.id !== user?.id) return;
+    if (st.rawRole === 'ADMIN' && !isSuperAdmin && st.id !== user?.id) return;
+
     setEditingStaff(st);
     setManageName(st.name);
     setManageRole(st.rawRole);
@@ -240,8 +243,13 @@ export function StaffManagement() {
 
   async function handleAddStaff(e: React.FormEvent) {
     e.preventDefault();
-    if (!addName.trim() || !addEmail.trim()) {
-      setAddError('Name and email are required.');
+    const nameValidation = validatePersonName(addName, 'Full name');
+    if (!nameValidation.isValid) {
+      setAddError(nameValidation.error!);
+      return;
+    }
+    if (!addEmail.trim()) {
+      setAddError('Email is required.');
       return;
     }
     if (addPassword) {
@@ -262,10 +270,10 @@ export function StaffManagement() {
           displayName: addName.trim(),
           email: addEmail.trim(),
           password: addPassword || undefined,
-          role: addRole,
+          role: isSuperAdmin ? addRole : 'STAFF',
           actorUserId: user?.id,
           actorRole: 'ADMIN',
-          actorIsSuperAdmin: Boolean(user?.isSuperAdmin),
+          actorIsSuperAdmin: Boolean(user?.isSuperAdmin || isSuperAdmin),
         }),
       });
 
@@ -293,8 +301,9 @@ export function StaffManagement() {
   async function handleUpdateStaff(e: React.FormEvent) {
     e.preventDefault();
     if (!editingStaff) return;
-    if (!manageName.trim()) {
-      setManageError('Display name cannot be blank.');
+    const nameValidation = validatePersonName(manageName, 'Display name');
+    if (!nameValidation.isValid) {
+      setManageError(nameValidation.error!);
       return;
     }
     if (managePassword && managePassword.trim().length > 0) {
@@ -313,12 +322,12 @@ export function StaffManagement() {
         headers: getAuthHeaders(),
         body: JSON.stringify({
           displayName: manageName.trim(),
-          role: editingStaff.isSuperAdmin ? undefined : manageRole,
+          role: editingStaff.isSuperAdmin ? undefined : isSuperAdmin ? manageRole : editingStaff.rawRole,
           isActive: editingStaff.isSuperAdmin ? true : manageIsActive,
           password: managePassword.trim() || undefined,
           actorUserId: user?.id,
           actorRole: 'ADMIN',
-          actorIsSuperAdmin: Boolean(user?.isSuperAdmin),
+          actorIsSuperAdmin: Boolean(user?.isSuperAdmin || isSuperAdmin),
         }),
       });
 
@@ -409,33 +418,69 @@ export function StaffManagement() {
               <span style={{ color: 'var(--da-text-primary)' }}>{st.lastActive}</span>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
                 {st.isSuperAdmin ? (
-                  <span style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontStyle: 'italic' }}>
-                    {st.id === user?.id ? 'Current User' : 'Primary Admin'}
-                  </span>
+                  <>
+                    <span style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontStyle: 'italic' }}>
+                      {st.id === user?.id ? 'Primary Admin (You)' : 'Primary Admin'}
+                    </span>
+                    {isSuperAdmin && st.id === user?.id && (
+                      <button
+                        onClick={() => openManageModal(st)}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--da-brand-dark)', fontWeight: 700, textAlign: 'right', cursor: 'pointer', padding: 0, fontSize: '12px' }}
+                      >
+                        Manage
+                      </button>
+                    )}
+                  </>
+                ) : st.rawRole === 'ADMIN' && !isSuperAdmin ? (
+                  st.id === user?.id ? (
+                    <>
+                      <span style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontStyle: 'italic' }}>
+                        Current User
+                      </span>
+                      <button
+                        onClick={() => openManageModal(st)}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--da-brand-dark)', fontWeight: 700, textAlign: 'right', cursor: 'pointer', padding: 0, fontSize: '12px' }}
+                      >
+                        Manage
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontStyle: 'italic' }}>
+                      Administrator
+                    </span>
+                  )
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleToggleActive(st)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: st.isActive ? '#DC2626' : '#059669',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      padding: 0,
-                      fontSize: '12px',
-                    }}
-                    title={st.isActive ? 'Deactivate account' : 'Reactivate account'}
-                  >
-                    {st.isActive ? 'Deactivate' : 'Reactivate'}
-                  </button>
+                  <>
+                    {st.id !== user?.id ? (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(st)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: st.isActive ? '#DC2626' : '#059669',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontSize: '12px',
+                        }}
+                        title={st.isActive ? 'Deactivate account' : 'Reactivate account'}
+                      >
+                        {st.isActive ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontStyle: 'italic' }}>
+                        Current User
+                      </span>
+                    )}
+                    <button
+                      onClick={() => openManageModal(st)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--da-brand-dark)', fontWeight: 700, textAlign: 'right', cursor: 'pointer', padding: 0, fontSize: '12px' }}
+                    >
+                      Manage
+                    </button>
+                  </>
                 )}
-                <button
-                  onClick={() => openManageModal(st)}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--da-brand-dark)', fontWeight: 700, textAlign: 'right', cursor: 'pointer', padding: 0, fontSize: '12px' }}
-                >
-                  Manage
-                </button>
               </div>
             </div>
           ))
@@ -547,7 +592,7 @@ export function StaffManagement() {
               /* Step 1: Input Form */
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>
-                  {user?.isSuperAdmin ? 'Invite Team Member (Staff / Admin)' : 'Invite Staff Member'}
+                  {isSuperAdmin ? 'Invite Team Member (Staff / Admin)' : 'Invite Staff Member'}
                 </h2>
                 <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 18px' }}>
                   Sends an invitation email with a confirmation link and generates a 2FA activation code.
@@ -705,7 +750,7 @@ export function StaffManagement() {
                   </div>
                 ) : (
                   <div style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', background: '#F9FAFB', color: 'var(--da-text-secondary)' }}>
-                    Staff
+                    {editingStaff.rawRole === 'ADMIN' ? 'Admin (Administrator)' : 'Staff (Front desk, check-in, counter)'}
                   </div>
                 )}
               </div>
@@ -715,6 +760,10 @@ export function StaffManagement() {
                 {editingStaff.isSuperAdmin ? (
                   <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#D1FAE5', color: '#065F46', fontSize: '12px', fontWeight: 700 }}>
                     ✓ Active (Superadmin account cannot be deactivated)
+                  </div>
+                ) : editingStaff.id === user?.id ? (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#D1FAE5', color: '#065F46', fontSize: '12px', fontWeight: 700 }}>
+                    ✓ Active (Cannot deactivate currently logged in account)
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -754,6 +803,14 @@ export function StaffManagement() {
                 {editingStaff.isSuperAdmin ? (
                   <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#F9FAFB', border: '1px solid var(--da-border-light)', fontSize: '11px', color: 'var(--da-text-secondary)' }}>
                     Superadmin account cannot be deleted.
+                  </div>
+                ) : editingStaff.rawRole === 'ADMIN' && !isSuperAdmin ? (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#F9FAFB', border: '1px solid var(--da-border-light)', fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                    Only the Superadmin can delete administrator accounts.
+                  </div>
+                ) : editingStaff.id === user?.id ? (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#F9FAFB', border: '1px solid var(--da-border-light)', fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                    Cannot delete currently logged in account.
                   </div>
                 ) : deletionEligibility && !deletionEligibility.canDelete ? (
                   <div

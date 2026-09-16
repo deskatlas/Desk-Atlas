@@ -116,6 +116,18 @@ function getNotificationConfig(type: AdminNotificationType) {
         color: "#ea580c",
         bgColor: "#ffedd5",
       };
+    case "ADMIN_INVITATION_ACCEPTED":
+      return {
+        icon: UserCheck,
+        color: "#059669",
+        bgColor: "#d1fae5",
+      };
+    case "STAFF_INVITATION_ACCEPTED":
+      return {
+        icon: UserCheck,
+        color: "#0284c7",
+        bgColor: "#e0f2fe",
+      };
     default:
       return {
         icon: Bell,

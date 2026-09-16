@@ -12,4 +12,10 @@ export { NumericInput, handleNumericKeyDown, parseNumericInput } from './compone
 export type { NumericInputProps, NumericInputKeyOptions } from './components/NumericInput';
 export { PasswordInput } from './components/PasswordInput';
 export type { PasswordInputProps } from './components/PasswordInput';
+export { ProfileDropdown } from './components/ProfileDropdown';
+export type { ProfileDropdownProps, ProfileUser } from './components/ProfileDropdown';
+export { DeactivatedAccountModal } from './components/DeactivatedAccountModal';
+export type { DeactivatedAccountModalProps } from './components/DeactivatedAccountModal';
 export const appShellClassName = 'min-h-screen bg-slate-950 text-slate-100';
+
+

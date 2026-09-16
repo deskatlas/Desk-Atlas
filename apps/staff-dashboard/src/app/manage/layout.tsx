@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
-import { SearchProvider, useSearch } from '@deskatlas/ui';
+import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
+
 import { useRouter, usePathname } from 'next/navigation';
 
 function StaffShell({ children }: { children: React.ReactNode }) {
@@ -179,16 +180,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
               <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '3px' }}></div>
               {currentTime ? `${currentTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}` : 'Loading...'}
             </div>
-            <div onClick={logout} style={{ display: 'flex', alignItems: 'center', gap: '9px', paddingLeft: '14px', borderLeft: '1px solid var(--da-border)', cursor: 'pointer' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--da-brand-dark)', color: 'var(--da-brand-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800 }}>
-                {user.name?.[0] || 'S'}
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', lineHeight: 1.2 }}>{user.name}</div>
-                <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', textTransform: 'capitalize' }}>{user.role}</div>
-              </div>
-            </div>
+            <ProfileDropdown user={user} onLogout={logout} />
           </div>
+
         </div>
 
         {/* PAGE CONTENT */}

@@ -295,6 +295,15 @@ export interface StaffInvitationEmailInput {
   expiresAt: string;
 }
 
+export interface SuperAdminInvitationAcceptedEmailInput {
+  to: string;
+  adminName: string;
+  adminEmail: string;
+  role: string;
+  activatedAt?: string;
+  dashboardUrl?: string;
+}
+
 export interface AdminPasswordResetEmailInput {
   to: string;
   displayName?: string;
@@ -1243,6 +1252,16 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitationAcceptedEmailInput): Promise<EmailSendResult> {
+    const rendered = renderSuperAdminInvitationAcceptedEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
   async sendAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): Promise<EmailSendResult> {
     const rendered = renderAdminPasswordResetEmail(input);
     return this.sendEmail({
@@ -1370,6 +1389,94 @@ For security reasons, your 2FA verification code is not included in this email.
 Please ask your workspace owner or administrator for your 6-digit 2FA confirmation code.
 
 This invitation expires on ${expiresFormatted}.
+
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitationAcceptedEmailInput): { subject: string; html: string; text: string } {
+  const isAdmin = input.role.toUpperCase() === 'ADMIN';
+  const subject = `New Administrator Joined: ${input.adminName}`;
+  const dashboardUrl = input.dashboardUrl || 'http://localhost:3000/manage/staff';
+  const activatedFormatted = input.activatedAt
+    ? new Date(input.activatedAt).toLocaleString('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      })
+    : new Date().toLocaleString('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      });
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; }
+    .info-row { margin: 6px 0; }
+    .info-label { color: #64748b; font-weight: 600; display: inline-block; width: 120px; }
+    .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">DeskAtlas</div>
+      <span class="badge">Team Notification</span>
+    </div>
+    <div class="content">
+      <div class="title">New ${isAdmin ? 'Administrator' : 'Staff Member'} Joined</div>
+      <p>Hello Super Administrator,</p>
+      <p><strong>${escapeHtml(input.adminName)}</strong> (<code>${escapeHtml(input.adminEmail)}</code>) has accepted your invitation and successfully activated their ${isAdmin ? 'administrator' : 'staff'} account.</p>
+      
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Name:</span> <strong>${escapeHtml(input.adminName)}</strong></div>
+        <div class="info-row"><span class="info-label">Email:</span> <strong>${escapeHtml(input.adminEmail)}</strong></div>
+        <div class="info-row"><span class="info-label">Role:</span> <strong>${escapeHtml(input.role)}</strong></div>
+        <div class="info-row"><span class="info-label">Activated:</span> ${escapeHtml(activatedFormatted)}</div>
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(dashboardUrl)}" class="btn">View Staff &amp; Admins</a>
+      </div>
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Team Management Alert
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+DeskAtlas Notification: New ${isAdmin ? 'Administrator' : 'Staff Member'} Joined
+
+Hello Super Administrator,
+
+${input.adminName} (${input.adminEmail}) has accepted your invitation and activated their ${isAdmin ? 'administrator' : 'staff'} account.
+
+Name: ${input.adminName}
+Email: ${input.adminEmail}
+Role: ${input.role}
+Activated: ${activatedFormatted}
+
+View in dashboard: ${dashboardUrl}
 
 DeskAtlas Workspace Reservation System
   `.trim();

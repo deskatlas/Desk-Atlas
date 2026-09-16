@@ -152,28 +152,21 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
   }
 
   async listStaff(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffMember[]> {
-    let isSuperAdmin = actorIsSuperAdmin;
     if (actorUserId && this.records.has(actorUserId)) {
       const actor = this.records.get(actorUserId)!;
       if (actor.role !== 'ADMIN' || !actor.isActive) {
-        throw new StaffManagementError('Only active ADMIN profiles may view staff management');
-      }
-      if (isSuperAdmin === undefined) {
-        isSuperAdmin = Boolean(actor.isSuperAdmin);
+        throw new StaffManagementAuthorizationError('Only active ADMIN profiles may view staff management');
       }
     }
 
-    let records: MemoryStaffRecord[];
-    if (isSuperAdmin || !actorUserId) {
-      records = Array.from(this.records.values());
-    } else {
-      records = Array.from(this.records.values()).filter((r) => r.createdByAdminId === actorUserId && r.role !== 'ADMIN');
-    }
+    const records = Array.from(this.records.values());
 
     return records
       .sort((a, b) => {
         if (a.isSuperAdmin && !b.isSuperAdmin) return -1;
         if (!a.isSuperAdmin && b.isSuperAdmin) return 1;
+        if (a.role === 'ADMIN' && b.role !== 'ADMIN') return -1;
+        if (a.role !== 'ADMIN' && b.role === 'ADMIN') return 1;
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       })
       .map((rec) => this.mapToStaffMember(rec));
@@ -240,15 +233,6 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
     let isSuperAdmin = input.actorIsSuperAdmin;
     if (isSuperAdmin === undefined && input.actorUserId && this.records.has(input.actorUserId)) {
       isSuperAdmin = Boolean(this.records.get(input.actorUserId)!.isSuperAdmin);
-    }
-
-    if (
-      !isSuperAdmin &&
-      input.actorUserId &&
-      current.createdByAdminId &&
-      current.createdByAdminId !== input.actorUserId
-    ) {
-      throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
     }
 
     const nowIso = this.nowProvider().toISOString();
@@ -321,15 +305,6 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
 
     if (current.role === 'ADMIN' && !isSuperAdmin) {
       throw new StaffManagementAuthorizationError('Only the Superadmin can delete administrator accounts.');
-    }
-
-    if (
-      !isSuperAdmin &&
-      actorUserId &&
-      current.createdByAdminId &&
-      current.createdByAdminId !== actorUserId
-    ) {
-      throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
     }
 
     const check = this.checkStaffDeletionEligibilitySync(staffUserId);
@@ -441,23 +416,17 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
   }
 
   async listPendingInvitations(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffInvitation[]> {
-    const list: StaffInvitation[] = [];
-    const now = this.nowProvider().getTime();
-
-    let isSuperAdmin = actorIsSuperAdmin;
     if (actorUserId && this.records.has(actorUserId)) {
       const actor = this.records.get(actorUserId)!;
-      if (isSuperAdmin === undefined) {
-        isSuperAdmin = Boolean(actor.isSuperAdmin);
+      if (actor.role !== 'ADMIN' || !actor.isActive) {
+        throw new StaffManagementAuthorizationError('Only active ADMIN profiles may view staff invitations');
       }
     }
 
+    const list: StaffInvitation[] = [];
+    const now = this.nowProvider().getTime();
+
     for (const inv of this.invitations.values()) {
-      if (!isSuperAdmin && actorUserId) {
-        if (inv.createdByAdminId !== actorUserId || inv.role === 'ADMIN') {
-          continue;
-        }
-      }
       const isExpired = new Date(inv.expiresAt).getTime() < now;
       const status = isExpired && inv.status === 'PENDING' ? 'EXPIRED' : inv.status;
       list.push({
@@ -474,7 +443,7 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
         createdByAdminId: inv.createdByAdminId,
       });
     }
-    return list;
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async confirmStaffInvitation(input: ConfirmStaffInvitationInput): Promise<{ staff: StaffMember; invitation: StaffInvitation }> {
@@ -520,6 +489,23 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
     targetInv.status = 'CONFIRMED';
     targetInv.updatedAt = now.toISOString();
 
+    // Log audit for invitation acceptance
+    this.auditLogs.push({
+      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      actorUserId: staff.id,
+      actorRole: targetInv.role,
+      action: 'ACCEPT_STAFF_INVITATION',
+      entityType: 'staff_profiles',
+      entityId: staff.id,
+      metadata: {
+        email: targetInv.email,
+        displayName: targetInv.displayName,
+        role: targetInv.role,
+        inviterAdminId: targetInv.createdByAdminId,
+      },
+      createdAt: now.toISOString(),
+    });
+
     return {
       staff,
       invitation: {
@@ -542,17 +528,6 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
     const inv = this.invitations.get(id);
     if (!inv) return false;
 
-    let isSuperAdmin = actorIsSuperAdmin;
-    if (actorUserId && this.records.has(actorUserId)) {
-      const actor = this.records.get(actorUserId)!;
-      if (isSuperAdmin === undefined) {
-        isSuperAdmin = Boolean(actor.isSuperAdmin);
-      }
-    }
-
-    if (!isSuperAdmin && actorUserId && inv.createdByAdminId && inv.createdByAdminId !== actorUserId) {
-      throw new StaffManagementAuthorizationError('Admin cannot cancel invitation created by another admin');
-    }
     inv.status = 'CANCELLED';
     inv.updatedAt = this.nowProvider().toISOString();
     return true;

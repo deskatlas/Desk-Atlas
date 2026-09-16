@@ -99,7 +99,8 @@
     "test:mf96": "vitest run tests/mf96-staff-scanner-manual-reference-code-check-in.test.ts",
     "test:admin-rejected-payment": "vitest run tests/mf-admin-rejected-payment-reservations.test.ts",
     "test:mf98": "vitest run tests/mf98-admin-settings-closure-past-dates.test.ts",
-    "test:mf99": "vitest run tests/mf99-admin-reservations-auto-expired-status.test.ts"
+    "test:mf99": "vitest run tests/mf99-admin-reservations-auto-expired-status.test.ts",
+    "test:mf109": "vitest run tests/mf109-realtime-deactivation-modal.test.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.4",

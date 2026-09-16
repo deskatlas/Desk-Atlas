@@ -58,8 +58,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (password !== undefined && password !== null && String(password).length > 0) {
-      const validation = validatePassword(String(password));
+    const cleanToken = String(token).trim();
+    const cleanCode = String(verificationCode).trim();
+    const trimmedPassword =
+      password !== undefined && password !== null ? String(password).trim() : "";
+
+    const service = getStaffService();
+    const invitation = await service.getStaffInvitationByToken(cleanToken);
+    if (!invitation) {
+      return NextResponse.json({ error: "Invitation not found." }, { status: 404 });
+    }
+
+    if (invitation.role === "ADMIN" && !trimmedPassword) {
+      return NextResponse.json(
+        { error: "Password is required to activate an administrator account." },
+        { status: 400 }
+      );
+    }
+
+    if (trimmedPassword.length > 0) {
+      const validation = validatePassword(trimmedPassword);
       if (!validation.isValid) {
         return NextResponse.json(
           { error: `Password does not meet security requirements: ${validation.errors.join(' ')}` },
@@ -68,16 +86,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const service = getStaffService();
     const result = await service.confirmStaffInvitation({
-      token: String(token).trim(),
-      verificationCode: String(verificationCode).trim(),
-      password: password ? String(password) : undefined,
+      token: cleanToken,
+      verificationCode: cleanCode,
+      password: trimmedPassword || undefined,
     });
 
     return NextResponse.json({
       success: true,
-      message: "Staff account successfully activated.",
+      message: `${invitation.role === "ADMIN" ? "Administrator" : "Staff"} account successfully activated.`,
       staff: result.staff,
     });
   } catch (error: any) {

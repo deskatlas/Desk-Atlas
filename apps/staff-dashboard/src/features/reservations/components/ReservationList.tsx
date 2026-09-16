@@ -1,11 +1,18 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useReservations } from '../hooks/useReservations';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@deskatlas/ui';
-import { filterReservationsBySearch, type StaffOperationalReservation, type ReservationStatus } from '@deskatlas/domain';
+import {
+  filterReservationsBySearch,
+  filterStaffReservationsByStatus,
+  STAFF_RESERVATION_FILTERS,
+  type StaffOperationalReservation,
+  type StaffReservationFilter,
+  type ReservationStatus
+} from '@deskatlas/domain';
 
 function getStatusDisplay(status: ReservationStatus) {
   switch (status) {
@@ -25,9 +32,13 @@ function getStatusDisplay(status: ReservationStatus) {
 export function ReservationList() {
   const { reservations, loading, error, refetch } = useReservations();
   const { searchQuery } = useSearch();
+  const [activeFilter, setActiveFilter] = useState<StaffReservationFilter>('active');
   const router = useRouter();
 
-  const displayedReservations = filterReservationsBySearch(reservations, searchQuery);
+  const statusFiltered = filterStaffReservationsByStatus(reservations, activeFilter);
+  const displayedReservations = filterReservationsBySearch(statusFiltered, searchQuery);
+  const totalCount = reservations.length;
+  const isFiltered = activeFilter !== 'all' || Boolean(searchQuery.trim());
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
   if (error) return (
@@ -37,14 +48,69 @@ export function ReservationList() {
     </div>
   );
 
+  const getEmptyMessage = () => {
+    if (searchQuery.trim()) {
+      return `No reservations match "${searchQuery}".`;
+    }
+    switch (activeFilter) {
+      case 'active':
+        return 'No active reservations found for today.';
+      case 'checked_in':
+        return 'No checked-in reservations found for today.';
+      case 'upcoming':
+        return 'No upcoming reservations scheduled.';
+      case 'confirmed':
+        return 'No confirmed reservations found for today.';
+      case 'all':
+      default:
+        return 'No reservations found for today.';
+    }
+  };
+
   return (
-    <main style={{ padding: '26px 28px 40px' }}>
+    <main data-screen-label="Reservations" style={{ padding: '26px 28px 40px' }}>
       <div style={{ marginBottom: '22px' }}>
         <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Reservations</h1>
         <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: "'Inter', sans-serif" }}>Today's operational view</div>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', overflow: 'hidden', boxShadow: 'var(--da-shadow-sm, 0 1px 3px rgba(0,0,0,0.05))' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '14px 20px', borderBottom: '1px solid var(--da-border-light, var(--da-border))', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{displayedReservations.length}</span>
+            <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: "var(--da-font-family, 'Inter', sans-serif)" }}>
+              reservations {isFiltered ? `(filtered from ${totalCount})` : ''}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {STAFF_RESERVATION_FILTERS.map((f, i) => {
+              const isActive = activeFilter === f.filter;
+              const filterStyle = isActive
+                ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
+                : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveFilter(f.filter)}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '9999px',
+                    whiteSpace: 'nowrap',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
+                    ...filterStyle,
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
           <thead>
             <tr style={{ background: 'var(--da-canvas)', borderBottom: '1px solid var(--da-border)' }}>
@@ -57,7 +123,7 @@ export function ReservationList() {
           </thead>
           <tbody>
             {displayedReservations.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--da-text-secondary)' }}>No reservations found.</td></tr>
+              <tr><td colSpan={5} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px' }}>{getEmptyMessage()}</td></tr>
             ) : (
               displayedReservations.map((res: StaffOperationalReservation) => {
                 const statusDisp = getStatusDisplay(res.reservationStatus);
@@ -97,3 +163,4 @@ export function ReservationList() {
     </main>
   );
 }
+

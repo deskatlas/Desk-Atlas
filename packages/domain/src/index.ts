@@ -175,3 +175,5 @@ export * from './services/adminPasswordResetService';
 export * from './services/reservationSessionService';
 export * from './services/loginRateLimiter';
 export * from './services/urgentPaymentAlertService';
+export * from './services/personNameValidationService';
+export * from './services/staffReservationFilters';

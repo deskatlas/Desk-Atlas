@@ -136,6 +136,8 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         .sort((a, b) => {
           if (a.isSuperAdmin && !b.isSuperAdmin) return -1;
           if (!a.isSuperAdmin && b.isSuperAdmin) return 1;
+          if (a.rawRole === 'ADMIN' && b.rawRole !== 'ADMIN') return -1;
+          if (a.rawRole !== 'ADMIN' && b.rawRole === 'ADMIN') return 1;
           return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         });
     } catch (rpcErr) {
@@ -143,9 +145,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         throw new StaffManagementAuthorizationError(rpcErr.message);
       }
       // 2. Fallback to direct REST table queries
-      const endpoint = (isSuperAdmin || !actorUserId)
-        ? '/staff_profiles?select=*&order=created_at.asc'
-        : `/staff_profiles?or=(user_id.eq.${encodeURIComponent(actorUserId)},created_by_admin_id.eq.${encodeURIComponent(actorUserId)})&select=*&order=created_at.asc`;
+      const endpoint = '/staff_profiles?select=*&order=created_at.asc';
       const profiles = await this.request<any[]>(endpoint);
 
       // Fetch users from auth admin if available
@@ -169,20 +169,29 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         // auth admin fallback ignore
       }
 
-      return profiles.map((p) => {
-        const authUser = usersMap.get(p.user_id);
-        return this.mapRowToStaffMember({
-          id: p.user_id,
-          email: authUser?.email,
-          role: p.role,
-          display_name: p.display_name,
-          is_active: p.is_active,
-          created_at: p.created_at,
-          updated_at: p.updated_at,
-          last_sign_in_at: authUser?.last_sign_in_at,
-          created_by_admin_id: p.created_by_admin_id,
+      return profiles
+        .map((p) => {
+          const authUser = usersMap.get(p.user_id);
+          return this.mapRowToStaffMember({
+            id: p.user_id,
+            email: authUser?.email,
+            role: p.role,
+            display_name: p.display_name,
+            is_active: p.is_active,
+            created_at: p.created_at,
+            updated_at: p.updated_at,
+            last_sign_in_at: authUser?.last_sign_in_at,
+            created_by_admin_id: p.created_by_admin_id,
+            is_super_admin: p.is_super_admin,
+          });
+        })
+        .sort((a, b) => {
+          if (a.isSuperAdmin && !b.isSuperAdmin) return -1;
+          if (!a.isSuperAdmin && b.isSuperAdmin) return 1;
+          if (a.rawRole === 'ADMIN' && b.rawRole !== 'ADMIN') return -1;
+          if (a.rawRole !== 'ADMIN' && b.rawRole === 'ADMIN') return 1;
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         });
-      });
     }
   }
 
@@ -330,9 +339,6 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         const existing = await this.request<any[]>(`/staff_profiles?user_id=eq.${encodeURIComponent(input.staffUserId)}&select=*`);
         if (!existing || existing.length === 0) {
           throw new StaffManagementError('Staff profile not found for update');
-        }
-        if (existing[0].created_by_admin_id && existing[0].created_by_admin_id !== input.actorUserId) {
-          throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
         }
       }
 
@@ -531,15 +537,6 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         throw new StaffManagementAuthorizationError('Only the Superadmin can delete administrator accounts.');
       }
 
-      if (
-        !actorIsSuperAdmin &&
-        actorUserId &&
-        profile.created_by_admin_id &&
-        profile.created_by_admin_id !== actorUserId
-      ) {
-        throw new StaffManagementAuthorizationError('Admin cannot manage staff created by another admin');
-      }
-
       // Delete staff profile
       await this.request(`/staff_profiles?user_id=eq.${encodeURIComponent(staffUserId)}`, {
         method: 'DELETE',
@@ -682,11 +679,7 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
   }
 
   async listPendingInvitations(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffInvitation[]> {
-    const endpoint = (actorIsSuperAdmin || !actorUserId)
-      ? '/staff_invitations?select=*&order=created_at.desc'
-      : `/staff_invitations?created_by_admin_id=eq.${encodeURIComponent(
-          actorUserId
-        )}&role=eq.STAFF&select=*&order=created_at.desc`;
+    const endpoint = '/staff_invitations?select=*&order=created_at.desc';
 
     const rows = await this.request<any[]>(endpoint);
     const now = this.nowProvider().getTime();
@@ -747,6 +740,25 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       body: JSON.stringify({ status: 'CONFIRMED', updated_at: now.toISOString() }),
     });
 
+    // Log audit for invitation acceptance
+    await this.request('/audit_logs', {
+      method: 'POST',
+      body: JSON.stringify({
+        actor_user_id: staff.id,
+        actor_role: row.role ?? 'STAFF',
+        action: 'ACCEPT_STAFF_INVITATION',
+        entity_type: 'staff_profiles',
+        entity_id: staff.id,
+        metadata: {
+          email: row.email,
+          displayName: row.display_name,
+          role: row.role,
+          inviterAdminId: row.created_by_admin_id,
+        },
+        created_at: now.toISOString(),
+      }),
+    }).catch(() => {});
+
     return {
       staff,
       invitation: {
@@ -762,13 +774,6 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       `/staff_invitations?id=eq.${encodeURIComponent(id)}&select=*&limit=1`
     );
     if (!rows || rows.length === 0) return false;
-
-    const row = rows[0];
-    if (!actorIsSuperAdmin && actorUserId && row.created_by_admin_id && row.created_by_admin_id !== actorUserId) {
-      throw new StaffManagementAuthorizationError(
-        'Admin cannot cancel invitation created by another admin'
-      );
-    }
 
     await this.request(`/staff_invitations?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',

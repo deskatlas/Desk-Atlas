@@ -153,16 +153,8 @@ describe("Staff Invitation with Email & 2FA Confirmation", () => {
       actorRole: "ADMIN",
     });
 
-    // Cross-admin cancel is rejected
-    await assert.rejects(
-      async () => {
-        await service.cancelStaffInvitation(invitation.id, adminB);
-      },
-      (err: any) => err instanceof StaffManagementAuthorizationError
-    );
-
-    // Admin A cancels invitation
-    const cancelled = await service.cancelStaffInvitation(invitation.id, adminA);
+    // Cross-admin cancel is allowed
+    const cancelled = await service.cancelStaffInvitation(invitation.id, adminB);
     assert.equal(cancelled, true);
 
     // Confirming cancelled invitation fails
