@@ -172,6 +172,12 @@ export class AdminReservationService {
           r.paymentStatus.toLowerCase().includes("rejected") ||
           (r.paymentAttemptStatus ?? "").toLowerCase() === "rejected"
       );
+    } else if (filter === "counter_queue") {
+      filtered = filtered.filter(
+        (r) =>
+          r.reservationStatus === "PENDING_COUNTER_CONFIRMATION" &&
+          r.status.toLowerCase() !== "rejected"
+      );
     }
     // "all": retains all items in mappedList (both active and expired)
 

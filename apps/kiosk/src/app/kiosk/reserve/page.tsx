@@ -17,6 +17,9 @@ import {
   type AvailableInstanceSummary,
   type NextUpcomingBookingResult,
   validatePersonName,
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  normalizeWorkspaceStatusColors,
+  type WorkspaceStatusColors,
 } from "@deskatlas/domain";
 import {
   SpotDetailModal,
@@ -46,7 +49,12 @@ function mapPublishedFloorToWorkspaceCards(
   occupiedInstanceIds: Set<string> = new Set()
 ): WorkspaceMapViewModel[] {
   return published.elements
-    .filter((element) => element.elementRole === "WORKSPACE" && element.workspace)
+    .filter(
+      (element) =>
+        element.elementRole === "WORKSPACE" &&
+        element.workspace &&
+        element.workspace.operationalStatus !== "INACTIVE"
+    )
     .map((element) => {
       const workspace = element.workspace!;
       const isOccupied = occupiedInstanceIds.has(workspace.workspaceInstanceId);
@@ -55,17 +63,17 @@ function mapPublishedFloorToWorkspaceCards(
       const status = isOccupied
         ? "occupied"
         : isMaintenance
-        ? "maintenance"
-        : isAvailable
-        ? "available"
-        : "unavailable";
+          ? "maintenance"
+          : isAvailable
+            ? "available"
+            : "unavailable";
       const statusLabel = isOccupied
         ? "Occupied"
         : isMaintenance
-        ? "Maintenance"
-        : isAvailable
-        ? "Available"
-        : "Unavailable";
+          ? "Maintenance"
+          : isAvailable
+            ? "Available"
+            : "Unavailable";
       return {
         id: element.id,
         workspaceInstanceId: workspace.workspaceInstanceId,
@@ -260,6 +268,26 @@ export default function KioskReservePage() {
   // Time calculations (Now)
   const [todayDate, setTodayDate] = useState(() => getTodayManila());
   const [nowTime, setNowTime] = useState(() => getCurrentTimeManila());
+  const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(
+    DEFAULT_WORKSPACE_STATUS_COLORS
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data?.statusColors) {
+          setStatusColors(normalizeWorkspaceStatusColors(data.statusColors));
+        }
+      })
+      .catch(() => {
+        // Fallback
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const updateTime = () => {
@@ -676,10 +704,10 @@ export default function KioskReservePage() {
                     if (step !== "code") setStep("discovery");
                   }}
                   className={`hover:underline ${step === "discovery"
-                      ? "text-[var(--da-primary)]"
-                      : selectedWorkspace || selectedTemplate
-                        ? "text-emerald-700"
-                        : "text-[var(--da-text-secondary)]"
+                    ? "text-[var(--da-primary)]"
+                    : selectedWorkspace || selectedTemplate
+                      ? "text-emerald-700"
+                      : "text-[var(--da-text-secondary)]"
                     }`}
                 >
                   1. Select Spot {selectedWorkspace ? `(✓ ${selectedWorkspace.displayName})` : selectedTemplate ? `(✓ ${selectedTemplate.name})` : ""}
@@ -693,10 +721,10 @@ export default function KioskReservePage() {
                     if ((selectedWorkspace || selectedTemplate) && step !== "code") setStep("duration");
                   }}
                   className={`hover:underline ${step === "duration"
-                      ? "text-[var(--da-primary)]"
-                      : step === "details"
-                        ? "text-emerald-700"
-                        : "text-[var(--da-text-secondary)]"
+                    ? "text-[var(--da-primary)]"
+                    : step === "details"
+                      ? "text-emerald-700"
+                      : "text-[var(--da-text-secondary)]"
                     }`}
                 >
                   2. Duration (Now) {durationHours ? `(✓ ${durationHours}h)` : ""}
@@ -705,10 +733,10 @@ export default function KioskReservePage() {
 
                 <span
                   className={`${step === "details"
-                      ? "text-[var(--da-primary)]"
-                      : step === "code"
-                        ? "text-emerald-700"
-                        : "text-[var(--da-text-secondary)]"
+                    ? "text-[var(--da-primary)]"
+                    : step === "code"
+                      ? "text-emerald-700"
+                      : "text-[var(--da-text-secondary)]"
                     }`}
                 >
                   3. Your Details
@@ -781,8 +809,8 @@ export default function KioskReservePage() {
                     type="button"
                     onClick={() => setDiscoveryMode("map")}
                     className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${discoveryMode === "map"
-                        ? "bg-[var(--da-primary)] text-white shadow-sm"
-                        : "text-[var(--da-text-secondary)] hover:text-[var(--da-brand-dark)]"
+                      ? "bg-[var(--da-primary)] text-white shadow-sm"
+                      : "text-[var(--da-text-secondary)] hover:text-[var(--da-brand-dark)]"
                       }`}
                   >
                     <span>🗺️</span>
@@ -793,8 +821,8 @@ export default function KioskReservePage() {
                     type="button"
                     onClick={() => setDiscoveryMode("category")}
                     className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold transition-all ${discoveryMode === "category"
-                        ? "bg-[var(--da-primary)] text-white shadow-sm"
-                        : "text-[var(--da-text-secondary)] hover:text-[var(--da-brand-dark)]"
+                      ? "bg-[var(--da-primary)] text-white shadow-sm"
+                      : "text-[var(--da-text-secondary)] hover:text-[var(--da-brand-dark)]"
                       }`}
                   >
                     <span>🏢</span>
@@ -831,16 +859,16 @@ export default function KioskReservePage() {
                     <div className="flex items-center gap-3">
                       <div className="hidden sm:flex items-center gap-3 text-xs font-semibold text-[var(--da-text-secondary)] border-r border-[var(--da-border-light)] pr-3">
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#E0EFE4] border border-[#22c55e]" /> Available
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.available, borderColor: statusColors.available }} /> Available
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#E2E8F0] border border-[#94a3b8]" /> Occupied
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.occupied, borderColor: statusColors.occupied }} /> Occupied
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#FCF060] border border-[#f59e0b]" /> Maintenance
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.maintenance, borderColor: statusColors.maintenance }} /> Maintenance
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#F3F7F4] border border-[#94a3b8]" /> Unavailable
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.unavailable, borderColor: statusColors.unavailable }} /> Unavailable
                         </span>
                       </div>
 
@@ -928,6 +956,9 @@ export default function KioskReservePage() {
                         >
                           {elements.map((el: PublishedMapElement) => {
                             const isWorkspace = el.elementRole === "WORKSPACE" || Boolean(el.workspace);
+                            if (isWorkspace && el.workspace?.operationalStatus === "INACTIVE") {
+                              return null;
+                            }
                             const isWall =
                               !isWorkspace &&
                               (el.elementRole === "STRUCTURE" ||
@@ -1038,19 +1069,19 @@ export default function KioskReservePage() {
 
                               if (status === "MAINTENANCE") {
                                 borderStyle = "dashed";
-                                borderColor = "#f59e0b";
-                                bg = "#FCF060";
-                                textColor = "#92400e";
+                                borderColor = statusColors.maintenance;
+                                bg = statusColors.maintenance;
+                                textColor = getContrastColor(bg);
                               } else if (isOccupied) {
                                 borderStyle = "solid";
-                                borderColor = "#94a3b8";
-                                bg = "#E2E8F0";
-                                textColor = "#64748b";
+                                borderColor = statusColors.occupied;
+                                bg = statusColors.occupied;
+                                textColor = getContrastColor(bg);
                               } else if (!isAvailable) {
                                 borderStyle = "dashed";
-                                borderColor = "#94a3b8";
-                                bg = "#F3F7F4";
-                                textColor = "#64748b";
+                                borderColor = statusColors.unavailable;
+                                bg = statusColors.unavailable;
+                                textColor = getContrastColor(bg);
                               }
 
                               const wsModel = workspaces.find(
@@ -1077,9 +1108,8 @@ export default function KioskReservePage() {
                                       if (!isAvailable) return;
                                       if (wsModel) handleSpotClick(wsModel);
                                     }}
-                                    className={`group h-full w-full flex flex-col items-center justify-center p-1 text-center transition-all duration-150 relative ${
-                                      isAvailable ? "hover:scale-[1.03]" : ""
-                                    }`}
+                                    className={`group h-full w-full flex flex-col items-center justify-center p-1 text-center transition-all duration-150 relative ${isAvailable ? "hover:scale-[1.03]" : ""
+                                      }`}
                                     style={{
                                       backgroundColor: bg,
                                       borderWidth,
@@ -1184,11 +1214,10 @@ export default function KioskReservePage() {
                             if (occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) return;
                             setStep("duration");
                           }}
-                          className={`da-primary-button text-xs font-bold px-4 py-2 ${
-                            occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                          className={`da-primary-button text-xs font-bold px-4 py-2 ${occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
                               ? "opacity-50 cursor-not-allowed"
                               : ""
-                          }`}
+                            }`}
                         >
                           {occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
                             ? "Spot Occupied"
@@ -1365,8 +1394,8 @@ export default function KioskReservePage() {
                             ? upcomingBooking?.nextBooking
                               ? `Reserved at ${upcomingBooking.nextBooking.startTimeFormatted}`
                               : upcomingBooking?.minutesUntilClosing !== null
-                              ? `Space closes at operating hours limit`
-                              : `Unavailable for ${hours} hours`
+                                ? `Space closes at operating hours limit`
+                                : `Unavailable for ${hours} hours`
                             : undefined
                         }
                         onClick={() => {
@@ -1374,13 +1403,12 @@ export default function KioskReservePage() {
                           setDurationHours(hours);
                           setDurationInputStr(String(hours));
                         }}
-                        className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all relative ${
-                          isLocked
+                        className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all relative ${isLocked
                             ? "bg-slate-100/90 text-slate-400 border-slate-200 cursor-not-allowed opacity-60"
                             : isSelected
-                            ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-md ring-2 ring-[var(--da-accent)]"
-                            : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
-                        }`}
+                              ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-md ring-2 ring-[var(--da-accent)]"
+                              : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
+                          }`}
                       >
                         {isLocked && (
                           <span className="absolute top-1.5 right-1.5 text-xs" aria-hidden="true" title="Locked due to upcoming reservation">
@@ -1413,7 +1441,7 @@ export default function KioskReservePage() {
                 <div className="mt-6 pt-4 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <span className="text-sm font-bold text-[var(--da-brand-dark)] block">
-                       Custom Duration
+                      Custom Duration
                     </span>
                     <span className="text-xs text-[var(--da-text-secondary)]">
                       Or enter the exact number of hours you need:
@@ -1452,27 +1480,27 @@ export default function KioskReservePage() {
                   (upcomingBooking?.maxAvailableMinutes !== null &&
                     upcomingBooking?.maxAvailableMinutes !== undefined &&
                     (upcomingBooking.maxAvailableMinutes < 60 || durationHours * 60 > upcomingBooking.maxAvailableMinutes))) && (
-                  <div className="mt-4 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-center gap-2">
-                    <span className="text-base">⚠️</span>
-                    <span>
-                      {durationHours > MAX_KIOSK_DURATION_HOURS
-                        ? `Walk-in reservations cannot exceed ${MAX_KIOSK_DURATION_HOURS} hours.`
-                        : upcomingBooking?.maxAvailableMinutes !== null &&
-                          upcomingBooking?.maxAvailableMinutes !== undefined &&
-                          upcomingBooking.maxAvailableMinutes < 60
-                        ? upcomingBooking.nextBooking
-                          ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
-                            ? `Facility Closed: Scheduled closure starts in ${upcomingBooking.maxAvailableMinutes} mins (${upcomingBooking.nextBooking.startTimeFormatted}). Minimum stay is 1 hour.`
-                            : `Desk Unavailable: Upcoming reservation starts in ${upcomingBooking.maxAvailableMinutes} mins (${upcomingBooking.nextBooking.startTimeFormatted}). Minimum stay is 1 hour.`
-                          : `Desk Unavailable: The space closes in ${upcomingBooking.maxAvailableMinutes} mins.`
-                        : upcomingBooking?.nextBooking
-                        ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
-                          ? `The requested duration extends into a scheduled facility closure starting at ${upcomingBooking.nextBooking.startTimeFormatted}. Maximum available stay is ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)} ${(upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)) === 1 ? "hour" : "hours"}.`
-                          : `This desk has an upcoming reservation starting at ${upcomingBooking.nextBooking.startTimeFormatted}. Maximum available stay is ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)} ${(upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)) === 1 ? "hour" : "hours"}.`
-                        : `The requested duration exceeds today's remaining operating hours (Maximum ${upcomingBooking?.maxAvailableHours ?? Math.floor((upcomingBooking?.maxAvailableMinutes ?? 0) / 60)} ${(upcomingBooking?.maxAvailableHours ?? Math.floor((upcomingBooking?.maxAvailableMinutes ?? 0) / 60)) === 1 ? "hour" : "hours"}).`}
-                    </span>
-                  </div>
-                )}
+                    <div className="mt-4 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-center gap-2">
+                      <span className="text-base">⚠️</span>
+                      <span>
+                        {durationHours > MAX_KIOSK_DURATION_HOURS
+                          ? `Walk-in reservations cannot exceed ${MAX_KIOSK_DURATION_HOURS} hours.`
+                          : upcomingBooking?.maxAvailableMinutes !== null &&
+                            upcomingBooking?.maxAvailableMinutes !== undefined &&
+                            upcomingBooking.maxAvailableMinutes < 60
+                            ? upcomingBooking.nextBooking
+                              ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
+                                ? `Facility Closed: Scheduled closure starts in ${upcomingBooking.maxAvailableMinutes} mins (${upcomingBooking.nextBooking.startTimeFormatted}). Minimum stay is 1 hour.`
+                                : `Desk Unavailable: Upcoming reservation starts in ${upcomingBooking.maxAvailableMinutes} mins (${upcomingBooking.nextBooking.startTimeFormatted}). Minimum stay is 1 hour.`
+                              : `Desk Unavailable: The space closes in ${upcomingBooking.maxAvailableMinutes} mins.`
+                            : upcomingBooking?.nextBooking
+                              ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
+                                ? `The requested duration extends into a scheduled facility closure starting at ${upcomingBooking.nextBooking.startTimeFormatted}. Maximum available stay is ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)} ${(upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)) === 1 ? "hour" : "hours"}.`
+                                : `This desk has an upcoming reservation starting at ${upcomingBooking.nextBooking.startTimeFormatted}. Maximum available stay is ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)} ${(upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes! / 60)) === 1 ? "hour" : "hours"}.`
+                              : `The requested duration exceeds today's remaining operating hours (Maximum ${upcomingBooking?.maxAvailableHours ?? Math.floor((upcomingBooking?.maxAvailableMinutes ?? 0) / 60)} ${(upcomingBooking?.maxAvailableHours ?? Math.floor((upcomingBooking?.maxAvailableMinutes ?? 0) / 60)) === 1 ? "hour" : "hours"}).`}
+                      </span>
+                    </div>
+                  )}
 
                 {/* Immediate Schedule Preview */}
                 {durationHours > 0 ? (
@@ -1503,9 +1531,9 @@ export default function KioskReservePage() {
                 ) : (
                   <div className="mt-6 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-center text-xs font-bold text-amber-800">
                     {selectedWorkspace &&
-                    upcomingBooking?.maxAvailableMinutes !== null &&
-                    upcomingBooking?.maxAvailableMinutes !== undefined &&
-                    upcomingBooking.maxAvailableMinutes < 60
+                      upcomingBooking?.maxAvailableMinutes !== null &&
+                      upcomingBooking?.maxAvailableMinutes !== undefined &&
+                      upcomingBooking.maxAvailableMinutes < 60
                       ? upcomingBooking.nextBooking
                         ? `Desk is unavailable: An upcoming reservation starts at ${upcomingBooking.nextBooking.startTimeFormatted} (${upcomingBooking.maxAvailableMinutes} mins away).`
                         : `Desk is unavailable: The space closes in ${upcomingBooking.maxAvailableMinutes} mins.`
@@ -1534,8 +1562,8 @@ export default function KioskReservePage() {
                       Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
                       Boolean(
                         upcomingBooking?.maxAvailableMinutes !== null &&
-                          upcomingBooking?.maxAvailableMinutes !== undefined &&
-                          (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
+                        upcomingBooking?.maxAvailableMinutes !== undefined &&
+                        (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
                       )
                     }
                     onClick={() => {
@@ -1555,39 +1583,38 @@ export default function KioskReservePage() {
                         setStep("category-instances");
                       }
                     }}
-                    className={`da-primary-button text-sm font-extrabold px-8 py-3 ${
-                      !durationHours ||
-                      durationHours <= 0 ||
-                      durationHours > MAX_KIOSK_DURATION_HOURS ||
-                      Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
-                      Boolean(
-                        upcomingBooking?.maxAvailableMinutes !== null &&
+                    className={`da-primary-button text-sm font-extrabold px-8 py-3 ${!durationHours ||
+                        durationHours <= 0 ||
+                        durationHours > MAX_KIOSK_DURATION_HOURS ||
+                        Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
+                        Boolean(
+                          upcomingBooking?.maxAvailableMinutes !== null &&
                           upcomingBooking?.maxAvailableMinutes !== undefined &&
                           (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
-                      )
+                        )
                         ? "opacity-50 cursor-not-allowed"
                         : ""
-                    }`}
+                      }`}
                   >
                     {durationHours > MAX_KIOSK_DURATION_HOURS
                       ? `Duration Exceeds Maximum (Max ${MAX_KIOSK_DURATION_HOURS}h)`
                       : upcomingBooking?.maxAvailableMinutes !== null &&
                         upcomingBooking?.maxAvailableMinutes !== undefined &&
                         upcomingBooking.maxAvailableMinutes < 60
-                      ? upcomingBooking.nextBooking
-                        ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
-                          ? `Facility Closed in ${upcomingBooking.maxAvailableMinutes} mins`
-                          : `Desk Unavailable: Upcoming Reservation in ${upcomingBooking.maxAvailableMinutes} mins`
-                        : `Desk Unavailable: Closing in ${upcomingBooking.maxAvailableMinutes} mins`
-                      : upcomingBooking?.maxAvailableMinutes !== null &&
-                        upcomingBooking?.maxAvailableMinutes !== undefined &&
-                        durationHours * 60 > upcomingBooking.maxAvailableMinutes
-                      ? `Duration Exceeds Availability (Max ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes / 60)}h)`
-                      : selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
-                      ? "Desk Unavailable for Duration"
-                      : selectedWorkspace
-                        ? "Proceed to Customer Details →"
-                        : "Select Available Desk for Now →"}
+                        ? upcomingBooking.nextBooking
+                          ? upcomingBooking.nextBooking.type === "SCHEDULE_BLOCK"
+                            ? `Facility Closed in ${upcomingBooking.maxAvailableMinutes} mins`
+                            : `Desk Unavailable: Upcoming Reservation in ${upcomingBooking.maxAvailableMinutes} mins`
+                          : `Desk Unavailable: Closing in ${upcomingBooking.maxAvailableMinutes} mins`
+                        : upcomingBooking?.maxAvailableMinutes !== null &&
+                          upcomingBooking?.maxAvailableMinutes !== undefined &&
+                          durationHours * 60 > upcomingBooking.maxAvailableMinutes
+                          ? `Duration Exceeds Availability (Max ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes / 60)}h)`
+                          : selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                            ? "Desk Unavailable for Duration"
+                            : selectedWorkspace
+                              ? "Proceed to Customer Details →"
+                              : "Select Available Desk for Now →"}
                   </button>
                 </div>
               </div>
@@ -1692,11 +1719,10 @@ export default function KioskReservePage() {
                               }
                             }
                           }}
-                          className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition ${
-                            isAvailable
+                          className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition ${isAvailable
                               ? "border-[var(--da-border-light)] hover:border-[var(--da-primary)] bg-white hover:shadow-md cursor-pointer"
                               : "border-slate-200 bg-slate-100/80 opacity-60 cursor-not-allowed"
-                          }`}
+                            }`}
                         >
                           <div>
                             <div className="flex items-center justify-between gap-2">
@@ -1704,13 +1730,12 @@ export default function KioskReservePage() {
                                 {inst.displayName}
                               </h4>
                               <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold border ${
-                                  isAvailable
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold border ${isAvailable
                                     ? "bg-emerald-100 text-emerald-800 border-emerald-200"
                                     : isOccupied
-                                    ? "bg-slate-200 text-slate-700 border-slate-300"
-                                    : "bg-amber-100 text-amber-800 border-amber-200"
-                                }`}
+                                      ? "bg-slate-200 text-slate-700 border-slate-300"
+                                      : "bg-amber-100 text-amber-800 border-amber-200"
+                                  }`}
                               >
                                 {isAvailable ? "Available Now" : isOccupied ? "Occupied" : "Unavailable"}
                               </span>
@@ -1738,9 +1763,8 @@ export default function KioskReservePage() {
                                   setStep("details");
                                 }
                               }}
-                              className={`da-primary-button text-xs font-bold py-1.5 px-3.5 ${
-                                !isAvailable ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
+                              className={`da-primary-button text-xs font-bold py-1.5 px-3.5 ${!isAvailable ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
                             >
                               {isAvailable ? "Select Desk →" : isOccupied ? "Occupied" : "Unavailable"}
                             </button>
@@ -1885,11 +1909,10 @@ export default function KioskReservePage() {
                       <button
                         type="button"
                         onClick={() => setPaymentMethod("CASH")}
-                        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
-                          paymentMethod === "CASH"
+                        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${paymentMethod === "CASH"
                             ? "border-[var(--da-primary)] bg-[var(--da-canvas)] ring-2 ring-[var(--da-primary)]"
                             : "border-[var(--da-border-light)] bg-white hover:border-[var(--da-border)]"
-                        }`}
+                          }`}
                       >
                         <span className="text-2xl">💵</span>
                         <div>
@@ -1901,11 +1924,10 @@ export default function KioskReservePage() {
                       <button
                         type="button"
                         onClick={() => setPaymentMethod("COUNTER_QR")}
-                        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${
-                          paymentMethod === "COUNTER_QR"
+                        className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${paymentMethod === "COUNTER_QR"
                             ? "border-[var(--da-primary)] bg-[var(--da-canvas)] ring-2 ring-[var(--da-primary)]"
                             : "border-[var(--da-border-light)] bg-white hover:border-[var(--da-border)]"
-                        }`}
+                          }`}
                       >
                         <span className="text-2xl">📱</span>
                         <div>

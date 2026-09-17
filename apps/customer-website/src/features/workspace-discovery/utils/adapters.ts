@@ -5,7 +5,12 @@ export function mapPublishedFloorToWorkspaceCards(
   published: PublishedFloorMap
 ): WorkspaceMapViewModel[] {
   return published.elements
-    .filter((element) => element.elementRole === "WORKSPACE" && element.workspace)
+    .filter(
+      (element) =>
+        element.elementRole === "WORKSPACE" &&
+        element.workspace &&
+        element.workspace.operationalStatus !== "INACTIVE"
+    )
     .map((element) => toWorkspaceCard(published.floor.name, element));
 }
 

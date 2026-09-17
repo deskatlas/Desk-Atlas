@@ -303,6 +303,9 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
     async updateTemplate(id: string, input: UpdateWorkspaceTemplateInput) {
       return repository.updateTemplate(requireNonBlank(id, 'Template id'), normalizeUpdateTemplateInput(input));
     },
+    async deleteTemplate(id: string) {
+      return repository.deleteTemplate(requireNonBlank(id, 'Template id'));
+    },
     async createInstance(input: CreateWorkspaceInstanceInput) {
       return repository.createInstance(normalizeCreateInstanceInput(input));
     },

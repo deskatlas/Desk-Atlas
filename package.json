@@ -100,7 +100,10 @@
     "test:admin-rejected-payment": "vitest run tests/mf-admin-rejected-payment-reservations.test.ts",
     "test:mf98": "vitest run tests/mf98-admin-settings-closure-past-dates.test.ts",
     "test:mf99": "vitest run tests/mf99-admin-reservations-auto-expired-status.test.ts",
-    "test:mf109": "vitest run tests/mf109-realtime-deactivation-modal.test.ts"
+    "test:mf109": "vitest run tests/mf109-realtime-deactivation-modal.test.ts",
+    "test:mf111": "vitest run tests/mf111-camera-selection-and-kiosk-front-cam.test.ts",
+    "test:mf114": "vitest run tests/mf114-admin-payment-proof-zoom-and-pan-inspection.test.ts",
+    "test:mf122": "vitest run tests/mf122-kiosk-reference-code-check-in.test.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.4",

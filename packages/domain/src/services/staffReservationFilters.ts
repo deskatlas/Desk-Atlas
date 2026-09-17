@@ -5,7 +5,8 @@ export type StaffReservationFilter =
   | "all"
   | "checked_in"
   | "upcoming"
-  | "confirmed";
+  | "confirmed"
+  | "counter_queue";
 
 export interface StaffReservationFilterOption {
   label: string;
@@ -18,6 +19,7 @@ export const STAFF_RESERVATION_FILTERS: StaffReservationFilterOption[] = [
   { label: "Checked In", filter: "checked_in" },
   { label: "Upcoming", filter: "upcoming" },
   { label: "Confirmed", filter: "confirmed" },
+  { label: "Counter Queue", filter: "counter_queue" },
 ];
 
 export function matchesStaffReservationFilter(
@@ -61,6 +63,10 @@ export function matchesStaffReservationFilter(
     case "confirmed":
       // Reservations with reservationStatus === 'CONFIRMED'
       return res.reservationStatus === "CONFIRMED";
+
+    case "counter_queue":
+      // Reservations waiting in the counter queue (reservationStatus === 'PENDING_COUNTER_CONFIRMATION')
+      return res.reservationStatus === "PENDING_COUNTER_CONFIRMATION";
 
     default:
       return true;

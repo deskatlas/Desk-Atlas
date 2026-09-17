@@ -48,18 +48,35 @@ export function isSessionExpired(remainingSeconds: number): boolean {
 }
 
 /**
- * Retrieves the existing session expiry timestamp from storage, or creates a new 20-minute expiry timestamp.
+ * Returns the session timeout in seconds given an optional configured duration in minutes.
+ * Falls back to 20 minutes (1200 seconds) if not configured or invalid.
+ */
+export function getCustomerSessionTimeoutSeconds(configuredMinutes?: number | null): number {
+  if (
+    configuredMinutes !== undefined &&
+    configuredMinutes !== null &&
+    !isNaN(configuredMinutes) &&
+    configuredMinutes > 0
+  ) {
+    return Math.round(configuredMinutes * 60);
+  }
+  return CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS;
+}
+
+/**
+ * Retrieves the existing session expiry timestamp from storage, or creates a new expiry timestamp.
  */
 export function getOrCreateSessionExpiry(
   storage?: { getItem: (key: string) => string | null; setItem: (key: string, val: string) => void },
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  timeoutSeconds: number = CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS
 ): number {
   if (storage) {
     try {
       const stored = storage.getItem(CUSTOMER_RESERVATION_SESSION_STORAGE_KEY);
       if (stored) {
         const parsed = parseInt(stored, 10);
-        const maxValidExpiry = nowMs + (CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS + 10) * 1000;
+        const maxValidExpiry = nowMs + (timeoutSeconds + 10) * 1000;
         if (!isNaN(parsed) && parsed > nowMs && parsed <= maxValidExpiry) {
           return parsed;
         }
@@ -69,7 +86,7 @@ export function getOrCreateSessionExpiry(
     }
   }
 
-  const newExpiry = nowMs + CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS * 1000;
+  const newExpiry = nowMs + timeoutSeconds * 1000;
   if (storage) {
     try {
       storage.setItem(CUSTOMER_RESERVATION_SESSION_STORAGE_KEY, String(newExpiry));

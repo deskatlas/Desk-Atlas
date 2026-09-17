@@ -61,6 +61,8 @@ export function ReservationList() {
         return 'No upcoming reservations scheduled.';
       case 'confirmed':
         return 'No confirmed reservations found for today.';
+      case 'counter_queue':
+        return 'No counter queue reservations found for today.';
       case 'all':
       default:
         return 'No reservations found for today.';

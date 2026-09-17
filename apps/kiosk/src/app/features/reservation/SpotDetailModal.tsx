@@ -101,10 +101,10 @@ export function SpotDetailModal({
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${isAvailable
-                      ? "bg-emerald-500"
-                      : effectiveStatus === "maintenance"
-                        ? "bg-amber-500"
-                        : "bg-slate-400"
+                    ? "bg-emerald-500"
+                    : effectiveStatus === "maintenance"
+                      ? "bg-amber-500"
+                      : "bg-slate-400"
                     }`}
                 />
                 {effectiveStatusLabel}

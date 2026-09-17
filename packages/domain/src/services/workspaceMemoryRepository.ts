@@ -84,6 +84,37 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     return updated;
   }
 
+  async deleteTemplate(id: string): Promise<{ deleted: boolean; deactivated?: boolean }> {
+    const template = this.requireTemplate(id);
+    const instances = Array.from(this.instances.values()).filter((i) => i.templateId === id);
+
+    if (instances.length === 0) {
+      this.templates.delete(id);
+      return { deleted: true };
+    }
+
+    const nowIso = new Date().toISOString();
+    for (const instance of instances) {
+      const futureReservations = await this.listFutureConfirmedReservations(instance.id, nowIso);
+      if (futureReservations.length > 0) {
+        throw new WorkspaceConflictError('Cannot delete template with active or upcoming reservations');
+      }
+    }
+
+    const updatedTemplate: WorkspaceTemplate = { ...template, isActive: false };
+    this.templates.set(id, updatedTemplate);
+
+    for (const instance of instances) {
+      this.instances.set(instance.id, {
+        ...instance,
+        operationalStatus: 'INACTIVE',
+        template: updatedTemplate,
+      });
+    }
+
+    return { deleted: false, deactivated: true };
+  }
+
   async createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     this.requireUniqueCode(input.instanceCode);
     const template = this.requireTemplate(input.templateId);

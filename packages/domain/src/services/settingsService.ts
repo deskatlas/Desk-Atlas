@@ -15,8 +15,10 @@ import type {
   UpdateBusinessSettingsInput,
   UpdateOperatingHoursInput,
   UpdatePaymentMethodInput,
+  WorkspaceStatusColors,
 } from '../models/settings';
 import type { SettingsRepository } from './settingsRepository';
+import { normalizeWorkspaceStatusColors } from './workspaceStatusColorService';
 
 export class SettingsValidationError extends Error {
   constructor(message: string) {
@@ -40,6 +42,25 @@ export function createAdminSettingsService(repository: SettingsRepository) {
         businessSettings,
         operatingHoursConfig,
         paymentMethods,
+      };
+    },
+
+    async getPublicBusinessSettings(): Promise<{
+      businessName: string;
+      timezone: string;
+      customerSessionTimeoutMinutes: number;
+      bookingIntervalMinutes: number;
+      paymentExpiryMinutes: number;
+      statusColors: WorkspaceStatusColors;
+    }> {
+      const businessSettings = await repository.getBusinessSettings();
+      return {
+        businessName: businessSettings.businessName,
+        timezone: businessSettings.timezone,
+        customerSessionTimeoutMinutes: businessSettings.customerSessionTimeoutMinutes ?? 20,
+        bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
+        paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
+        statusColors: normalizeWorkspaceStatusColors(businessSettings.statusColors),
       };
     },
 
@@ -435,11 +456,11 @@ function normalizeBusinessSettingsInput(
 
   if (
     !Number.isInteger(input.bookingIntervalMinutes) ||
-    input.bookingIntervalMinutes <= 0 ||
+    input.bookingIntervalMinutes <= 5 ||
     input.bookingIntervalMinutes > 1440
   ) {
     throw new SettingsValidationError(
-      'Booking interval must be a positive integer between 1 and 1440 minutes'
+      'Booking slot interval must be greater than 5 minutes'
     );
   }
 
@@ -453,6 +474,18 @@ function normalizeBusinessSettingsInput(
     (!Number.isInteger(input.kioskTimeoutMinutes) || input.kioskTimeoutMinutes <= 0)
   ) {
     throw new SettingsValidationError('Kiosk timeout must be a positive integer in minutes');
+  }
+
+  if (
+    input.customerSessionTimeoutMinutes !== undefined &&
+    input.customerSessionTimeoutMinutes !== null &&
+    (!Number.isInteger(input.customerSessionTimeoutMinutes) ||
+      input.customerSessionTimeoutMinutes < 1 ||
+      input.customerSessionTimeoutMinutes > 180)
+  ) {
+    throw new SettingsValidationError(
+      'Customer reservation session timeout must be an integer between 1 and 180 minutes'
+    );
   }
 
   let normalizedPhotos: LandingPreviewPhoto[] | undefined = undefined;
@@ -499,6 +532,14 @@ function normalizeBusinessSettingsInput(
     });
   }
 
+  let normalizedStatusColors: WorkspaceStatusColors | undefined = undefined;
+  if (input.statusColors !== undefined) {
+    if (typeof input.statusColors !== 'object' || input.statusColors === null) {
+      throw new SettingsValidationError('Status colors must be an object');
+    }
+    normalizedStatusColors = normalizeWorkspaceStatusColors(input.statusColors);
+  }
+
   return {
     businessName: input.businessName.trim(),
     timezone: input.timezone.trim(),
@@ -507,7 +548,12 @@ function normalizeBusinessSettingsInput(
     bookingIntervalMinutes: input.bookingIntervalMinutes,
     paymentExpiryMinutes: input.paymentExpiryMinutes,
     kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
+    customerSessionTimeoutMinutes:
+      input.customerSessionTimeoutMinutes !== undefined && input.customerSessionTimeoutMinutes !== null
+        ? input.customerSessionTimeoutMinutes
+        : 20,
     landingPreviewPhotos: normalizedPhotos,
+    statusColors: normalizedStatusColors,
   };
 }
 

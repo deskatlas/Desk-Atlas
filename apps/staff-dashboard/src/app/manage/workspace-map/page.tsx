@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import Link from 'next/link';
 import {
   computeFitViewZoom,
   clampMapZoom,
@@ -9,18 +10,35 @@ import {
   DEFAULT_MAP_CANVAS_WIDTH,
   DEFAULT_MAP_CANVAS_HEIGHT,
   DEFAULT_MAP_GRID_SIZE,
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  normalizeWorkspaceStatusColors,
+  getContrastColor,
   type Floor,
+  type OccupancyRecord,
   type PublishedFloorMap,
+  type WorkspaceStatusColors,
 } from '@deskatlas/domain';
-import { fetchPublishedMap, updateStaffInstanceOperationalStatus } from '../../lib/publishedMapApi';
+import {
+  fetchPublishedMap,
+  updateStaffInstanceOperationalStatus,
+  fetchStaffOccupancy,
+  fetchWorkspaceStatusColors,
+} from '../../lib/publishedMapApi';
+import { useAuth } from '@/features/auth';
 
-function getContrastColor(hexColor?: string): string {
-  if (!hexColor || !hexColor.startsWith('#') || hexColor.length < 7) return '#111827';
-  const r = parseInt(hexColor.slice(1, 3), 16);
-  const g = parseInt(hexColor.slice(3, 5), 16);
-  const b = parseInt(hexColor.slice(5, 7), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 150 ? '#111827' : '#ffffff';
+function formatScheduleTime(isoString?: string | null): string {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Manila',
+    });
+  } catch {
+    return '';
+  }
 }
 
 function AmenityIcon({ type, name, color }: { type?: string; name?: string; color?: string }) {
@@ -76,6 +94,7 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
 }
 
 export default function WorkspaceMapPage() {
+  const { user } = useAuth();
   const [builderZoom, setBuilderZoom] = useState(1);
   const [selectedObjId, setSelectedObjId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -94,15 +113,72 @@ export default function WorkspaceMapPage() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
   const [publishedMap, setPublishedMap] = useState<PublishedFloorMap | null>(null);
+  const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(DEFAULT_WORKSPACE_STATUS_COLORS);
+  const [occupancyList, setOccupancyList] = useState<OccupancyRecord[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Load published map and floors
+  const occupancyMap = useMemo(() => {
+    const map = new Map<string, OccupancyRecord>();
+    for (const occ of occupancyList) {
+      if (occ.workspaceInstanceId) {
+        map.set(occ.workspaceInstanceId, occ);
+      }
+    }
+    return map;
+  }, [occupancyList]);
+
+  const handleRefreshOccupancy = async () => {
+    try {
+      setRefreshing(true);
+      const [occ, colors] = await Promise.all([
+        fetchStaffOccupancy().catch(() => []),
+        fetchWorkspaceStatusColors().catch(() => null),
+      ]);
+      setOccupancyList(occ);
+      if (colors) {
+        setStatusColors(colors);
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const [occ, colors] = await Promise.all([
+          fetchStaffOccupancy().catch(() => []),
+          fetchWorkspaceStatusColors().catch(() => null),
+        ]);
+        setOccupancyList(occ);
+        if (colors) {
+          setStatusColors(colors);
+        }
+      } catch {
+        // silent background poll
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Load published map, floors, settings, and real-time occupancy
   const loadMapData = async (floorId?: string) => {
     try {
       setLoading(true);
       setErrorMsg(null);
       setSelectedObjId(null);
 
-      const result = await fetchPublishedMap(floorId);
+      const [result, colors, occList] = await Promise.all([
+        fetchPublishedMap(floorId),
+        fetchWorkspaceStatusColors().catch(() => DEFAULT_WORKSPACE_STATUS_COLORS),
+        fetchStaffOccupancy().catch(() => []),
+      ]);
+
+      setStatusColors(colors);
+      setOccupancyList(occList);
+
       setFloors(result.floors);
 
       if (result.published) {
@@ -219,7 +295,10 @@ export default function WorkspaceMapPage() {
     try {
       setActionLoading(true);
       setErrorMsg(null);
-      await updateStaffInstanceOperationalStatus(instanceId, newStatus);
+      await updateStaffInstanceOperationalStatus(instanceId, newStatus, {
+        userId: user?.id,
+        role: user?.role ? (String(user.role).toUpperCase() === 'SUPERADMIN' ? 'SUPERADMIN' : String(user.role).toUpperCase() === 'ADMIN' ? 'ADMIN' : 'STAFF') : undefined,
+      });
 
       // Update local state
       setPublishedMap((prev) => {
@@ -275,7 +354,7 @@ export default function WorkspaceMapPage() {
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', background: '#fff', borderBottom: '1px solid var(--da-border)', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-text-primary)' }}>Workspace Map</span>
           {floors.length > 0 ? (
             <select
@@ -296,13 +375,74 @@ export default function WorkspaceMapPage() {
               v{publishedMap.version.versionNumber} Live
             </span>
           )}
+
+          {/* Floor Occupancy Counter */}
+          {elements.filter(e => e.elementRole === 'WORKSPACE' || Boolean(e.workspace)).length > 0 && (
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: '9999px',
+                background: elements.filter(e => Boolean(e.workspace?.workspaceInstanceId && occupancyMap.has(e.workspace.workspaceInstanceId))).length > 0 ? '#FEF2F2' : '#F0FDF4',
+                color: elements.filter(e => Boolean(e.workspace?.workspaceInstanceId && occupancyMap.has(e.workspace.workspaceInstanceId))).length > 0 ? '#DC2626' : '#166534',
+                border: `1px solid ${elements.filter(e => Boolean(e.workspace?.workspaceInstanceId && occupancyMap.has(e.workspace.workspaceInstanceId))).length > 0 ? '#FECACA' : '#BBF7D0'}`,
+              }}
+            >
+              Occupied: {elements.filter(e => Boolean(e.workspace?.workspaceInstanceId && occupancyMap.has(e.workspace.workspaceInstanceId))).length} / {elements.filter(e => e.elementRole === 'WORKSPACE' || Boolean(e.workspace)).length}
+            </span>
+          )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={handleZoomOut} style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--da-border)', background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: 700 }}>−</button>
-          <span style={{ fontSize: '12px', fontFamily: 'var(--da-font-family)', width: '40px', textAlign: 'center' }}>{Math.round(builderZoom * 100)}%</span>
-          <button onClick={handleZoomIn} style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--da-border)', background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: 700 }}>+</button>
-          <button onClick={handleFitView} style={{ border: '1px solid var(--da-border)', background: '#fff', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Fit View</button>
+        {/* Status Legend, Refresh, and Zoom Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          {/* Status Legend */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'var(--da-text-secondary)', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColors.available }} />
+              <span>Available</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColors.occupied }} />
+              <span>Occupied</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColors.maintenance }} />
+              <span>Maintenance</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColors.unavailable }} />
+              <span>Unavailable</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleRefreshOccupancy}
+            disabled={refreshing}
+            title="Refresh occupancy status"
+            style={{
+              border: '1px solid var(--da-border)',
+              background: '#fff',
+              borderRadius: '6px',
+              padding: '6px 10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: refreshing ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <span style={{ display: 'inline-block', transform: refreshing ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}>⟳</span>
+            {refreshing ? 'Syncing...' : 'Refresh'}
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button onClick={handleZoomOut} style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--da-border)', background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: 700 }}>−</button>
+            <span style={{ fontSize: '12px', fontFamily: 'var(--da-font-family)', width: '40px', textAlign: 'center' }}>{Math.round(builderZoom * 100)}%</span>
+            <button onClick={handleZoomIn} style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--da-border)', background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: 700 }}>+</button>
+            <button onClick={handleFitView} style={{ border: '1px solid var(--da-border)', background: '#fff', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Fit View</button>
+          </div>
         </div>
       </div>
 
@@ -377,6 +517,9 @@ export default function WorkspaceMapPage() {
                   const isWorkspace = el.elementRole === 'WORKSPACE' || Boolean(el.workspace);
                   const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
                   const isSelected = selectedObjId === el.id;
+                  const instId = el.workspace?.workspaceInstanceId;
+                  const activeOccupancy = instId ? occupancyMap.get(instId) : null;
+                  const isOccupied = Boolean(activeOccupancy);
 
                   const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
                   const isPantry = el.elementType?.toLowerCase().includes('pantry') || el.label?.toLowerCase().includes('pantry');
@@ -402,13 +545,24 @@ export default function WorkspaceMapPage() {
                   let border = isSelected ? '3px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #ffffff' : '1px solid rgba(0, 0, 0, 0.15)');
 
                   const status = el.workspace?.operationalStatus || 'ACTIVE';
+                  const isInactive = isWorkspace && (status === 'INACTIVE' || status === 'BROKEN');
                   if (isWorkspace) {
                     if (status === 'MAINTENANCE') {
-                      border = '2px dashed #f59e0b';
+                      border = `2px dashed ${statusColors.maintenance}`;
+                      bg = statusColors.maintenance;
+                      textColor = getContrastColor(bg);
                     } else if (status === 'INACTIVE' || status === 'BROKEN' || (!el.workspace?.isBookable && status !== 'ACTIVE')) {
-                      border = '2px dashed #94a3b8';
-                      bg = 'rgba(148, 163, 184, 0.4)';
-                      textColor = '#334155';
+                      border = `2px dashed ${statusColors.unavailable}`;
+                      bg = statusColors.unavailable;
+                      textColor = getContrastColor(bg);
+                    } else if (isOccupied) {
+                      border = isSelected ? '3px solid var(--da-brand-dark)' : `2px solid ${statusColors.occupied}`;
+                      bg = statusColors.occupied;
+                      textColor = getContrastColor(bg);
+                    } else {
+                      border = isSelected ? '3px solid var(--da-brand-dark)' : '1px solid rgba(0, 0, 0, 0.15)';
+                      bg = statusColors.available;
+                      textColor = getContrastColor(bg);
                     }
                   } else if (el.elementType?.toLowerCase().includes('door')) {
                     border = '2px dashed var(--da-brand-dark)';
@@ -448,6 +602,7 @@ export default function WorkspaceMapPage() {
                           border: border,
                           borderRadius: isKioskMarker ? '14px' : (isWall ? '2px' : '8px'),
                           color: textColor,
+                          opacity: isInactive ? (isSelected ? 0.6 : 0.25) : 1,
                           position: 'relative',
                           overflow: 'hidden',
                           boxShadow: isSelected ? '0 0 0 2px var(--da-brand-dark)' : (isKioskMarker ? '0 4px 14px rgba(220, 38, 38, 0.35)' : 'none'),
@@ -455,9 +610,16 @@ export default function WorkspaceMapPage() {
                         }}
                       >
                         {isWorkspace ? (
-                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {displayName}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%', overflow: 'hidden' }}>
+                            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {displayName}
+                            </span>
+                            {isOccupied && (
+                              <span style={{ fontSize: '9px', fontWeight: 800, opacity: 0.95, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                👤 Occupied
+                              </span>
+                            )}
+                          </div>
                         ) : isKioskMarker ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">
@@ -502,6 +664,122 @@ export default function WorkspaceMapPage() {
 
             {selectedElement.workspace ? (
               <>
+                {/* Status Pill */}
+                {(() => {
+                  const instId = selectedElement.workspace.workspaceInstanceId;
+                  const selectedOccupancy = instId ? occupancyMap.get(instId) : null;
+                  const opStatus = selectedElement.workspace.operationalStatus || 'ACTIVE';
+                  const isMaintenance = opStatus === 'MAINTENANCE';
+                  const isInactive = opStatus === 'INACTIVE' || opStatus === 'BROKEN';
+
+                  const badgeBg = isMaintenance
+                    ? statusColors.maintenance
+                    : isInactive
+                    ? statusColors.unavailable
+                    : selectedOccupancy
+                    ? statusColors.occupied
+                    : statusColors.available;
+                  const badgeText = isMaintenance
+                    ? 'MAINTENANCE'
+                    : isInactive
+                    ? 'INACTIVE'
+                    : selectedOccupancy
+                    ? 'OCCUPIED'
+                    : 'AVAILABLE';
+
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          padding: '3px 10px',
+                          borderRadius: '9999px',
+                          background: badgeBg,
+                          color: getContrastColor(badgeBg),
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {badgeText}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Active Occupant Details Card */}
+                {(() => {
+                  const instId = selectedElement.workspace.workspaceInstanceId;
+                  const selectedOccupancy = instId ? occupancyMap.get(instId) : null;
+                  if (!selectedOccupancy) return null;
+
+                  return (
+                    <div
+                      style={{
+                        padding: '12px',
+                        background: '#FEF2F2',
+                        border: '1px solid #FECACA',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        fontSize: '12px',
+                        color: '#991B1B',
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>👤 Active Occupant</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ opacity: 0.8 }}>Customer:</span>
+                        <span style={{ fontWeight: 700 }}>
+                          {selectedOccupancy.customerFirstName} {selectedOccupancy.customerLastName}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ opacity: 0.8 }}>Reference:</span>
+                        <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                          {selectedOccupancy.referenceCode}
+                        </span>
+                      </div>
+                      {selectedOccupancy.bookingStartAt && selectedOccupancy.bookingEndAt && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ opacity: 0.8 }}>Schedule:</span>
+                          <span style={{ fontWeight: 700 }}>
+                            {formatScheduleTime(selectedOccupancy.bookingStartAt)} – {formatScheduleTime(selectedOccupancy.bookingEndAt)}
+                          </span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ opacity: 0.8 }}>Check-In:</span>
+                        <span style={{ fontWeight: 700 }}>
+                          {selectedOccupancy.checkedInAt
+                            ? `Checked In (${formatScheduleTime(selectedOccupancy.checkedInAt)})`
+                            : selectedOccupancy.reservationStatus === 'CHECKED_IN'
+                            ? 'Checked In'
+                            : 'Confirmed (Awaiting Arrival)'}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/manage/reservations?search=${encodeURIComponent(selectedOccupancy.referenceCode)}`}
+                        style={{
+                          marginTop: '4px',
+                          display: 'inline-block',
+                          textAlign: 'center',
+                          padding: '7px 12px',
+                          background: 'var(--da-brand-dark)',
+                          color: '#fff',
+                          borderRadius: '6px',
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        View Reservation →
+                      </Link>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ padding: '12px', background: 'var(--da-canvas)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--da-text-secondary)' }}>Template:</span>

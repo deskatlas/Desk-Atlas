@@ -15,6 +15,20 @@ export interface PublicLandingPreviewPhoto {
   displayOrder: number;
 }
 
+export interface WorkspaceStatusColors {
+  available: string;
+  occupied: string;
+  maintenance: string;
+  unavailable: string;
+}
+
+export const DEFAULT_WORKSPACE_STATUS_COLORS: WorkspaceStatusColors = {
+  available: '#10B981',
+  occupied: '#EF4444',
+  maintenance: '#F59E0B',
+  unavailable: '#6B7280',
+};
+
 export interface BusinessSettings {
   id: number;
   businessName: string;
@@ -24,7 +38,9 @@ export interface BusinessSettings {
   bookingIntervalMinutes: number;
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes: number | null;
+  customerSessionTimeoutMinutes?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
+  statusColors?: WorkspaceStatusColors;
   updatedAt?: string | null;
 }
 
@@ -66,7 +82,9 @@ export interface UpdateBusinessSettingsInput {
   bookingIntervalMinutes: number;
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes?: number | null;
+  customerSessionTimeoutMinutes?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
+  statusColors?: WorkspaceStatusColors;
 }
 
 export interface UpdateOperatingHoursInput {

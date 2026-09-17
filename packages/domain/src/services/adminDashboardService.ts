@@ -344,7 +344,9 @@ function buildActivityStream(
           occurredAt: event.occurredAt,
           actorUserId: event.actorUserId ?? null,
           actorRole: event.actorRole ?? null,
-          actorName: event.actorName ?? event.actorUserId ?? null,
+          actorName:
+            event.actorName ||
+            (event.actorRole === "ADMIN" ? "Admin" : event.actorRole === "STAFF" ? "Staff" : null),
         });
       }
     }

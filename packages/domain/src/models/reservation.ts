@@ -196,7 +196,7 @@ export interface PaymentReviewDetail extends PaymentReviewQueueItem {
   processedByUserId: string | null;
 }
 
-export type PaymentReviewDecision = "APPROVE" | "REJECT";
+export type PaymentReviewDecision = "APPROVE" | "REJECT" | "RECONSIDER_APPROVE";
 
 export interface ReviewPaymentRequest {
   paymentAttemptId: string;
@@ -357,7 +357,7 @@ export interface GuestReservationTrackingResult {
   rejectionReason?: string | null;
 }
 
-export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected";
+export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue";
 
 export interface AdminReservationSummary {
   id: string;

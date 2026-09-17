@@ -16,3 +16,16 @@ export async function PATCH(
     return workspaceErrorResponse(error);
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ templateId: string }> }
+) {
+  try {
+    const { templateId } = await context.params;
+    const result = await getAdminWorkspaceService().deleteTemplate(templateId);
+    return NextResponse.json(result);
+  } catch (error) {
+    return workspaceErrorResponse(error);
+  }
+}

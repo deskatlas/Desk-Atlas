@@ -473,6 +473,21 @@ export class ReservationMemoryRepository
       });
   }
 
+  async listRejectedPayments(): Promise<PaymentReviewDetail[]> {
+    return Array.from(this.paymentAttempts.values())
+      .filter((attempt) => attempt.channel === "WEB" && attempt.status === "REJECTED")
+      .map((attempt) => this.buildPaymentReviewDetail(attempt))
+      .filter((detail): detail is PaymentReviewDetail => detail !== null)
+      .sort((a, b) => {
+        const aTime = a.processedAt ? new Date(a.processedAt).getTime() : 0;
+        const bTime = b.processedAt ? new Date(b.processedAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
+  }
+
   async getPaymentReviewDetail(paymentAttemptId: string): Promise<PaymentReviewDetail | null> {
     const attempt = Array.from(this.paymentAttempts.values()).find((entry) => entry.id === paymentAttemptId);
     return attempt ? this.buildPaymentReviewDetail(attempt) : null;
@@ -493,7 +508,7 @@ export class ReservationMemoryRepository
           return this.buildDecisionResult(attempt, input.actorUserId);
         }
 
-        if (attempt.status !== "UNDER_REVIEW") {
+        if (attempt.status !== "UNDER_REVIEW" && attempt.status !== "REJECTED") {
           throw new Error("Payment attempt is not in an approvable review state.");
         }
 
@@ -513,6 +528,11 @@ export class ReservationMemoryRepository
         attempt.processedByUserId = input.actorUserId;
         attempt.processedAt = input.processedAt;
         attempt.rejectionReason = null;
+
+        // Clear cancellation requirements if reservation was previously cancelled
+        (reservation as any).cancelledAt = null;
+        (reservation as any).cancellationReason = null;
+        (reservation as any).cancelledByUserId = null;
 
         if (assignedCandidate) {
           reservation.status = "CONFIRMED";

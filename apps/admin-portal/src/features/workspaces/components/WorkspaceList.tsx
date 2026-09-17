@@ -19,7 +19,7 @@ const availableShapes = [
 ];
 
 export function WorkspaceList() {
-  const [activeTab, setActiveTab] = useState<'templates' | 'instances'>('templates');
+  const [activeTab, setActiveTab] = useState<'templates' | 'archived' | 'instances'>('templates');
   const [instanceFilter, setInstanceFilter] = useState<string>('All');
   const [modalMode, setModalMode] = useState<'create_template' | 'edit_template' | 'edit_instance' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,6 +34,9 @@ export function WorkspaceList() {
   // Selected item states
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
+  const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Form states
   const [templateName, setTemplateName] = useState('');
@@ -353,6 +356,63 @@ export function WorkspaceList() {
     );
   };
 
+  const handleRestoreTemplate = async (t: any) => {
+    try {
+      setActionLoading(true);
+      setDeleteError(null);
+      const res = await fetch(`/api/admin/workspaces/templates/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: true }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to restore template');
+      }
+      setToastMessage({
+        text: `Workspace template "${t.name}" was restored to active templates.`,
+        type: 'success',
+      });
+      await loadData();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to restore template');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+    try {
+      setActionLoading(true);
+      setDeleteError(null);
+      const res = await fetch(`/api/admin/workspaces/templates/${templateToDelete.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete template');
+      }
+      const result = await res.json();
+      setToastMessage({
+        text: result.deactivated
+          ? `Workspace template "${templateToDelete.name}" was moved to Archived and removed from the map.`
+          : `Workspace template "${templateToDelete.name}" was deleted successfully.`,
+        type: 'success',
+      });
+      setTemplateToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete workspace template');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const activeTemplates = templates.filter((t) => t.isActive !== false);
+  const archivedTemplates = templates.filter((t) => t.isActive === false);
+  const activeInstances = instances.filter((ins) => ins.template?.isActive !== false);
+
   return (
     <main data-screen-label="Workspaces" style={{ padding: '26px 28px 40px' }}>
       <div className="mobile-flex-col mobile-items-start" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', marginBottom: '20px' }}>
@@ -368,6 +428,41 @@ export function WorkspaceList() {
         </button>
       </div>
 
+      {toastMessage && (
+        <div
+          data-testid="toast-notification"
+          style={{
+            marginBottom: '16px',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            background: toastMessage.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+            border: `1px solid ${toastMessage.type === 'success' ? '#A7F3D0' : '#FECACA'}`,
+            color: toastMessage.type === 'success' ? '#065F46' : '#991B1B',
+            fontSize: '13px',
+            fontWeight: 600,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>{toastMessage.text}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '14px',
+              color: 'inherit',
+            }}
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {errorMsg && (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', fontFamily: 'var(--da-font-family)' }}>
           {errorMsg}
@@ -379,13 +474,19 @@ export function WorkspaceList() {
           onClick={() => setActiveTab('templates')} 
           style={{ padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: activeTab === 'templates' ? 'var(--da-brand-dark)' : 'transparent', color: activeTab === 'templates' ? '#fff' : 'var(--da-text-secondary)', border: activeTab === 'templates' ? 'none' : '1px solid var(--da-border)' }}
         >
-          Templates
+          Templates ({activeTemplates.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('archived')} 
+          style={{ padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: activeTab === 'archived' ? 'var(--da-brand-dark)' : 'transparent', color: activeTab === 'archived' ? '#fff' : 'var(--da-text-secondary)', border: activeTab === 'archived' ? 'none' : '1px solid var(--da-border)' }}
+        >
+          Archived ({archivedTemplates.length})
         </button>
         <button 
           onClick={() => setActiveTab('instances')} 
           style={{ padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: activeTab === 'instances' ? 'var(--da-brand-dark)' : 'transparent', color: activeTab === 'instances' ? '#fff' : 'var(--da-text-secondary)', border: activeTab === 'instances' ? 'none' : '1px solid var(--da-border)' }}
         >
-          Physical Instances
+          Physical Instances ({activeInstances.length})
         </button>
       </div>
 
@@ -394,14 +495,14 @@ export function WorkspaceList() {
           Loading workspaces...
         </div>
       ) : activeTab === 'templates' ? (
-        templates.length === 0 ? (
+        activeTemplates.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', background: '#fff', border: '1px dashed var(--da-border)', borderRadius: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-            No workspace templates created yet. Click "Create Template" above to add your first template.
+            No active workspace templates created yet. Click "Create Template" above to add your first template.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
-            {templates.map((t, i) => {
-              const instanceCount = instances.filter(ins => ins.templateId === t.id || ins.template?.id === t.id).length;
+            {activeTemplates.map((t, i) => {
+              const instanceCount = instances.filter(ins => (ins.templateId === t.id || ins.template?.id === t.id) && ins.operationalStatus !== 'INACTIVE').length;
               return (
                 <div key={t.id || i} style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', padding: '16px' }}>
                   {t.photoPath && (
@@ -422,11 +523,71 @@ export function WorkspaceList() {
                   <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '10px' }}>
                     ₱{t.rateAmount ?? t.rate}/hour &middot; Capacity {t.capacity} &middot; {instanceCount} instances
                   </div>
-                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: t.isActive !== false ? 'var(--da-info)' : 'var(--da-soft)', color: 'var(--da-brand-dark)' }}>
-                    {t.isActive !== false ? 'Active' : 'Inactive'}
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: 'var(--da-info)', color: 'var(--da-brand-dark)' }}>
+                    Active
                   </span>
                   <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
                     <button onClick={() => openEditTemplate(t)} style={{ flex: 1, background: 'var(--da-canvas)', border: 'none', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-text-primary)' }}>Edit</button>
+                    <button 
+                      type="button"
+                      onClick={() => { setDeleteError(null); setTemplateToDelete(t); }} 
+                      style={{ flex: 1, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-danger)' }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : activeTab === 'archived' ? (
+        archivedTemplates.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', background: '#fff', border: '1px dashed var(--da-border)', borderRadius: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
+            No archived workspace templates.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
+            {archivedTemplates.map((t, i) => {
+              const totalInstances = instances.filter(ins => ins.templateId === t.id || ins.template?.id === t.id).length;
+              return (
+                <div key={t.id || i} style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', padding: '16px', opacity: 0.9 }}>
+                  {t.photoPath && (
+                    <div style={{ width: '100%', height: '110px', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px', background: 'var(--da-canvas)', filter: 'grayscale(30%)' }}>
+                      <img 
+                        src={t.photoPath} 
+                        alt={t.name} 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          objectFit: 'cover',
+                          objectPosition: `${t.defaultStyle?.photoPosition?.x ?? 50}% ${t.defaultStyle?.photoPosition?.y ?? 50}%`
+                        }} 
+                      />
+                    </div>
+                  )}
+                  <div style={{ fontWeight: 800, color: 'var(--da-text-primary)', fontSize: '15px' }}>{t.name}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '10px' }}>
+                    ₱{t.rateAmount ?? t.rate}/hour &middot; Capacity {t.capacity} &middot; {totalInstances} instances
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: 'var(--da-soft)', color: 'var(--da-text-secondary)' }}>
+                    Archived
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
+                    <button 
+                      type="button"
+                      onClick={() => handleRestoreTemplate(t)} 
+                      style={{ flex: 1, background: 'var(--da-brand-dark)', border: 'none', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: '#fff' }}
+                    >
+                      Restore
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => { setDeleteError(null); setTemplateToDelete(t); }} 
+                      style={{ flex: 1, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-danger)' }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               );
@@ -442,7 +603,7 @@ export function WorkspaceList() {
             >
               All
             </button>
-            {Array.from(new Set(instances.map(i => i.template?.name || i.template || 'Default'))).map(tpl => (
+            {Array.from(new Set(activeInstances.map(i => i.template?.name || i.template || 'Default'))).map(tpl => (
               <button
                 key={tpl}
                 onClick={() => setInstanceFilter(tpl)}
@@ -453,19 +614,19 @@ export function WorkspaceList() {
             ))}
           </div>
 
-          {instances.length === 0 ? (
+          {activeInstances.length === 0 ? (
             <div style={{ padding: '40px', textAlign: 'center', background: '#fff', border: '1px dashed var(--da-border)', borderRadius: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
               No physical instances created yet. Open Map Builder to place instances on a floor.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {Array.from(new Set(instances.map(i => i.template?.name || i.template || 'Default')))
+              {Array.from(new Set(activeInstances.map(i => i.template?.name || i.template || 'Default')))
                 .filter(tpl => instanceFilter === 'All' || instanceFilter === tpl)
                 .map(tpl => (
                   <div key={tpl}>
                     <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-text-primary)', marginBottom: '12px', marginTop: 0 }}>{tpl}</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
-                      {instances
+                      {activeInstances
                         .filter(i => (i.template?.name || i.template || 'Default') === tpl)
                         .slice()
                         .sort(compareWorkspaceInstances)
@@ -788,6 +949,59 @@ export function WorkspaceList() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {templateToDelete && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(18, 37, 26, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, overflowY: 'auto' }}>
+          <div style={{ background: 'var(--da-surface)', padding: '28px', borderRadius: '16px', width: '100%', maxWidth: '480px', boxShadow: 'var(--da-shadow-lg)', margin: '20px auto' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 12px', letterSpacing: '-0.02em' }}>
+              Delete Workspace Template
+            </h2>
+            
+            {deleteError && (
+              <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: '13px', marginBottom: '14px', fontWeight: 600 }}>
+                {deleteError}
+              </div>
+            )}
+
+            <div style={{ fontSize: '14px', color: 'var(--da-text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
+              Are you sure you want to delete <strong style={{ color: 'var(--da-text-primary)' }}>{templateToDelete.name}</strong>?
+            </div>
+
+            <div style={{ background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: 'var(--da-text-primary)' }}>
+              <div><strong>Rate:</strong> ₱{templateToDelete.rateAmount ?? templateToDelete.rate}/hour</div>
+              <div><strong>Capacity:</strong> {templateToDelete.capacity}</div>
+              <div>
+                <strong>Associated Instances:</strong>{' '}
+                {instances.filter((ins) => ins.templateId === templateToDelete.id || ins.template?.id === templateToDelete.id).length}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', lineHeight: 1.4, marginBottom: '20px' }}>
+              {instances.filter((ins) => ins.templateId === templateToDelete.id || ins.template?.id === templateToDelete.id).length > 0
+                ? 'Notice: Physical instances exist for this template. It will be moved to the Archived category and its instances on the floor map will be removed to preserve historical records.'
+                : 'This template has no associated instances and will be permanently deleted.'}
+            </div>
+
+            <div className="mobile-flex-col" style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => { setTemplateToDelete(null); setDeleteError(null); }}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: '#fff', color: 'var(--da-text-primary)', border: '1px solid var(--da-border)', fontFamily: 'var(--da-font-family)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleDeleteTemplate}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: actionLoading ? 'not-allowed' : 'pointer', background: 'var(--da-danger)', color: '#fff', border: 'none', fontFamily: 'var(--da-font-family)', opacity: actionLoading ? 0.7 : 1 }}
+              >
+                {actionLoading ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

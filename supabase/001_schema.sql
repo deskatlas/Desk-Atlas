@@ -277,7 +277,9 @@ CREATE TABLE public.business_settings (
   booking_interval_minutes integer NOT NULL,
   payment_expiry_minutes integer NOT NULL DEFAULT 60,
   kiosk_timeout_minutes integer,
+  customer_session_timeout_minutes integer NOT NULL DEFAULT 20,
   landing_preview_photos jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status_colors jsonb NOT NULL DEFAULT '{"available": "#10B981", "occupied": "#EF4444", "maintenance": "#F59E0B", "unavailable": "#6B7280"}'::jsonb,
   updated_by_user_id uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -288,6 +290,8 @@ CREATE TABLE public.business_settings (
   CONSTRAINT business_settings_payment_expiry_positive CHECK (payment_expiry_minutes > 0),
   CONSTRAINT business_settings_kiosk_timeout_positive
     CHECK (kiosk_timeout_minutes IS NULL OR kiosk_timeout_minutes > 0),
+  CONSTRAINT business_settings_customer_session_timeout_bound
+    CHECK (customer_session_timeout_minutes >= 1 AND customer_session_timeout_minutes <= 180),
 
   CONSTRAINT business_settings_updated_by_fk
     FOREIGN KEY (updated_by_user_id)

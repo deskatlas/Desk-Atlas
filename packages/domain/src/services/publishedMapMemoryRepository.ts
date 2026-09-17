@@ -11,7 +11,7 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
 
   seedPublishedFloorMap(map: PublishedFloorMap) {
     this.seedFloor(map.floor);
-    this.publishedMaps.set(map.floor.id, clonePublishedFloorMap(map));
+    this.publishedMaps.set(map.floor.id, clonePublishedFloorMap(map, 'ADMIN'));
   }
 
   async listPublishedFloors(): Promise<Floor[]> {
@@ -23,7 +23,7 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
 
   async loadPublishedFloorMap(
     floorId: string,
-    _options?: { audience?: PublishedMapAudience }
+    options?: { audience?: PublishedMapAudience }
   ): Promise<PublishedFloorMap | null> {
     const floor = this.floors.get(floorId);
     if (!floor || !floor.isActive) {
@@ -33,18 +33,26 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
     const map = this.publishedMaps.get(floorId);
     if (!map) return null;
 
-    return clonePublishedFloorMap(map);
+    return clonePublishedFloorMap(map, options?.audience);
   }
 }
 
-function clonePublishedFloorMap(map: PublishedFloorMap): PublishedFloorMap {
+function clonePublishedFloorMap(map: PublishedFloorMap, audience?: PublishedMapAudience): PublishedFloorMap {
+  const isStaffOrAdmin = audience === 'STAFF' || audience === 'ADMIN';
   return {
     floor: { ...map.floor },
     version: { ...map.version },
-    elements: map.elements.map((element) => ({
-      ...element,
-      style: { ...element.style },
-      workspace: element.workspace ? { ...element.workspace } : null,
-    })),
+    elements: map.elements
+      .filter((element) => {
+        if (element.elementRole === 'WORKSPACE') {
+          if (!isStaffOrAdmin && element.workspace?.operationalStatus === 'INACTIVE') return false;
+        }
+        return true;
+      })
+      .map((element) => ({
+        ...element,
+        style: { ...element.style },
+        workspace: element.workspace ? { ...element.workspace } : null,
+      })),
   };
 }

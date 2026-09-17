@@ -38,6 +38,21 @@ export class PaymentReviewService {
     });
   }
 
+  async listRejectedPayments(): Promise<PaymentReviewDetail[]> {
+    if (typeof this.paymentReviewRepository.listRejectedPayments === "function") {
+      const rejected = await this.paymentReviewRepository.listRejectedPayments();
+      return [...rejected].sort((a, b) => {
+        const aTime = a.processedAt ? new Date(a.processedAt).getTime() : 0;
+        const bTime = b.processedAt ? new Date(b.processedAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
+    }
+    return [];
+  }
+
   async getPaymentReviewDetail(paymentAttemptId: string): Promise<PaymentReviewDetail> {
     if (!paymentAttemptId || paymentAttemptId.trim() === "") {
       throw new PaymentReviewError("Payment attempt ID is required.");
@@ -80,7 +95,7 @@ export class PaymentReviewService {
       });
     }
 
-    if (request.decision !== "APPROVE") {
+    if (request.decision !== "APPROVE" && request.decision !== "RECONSIDER_APPROVE") {
       throw new PaymentReviewError("Unsupported payment review decision.");
     }
 

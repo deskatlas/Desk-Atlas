@@ -129,21 +129,46 @@ export class SupabaseMapRepository implements MapRepository {
 
     let version = (await this.loadDraft(input.floorId))?.version;
     if (!version) {
-      const nextVersionNumber = await this.nextVersionNumber(input.floorId);
-      const [created] = await this.request<MapVersionRow[]>('/map_versions', {
-        method: 'POST',
-        body: JSON.stringify({
-          floor_id: input.floorId,
-          version_number: nextVersionNumber,
-          status: 'DRAFT',
-          canvas_width: input.canvasWidth,
-          canvas_height: input.canvasHeight,
-          grid_size: input.gridSize,
-          created_by_user_id: input.actorUserId,
-        }),
-        prefer: 'return=representation',
-      });
-      version = mapVersion(created);
+      try {
+        const nextVersionNumber = await this.nextVersionNumber(input.floorId);
+        const [created] = await this.request<MapVersionRow[]>('/map_versions', {
+          method: 'POST',
+          body: JSON.stringify({
+            floor_id: input.floorId,
+            version_number: nextVersionNumber,
+            status: 'DRAFT',
+            canvas_width: input.canvasWidth,
+            canvas_height: input.canvasHeight,
+            grid_size: input.gridSize,
+            created_by_user_id: input.actorUserId,
+          }),
+          prefer: 'return=representation',
+        });
+        version = mapVersion(created);
+      } catch (err: any) {
+        // Handle race condition where another concurrent save or process created the DRAFT
+        const existingDraft = (await this.loadDraft(input.floorId))?.version;
+        if (existingDraft) {
+          version = existingDraft;
+        } else {
+          // Retry once with refreshed next version number
+          const retryVersionNumber = await this.nextVersionNumber(input.floorId);
+          const [created] = await this.request<MapVersionRow[]>('/map_versions', {
+            method: 'POST',
+            body: JSON.stringify({
+              floor_id: input.floorId,
+              version_number: retryVersionNumber,
+              status: 'DRAFT',
+              canvas_width: input.canvasWidth,
+              canvas_height: input.canvasHeight,
+              grid_size: input.gridSize,
+              created_by_user_id: input.actorUserId,
+            }),
+            prefer: 'return=representation',
+          });
+          version = mapVersion(created);
+        }
+      }
     } else {
       const [updated] = await this.request<MapVersionRow[]>(
         `/map_versions?id=eq.${encodeURIComponent(version.id)}`,

@@ -537,6 +537,27 @@ export class ReservationSupabaseRepository
       });
   }
 
+  async listRejectedPayments(): Promise<PaymentReviewDetail[]> {
+    const attempts = await this.request<any[]>(
+      "/payment_attempts?select=*&channel=eq.WEB&status=eq.REJECTED&order=processed_at.desc.nullslast,created_at.desc"
+    );
+
+    const reviews = await Promise.all(
+      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt))
+    );
+
+    return reviews
+      .filter((review): review is PaymentReviewDetail => review !== null)
+      .sort((a, b) => {
+        const aTime = a.processedAt ? new Date(a.processedAt).getTime() : 0;
+        const bTime = b.processedAt ? new Date(b.processedAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
+  }
+
   async getPaymentReviewDetail(paymentAttemptId: string): Promise<PaymentReviewDetail | null> {
     return this.loadPaymentReview(paymentAttemptId);
   }
@@ -546,20 +567,165 @@ export class ReservationSupabaseRepository
     actorUserId: string;
     processedAt: string;
   }): Promise<PaymentReviewDecisionResult> {
-    const result = await this.request<any[]>("/rpc/approve_online_payment_and_allocate", {
-      method: "POST",
+    try {
+      const result = await this.request<any[]>("/rpc/approve_online_payment_and_allocate", {
+        method: "POST",
+        body: JSON.stringify({
+          p_payment_attempt_id: input.paymentAttemptId,
+          p_processed_by_user_id: input.actorUserId,
+          p_processed_at: input.processedAt,
+        }),
+      });
+
+      if (!Array.isArray(result) || result.length === 0) {
+        throw new Error("Failed to approve payment review.");
+      }
+
+      const decisionResult = this.mapDecisionResult(result[0]);
+
+      if (decisionResult.reservationStatus === "CONFIRMED" || decisionResult.reservationStatus === "NEEDS_MANUAL_RESOLUTION") {
+        try {
+          await this.request(`/reservations?id=eq.${encodeURIComponent(decisionResult.reservationId)}`, {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              cancelled_at: null,
+              cancellation_reason: null,
+              cancelled_by_user_id: null,
+              updated_at: input.processedAt,
+            }),
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+
+      return decisionResult;
+    } catch (rpcError: any) {
+      const msg = rpcError instanceof Error ? rpcError.message : String(rpcError);
+      if (
+        msg.includes("not in an approvable review state") ||
+        msg.includes("PGRST202") ||
+        msg.includes("404")
+      ) {
+        return this.fallbackApprovePaymentAndAllocate(input);
+      }
+      throw rpcError;
+    }
+  }
+
+  private async fallbackApprovePaymentAndAllocate(input: {
+    paymentAttemptId: string;
+    actorUserId: string;
+    processedAt: string;
+  }): Promise<PaymentReviewDecisionResult> {
+    const attempts = await this.request<any[]>(
+      `/payment_attempts?id=eq.${encodeURIComponent(input.paymentAttemptId)}&limit=1`
+    );
+    if (!attempts || attempts.length === 0) {
+      throw new Error(`Payment attempt not found: ${input.paymentAttemptId}`);
+    }
+    const attempt = attempts[0];
+    const reservationId = attempt.reservation_id;
+
+    const candidates = await this.request<any[]>(
+      `/reservation_candidates?reservation_id=eq.${encodeURIComponent(reservationId)}&order=rank.asc`
+    );
+
+    let assignedCandidate: any = null;
+    for (const c of candidates ?? []) {
+      const conflicts = await this.request<any[]>(
+        `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(c.workspace_instance_id)}&is_assigned=eq.true&reservation_id=neq.${encodeURIComponent(reservationId)}&select=id,start_at,end_at`
+      ).catch(() => []);
+
+      const cStart = new Date(c.start_at).getTime();
+      const cEnd = new Date(c.end_at).getTime();
+      const hasConflict = (conflicts ?? []).some((conflict) => {
+        const confStart = new Date(conflict.start_at).getTime();
+        const confEnd = new Date(conflict.end_at).getTime();
+        return cStart < confEnd && cEnd > confStart;
+      });
+
+      if (!hasConflict) {
+        assignedCandidate = c;
+        await this.request(`/reservation_candidates?id=eq.${encodeURIComponent(c.id)}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ is_assigned: true, updated_at: input.processedAt }),
+        }).catch(() => {});
+        break;
+      }
+    }
+
+    const wasRejected = attempt.status === "REJECTED";
+    await this.request(`/payment_attempts?id=eq.${encodeURIComponent(attempt.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify({
-        p_payment_attempt_id: input.paymentAttemptId,
-        p_processed_by_user_id: input.actorUserId,
-        p_processed_at: input.processedAt,
+        status: "APPROVED",
+        processed_by_user_id: input.actorUserId,
+        processed_at: input.processedAt,
+        rejection_reason: null,
       }),
     });
 
-    if (!Array.isArray(result) || result.length === 0) {
-      throw new Error("Failed to approve payment review.");
-    }
+    const newResStatus = assignedCandidate ? "CONFIRMED" : "NEEDS_MANUAL_RESOLUTION";
+    await this.request(`/reservations?id=eq.${encodeURIComponent(reservationId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        status: newResStatus,
+        confirmed_at: assignedCandidate ? input.processedAt : null,
+        cancelled_at: null,
+        cancellation_reason: null,
+        cancelled_by_user_id: null,
+        updated_at: input.processedAt,
+      }),
+    });
 
-    return this.mapDecisionResult(result[0]);
+    await this.request("/audit_logs", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        actor_user_id: input.actorUserId,
+        actor_role: "ADMIN",
+        action: wasRejected ? "payment_review_reconsidered_approved" : "payment_review_completed",
+        entity_type: "payment_attempt",
+        entity_id: attempt.id,
+        metadata: {
+          decision: "APPROVE",
+          was_reconsidered: wasRejected,
+          reservation_id: reservationId,
+          assigned_candidate_id: assignedCandidate?.id ?? null,
+        },
+      }),
+    }).catch(() => {});
+
+    const res = await this.request<any[]>(`/reservations?id=eq.${encodeURIComponent(reservationId)}&limit=1`);
+
+    return {
+      paymentAttemptId: attempt.id,
+      reservationId,
+      reservationReferenceCode: res?.[0]?.reference_code ?? "",
+      reservationStatus: newResStatus,
+      paymentStatus: "APPROVED",
+      refundStatus: attempt.refund_status ?? "NONE",
+      assignedCandidate: assignedCandidate
+        ? {
+            id: assignedCandidate.id,
+            reservationId,
+            rank: assignedCandidate.rank,
+            workspaceInstanceId: assignedCandidate.workspace_instance_id,
+            startAt: assignedCandidate.start_at,
+            endAt: assignedCandidate.end_at,
+            isAssigned: true,
+          }
+        : null,
+      assignedCandidateRank: assignedCandidate?.rank ?? null,
+      rejectionReason: null,
+      processedAt: input.processedAt,
+      processedByUserId: input.actorUserId,
+    };
   }
 
   async rejectPaymentAttempt(input: {
@@ -1085,6 +1251,23 @@ export class ReservationSupabaseRepository
       ? "RE_ENTRY"
       : "QR_SCAN";
 
+    let actorDisplayName: string | null = null;
+    if (actorUserId) {
+      try {
+        const staffRes = await this.request<any[]>(
+          `/staff_profiles?user_id=eq.${encodeURIComponent(actorUserId)}&select=display_name&limit=1`
+        );
+        if (Array.isArray(staffRes) && staffRes[0]?.display_name) {
+          actorDisplayName = staffRes[0].display_name;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    const resolvedActorName =
+      actorDisplayName ||
+      (actorRole === "ADMIN" ? "Admin" : actorRole === "STAFF" ? "Staff" : null);
+
     const response = await fetch(`${this.restUrl}/audit_logs`, {
       method: "POST",
       headers: {
@@ -1105,6 +1288,7 @@ export class ReservationSupabaseRepository
           scanned_at: input.scannedAt,
           reentry: isReentry,
           event_type: eventType,
+          actor_name: resolvedActorName,
         },
       }),
     });
@@ -1171,12 +1355,44 @@ export class ReservationSupabaseRepository
       `/audit_logs?select=*&action=in.(reservation_checked_in,reservation_checked_out,reservation_reentered)&order=created_at.desc&limit=${limit}`
     );
 
+    const actorUserIds = Array.from(
+      new Set(
+        rows
+          .map((r) => r.actor_user_id)
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      )
+    );
+
+    const profileMap = new Map<string, string>();
+    if (actorUserIds.length > 0) {
+      try {
+        const idFilter = actorUserIds.map((id) => encodeURIComponent(id)).join(",");
+        const profiles = await this.request<any[]>(
+          `/staff_profiles?select=user_id,display_name&user_id=in.(${idFilter})`
+        );
+        if (Array.isArray(profiles)) {
+          for (const p of profiles) {
+            if (p.user_id && p.display_name) {
+              profileMap.set(p.user_id, p.display_name);
+            }
+          }
+        }
+      } catch {
+        // non-blocking fallback
+      }
+    }
+
     const events: (OperationalActivityRecord | null)[] = await Promise.all(
       rows.map(async (row): Promise<OperationalActivityRecord | null> => {
         const summary = await this.loadOperationalReservation(row.entity_id);
         if (!summary) {
           return null;
         }
+
+        const resolvedActorName =
+          row.metadata?.actor_name ||
+          (row.actor_user_id ? profileMap.get(row.actor_user_id) : undefined) ||
+          (row.actor_role === "ADMIN" ? "Admin" : row.actor_role === "STAFF" ? "Staff" : null);
 
         return {
           reservationId: summary.reservationId,
@@ -1193,7 +1409,7 @@ export class ReservationSupabaseRepository
           occurredAt: row.created_at,
           actorUserId: row.actor_user_id,
           actorRole: row.actor_role,
-          actorName: row.metadata?.actor_name ?? row.actor_user_id ?? null,
+          actorName: resolvedActorName,
         };
       })
     );

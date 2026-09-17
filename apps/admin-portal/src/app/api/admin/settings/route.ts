@@ -35,7 +35,12 @@ export async function PATCH(request: NextRequest) {
           body.kioskTimeoutMinutes !== undefined && body.kioskTimeoutMinutes !== null
             ? Number(body.kioskTimeoutMinutes)
             : null,
+        customerSessionTimeoutMinutes:
+          body.customerSessionTimeoutMinutes !== undefined && body.customerSessionTimeoutMinutes !== null
+            ? Number(body.customerSessionTimeoutMinutes)
+            : 20,
         landingPreviewPhotos: body.landingPreviewPhotos,
+        statusColors: body.statusColors,
       },
       actorUserId ? { id: actorUserId, name: "Admin", role: "admin" } : null
     );

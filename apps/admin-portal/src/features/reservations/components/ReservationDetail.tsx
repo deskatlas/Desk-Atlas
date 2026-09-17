@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import type { AdminReservationDetail as AdminReservationDetailType } from '@deskatlas/domain';
 import { formatTimelineDate, formatSchedule, zonedDateTimeToUtc } from '@deskatlas/domain';
+import { ProofImageViewer } from '../../payments/components/ProofImageViewer';
 
 export function canViewBookingQr(detail: AdminReservationDetailType | null): boolean {
   if (!detail) return false;
@@ -130,6 +131,30 @@ export function ReservationDetail({ id }: { id: string }) {
   } | null>(null);
   const [isRescheduling, setIsRescheduling] = useState<boolean>(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+
+  // Payment proof inspection modal states
+  const [viewingProofAttemptId, setViewingProofAttemptId] = useState<string | null>(null);
+  const [viewingProofUrl, setViewingProofUrl] = useState<string | null>(null);
+  const [loadingProofUrl, setLoadingProofUrl] = useState<boolean>(false);
+
+  const handleOpenProofModal = async (paymentAttemptId: string) => {
+    setViewingProofAttemptId(paymentAttemptId);
+    setViewingProofUrl(null);
+    setLoadingProofUrl(true);
+    try {
+      const res = await fetch(`/api/admin/payments/reviews/${encodeURIComponent(paymentAttemptId)}/proof`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.signedUrl) {
+          setViewingProofUrl(data.signedUrl);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingProofUrl(false);
+    }
+  };
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -593,12 +618,33 @@ export function ReservationDetail({ id }: { id: string }) {
                     <span>{pa.channel} Attempt</span>
                     <span style={{ color: pa.status === 'APPROVED' ? 'var(--da-success)' : pa.status === 'EXPIRED' ? 'var(--da-text-secondary)' : pa.status === 'REJECTED' ? 'var(--da-danger)' : 'var(--da-brand-dark)' }}>{pa.status}</span>
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
-                    {pa.proofSubmittedAt ? `Proof uploaded: ${formatTimelineDate(pa.proofSubmittedAt)}` : 'No proof submitted'}
-                    {pa.expiresAt ? ` • Expired: ${formatTimelineDate(pa.expiresAt)}` : ''}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                      {pa.proofSubmittedAt ? `Proof uploaded: ${formatTimelineDate(pa.proofSubmittedAt)}` : 'No proof submitted'}
+                      {pa.expiresAt ? ` • Expired: ${formatTimelineDate(pa.expiresAt)}` : ''}
+                    </div>
+                    {pa.id && (pa.proofSubmittedAt || pa.proofStoragePath) && (
+                      <button
+                        data-testid={`view-payment-proof-${pa.id}`}
+                        onClick={() => handleOpenProofModal(pa.id)}
+                        style={{
+                          background: '#fff',
+                          border: '1px solid var(--da-brand-dark)',
+                          color: 'var(--da-brand-dark)',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: 'var(--da-font-family)',
+                        }}
+                      >
+                        View Proof
+                      </button>
+                    )}
                   </div>
                   {pa.rejectionReason && (
-                    <div style={{ fontSize: '11px', color: 'var(--da-danger)', marginTop: '2px', fontWeight: 600 }}>
+                    <div style={{ fontSize: '11px', color: 'var(--da-danger)', marginTop: '4px', fontWeight: 600 }}>
                       Rejection reason: {pa.rejectionReason}
                     </div>
                   )}
@@ -1297,6 +1343,76 @@ export function ReservationDetail({ id }: { id: string }) {
               <button
                 data-testid="close-qr-modal-button"
                 onClick={() => setShowQrModal(false)}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: 'var(--da-brand-dark)',
+                  color: '#fff',
+                  border: 'none',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Payment Proof Viewer Modal with MF-114 Zoom and Pan */}
+      {viewingProofAttemptId && (
+        <div
+          data-testid="proof-viewer-modal"
+          onClick={() => setViewingProofAttemptId(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '16px',
+              maxWidth: '560px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
+              border: '1px solid var(--da-border)',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
+                Payment Proof Inspection
+              </h3>
+              <button
+                data-testid="close-proof-modal-button"
+                onClick={() => setViewingProofAttemptId(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  color: 'var(--da-text-secondary)',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <ProofImageViewer proofUrl={viewingProofUrl} loading={loadingProofUrl} height="360px" alt="Payment proof submission" />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
+              <button
+                onClick={() => setViewingProofAttemptId(null)}
                 style={{
                   padding: '9px 18px',
                   borderRadius: '8px',

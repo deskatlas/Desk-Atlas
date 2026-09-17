@@ -177,3 +177,5 @@ export * from './services/loginRateLimiter';
 export * from './services/urgentPaymentAlertService';
 export * from './services/personNameValidationService';
 export * from './services/staffReservationFilters';
+export * from './services/proofImageViewerService';
+export * from './services/workspaceStatusColorService';

@@ -182,8 +182,10 @@ function buildStaffActivityStream(
       if (!seenEvents.has(eventKey)) {
         seenEvents.add(eventKey);
         const isReentry = event.activityType === "REENTRY";
-        const isCheckIn = event.activityType === "CHECK_IN" || isReentry;
-        const actorDisplay = event.actorName ?? event.actorUserId ?? null;
+        const isCheckIn = event.activityType === "CHECK_IN";
+        const actorDisplay =
+          event.actorName ||
+          (event.actorRole === "ADMIN" ? "Admin" : event.actorRole === "STAFF" ? "Staff" : null);
         items.push({
           id: eventKey,
           time: formatTimeInTimezone(event.occurredAt, timezone),

@@ -1,14 +1,19 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import type {
-  BusinessOperatingHoursMode,
-  BusinessSettings,
-  OperatingHoursConfig,
-  AdminPaymentMethod,
-  BusinessClosureException,
-  BusinessClosureType,
-  LandingPreviewPhoto,
+import {
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  normalizeWorkspaceStatusColors,
+  isValidHexColor,
+  getContrastColor,
+  type BusinessOperatingHoursMode,
+  type BusinessSettings,
+  type OperatingHoursConfig,
+  type AdminPaymentMethod,
+  type BusinessClosureException,
+  type BusinessClosureType,
+  type LandingPreviewPhoto,
+  type WorkspaceStatusColors,
 } from '@deskatlas/domain';
 import { handleNumericKeyDown } from '@deskatlas/ui';
 
@@ -80,6 +85,7 @@ export function canSaveBusinessProfile(params: {
   contactEmail?: string | null;
   phoneDigits?: string | null;
   contactPhone?: string | null;
+  bookingIntervalMinutes?: number | string | null;
 }): { canSave: boolean; reason?: string } {
   if (!params.businessName || !params.businessName.trim()) {
     return { canSave: false, reason: 'Business name is required' };
@@ -104,6 +110,13 @@ export function canSaveBusinessProfile(params: {
       : (rawDigits.startsWith('0') && rawDigits.length === 11 ? rawDigits.slice(1) : rawDigits);
     if (cleanDigits.length !== 10) {
       return { canSave: false, reason: 'Contact number must be exactly 10 digits (e.g., 9171234567)' };
+    }
+  }
+
+  if (params.bookingIntervalMinutes !== undefined && params.bookingIntervalMinutes !== null) {
+    const intervalNum = Number(params.bookingIntervalMinutes);
+    if (isNaN(intervalNum) || intervalNum <= 5) {
+      return { canSave: false, reason: 'Booking slot interval must be greater than 5 minutes' };
     }
   }
 
@@ -237,7 +250,13 @@ export function Settings() {
     bookingIntervalMinutes: 30,
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
+    customerSessionTimeoutMinutes: 20,
     landingPreviewPhotos: [],
+    statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
+  });
+
+  const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>({
+    ...DEFAULT_WORKSPACE_STATUS_COLORS,
   });
 
   const [phoneDigits, setPhoneDigits] = useState<string>('');
@@ -331,6 +350,9 @@ export function Settings() {
       if (overview?.businessSettings) {
         setBusinessSettings(overview.businessSettings);
         setPhoneDigits(extractTenDigitPhone(overview.businessSettings.contactPhone));
+        if (overview.businessSettings.statusColors) {
+          setStatusColors(normalizeWorkspaceStatusColors(overview.businessSettings.statusColors));
+        }
         if (Array.isArray(overview.businessSettings.landingPreviewPhotos)) {
           setLandingPreviewPhotos(overview.businessSettings.landingPreviewPhotos);
         }
@@ -707,6 +729,7 @@ export function Settings() {
       businessName: businessSettings.businessName,
       contactEmail: businessSettings.contactEmail,
       phoneDigits,
+      bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
     });
 
     if (!check.canSave) {
@@ -741,13 +764,18 @@ export function Settings() {
       const normalizedTimeout = !businessSettings.kioskTimeoutMinutes || Number(businessSettings.kioskTimeoutMinutes) < 1
         ? 5
         : Number(businessSettings.kioskTimeoutMinutes);
+      const normalizedSessionTimeout = !businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1
+        ? 20
+        : Math.min(180, Math.max(1, Number(businessSettings.customerSessionTimeoutMinutes)));
 
       const payload = {
         ...businessSettings,
+        statusColors: normalizeWorkspaceStatusColors(statusColors),
         contactEmail: businessSettings.contactEmail?.trim() || null,
         contactPhone: phoneDigits ? `+63${phoneDigits}` : null,
         paymentExpiryMinutes: normalizedExpiry,
         kioskTimeoutMinutes: normalizedTimeout,
+        customerSessionTimeoutMinutes: normalizedSessionTimeout,
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -764,6 +792,9 @@ export function Settings() {
       const json = await res.json();
       setBusinessSettings(json.data);
       setPhoneDigits(extractTenDigitPhone(json.data.contactPhone));
+      if (json.data.statusColors) {
+        setStatusColors(normalizeWorkspaceStatusColors(json.data.statusColors));
+      }
       setMissingContactModal({ isOpen: false, missingType: null });
       showSuccess('Business settings updated successfully!');
     } catch (err: any) {
@@ -1431,17 +1462,45 @@ export function Settings() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Booking Slot Interval</label>
-                  <select 
-                    value={businessSettings.bookingIntervalMinutes}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, bookingIntervalMinutes: Number(e.target.value) })}
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
-                  >
-                    <option value={15}>15 minutes</option>
-                    <option value={30}>30 minutes</option>
-                    <option value={60}>60 minutes (1 hour)</option>
-                    <option value={120}>120 minutes (2 hours)</option>
-                  </select>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                    Booking Slot Interval (Minutes)
+                  </label>
+                  <input 
+                    type="number" 
+                    min={6} 
+                    max={240} 
+                    value={businessSettings.bookingIntervalMinutes === '' as any ? '' : (businessSettings.bookingIntervalMinutes ?? '')}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setBusinessSettings({
+                        ...businessSettings,
+                        bookingIntervalMinutes: raw === '' ? ('' as any) : Number(raw),
+                      });
+                    }}
+                    onBlur={() => {
+                      const val = Number(businessSettings.bookingIntervalMinutes);
+                      if (!val || val <= 5) {
+                        setBusinessSettings({ ...businessSettings, bookingIntervalMinutes: 15 });
+                      }
+                    }}
+                    onKeyDown={(e) => handleNumericKeyDown(e)}
+                    style={{ 
+                      width: '100%', 
+                      border: businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) <= 5 ? '1px solid #ef4444' : '1px solid var(--da-border)', 
+                      borderRadius: '8px', 
+                      padding: '10px 14px', 
+                      fontSize: '13px', 
+                      fontFamily: 'var(--da-font-family)' 
+                    }} 
+                  />
+                  {businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) <= 5 && (
+                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                      Interval must be greater than 5 minutes.
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                    Must be greater than 5 minutes (e.g. 15, 20, 30, 45, 60 minutes). Determines time slot increments on customer and kiosk calendars.
+                  </div>
                 </div>
               </div>
 
@@ -1472,11 +1531,175 @@ export function Settings() {
                 </div>
               </div>
 
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Reservation Session Reset Timer (Minutes)</label>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={180} 
+                  value={businessSettings.customerSessionTimeoutMinutes === '' as any ? '' : (businessSettings.customerSessionTimeoutMinutes ?? 20)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      customerSessionTimeoutMinutes: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (!businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1) {
+                      setBusinessSettings({ ...businessSettings, customerSessionTimeoutMinutes: 20 });
+                    } else if (Number(businessSettings.customerSessionTimeoutMinutes) > 180) {
+                      setBusinessSettings({ ...businessSettings, customerSessionTimeoutMinutes: 180 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                />
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                  Default is 20 minutes. Determines when an inactive customer booking session on /reserve automatically resets.
+                </div>
+              </div>
+
+              {/* Workspace Status Colors Configuration Card */}
+              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '18px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
+                      Workspace Status Colors
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                      Configure badge pills and interactive floor map spot colors for all operational states.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusColors({ ...DEFAULT_WORKSPACE_STATUS_COLORS });
+                      setBusinessSettings((prev) => ({
+                        ...prev,
+                        statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
+                      }));
+                    }}
+                    style={{
+                      background: '#F1F5F9',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: '6px',
+                      padding: '5px 10px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: '#334155',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Reset to Defaults
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                  {[
+                    { key: 'available', label: 'Available (Bookable)', desc: 'Free & ready to reserve' },
+                    { key: 'occupied', label: 'Occupied (In Use)', desc: 'Active booking or checked-in' },
+                    { key: 'maintenance', label: 'Maintenance', desc: 'Repairs or temporarily out of order' },
+                    { key: 'unavailable', label: 'Unavailable / Reserved', desc: 'Blocked or upcoming reservation' },
+                  ].map(({ key, label, desc }) => {
+                    const colorVal = statusColors[key as keyof WorkspaceStatusColors] || DEFAULT_WORKSPACE_STATUS_COLORS[key as keyof WorkspaceStatusColors];
+                    const contrastText = getContrastColor(colorVal);
+
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          border: '1px solid var(--da-border)',
+                          borderRadius: '10px',
+                          padding: '12px 14px',
+                          background: '#FAFAFA',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>{label}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)' }}>{desc}</div>
+                          </div>
+                          {/* Live Preview Badge */}
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '3px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: colorVal,
+                              color: contrastText,
+                              border: `1px solid ${colorVal}`,
+                              boxShadow: 'var(--da-shadow-sm)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {key.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input
+                            type="color"
+                            aria-label={`${label} color picker`}
+                            value={isValidHexColor(colorVal) ? colorVal : DEFAULT_WORKSPACE_STATUS_COLORS[key as keyof WorkspaceStatusColors]}
+                            onChange={(e) => {
+                              const newColor = e.target.value.toUpperCase();
+                              const updated = { ...statusColors, [key]: newColor };
+                              setStatusColors(updated);
+                              setBusinessSettings((prev) => ({ ...prev, statusColors: updated }));
+                            }}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              padding: '0',
+                              border: '1px solid var(--da-border)',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              background: 'none',
+                            }}
+                          />
+                          <input
+                            type="text"
+                            aria-label={`${label} hex code`}
+                            value={colorVal}
+                            maxLength={7}
+                            placeholder="#10B981"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const updated = { ...statusColors, [key]: val };
+                              setStatusColors(updated);
+                              setBusinessSettings((prev) => ({ ...prev, statusColors: updated }));
+                            }}
+                            style={{
+                              flex: 1,
+                              border: '1px solid var(--da-border)',
+                              borderRadius: '6px',
+                              padding: '8px 10px',
+                              fontSize: '12px',
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              background: '#fff',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {(() => {
                 const check = canSaveBusinessProfile({
                   businessName: businessSettings.businessName,
                   contactEmail: businessSettings.contactEmail,
                   phoneDigits,
+                  bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
                 });
                 const isDisabled = saving || !check.canSave;
                 return (

@@ -112,7 +112,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
 
   async loadPublishedFloorMap(
     floorId: string,
-    _options?: { audience?: PublishedMapAudience }
+    options?: { audience?: PublishedMapAudience }
   ): Promise<PublishedFloorMap | null> {
     const [floorRow] = await this.request<FloorRow[]>(
       `/floors?select=*&id=eq.${encodeURIComponent(floorId)}&is_active=eq.true&limit=1`
@@ -136,11 +136,21 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
       )}&order=z_index.asc,id.asc`
     );
 
+    const isStaffOrAdmin = options?.audience === 'STAFF' || options?.audience === 'ADMIN';
+
     return {
       floor: mapFloor(floorRow),
       version: mapPublishedVersion(versionRow),
       elements: elementRows
-        .filter((row) => row.element_role !== 'EDITOR_AID')
+        .filter((row) => {
+          if (row.element_role === 'EDITOR_AID') return false;
+          if (row.element_role === 'WORKSPACE') {
+            if (!row.workspace_instance || !row.workspace_instance.template) return false;
+            if (row.workspace_instance.template.is_active === false) return false;
+            if (!isStaffOrAdmin && row.workspace_instance.operational_status === 'INACTIVE') return false;
+          }
+          return true;
+        })
         .map((row) => mapPublishedElement(row, floorRow)),
     };
   }

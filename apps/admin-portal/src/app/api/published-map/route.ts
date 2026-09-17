@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const floorId = request.nextUrl.searchParams.get('floorId') ?? undefined;
     const [floors, published] = await Promise.all([
       service.listPublishedFloors(),
-      service.loadPublishedFloorMap(floorId),
+      service.loadPublishedFloorMap(floorId, { audience: 'ADMIN' }),
     ]);
 
     return NextResponse.json({ floors, published });

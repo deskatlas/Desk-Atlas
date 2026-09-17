@@ -214,7 +214,7 @@ export function DashboardPage() {
                         <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--da-text-primary)" }}>{a.name}</div>
                         <div style={{ fontSize: "11px", color: "var(--da-text-secondary)" }}>
                           {a.workspace}
-                          {a.actorName || a.actorUserId ? ` · Scanned by ${a.actorName ?? a.actorUserId}` : ""}
+                          {a.actorName ? ` · Scanned by ${a.actorName}` : ""}
                         </div>
                       </div>
                     </div>

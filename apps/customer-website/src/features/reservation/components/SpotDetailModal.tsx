@@ -65,13 +65,12 @@ export function SpotDetailModal({
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${getStatusBadgeStyle()}`}
               >
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    isAvailable
+                  className={`h-1.5 w-1.5 rounded-full ${isAvailable
                       ? "bg-emerald-500"
                       : workspace.status === "maintenance"
                         ? "bg-amber-500"
                         : "bg-slate-400"
-                  }`}
+                    }`}
                 />
                 {workspace.statusLabel}
               </span>
@@ -205,9 +204,8 @@ export function SpotDetailModal({
             type="button"
             disabled={!isAvailable}
             onClick={handleProceed}
-            className={`da-primary-button px-5 py-2.5 text-xs font-bold ${
-              !isAvailable ? "opacity-50 cursor-not-allowed" : ""
-            }`}
+            className={`da-primary-button px-5 py-2.5 text-xs font-bold ${!isAvailable ? "opacity-50 cursor-not-allowed" : ""
+              }`}
           >
             {isAvailable ? "Proceed with this Spot →" : "Currently Unavailable"}
           </button>

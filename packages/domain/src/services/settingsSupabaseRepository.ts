@@ -1,12 +1,15 @@
-import type {
-  AdminPaymentMethod,
-  BusinessSettings,
-  CreatePaymentMethodInput,
-  UpdateBusinessSettingsInput,
-  UpdatePaymentMethodInput,
+import {
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  type AdminPaymentMethod,
+  type BusinessSettings,
+  type CreatePaymentMethodInput,
+  type UpdateBusinessSettingsInput,
+  type UpdatePaymentMethodInput,
+  type WorkspaceStatusColors,
 } from '../models/settings';
 import type { OperatingHoursInterval, ScheduleBlock } from '../models/availability';
 import type { SettingsRepository } from './settingsRepository';
+import { normalizeWorkspaceStatusColors } from './workspaceStatusColorService';
 
 type BusinessSettingsRow = {
   id: number;
@@ -17,7 +20,9 @@ type BusinessSettingsRow = {
   booking_interval_minutes: number;
   payment_expiry_minutes: number;
   kiosk_timeout_minutes: number | null;
+  customer_session_timeout_minutes?: number | null;
   landing_preview_photos?: any;
+  status_colors?: any;
   updated_at: string | null;
 };
 
@@ -79,12 +84,17 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   async getBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,landing_preview_photos,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,status_colors,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
-      // Fallback if landing_preview_photos column is not yet queried
+      // Fallback if status_colors column is not yet present on remote
       return this.request<BusinessSettingsRow[]>(
-        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,updated_at&id=eq.1&limit=1'
-      );
+        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,updated_at&id=eq.1&limit=1'
+      ).catch(async () => {
+        // Fallback if landing_preview_photos / customer_session_timeout_minutes column is not yet queried
+        return this.request<BusinessSettingsRow[]>(
+          '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,updated_at&id=eq.1&limit=1'
+        );
+      });
     });
     const row = rows[0];
     if (!row) {
@@ -97,7 +107,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         bookingIntervalMinutes: 30,
         paymentExpiryMinutes: 60,
         kioskTimeoutMinutes: 5,
+        customerSessionTimeoutMinutes: 20,
         landingPreviewPhotos: [],
+        statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       };
     }
 
@@ -110,7 +122,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       bookingIntervalMinutes: row.booking_interval_minutes,
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
+      customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? 20,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
+      statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       updatedAt: row.updated_at,
     };
   }
@@ -127,6 +141,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       booking_interval_minutes: input.bookingIntervalMinutes,
       payment_expiry_minutes: input.paymentExpiryMinutes,
       kiosk_timeout_minutes: input.kioskTimeoutMinutes,
+      customer_session_timeout_minutes: input.customerSessionTimeoutMinutes ?? 20,
       updated_at: new Date().toISOString(),
     };
 
@@ -134,29 +149,62 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       payload.landing_preview_photos = input.landingPreviewPhotos;
     }
 
+    if (input.statusColors !== undefined) {
+      payload.status_colors = normalizeWorkspaceStatusColors(input.statusColors);
+    }
+
     if (updatedByUserId) {
       payload.updated_by_user_id = updatedByUserId;
     }
 
-    const rows = await this.request<BusinessSettingsRow[]>('/business_settings?id=eq.1', {
-      method: 'PATCH',
-      headers: {
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify(payload),
-    });
+    let rows: BusinessSettingsRow[] | undefined;
+    try {
+      rows = await this.request<BusinessSettingsRow[]>('/business_settings?id=eq.1', {
+        method: 'PATCH',
+        headers: {
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // If status_colors or customer_session_timeout_minutes column doesn't exist yet in Supabase, retry without them
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.status_colors;
+      delete fallbackPayload.customer_session_timeout_minutes;
+      rows = await this.request<BusinessSettingsRow[]>('/business_settings?id=eq.1', {
+        method: 'PATCH',
+        headers: {
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify(fallbackPayload),
+      });
+    }
 
-    let row = rows[0];
+    let row = rows ? rows[0] : undefined;
     if (!row) {
       const insertPayload = { id: 1, ...payload };
-      const insertRows = await this.request<BusinessSettingsRow[]>('/business_settings', {
-        method: 'POST',
-        headers: {
-          Prefer: 'return=representation,resolution=merge-duplicates',
-        },
-        body: JSON.stringify([insertPayload]),
-      });
-      row = insertRows[0];
+      try {
+        const insertRows = await this.request<BusinessSettingsRow[]>('/business_settings', {
+          method: 'POST',
+          headers: {
+            Prefer: 'return=representation,resolution=merge-duplicates',
+          },
+          body: JSON.stringify([insertPayload]),
+        });
+        row = insertRows[0];
+      } catch {
+        const fallbackInsert = { id: 1, ...payload };
+        delete (fallbackInsert as any).status_colors;
+        delete (fallbackInsert as any).customer_session_timeout_minutes;
+        const insertRows = await this.request<BusinessSettingsRow[]>('/business_settings', {
+          method: 'POST',
+          headers: {
+            Prefer: 'return=representation,resolution=merge-duplicates',
+          },
+          body: JSON.stringify([fallbackInsert]),
+        });
+        row = insertRows[0];
+      }
     }
 
     if (!row) {
@@ -172,7 +220,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       bookingIntervalMinutes: row.booking_interval_minutes,
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
+      customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? input.customerSessionTimeoutMinutes ?? 20,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
+      statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : (input.statusColors ? normalizeWorkspaceStatusColors(input.statusColors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS }),
       updatedAt: row.updated_at,
     };
   }

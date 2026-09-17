@@ -26,9 +26,13 @@ import {
   isSessionExpired,
   getOrCreateSessionExpiry,
   clearSessionExpiry,
+  getCustomerSessionTimeoutSeconds,
   CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS,
   CUSTOMER_RESERVATION_SESSION_WARNING_SECONDS,
   validatePersonName,
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  normalizeWorkspaceStatusColors,
+  type WorkspaceStatusColors,
 } from "@deskatlas/domain";
 import { useRouter } from "next/navigation";
 import { SpotDetailModal } from "./SpotDetailModal";
@@ -291,12 +295,41 @@ export function ReservationPage() {
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const [candidateImageErrors, setCandidateImageErrors] = useState<Record<string, boolean>>({});
 
-  // MF-70: 20-minute client-side session timeout state
+  // MF-70 / MF-115: Configurable client-side session timeout state (default 20 mins / 1200 seconds)
   const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
   const [isSessionTimedOut, setIsSessionTimedOut] = useState<boolean>(false);
   const [timeoutRedirectCountdown, setTimeoutRedirectCountdown] = useState<number>(5);
+  const [configuredTimeoutSeconds, setConfiguredTimeoutSeconds] = useState<number>(
+    CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS
+  );
+  const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(
+    DEFAULT_WORKSPACE_STATUS_COLORS
+  );
 
-  // MF-70: Reservation session timer lifecycle (20 mins / 1200 seconds)
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted) {
+          if (data?.customerSessionTimeoutMinutes) {
+            const secs = getCustomerSessionTimeoutSeconds(data.customerSessionTimeoutMinutes);
+            setConfiguredTimeoutSeconds(secs);
+          }
+          if (data?.statusColors) {
+            setStatusColors(normalizeWorkspaceStatusColors(data.statusColors));
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback to default
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // MF-70 / MF-115: Reservation session timer lifecycle
   useEffect(() => {
     // If we have transitioned to email-handoff, clear session timer
     if (step === "email-handoff") {
@@ -308,7 +341,7 @@ export function ReservationPage() {
 
     if (typeof window === "undefined") return;
 
-    const expiryMs = getOrCreateSessionExpiry(window.sessionStorage);
+    const expiryMs = getOrCreateSessionExpiry(window.sessionStorage, Date.now(), configuredTimeoutSeconds);
     const initialRemaining = calculateRemainingSessionSeconds(expiryMs);
 
     if (initialRemaining <= 0) {
@@ -347,7 +380,7 @@ export function ReservationPage() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [step]);
+  }, [step, configuredTimeoutSeconds]);
 
   // MF-70: Auto-redirect countdown when session expires
   useEffect(() => {
@@ -1016,20 +1049,18 @@ export function ReservationPage() {
           {/* MF-70: Session Timeout Pill */}
           {step !== "email-handoff" && sessionSecondsLeft !== null && !isSessionTimedOut && (
             <div
-              className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm ${
-                sessionSecondsLeft <= 120
+              className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm ${sessionSecondsLeft <= 120
                   ? "border-2 border-amber-500 bg-amber-50 text-amber-900 animate-pulse"
                   : "border border-[var(--da-border)] bg-white text-[var(--da-text-secondary)]"
-              }`}
+                }`}
               title="Your reservation session lasts 20 minutes to ensure real-time inventory availability."
             >
               <span className="text-sm">{sessionSecondsLeft <= 120 ? "⚠️" : "⏱️"}</span>
               <span>
                 Time remaining:{" "}
                 <span
-                  className={`font-mono font-extrabold ${
-                    sessionSecondsLeft <= 120 ? "text-amber-900 text-sm" : "text-[var(--da-brand-dark)]"
-                  }`}
+                  className={`font-mono font-extrabold ${sessionSecondsLeft <= 120 ? "text-amber-900 text-sm" : "text-[var(--da-brand-dark)]"
+                    }`}
                 >
                   {formatSessionCountdown(sessionSecondsLeft)}
                 </span>
@@ -1144,8 +1175,7 @@ export function ReservationPage() {
                     onClick={() => {
                       const emailParam = (submittedReservation.customerEmail || customerEmail.trim().toLowerCase());
                       router.push(
-                        `/track?code=${encodeURIComponent(submittedReservation.referenceCode)}${
-                          emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""
+                        `/track?code=${encodeURIComponent(submittedReservation.referenceCode)}${emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""
                         }`
                       );
                     }}
@@ -1293,13 +1323,13 @@ export function ReservationPage() {
                       {/* Status Legend */}
                       <div className="hidden sm:flex items-center gap-3 text-xs font-semibold text-[var(--da-text-secondary)] border-r border-[var(--da-border-light)] pr-3">
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#E0EFE4] border border-[#22c55e]" /> Available
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.available, borderColor: statusColors.available }} /> Available
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#FCF060] border border-[#f59e0b]" /> Maintenance
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.maintenance, borderColor: statusColors.maintenance }} /> Maintenance
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 rounded bg-[#F3F7F4] border border-[#94a3b8]" /> Unavailable
+                          <span className="h-3 w-3 rounded border" style={{ backgroundColor: statusColors.unavailable, borderColor: statusColors.unavailable }} /> Unavailable
                         </span>
                       </div>
 
@@ -1400,6 +1430,9 @@ export function ReservationPage() {
                         >
                           {elements.map((el: PublishedMapElement) => {
                             const isWorkspace = el.elementRole === "WORKSPACE" || Boolean(el.workspace);
+                            if (isWorkspace && el.workspace?.operationalStatus === "INACTIVE") {
+                              return null;
+                            }
                             const isWall =
                               !isWorkspace &&
                               (el.elementRole === "STRUCTURE" ||
@@ -1512,14 +1545,14 @@ export function ReservationPage() {
 
                               if (status === "MAINTENANCE") {
                                 borderStyle = "dashed";
-                                borderColor = "#f59e0b";
-                                bg = "#FCF060";
-                                textColor = "#92400e";
+                                borderColor = statusColors.maintenance;
+                                bg = statusColors.maintenance;
+                                textColor = getContrastColor(bg);
                               } else if (!isAvailable) {
                                 borderStyle = "dashed";
-                                borderColor = "#94a3b8";
-                                bg = "#F3F7F4";
-                                textColor = "#64748b";
+                                borderColor = statusColors.unavailable;
+                                bg = statusColors.unavailable;
+                                textColor = getContrastColor(bg);
                               } else if (activeRank > 0 && !isMatchingTemplate) {
                                 borderStyle = "dashed";
                                 borderColor = "#cbd5e1";
@@ -2205,9 +2238,8 @@ export function ReservationPage() {
                       if (!catDurationHours || catDurationHours <= 0) return;
                       setStep("category-instances");
                     }}
-                    className={`da-primary-button w-full justify-center py-3 text-sm font-bold ${
-                      !catDate || !catStartTime || !catDurationHours || catDurationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    className={`da-primary-button w-full justify-center py-3 text-sm font-bold ${!catDate || !catStartTime || !catDurationHours || catDurationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                   >
                     {catStartTime ? "Find Available Spots →" : "Select a Start Time to Proceed"}
                   </button>

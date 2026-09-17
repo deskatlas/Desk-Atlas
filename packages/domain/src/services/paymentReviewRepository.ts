@@ -6,6 +6,7 @@ import {
 
 export interface PaymentReviewRepository {
   listPaymentReviewQueue(): Promise<PaymentReviewQueueItem[]>;
+  listRejectedPayments?(): Promise<PaymentReviewDetail[]>;
   getPaymentReviewDetail(paymentAttemptId: string): Promise<PaymentReviewDetail | null>;
   approvePaymentAndAllocate(input: {
     paymentAttemptId: string;

@@ -8,6 +8,8 @@ import type {
   PaymentReviewDecisionResult,
 } from '@deskatlas/domain';
 
+import { ProofImageViewer } from './ProofImageViewer';
+
 function formatTimeAgo(dateStr: string | null): string {
   if (!dateStr) return 'just now';
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -75,6 +77,42 @@ export function PaymentReview({ id }: { id: string }) {
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [showReconsiderModal, setShowReconsiderModal] = useState(false);
+  const [isReconsidering, setIsReconsidering] = useState(false);
+
+  const confirmReconsider = async () => {
+    if (!detail) return;
+    setIsReconsidering(true);
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/admin/payments/reviews/${encodeURIComponent(detail.paymentAttemptId)}/decision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'RECONSIDER_APPROVE',
+          actorUserId: user?.id,
+          actorRole: 'ADMIN',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to reconsider payment.');
+      }
+
+      setShowReconsiderModal(false);
+      setApproveResult(data);
+      setIsApproveSuccess(true);
+      setShowApproveModal(true);
+      fetchDetail();
+    } catch (err: any) {
+      setActionError(err.message || 'Error reconsidering payment.');
+    } finally {
+      setIsReconsidering(false);
+    }
+  };
 
   const fetchDetail = async () => {
     try {
@@ -251,19 +289,35 @@ export function PaymentReview({ id }: { id: string }) {
       
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1.2, minWidth: '300px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', padding: '20px' }}>
-          <div style={{ width: '100%', height: '280px', background: 'var(--da-canvas)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--da-text-secondary)', fontSize: '12px', fontFamily: 'var(--da-font-family)', marginBottom: '16px', overflow: 'hidden' }}>
-            {proofUrl ? (
-              <img
-                src={proofUrl}
-                alt="Payment proof submission"
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
-            ) : loadingProof ? (
-              <span>Loading proof preview...</span>
-            ) : (
-              <span>No proof image available</span>
-            )}
-          </div>
+          {detail.paymentStatus === 'REJECTED' && (
+            <div
+              data-testid="rejected-proof-badge"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#FEE2E2',
+                border: '1px solid #FCA5A5',
+                borderRadius: '8px',
+                padding: '9px 12px',
+                marginBottom: '14px',
+                color: '#991B1B',
+                fontSize: '12px',
+                fontWeight: 700,
+                fontFamily: 'var(--da-font-family)',
+              }}
+            >
+              <span>✕ REJECTED PAYMENT PROOF</span>
+              {detail.rejectionReason && (
+                <span style={{ fontWeight: 500, fontSize: '11px', color: '#7F1D1D' }}>
+                  Reason: {detail.rejectionReason}
+                </span>
+              )}
+            </div>
+          )}
+
+          <ProofImageViewer proofUrl={proofUrl} loading={loadingProof} alt="Payment proof submission" />
+
           {reviewFields.map((f, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid var(--da-border-light)', fontSize: '13px' }}>
               <span style={{ color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>{f.label}</span>
@@ -297,12 +351,57 @@ export function PaymentReview({ id }: { id: string }) {
 
           {detail.paymentStatus === 'UNDER_REVIEW' ? (
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => { setActionError(null); setShowRejectModal(true); }} style={{ flex: 1, background: '#fff', border: '1px solid var(--da-brand-dark)', color: 'var(--da-brand-dark)', padding: '11px', borderRadius: '9px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}>Reject Payment</button>
-              <button onClick={() => { setActionError(null); setShowApproveModal(true); }} style={{ flex: 1, background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)', color: '#fff', border: 'none', padding: '11px', borderRadius: '9px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}>Approve Payment</button>
+              <button
+                data-testid="open-reject-modal-button"
+                onClick={() => { setActionError(null); setShowRejectModal(true); }}
+                style={{ flex: 1, background: '#fff', border: '1px solid var(--da-brand-dark)', color: 'var(--da-brand-dark)', padding: '11px', borderRadius: '9px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+              >
+                Reject Payment
+              </button>
+              <button
+                data-testid="open-approve-modal-button"
+                onClick={() => { setActionError(null); setShowApproveModal(true); }}
+                style={{ flex: 1, background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)', color: '#fff', border: 'none', padding: '11px', borderRadius: '9px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+              >
+                Approve Payment
+              </button>
             </div>
           ) : detail.paymentStatus === 'APPROVED' ? (
             <div style={{ marginTop: '20px', padding: '12px', background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: '8px', color: '#166534', fontSize: '13px', fontWeight: 700, textAlign: 'center' }}>
               Payment is APPROVED
+            </div>
+          ) : detail.paymentStatus === 'REJECTED' ? (
+            <div style={{ marginTop: '20px', padding: '14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#991B1B', fontWeight: 800, fontSize: '13px' }}>
+                <span>✕ Payment is REJECTED</span>
+              </div>
+              {detail.rejectionReason && (
+                <div style={{ fontSize: '12px', color: '#991B1B', marginTop: '4px' }}>
+                  Reason: <strong>{detail.rejectionReason}</strong>
+                </div>
+              )}
+              <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '8px', lineHeight: 1.4, fontFamily: 'var(--da-font-family)' }}>
+                Mistakenly rejected? Re-evaluates live availability, assigns the best available workspace candidate, confirms the reservation, and dispatches the booking confirmation email with access QR.
+              </div>
+              <button
+                data-testid="reconsider-approve-button"
+                onClick={() => { setActionError(null); setShowReconsiderModal(true); }}
+                style={{
+                  marginTop: '12px',
+                  width: '100%',
+                  background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(12,59,39,.15)',
+                }}
+              >
+                Reconsider & Approve
+              </button>
             </div>
           ) : (
             <div style={{ marginTop: '20px', padding: '12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', color: '#991B1B', fontSize: '13px', textAlign: 'center' }}>
@@ -338,7 +437,7 @@ export function PaymentReview({ id }: { id: string }) {
                   <>
                     <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 4px', fontFamily: 'var(--da-font-family)' }}>Assigned workspace</p>
                     <p style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 14px' }}>{assignedWorkspaceName}</p>
-                    <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 16px' }}>Booking QR created.</p>
+                    <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 16px' }}>Booking QR created and confirmation email dispatched.</p>
                   </>
                 ) : (
                   <>
@@ -354,11 +453,23 @@ export function PaymentReview({ id }: { id: string }) {
       )}
 
       {showRejectModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,59,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: '14px', padding: '26px', maxWidth: '380px', width: '90%' }}>
-            <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 14px' }}>Reject Payment</h3>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>Reason</label>
-            <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px', fontSize: '13px', margin: '6px 0 16px', minHeight: '70px', fontFamily: 'var(--da-font-family)' }} placeholder="Explain why this payment is rejected"></textarea>
+        <div
+          data-testid="confirm-rejection-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(12,59,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        >
+          <div style={{ background: '#fff', borderRadius: '14px', padding: '26px', maxWidth: '440px', width: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#991B1B', margin: '0 0 10px' }}>Confirm Payment Rejection</h3>
+            <p style={{ fontSize: '13px', color: 'var(--da-text-primary)', lineHeight: 1.5, margin: '0 0 14px' }}>
+              Are you sure you want to reject this payment? This will cancel reservation <strong>#{detail.reservationReferenceCode || detail.paymentAttemptId.slice(0, 8)}</strong> and send an email notification to <strong>{detail.customerEmail}</strong> with your stated reason.
+            </p>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>Rejection Reason (Required) *</label>
+            <textarea
+              data-testid="rejection-reason-textarea"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px', fontSize: '13px', margin: '6px 0 16px', minHeight: '75px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+              placeholder="Explain why this payment is rejected (required, sent to customer)"
+            />
             {actionError && (
               <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '8px', padding: '8px 12px', color: '#991B1B', fontSize: '12px', marginBottom: '12px' }}>
                 {actionError}
@@ -366,7 +477,64 @@ export function PaymentReview({ id }: { id: string }) {
             )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowRejectModal(false)} disabled={isRejecting} style={{ background: 'transparent', border: '1px solid var(--da-border)', padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={confirmReject} disabled={isRejecting || !rejectReason.trim()} style={{ background: 'var(--da-danger)', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', opacity: isRejecting || !rejectReason.trim() ? 0.7 : 1 }}>{isRejecting ? 'Rejecting...' : 'Reject Payment'}</button>
+              <button
+                data-testid="confirm-reject-payment-button"
+                onClick={confirmReject}
+                disabled={isRejecting || !rejectReason.trim()}
+                style={{
+                  background: '#991B1B',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: isRejecting || !rejectReason.trim() ? 'not-allowed' : 'pointer',
+                  opacity: isRejecting || !rejectReason.trim() ? 0.6 : 1,
+                }}
+              >
+                {isRejecting ? 'Rejecting...' : 'Confirm & Reject Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReconsiderModal && (
+        <div
+          data-testid="confirm-reconsider-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(12,59,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        >
+          <div style={{ background: '#fff', borderRadius: '14px', padding: '26px', maxWidth: '440px', width: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 10px' }}>Reconsider & Approve Payment?</h3>
+            <p style={{ fontSize: '13px', color: 'var(--da-text-primary)', lineHeight: 1.5, margin: '0 0 14px' }}>
+              Mistakenly rejected this customer? Reconsidering will re-evaluate live availability, assign the best available candidate (Main &rarr; Alternative 1 &rarr; Alternative 2), confirm the reservation, and email the customer their booking confirmation pass with access QR.
+            </p>
+            {actionError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '8px', padding: '8px 12px', color: '#991B1B', fontSize: '12px', marginBottom: '12px' }}>
+                {actionError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowReconsiderModal(false)} disabled={isReconsidering} style={{ background: 'transparent', border: '1px solid var(--da-border)', padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button
+                data-testid="confirm-reconsider-button"
+                onClick={confirmReconsider}
+                disabled={isReconsidering}
+                style={{
+                  background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: isReconsidering ? 'not-allowed' : 'pointer',
+                  opacity: isReconsidering ? 0.7 : 1,
+                }}
+              >
+                {isReconsidering ? 'Reconsidering...' : 'Confirm Reconsider & Approve'}
+              </button>
             </div>
           </div>
         </div>

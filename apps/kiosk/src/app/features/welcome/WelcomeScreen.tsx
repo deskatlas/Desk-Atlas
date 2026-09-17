@@ -3,9 +3,10 @@
 interface WelcomeScreenProps {
   onStart: () => void;
   onOpenScanner: () => void;
+  onOpenReference?: () => void;
 }
 
-export function WelcomeScreen({ onStart, onOpenScanner }: WelcomeScreenProps) {
+export function WelcomeScreen({ onStart, onOpenScanner, onOpenReference }: WelcomeScreenProps) {
   return (
     <div style={{ width: "100%", height: "100%", minHeight: 0, position: "relative", overflow: "hidden", background: "#0C3B27" }}>
       <button 
@@ -39,21 +40,47 @@ export function WelcomeScreen({ onStart, onOpenScanner }: WelcomeScreenProps) {
         </div>
       </button>
       
-      {/* Subtle staff access button */}
-      <button 
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenScanner();
-        }}
+      {/* Existing reservations actions */}
+      <div 
         style={{
           position: "absolute", bottom: "30px", right: "30px",
-          background: "transparent", border: "1px solid rgba(255,255,255,0.2)",
-          color: "rgba(255,255,255,0.4)", padding: "12px 24px", borderRadius: "8px",
-          fontSize: "16px", cursor: "pointer"
+          display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end",
+          zIndex: 10
         }}
       >
-        Staff Scanner
-      </button>
+        {onOpenReference && (
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenReference();
+            }}
+            style={{
+              background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.32)",
+              color: "#FFFFFF", padding: "12px 24px", borderRadius: "9999px",
+              fontSize: "16px", fontWeight: 700, cursor: "pointer",
+              backdropFilter: "blur(6px)", transition: "all 0.15s ease"
+            }}
+          >
+            Enter Reference ID
+          </button>
+        )}
+        <button 
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenScanner();
+          }}
+          style={{
+            background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.32)",
+            color: "#FFFFFF", padding: "12px 24px", borderRadius: "9999px",
+            fontSize: "16px", fontWeight: 700, cursor: "pointer",
+            backdropFilter: "blur(6px)", transition: "all 0.15s ease"
+          }}
+        >
+          Scan QR
+        </button>
+      </div>
     </div>
   );
 }

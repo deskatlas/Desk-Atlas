@@ -605,7 +605,7 @@ BEGIN
     WHERE rc.reservation_id = v_reservation.id
       AND rc.is_assigned = true
     LIMIT 1;
-  ELSIF v_attempt.status <> 'UNDER_REVIEW' THEN
+  ELSIF v_attempt.status NOT IN ('UNDER_REVIEW', 'REJECTED') THEN
     RAISE EXCEPTION 'Payment attempt % is not in an approvable review state', p_payment_attempt_id;
   ELSE
     FOR v_candidate IN
@@ -640,11 +640,20 @@ BEGIN
       UPDATE public.reservations
       SET
         status = 'CONFIRMED',
-        confirmed_at = COALESCE(confirmed_at, p_processed_at)
+        confirmed_at = COALESCE(confirmed_at, p_processed_at),
+        cancelled_at = NULL,
+        cancellation_reason = NULL,
+        cancelled_by_user_id = NULL,
+        updated_at = p_processed_at
       WHERE id = v_reservation.id;
     ELSE
       UPDATE public.reservations
-      SET status = 'NEEDS_MANUAL_RESOLUTION'
+      SET
+        status = 'NEEDS_MANUAL_RESOLUTION',
+        cancelled_at = NULL,
+        cancellation_reason = NULL,
+        cancelled_by_user_id = NULL,
+        updated_at = p_processed_at
       WHERE id = v_reservation.id;
     END IF;
 
@@ -659,11 +668,12 @@ BEGIN
     VALUES (
       p_processed_by_user_id,
       'ADMIN',
-      'payment_review_completed',
+      CASE WHEN v_attempt.status = 'REJECTED' THEN 'payment_review_reconsidered_approved' ELSE 'payment_review_completed' END,
       'payment_attempt',
       v_attempt.id,
       jsonb_build_object(
         'decision', 'APPROVE',
+        'was_reconsidered', v_attempt.status = 'REJECTED',
         'reservation_id', v_reservation.id,
         'assigned_candidate_id', v_assigned_candidate.id,
         'assigned_candidate_rank', v_assigned_candidate.rank,
@@ -1030,6 +1040,7 @@ AS $$
 DECLARE
   v_actor_role public.staff_role;
   v_actor_active boolean;
+  v_actor_display_name text;
   v_attempt public.payment_attempts%ROWTYPE;
   v_reservation public.reservations%ROWTYPE;
   v_candidate public.reservation_candidates%ROWTYPE;
@@ -1047,8 +1058,8 @@ BEGIN
     RAISE EXCEPTION 'processed_at is required';
   END IF;
 
-  SELECT role, is_active
-    INTO v_actor_role, v_actor_active
+  SELECT role, is_active, display_name
+    INTO v_actor_role, v_actor_active, v_actor_display_name
   FROM public.staff_profiles
   WHERE user_id = p_processed_by_user_id
   FOR UPDATE;
@@ -1144,6 +1155,7 @@ BEGIN
         'assigned_candidate_id', v_assigned_candidate.id,
         'assigned_candidate_rank', v_assigned_candidate.rank,
         'assigned_workspace_instance_id', v_assigned_candidate.workspace_instance_id,
+        'actor_name', COALESCE(v_actor_display_name, CASE WHEN v_actor_role = 'ADMIN' THEN 'Admin' ELSE 'Staff' END),
         'manual_resolution_required', v_assigned_candidate.id IS NULL
       )
     );
@@ -1168,6 +1180,7 @@ BEGIN
           'auto_check_in', true,
           'reentry', false,
           'event_type', 'CHECK_IN',
+          'actor_name', COALESCE(v_actor_display_name, CASE WHEN v_actor_role = 'ADMIN' THEN 'Admin' ELSE 'Staff' END),
           'workspace_instance_id', v_assigned_candidate.workspace_instance_id,
           'start_at', v_assigned_candidate.start_at,
           'end_at', v_assigned_candidate.end_at
@@ -1241,6 +1254,7 @@ AS $$
 #variable_conflict use_column
 DECLARE
   v_actor_role public.staff_role;
+  v_actor_display_name text;
   v_reservation public.reservations%ROWTYPE;
   v_candidate public.reservation_candidates%ROWTYPE;
   v_reentry boolean := false;
@@ -1250,8 +1264,8 @@ BEGIN
   END IF;
 
   IF p_actor_user_id IS NOT NULL THEN
-    SELECT role
-      INTO v_actor_role
+    SELECT role, display_name
+      INTO v_actor_role, v_actor_display_name
     FROM public.staff_profiles
     WHERE user_id = p_actor_user_id
       AND is_active = true;
@@ -1322,6 +1336,7 @@ BEGIN
     jsonb_build_object(
       'reentry', v_reentry,
       'event_type', CASE WHEN v_reentry THEN 'RE_ENTRY' ELSE 'CHECK_IN' END,
+      'actor_name', COALESCE(v_actor_display_name, CASE WHEN v_actor_role = 'ADMIN' THEN 'Admin' ELSE 'Staff' END),
       'workspace_instance_id', v_candidate.workspace_instance_id,
       'start_at', v_candidate.start_at,
       'end_at', v_candidate.end_at
@@ -1356,6 +1371,7 @@ AS $$
 #variable_conflict use_column
 DECLARE
   v_actor_role public.staff_role;
+  v_actor_display_name text;
   v_reservation public.reservations%ROWTYPE;
 BEGIN
   IF p_reservation_id IS NULL THEN
@@ -1370,8 +1386,8 @@ BEGIN
     RAISE EXCEPTION 'Action timestamp is required';
   END IF;
 
-  SELECT role
-    INTO v_actor_role
+  SELECT role, display_name
+    INTO v_actor_role, v_actor_display_name
   FROM public.staff_profiles
   WHERE user_id = p_actor_user_id
     AND is_active = true;
@@ -1434,6 +1450,7 @@ BEGIN
     'reservation',
     v_reservation.id,
     jsonb_build_object(
+      'actor_name', COALESCE(v_actor_display_name, CASE WHEN v_actor_role = 'ADMIN' THEN 'Admin' ELSE 'Staff' END),
       'checked_in_at', v_reservation.checked_in_at,
       'checked_out_at', p_acted_at
     )

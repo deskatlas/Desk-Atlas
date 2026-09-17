@@ -169,6 +169,7 @@ export interface WorkspaceRepository {
   createFloor(input: CreateFloorInput): Promise<Floor>;
   createTemplate(input: CreateWorkspaceTemplateInput): Promise<WorkspaceTemplate>;
   updateTemplate(id: string, input: UpdateWorkspaceTemplateInput): Promise<WorkspaceTemplate>;
+  deleteTemplate(id: string): Promise<{ deleted: boolean; deactivated?: boolean }>;
   createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails>;
   updateInstance(id: string, input: UpdateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails>;
   deactivateInstance(id: string): Promise<WorkspaceInstanceDetails>;

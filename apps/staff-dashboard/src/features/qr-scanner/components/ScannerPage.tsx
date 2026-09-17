@@ -7,6 +7,19 @@ import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '@/fea
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 
+interface VideoDeviceOption {
+  deviceId: string;
+  label: string;
+}
+
+function checkIsMobileOrTablet(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isIPadOS = /Macintosh/i.test(ua) && (navigator.maxTouchPoints ?? 0) > 1;
+  return isMobileUA || isIPadOS;
+}
+
 export function ScannerPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -15,10 +28,36 @@ export function ScannerPage() {
   const [manualCode, setManualCode] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [showEarlyModal, setShowEarlyModal] = useState(false);
+  const [isMobileOrTablet, setIsMobileOrTablet] = useState<boolean>(() => checkIsMobileOrTablet());
+  const [cameraFacingMode, setCameraFacingMode] = useState<'environment' | 'user'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('desk_atlas_staff_camera_facing');
+        if (saved === 'user' || saved === 'environment') return saved;
+      } catch {}
+    }
+    return 'environment';
+  });
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('desk_atlas_staff_camera_device_id') || '';
+      } catch {}
+    }
+    return '';
+  });
+  const [videoDevices, setVideoDevices] = useState<VideoDeviceOption[]>([]);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   
   const { lookupToken, result, loading: lookupLoading, error: lookupError, clear } = useBookingLookup();
   const { checkIn, checkOut, loading: actionLoading, error: actionError, clearError } = useCheckInActions();
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsMobileOrTablet(checkIsMobileOrTablet());
+    }
+  }, []);
 
   const stopStream = useCallback(() => {
     if (stream) {
@@ -27,24 +66,115 @@ export function ScannerPage() {
     }
   }, [stream]);
 
+  const handleCameraChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newMode = e.target.value as 'environment' | 'user';
+    stopStream();
+    setCameraFacingMode(newMode);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('desk_atlas_staff_camera_facing', newMode);
+      } catch {}
+    }
+  };
+
+  const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newDeviceId = e.target.value;
+    stopStream();
+    setSelectedDeviceId(newDeviceId);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('desk_atlas_staff_camera_device_id', newDeviceId);
+      } catch {}
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.mediaDevices?.addEventListener) return;
+    const onDeviceChange = async () => {
+      if (!isMobileOrTablet && navigator.mediaDevices?.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices
+            .filter(d => d.kind === 'videoinput')
+            .map((d, index) => ({
+              deviceId: d.deviceId,
+              label: d.label || `Camera ${index + 1}`
+            }));
+          setVideoDevices(videoInputs);
+        } catch {}
+      }
+    };
+
+    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
+    };
+  }, [isMobileOrTablet]);
+
   useEffect(() => {
     if (!scanning) return;
 
     let requestAnimationFrameId: number;
-    let localStream: MediaStream;
+    let localStream: MediaStream | null = null;
+    let isMounted = true;
 
     const startVideo = async () => {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        setCameraError(null);
+        if (isMobileOrTablet) {
+          localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacingMode } });
+        } else {
+          const constraints: MediaStreamConstraints = selectedDeviceId
+            ? { video: { deviceId: { exact: selectedDeviceId } } }
+            : { video: true };
+          try {
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+          } catch {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          }
+        }
+
+        if (!isMounted) {
+          localStream.getTracks().forEach(t => t.stop());
+          return;
+        }
         setStream(localStream);
+
+        // For laptop/pc, enumerate devices after permission is granted to get device labels
+        if (!isMobileOrTablet && navigator.mediaDevices?.enumerateDevices) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoInputs = devices
+              .filter(d => d.kind === 'videoinput')
+              .map((d, index) => ({
+                deviceId: d.deviceId,
+                label: d.label || `Camera ${index + 1}`
+              }));
+            setVideoDevices(videoInputs);
+
+            const activeDeviceId = localStream.getVideoTracks()[0]?.getSettings()?.deviceId;
+            if (activeDeviceId && (!selectedDeviceId || !videoInputs.some(v => v.deviceId === selectedDeviceId))) {
+              setSelectedDeviceId(activeDeviceId);
+              try {
+                localStorage.setItem('desk_atlas_staff_camera_device_id', activeDeviceId);
+              } catch {}
+            }
+          } catch (enumErr) {
+            console.warn("Could not enumerate video devices:", enumErr);
+          }
+        }
+
         if (videoRef.current) {
           videoRef.current.srcObject = localStream;
           videoRef.current.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
-          videoRef.current.play();
+          videoRef.current.play().catch(() => {});
           requestAnimationFrameId = requestAnimationFrame(tick);
         }
       } catch (err) {
-        console.error("Error accessing camera:", err);
+        if (isMounted) {
+          console.error("Error accessing camera:", err);
+          setCameraError("Unable to access the selected camera. Please check permissions or select another camera.");
+        }
       }
     };
 
@@ -69,7 +199,7 @@ export function ScannerPage() {
           }
         }
       }
-      if (scanning) {
+      if (scanning && isMounted) {
         requestAnimationFrameId = requestAnimationFrame(tick);
       }
     };
@@ -77,10 +207,11 @@ export function ScannerPage() {
     startVideo();
 
     return () => {
+      isMounted = false;
       if (requestAnimationFrameId) cancelAnimationFrame(requestAnimationFrameId);
       if (localStream) localStream.getTracks().forEach(t => t.stop());
     };
-  }, [scanning]);
+  }, [scanning, cameraFacingMode, selectedDeviceId, isMobileOrTablet]);
 
   const handleScan = async (data: string) => {
     setScanning(false);
@@ -187,6 +318,68 @@ export function ScannerPage() {
               </div>
             </div>
             <div style={{ marginTop: '16px', fontSize: '14px', color: 'var(--da-text-secondary)' }}>Point the camera at the booking QR</div>
+            
+            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label htmlFor="staff-camera-select" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--da-text-secondary)' }}>
+                Camera:
+              </label>
+              {isMobileOrTablet ? (
+                <select
+                  id="staff-camera-select"
+                  value={cameraFacingMode}
+                  onChange={handleCameraChange}
+                  style={{
+                    borderRadius: '8px',
+                    border: '1px solid var(--da-border)',
+                    padding: '6px 12px',
+                    fontSize: '13px',
+                    background: '#fff',
+                    color: 'var(--da-brand-dark)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="environment">Back Camera (Rear)</option>
+                  <option value="user">Front Camera (Selfie / Desk)</option>
+                </select>
+              ) : (
+                <select
+                  id="staff-camera-select"
+                  value={selectedDeviceId}
+                  onChange={handleDeviceChange}
+                  style={{
+                    borderRadius: '8px',
+                    border: '1px solid var(--da-border)',
+                    padding: '6px 12px',
+                    fontSize: '13px',
+                    background: '#fff',
+                    color: 'var(--da-brand-dark)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none',
+                    maxWidth: '280px',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {videoDevices.length > 0 ? (
+                    videoDevices.map((dev, idx) => (
+                      <option key={dev.deviceId || idx} value={dev.deviceId}>
+                        {dev.label || `Camera ${idx + 1}`}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Default Camera</option>
+                  )}
+                </select>
+              )}
+            </div>
+
+            {cameraError && (
+              <div style={{ marginTop: '12px', padding: '8px 12px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: '8px', color: '#991B1B', fontSize: '12px', maxWidth: '400px', textAlign: 'center' }}>
+                {cameraError}
+              </div>
+            )}
 
             <div style={{ marginTop: '20px', width: '100%', maxWidth: '400px' }}>
               {!showManualInput ? (

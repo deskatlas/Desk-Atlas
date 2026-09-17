@@ -150,6 +150,49 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     return mapTemplate(row);
   }
 
+  async deleteTemplate(id: string): Promise<{ deleted: boolean; deactivated?: boolean }> {
+    const [template] = await this.request<TemplateRow[]>(
+      `/workspace_templates?id=eq.${encodeURIComponent(id)}&limit=1`
+    );
+    if (!template) throw new Error(`Template not found: ${id}`);
+
+    const instances = await this.request<Array<{ id: string }>>(
+      `/workspace_instances?template_id=eq.${encodeURIComponent(id)}&select=id`
+    );
+
+    if (instances.length === 0) {
+      await this.request<unknown>(`/workspace_templates?id=eq.${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      return { deleted: true };
+    }
+
+    const instanceIds = instances.map((ins) => ins.id);
+    const nowIso = new Date().toISOString();
+    const futureReservations = await this.request<FutureReservationRow[]>(
+      `/reservation_candidates?select=id,reservation:reservations!inner(status)&workspace_instance_id=in.(${instanceIds
+        .map(encodeURIComponent)
+        .join(",")})&start_at=gt.${encodeURIComponent(nowIso)}&reservation.status=eq.CONFIRMED&limit=1`
+    );
+
+    if (futureReservations.length > 0) {
+      throw new WorkspaceConflictError("Cannot delete template with active or upcoming reservations");
+    }
+
+    await Promise.all([
+      this.request<unknown>(`/workspace_templates?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: false }),
+      }),
+      this.request<unknown>(`/workspace_instances?template_id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ operational_status: "INACTIVE" }),
+      }),
+    ]);
+
+    return { deleted: false, deactivated: true };
+  }
+
   async createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     await this.assertUniqueInstanceCode(input.instanceCode);
     const [row] = await this.request<InstanceRow[]>(

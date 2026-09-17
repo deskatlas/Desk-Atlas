@@ -6,6 +6,7 @@ import { extractBookingToken, type BookingScanResult } from "@deskatlas/domain";
 
 interface KioskScannerProps {
   onCancel: () => void;
+  onSwitchToReference?: () => void;
 }
 
 function formatBookingTime(isoString?: string): string {
@@ -18,7 +19,7 @@ function formatBookingTime(isoString?: string): string {
   }
 }
 
-export function KioskScanner({ onCancel }: KioskScannerProps) {
+export function KioskScanner({ onCancel, onSwitchToReference }: KioskScannerProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bookingData, setBookingData] = useState<BookingScanResult | null>(null);
@@ -43,7 +44,7 @@ export function KioskScanner({ onCancel }: KioskScannerProps) {
       scannerInstanceRef.current = html5QrCode;
 
       await html5QrCode.start(
-        { facingMode: "environment" },
+        { facingMode: "user" },
         { 
           fps: 15,
           aspectRatio: 1.0,
@@ -283,6 +284,30 @@ export function KioskScanner({ onCancel }: KioskScannerProps) {
             overflow: "hidden"
           }}
         ></div>
+
+        {onSwitchToReference && !bookingData && !error && !loading && (
+          <button
+            type="button"
+            onClick={onSwitchToReference}
+            style={{
+              marginTop: "24px",
+              background: "rgba(255,255,255,0.12)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              color: "#FFFFFF",
+              padding: "14px 28px",
+              borderRadius: "9999px",
+              fontSize: "16px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backdropFilter: "blur(4px)"
+            }}
+          >
+            Enter Reference Code or ID Instead
+          </button>
+        )}
 
         <style>{`
           #reader {

@@ -128,6 +128,7 @@ export function MapEditor() {
 
   const savedSnapshotRef = useRef<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const isSavingRef = useRef(false);
 
   useNavigationGuard({ isDirty });
 
@@ -310,7 +311,20 @@ export function MapEditor() {
 
       const rawElements = mapData.elements || [];
 
-      const mapped = rawElements.map((el: any) => {
+      const mapped = rawElements.filter((el: any) => {
+        const inst = el.workspaceInstanceId
+          ? currentInstances.find((i: any) => i.id === el.workspaceInstanceId)
+          : null;
+        const tmpl = inst
+          ? (inst.template || currentTemplates.find((t: any) => t.id === inst.templateId))
+          : currentTemplates.find((t: any) => t.id === el.properties?.templateId || t.name === el.properties?.template);
+
+        const isWorkspace = el.elementRole === 'WORKSPACE' || Boolean(el.workspaceInstanceId) || Boolean(inst);
+        if (isWorkspace) {
+          if (tmpl && tmpl.isActive === false) return false;
+        }
+        return true;
+      }).map((el: any) => {
         const inst = el.workspaceInstanceId
           ? currentInstances.find((i: any) => i.id === el.workspaceInstanceId)
           : null;
@@ -897,7 +911,8 @@ export function MapEditor() {
   // Save draft
   const handleSaveDraft = async (isAutosave = false) => {
     const floorId = selectedFloorIdRef.current;
-    if (!floorId) return;
+    if (!floorId || isSavingRef.current) return;
+    isSavingRef.current = true;
 
     try {
       setSaveState(isAutosave ? 'Saving...' : 'Saving draft...');
@@ -997,11 +1012,15 @@ export function MapEditor() {
         setIsDirty(false);
         setSaveState(`Saved at ${new Date().toLocaleTimeString()}`);
       } else {
+        setIsDirty(true);
         setSaveState('Unsaved changes');
+        autosaveDebouncerRef.current?.schedule();
       }
     } catch (err: any) {
       setSaveState('Unsaved changes');
       setErrorMsg(isAutosave ? `Autosave warning: ${err.message || 'Failed to save draft map'}` : (err.message || 'Failed to save draft map'));
+    } finally {
+      isSavingRef.current = false;
     }
   };
 
@@ -1354,10 +1373,10 @@ export function MapEditor() {
         {/* Palette */}
         <aside style={{ width: '200px', background: '#fff', borderRight: '1px solid var(--da-border)', padding: '14px', overflowY: 'auto', flexShrink: 0 }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', letterSpacing: '.05em', marginBottom: '8px', fontFamily: 'var(--da-font-family)' }}>WORKSPACES</div>
-          {templates.length === 0 ? (
+          {templates.filter((pw: any) => pw.isActive !== false).length === 0 ? (
             <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', padding: '6px 0' }}>No templates yet</div>
           ) : (
-            templates.map((pw, i) => (
+            templates.filter((pw: any) => pw.isActive !== false).map((pw, i) => (
               <div key={pw.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--da-border-light)' }}>
                 <span style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {pw.name}
@@ -1530,6 +1549,7 @@ export function MapEditor() {
                           : (isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : 'none'),
                         animation: isOutOfBounds ? 'da-pulse-red-glow 1.2s infinite ease-in-out' : 'none',
                         color: isOutOfBounds ? '#DC2626' : (isKioskMarker ? '#ffffff' : contrastColor),
+                        opacity: obj.status === 'INACTIVE' ? (selectedObjId === obj.id ? 0.6 : 0.25) : 1,
                         boxSizing: 'border-box',
                         overflow: 'hidden',
                         position: 'relative'

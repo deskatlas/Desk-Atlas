@@ -106,6 +106,7 @@ export function ReservationList() {
     { label: 'Checked In', filter: 'checked_in' },
     { label: 'Upcoming', filter: 'upcoming' },
     { label: 'Awaiting Proof', filter: 'awaiting_proof' },
+    { label: 'Counter Queue', filter: 'counter_queue' },
     { label: 'Expired', filter: 'expired' },
     { label: 'Rejected', filter: 'rejected' },
   ];

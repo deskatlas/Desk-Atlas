@@ -1,12 +1,14 @@
-import type {
-  AdminPaymentMethod,
-  BusinessSettings,
-  CreatePaymentMethodInput,
-  UpdateBusinessSettingsInput,
-  UpdatePaymentMethodInput,
+import {
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  type AdminPaymentMethod,
+  type BusinessSettings,
+  type CreatePaymentMethodInput,
+  type UpdateBusinessSettingsInput,
+  type UpdatePaymentMethodInput,
 } from '../models/settings';
 import type { OperatingHoursInterval, ScheduleBlock } from '../models/availability';
 import type { SettingsRepository } from './settingsRepository';
+import { normalizeWorkspaceStatusColors } from './workspaceStatusColorService';
 
 export class InMemorySettingsRepository implements SettingsRepository {
   private businessSettings: BusinessSettings = {
@@ -18,7 +20,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
     bookingIntervalMinutes: 30,
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
+    customerSessionTimeoutMinutes: 20,
     landingPreviewPhotos: [],
+    statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     updatedAt: new Date().toISOString(),
   };
 
@@ -78,6 +82,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
       landingPreviewPhotos: this.businessSettings.landingPreviewPhotos
         ? [...this.businessSettings.landingPreviewPhotos]
         : [],
+      statusColors: this.businessSettings.statusColors
+        ? { ...this.businessSettings.statusColors }
+        : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     };
   }
 
@@ -94,10 +101,15 @@ export class InMemorySettingsRepository implements SettingsRepository {
       bookingIntervalMinutes: input.bookingIntervalMinutes,
       paymentExpiryMinutes: input.paymentExpiryMinutes,
       kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
+      customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
       landingPreviewPhotos:
         input.landingPreviewPhotos !== undefined
           ? [...input.landingPreviewPhotos]
           : this.businessSettings.landingPreviewPhotos,
+      statusColors:
+        input.statusColors !== undefined
+          ? normalizeWorkspaceStatusColors(input.statusColors)
+          : (this.businessSettings.statusColors || { ...DEFAULT_WORKSPACE_STATUS_COLORS }),
       updatedAt: new Date().toISOString(),
     };
     return {
@@ -105,6 +117,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
       landingPreviewPhotos: this.businessSettings.landingPreviewPhotos
         ? [...this.businessSettings.landingPreviewPhotos]
         : [],
+      statusColors: this.businessSettings.statusColors
+        ? { ...this.businessSettings.statusColors }
+        : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     };
   }
 

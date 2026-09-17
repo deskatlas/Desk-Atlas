@@ -11,16 +11,11 @@ import {
   DEFAULT_MAP_CANVAS_WIDTH,
   DEFAULT_MAP_CANVAS_HEIGHT,
   DEFAULT_MAP_GRID_SIZE,
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  normalizeWorkspaceStatusColors,
+  getContrastColor,
+  type WorkspaceStatusColors,
 } from '@deskatlas/domain';
-
-function getContrastColor(hexColor?: string): string {
-  if (!hexColor || !hexColor.startsWith('#') || hexColor.length < 7) return '#111827';
-  const r = parseInt(hexColor.slice(1, 3), 16);
-  const g = parseInt(hexColor.slice(3, 5), 16);
-  const b = parseInt(hexColor.slice(5, 7), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 150 ? '#111827' : '#ffffff';
-}
 
 function AmenityIcon({ type, name, color }: { type?: string; name?: string; color?: string }) {
   const norm = (type || name || '').toLowerCase();
@@ -97,6 +92,7 @@ export default function WorkspaceMapPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [publishedMap, setPublishedMap] = useState<any | null>(null);
+  const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(DEFAULT_WORKSPACE_STATUS_COLORS);
 
   // Load catalog and initial floor
   const loadInitialData = async () => {
@@ -104,13 +100,19 @@ export default function WorkspaceMapPage() {
       setLoading(true);
       setErrorMsg(null);
 
-      const [wsRes, floorsRes] = await Promise.all([
+      const [wsRes, floorsRes, settingsRes] = await Promise.all([
         fetch('/api/admin/workspaces'),
         fetch('/api/admin/workspaces/floors'),
+        fetch('/api/admin/settings').catch(() => null),
       ]);
 
       const wsData = wsRes.ok ? await wsRes.json() : {};
       const floorsData = floorsRes.ok ? await floorsRes.json() : {};
+      const settingsData = settingsRes && settingsRes.ok ? await settingsRes.json() : null;
+
+      if (settingsData?.data?.businessSettings?.statusColors) {
+        setStatusColors(normalizeWorkspaceStatusColors(settingsData.data.businessSettings.statusColors));
+      }
 
       const loadedFloors = floorsData.floors || wsData.floors || [];
       const loadedTemplates = wsData.templates || [];
@@ -275,7 +277,16 @@ export default function WorkspaceMapPage() {
     }
   };
 
-  const elements = publishedMap?.elements || [];
+  const elements = (publishedMap?.elements || []).filter((el: any) => {
+    if (el.elementRole === 'WORKSPACE' || el.workspaceInstanceId) {
+      const inst = instances.find((ins) => ins.id === el.workspaceInstanceId);
+      const tmpl = inst
+        ? (inst.template || templates.find((t) => t.id === inst.templateId))
+        : templates.find((t) => t.id === el.properties?.templateId || t.name === el.properties?.template);
+      if (tmpl && tmpl.isActive === false) return false;
+    }
+    return true;
+  });
   const selectedElement = elements.find((e: any) => e.id === selectedObjId);
   const selectedInstance = selectedElement
     ? instances.find(ins => ins.id === selectedElement.workspaceInstanceId)
@@ -330,8 +341,8 @@ export default function WorkspaceMapPage() {
           <span style={{ fontSize: '12px', fontFamily: 'var(--da-font-family)', width: '40px', textAlign: 'center' }}>{Math.round(builderZoom * 100)}%</span>
           <button onClick={handleZoomIn} style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--da-border)', background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: 700 }}>+</button>
           <button onClick={handleFitView} style={{ border: '1px solid var(--da-border)', background: '#fff', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Fit View</button>
-          
-          <Link 
+
+          <Link
             href="/manage/map"
             style={{ textDecoration: 'none', border: '1px solid var(--da-border)', background: 'var(--da-canvas)', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--da-brand-dark)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
@@ -395,132 +406,136 @@ export default function WorkspaceMapPage() {
                 background: '#fff',
               }}
             >
-              <div 
+              <div
                 ref={canvasRef}
-                style={{ 
-                  width: `${canvasDimensions.width}px`, 
-                  height: `${canvasDimensions.height}px`, 
+                style={{
+                  width: `${canvasDimensions.width}px`,
+                  height: `${canvasDimensions.height}px`,
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  background: '#fff', 
+                  background: '#fff',
                   borderRadius: '8px',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
-                  transform: `scale(${builderZoom})`, 
-                  transformOrigin: 'top left', 
-                  backgroundImage: 'radial-gradient(var(--da-border) 1px, transparent 1px)', 
+                  transform: `scale(${builderZoom})`,
+                  transformOrigin: 'top left',
+                  backgroundImage: 'radial-gradient(var(--da-border) 1px, transparent 1px)',
                   backgroundSize: `${canvasDimensions.gridSize}px ${canvasDimensions.gridSize}px`,
                   overflow: 'hidden'
                 }}
               >
-              {elements.map((el: any) => {
-                const isWorkspace = el.elementRole === 'WORKSPACE';
-                const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
-                const inst = isWorkspace ? instances.find(ins => ins.id === el.workspaceInstanceId) : null;
-                const tmpl = inst ? (inst.template || templates.find(t => t.id === inst.templateId)) : null;
-                const status = inst?.operationalStatus || 'ACTIVE';
-                const isSelected = selectedObjId === el.id;
+                {elements.map((el: any) => {
+                  const isWorkspace = el.elementRole === 'WORKSPACE';
+                  const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
+                  const inst = isWorkspace ? instances.find(ins => ins.id === el.workspaceInstanceId) : null;
+                  const tmpl = inst ? (inst.template || templates.find(t => t.id === inst.templateId)) : null;
+                  const status = inst?.operationalStatus || 'ACTIVE';
+                  const isSelected = selectedObjId === el.id;
 
-                const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
-                const isPantry = el.elementType?.toLowerCase().includes('pantry') || el.label?.toLowerCase().includes('pantry');
-                const isEmergencyExit = el.elementType?.toLowerCase().includes('exit') || el.elementType?.toLowerCase().includes('emergency') || el.label?.toLowerCase().includes('exit') || el.label?.toLowerCase().includes('emergency');
-                const isAmenity = el.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit;
-                const isKioskMarker =
-                  el.elementType === 'KIOSK_YOU_ARE_HERE' ||
-                  el.elementRole === 'INFORMATION' ||
-                  el.properties?.markerType === 'KIOSK_YOU_ARE_HERE' ||
-                  el.label?.toLowerCase() === 'you are here';
+                  const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
+                  const isPantry = el.elementType?.toLowerCase().includes('pantry') || el.label?.toLowerCase().includes('pantry');
+                  const isEmergencyExit = el.elementType?.toLowerCase().includes('exit') || el.elementType?.toLowerCase().includes('emergency') || el.label?.toLowerCase().includes('exit') || el.label?.toLowerCase().includes('emergency');
+                  const isAmenity = el.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit;
+                  const isKioskMarker =
+                    el.elementType === 'KIOSK_YOU_ARE_HERE' ||
+                    el.elementRole === 'INFORMATION' ||
+                    el.properties?.markerType === 'KIOSK_YOU_ARE_HERE' ||
+                    el.label?.toLowerCase() === 'you are here';
 
-                let defaultAmenityColor = '#F3F7F4';
-                if (isRestroom) defaultAmenityColor = '#E0F2FE';
-                else if (isPantry) defaultAmenityColor = '#FEF3C7';
-                else if (isEmergencyExit) defaultAmenityColor = '#DCFCE7';
+                  let defaultAmenityColor = '#F3F7F4';
+                  if (isRestroom) defaultAmenityColor = '#E0F2FE';
+                  else if (isPantry) defaultAmenityColor = '#FEF3C7';
+                  else if (isEmergencyExit) defaultAmenityColor = '#DCFCE7';
 
-                const displayName = inst?.displayName || el.label || (isKioskMarker ? 'You Are Here' : (tmpl?.name || el.elementType));
-                const itemColor = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : (isWall ? '#334155' : '#F3F7F4'))));
+                  const displayName = inst?.displayName || el.label || (isKioskMarker ? 'You Are Here' : (tmpl?.name || el.elementType));
+                  const itemColor = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : (isWall ? '#334155' : '#F3F7F4'))));
 
-                let bg = el.properties?.color || itemColor;
-                let textColor = isKioskMarker ? '#ffffff' : getContrastColor(bg);
-                let border = isSelected ? '3px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #fff' : '1px solid rgba(0, 0, 0, 0.15)');
+                  const isInactive = isWorkspace && status === 'INACTIVE';
+                  let bg = el.properties?.color || itemColor;
+                  let textColor = isKioskMarker ? '#ffffff' : getContrastColor(bg);
+                  let border = isSelected ? '3px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #fff' : '1px solid rgba(0, 0, 0, 0.15)');
 
-                if (isWorkspace) {
-                  if (status === 'MAINTENANCE') {
-                    border = '2px dashed #f59e0b';
-                  } else if (status === 'INACTIVE') {
-                    border = '2px dashed #94a3b8';
-                    bg = 'rgba(148, 163, 184, 0.4)';
-                    textColor = '#334155';
+                  if (isWorkspace) {
+                    if (status === 'MAINTENANCE') {
+                      border = `2px dashed ${statusColors.maintenance}`;
+                      bg = statusColors.maintenance;
+                      textColor = getContrastColor(bg);
+                    } else if (status === 'INACTIVE') {
+                      border = `2px dashed ${statusColors.unavailable}`;
+                      bg = statusColors.unavailable;
+                      textColor = getContrastColor(bg);
+                    }
+                  } else if (el.elementType?.toLowerCase().includes('door')) {
+                    border = '2px dashed var(--da-brand-dark)';
                   }
-                } else if (el.elementType?.toLowerCase().includes('door')) {
-                  border = '2px dashed var(--da-brand-dark)';
-                }
 
-                return (
-                  <div
-                    key={el.id}
-                    style={{
-                      position: 'absolute',
-                      left: el.x,
-                      top: el.y,
-                      width: el.width,
-                      height: el.height,
-                      transform: `rotate(${el.rotation || 0}deg)`,
-                      zIndex: el.zIndex || 1,
-                    }}
-                  >
-                    <button
-                      onClick={() => setSelectedObjId(el.id)}
-                      aria-pressed={isSelected}
+                  return (
+                    <div
+                      key={el.id}
                       style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        textAlign: 'center',
-                        cursor: 'pointer',
-                        fontFamily: 'var(--da-font-family)',
-                        padding: '4px',
-                        lineHeight: 1.2,
-                        background: bg,
-                        border: border,
-                        borderRadius: isKioskMarker ? '14px' : (isWall ? '2px' : '8px'),
-                        boxShadow: isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : (isSelected ? '0 0 0 2px var(--da-brand-dark)' : 'none'),
-                        color: textColor,
-                        position: 'relative',
-                        overflow: 'hidden',
-                        transition: 'all 0.15s ease',
+                        position: 'absolute',
+                        left: el.x,
+                        top: el.y,
+                        width: el.width,
+                        height: el.height,
+                        transform: `rotate(${el.rotation || 0}deg)`,
+                        zIndex: el.zIndex || 1,
                       }}
                     >
-                      {isWorkspace ? (
-                        <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {displayName}
-                        </span>
-                      ) : isKioskMarker ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">
-                            <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" fill="#ffffff" stroke="#DC2626" strokeWidth="1.5" />
-                            <circle cx="12" cy="10" r="3" fill="#DC2626" />
-                          </svg>
-                          <span style={{ fontSize: '10px', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                      <button
+                        onClick={() => setSelectedObjId(el.id)}
+                        aria-pressed={isSelected}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--da-font-family)',
+                          padding: '4px',
+                          lineHeight: 1.2,
+                          background: bg,
+                          border: border,
+                          borderRadius: isKioskMarker ? '14px' : (isWall ? '2px' : '8px'),
+                          boxShadow: isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : (isSelected ? '0 0 0 2px var(--da-brand-dark)' : 'none'),
+                          color: textColor,
+                          opacity: isInactive ? (isSelected ? 0.6 : 0.25) : 1,
+                          position: 'relative',
+                          overflow: 'hidden',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {isWorkspace ? (
+                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {displayName}
                           </span>
-                        </div>
-                      ) : isAmenity ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
-                          <AmenityIcon type={el.elementType} name={displayName} color={textColor} />
-                          <span style={{ fontSize: '10px', fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.9 }}>
-                            {displayName}
-                          </span>
-                        </div>
-                      ) : null}
-                    </button>
-                  </div>
-                );
-              })}
+                        ) : isKioskMarker ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">
+                              <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" fill="#ffffff" stroke="#DC2626" strokeWidth="1.5" />
+                              <circle cx="12" cy="10" r="3" fill="#DC2626" />
+                            </svg>
+                            <span style={{ fontSize: '10px', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                              {displayName}
+                            </span>
+                          </div>
+                        ) : isAmenity ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
+                            <AmenityIcon type={el.elementType} name={displayName} color={textColor} />
+                            <span style={{ fontSize: '10px', fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.9 }}>
+                              {displayName}
+                            </span>
+                          </div>
+                        ) : null}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
