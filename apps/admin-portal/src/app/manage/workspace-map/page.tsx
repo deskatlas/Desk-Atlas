@@ -741,6 +741,42 @@ export default function WorkspaceMapPage() {
                   </div>
                 </div>
 
+                {(() => {
+                  const tags: string[] = Array.isArray(selectedElement?.properties?.recommendationTags)
+                    ? selectedElement.properties.recommendationTags
+                    : Array.isArray(selectedElement?.properties?.tags)
+                    ? selectedElement.properties.tags
+                    : Array.isArray(selectedElement?.properties?.recommendations)
+                    ? selectedElement.properties.recommendations
+                    : [];
+                  if (tags.length === 0) return null;
+                  return (
+                    <div>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '6px' }}>
+                        Amenities & Recommendations
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {tags.map((t) => (
+                          <span
+                            key={t}
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              background: 'rgba(0,150,137,0.08)',
+                              border: '1px solid rgba(0,150,137,0.2)',
+                              color: 'var(--da-brand-dark)',
+                            }}
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
                     Operational Status

@@ -6,6 +6,7 @@ import {
   GuestReservationTrackingRecord,
   GuestReservationTrackingRepository,
 } from "./guestReservationTrackingRepository";
+import type { SettingsRepository } from "./settingsRepository";
 
 export class GuestReservationTrackingError extends Error {
   constructor(message: string) {
@@ -16,7 +17,9 @@ export class GuestReservationTrackingError extends Error {
 
 export class GuestReservationTrackingService {
   constructor(
-    private readonly trackingRepository: GuestReservationTrackingRepository
+    private readonly trackingRepository: GuestReservationTrackingRepository,
+    private readonly settingsRepository?: SettingsRepository,
+    private readonly nowProvider: () => Date = () => new Date()
   ) {}
 
   async getReservationTracking(input: {
@@ -48,6 +51,34 @@ export class GuestReservationTrackingService {
       );
     }
 
+    let cutoffHours = 12;
+    if (this.settingsRepository) {
+      try {
+        const settings = await this.settingsRepository.getBusinessSettings();
+        if (settings.customerRescheduleCutoffHours !== undefined && settings.customerRescheduleCutoffHours !== null) {
+          cutoffHours = settings.customerRescheduleCutoffHours;
+        }
+      } catch {
+        cutoffHours = 12;
+      }
+    }
+
+    const rescheduleCount = record.rescheduleCount ?? 0;
+    const nowMs = this.nowProvider().getTime();
+    let canReschedule = false;
+
+    if (
+      record.reservationStatus === "CONFIRMED" &&
+      rescheduleCount === 0 &&
+      record.finalAssignment?.bookingStartAt
+    ) {
+      const startMs = new Date(record.finalAssignment.bookingStartAt).getTime();
+      const cutoffMs = cutoffHours * 60 * 60 * 1000;
+      if (nowMs <= startMs - cutoffMs) {
+        canReschedule = true;
+      }
+    }
+
     return {
       reservationId: record.reservationId,
       referenceCode: record.referenceCode,
@@ -59,6 +90,9 @@ export class GuestReservationTrackingService {
       finalAssignment: record.finalAssignment,
       paymentStatus: record.paymentStatus ?? null,
       rejectionReason: record.rejectionReason ?? null,
+      rescheduleCount,
+      canReschedule,
+      rescheduleCutoffHours: cutoffHours,
     };
   }
 }
@@ -94,7 +128,9 @@ function mapGuestTrackingStatus(
 }
 
 export function createGuestReservationTrackingService(
-  trackingRepository: GuestReservationTrackingRepository
+  trackingRepository: GuestReservationTrackingRepository,
+  settingsRepository?: SettingsRepository,
+  nowProvider?: () => Date
 ) {
-  return new GuestReservationTrackingService(trackingRepository);
+  return new GuestReservationTrackingService(trackingRepository, settingsRepository, nowProvider);
 }

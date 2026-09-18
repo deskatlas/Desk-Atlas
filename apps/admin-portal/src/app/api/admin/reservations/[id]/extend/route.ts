@@ -28,13 +28,17 @@ export async function POST(
       );
     }
 
+    const actorRole = typeof body.actorRole === "string" ? body.actorRole.trim() : "ADMIN";
+    const actorUserId = typeof body.actorUserId === "string" ? body.actorUserId.trim() : undefined;
+
     const service = getAdminReservationService();
     const result = await service.extendReservation({
       reservationId: id,
       extensionMinutes,
       additionalFee,
       paymentMethod,
-      actorRole: "ADMIN",
+      actorUserId,
+      actorRole,
     });
 
     return NextResponse.json(result);

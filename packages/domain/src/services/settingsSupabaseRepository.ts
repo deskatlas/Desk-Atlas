@@ -21,6 +21,7 @@ type BusinessSettingsRow = {
   payment_expiry_minutes: number;
   kiosk_timeout_minutes: number | null;
   customer_session_timeout_minutes?: number | null;
+  customer_reschedule_cutoff_hours?: number | null;
   landing_preview_photos?: any;
   status_colors?: any;
   updated_at: string | null;
@@ -108,6 +109,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         paymentExpiryMinutes: 60,
         kioskTimeoutMinutes: 5,
         customerSessionTimeoutMinutes: 20,
+        customerRescheduleCutoffHours: 12,
         landingPreviewPhotos: [],
         statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       };
@@ -123,6 +125,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? 20,
+      customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? 12,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       updatedAt: row.updated_at,
@@ -142,6 +145,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       payment_expiry_minutes: input.paymentExpiryMinutes,
       kiosk_timeout_minutes: input.kioskTimeoutMinutes,
       customer_session_timeout_minutes: input.customerSessionTimeoutMinutes ?? 20,
+      customer_reschedule_cutoff_hours: input.customerRescheduleCutoffHours ?? 12,
       updated_at: new Date().toISOString(),
     };
 
@@ -221,6 +225,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? input.customerSessionTimeoutMinutes ?? 20,
+      customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? input.customerRescheduleCutoffHours ?? 12,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : (input.statusColors ? normalizeWorkspaceStatusColors(input.statusColors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS }),
       updatedAt: row.updated_at,

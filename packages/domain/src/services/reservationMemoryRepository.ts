@@ -22,6 +22,7 @@ import {
 } from "../models/reservation";
 import {
   AdminReservationRepository,
+  RescheduleReservationInput,
   RescheduleSlotAvailability,
   RelocateReservationInput,
   AvailableRelocationSpot,
@@ -1019,6 +1020,7 @@ export class ReservationMemoryRepository
         : null,
       paymentStatus: latestAttempt?.status ?? null,
       rejectionReason: latestAttempt?.rejectionReason ?? null,
+      rescheduleCount: (reservation as any).rescheduleCount ?? 0,
     };
   }
 
@@ -1566,8 +1568,9 @@ export class ReservationMemoryRepository
     }
 
     if ((r as any).rescheduledAt) {
+      const actorLabel = (r as any).rescheduledByRole === "CUSTOMER" ? "Customer" : "Admin";
       timeline.push(
-        `${formatTimelineDate((r as any).rescheduledAt)} - Rescheduled by Admin to ${schedule}`
+        `${formatTimelineDate((r as any).rescheduledAt)} - Rescheduled by ${actorLabel} to ${schedule}`
       );
     }
 
@@ -1644,6 +1647,7 @@ export class ReservationMemoryRepository
       expiryReason,
       cancellationReason: (r as any).cancellationReason ?? null,
       cancelledAt: (r as any).cancelledAt ?? null,
+      rescheduleCount: (r as any).rescheduleCount ?? 0,
       paymentAttempts: paymentAttemptsSummary,
     };
   }
@@ -1691,14 +1695,7 @@ export class ReservationMemoryRepository
     };
   }
 
-  async rescheduleReservation(input: {
-    reservationId: string;
-    startAt: string;
-    endAt: string;
-    workspaceInstanceId?: string;
-    actorUserId?: string;
-    actorRole?: string;
-  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
+  async rescheduleReservation(input: RescheduleReservationInput): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
     const r = this.reservations.find(
       (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
     );
@@ -1725,6 +1722,32 @@ export class ReservationMemoryRepository
 
     if (newStartMs < nowMs) {
       throw new Error("Cannot reschedule to a past date or time.");
+    }
+
+    const isCustomerActor = input.actorRole === "CUSTOMER";
+    const currentRescheduleCount = (r as any).rescheduleCount ?? 0;
+
+    if (isCustomerActor) {
+      if (currentRescheduleCount >= 1) {
+        throw new Error("Customer can only reschedule a reservation once.");
+      }
+
+      if (assigned?.startAt) {
+        const origStartMs = new Date(assigned.startAt).getTime();
+        const cutoffHours = input.cutoffHours ?? 12;
+        const cutoffMs = cutoffHours * 60 * 60 * 1000;
+        if (nowMs > origStartMs - cutoffMs) {
+          throw new Error(`Reschedule must be requested at least ${cutoffHours} hours before the scheduled start time.`);
+        }
+
+        if (assigned.endAt) {
+          const origDurationMs = new Date(assigned.endAt).getTime() - origStartMs;
+          const newDurationMs = newEndMs - newStartMs;
+          if (Math.abs(origDurationMs - newDurationMs) > 60000) {
+            throw new Error("Rescheduled reservation must have the exact same duration as the original booking.");
+          }
+        }
+      }
     }
 
     // Check conflict with other reservations
@@ -1756,6 +1779,8 @@ export class ReservationMemoryRepository
 
     r.updatedAt = nowIso;
     (r as any).rescheduledAt = nowIso;
+    (r as any).rescheduledByRole = input.actorRole ?? "ADMIN";
+    (r as any).rescheduleCount = currentRescheduleCount + 1;
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {

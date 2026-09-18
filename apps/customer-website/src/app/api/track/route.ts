@@ -3,6 +3,7 @@ import {
   createGuestReservationTrackingService,
   GuestReservationTrackingError,
   ReservationSupabaseRepository,
+  SupabaseSettingsRepository,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -47,7 +48,11 @@ export async function POST(request: NextRequest) {
       supabaseUrl,
       serviceRoleKey: supabaseKey,
     });
-    const service = createGuestReservationTrackingService(repository);
+    const settingsRepository = new SupabaseSettingsRepository({
+      supabaseUrl,
+      serviceRoleKey: supabaseKey,
+    });
+    const service = createGuestReservationTrackingService(repository, settingsRepository);
     const body = await request.json();
 
     const result = await service.getReservationTracking({

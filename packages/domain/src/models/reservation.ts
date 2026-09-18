@@ -34,6 +34,7 @@ export interface Reservation {
   cancellationReason?: string | null;
   cancelledByUserId?: string | null;
   cancelledAt?: string | null;
+  rescheduleCount?: number;
 }
 
 export type CandidateRank = 0 | 1 | 2;
@@ -355,6 +356,9 @@ export interface GuestReservationTrackingResult {
   finalAssignment: GuestReservationAssignmentSummary | null;
   paymentStatus?: string | null;
   rejectionReason?: string | null;
+  rescheduleCount?: number;
+  canReschedule?: boolean;
+  rescheduleCutoffHours?: number;
 }
 
 export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue";
@@ -472,6 +476,7 @@ export interface AdminReservationDetail {
   expiryReason?: string | null;
   cancellationReason?: string | null;
   cancelledAt?: string | null;
+  rescheduleCount?: number;
   paymentAttempts?: AdminReservationPaymentAttemptSummary[];
 }
 

@@ -119,6 +119,7 @@ CREATE TABLE "business_settings" (
   "payment_expiry_minutes" integer NOT NULL DEFAULT 60,
   "kiosk_timeout_minutes" integer,
   "customer_session_timeout_minutes" integer NOT NULL DEFAULT 20,
+  "customer_reschedule_cutoff_hours" integer NOT NULL DEFAULT 12,
   "landing_preview_photos" jsonb NOT NULL DEFAULT '[]'::jsonb,
   "status_colors" jsonb NOT NULL DEFAULT '{"available": "#10B981", "occupied": "#EF4444", "maintenance": "#F59E0B", "unavailable": "#6B7280"}'::jsonb,
   "updated_by_user_id" uuid,
@@ -241,6 +242,7 @@ CREATE TABLE "reservations" (
   "confirmed_at" timestamptz,
   "checked_in_at" timestamptz,
   "checked_out_at" timestamptz,
+  "reschedule_count" integer NOT NULL DEFAULT 0,
   "created_at" timestamptz NOT NULL DEFAULT (now()),
   "updated_at" timestamptz NOT NULL DEFAULT (now())
 );

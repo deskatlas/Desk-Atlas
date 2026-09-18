@@ -21,6 +21,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
     customerSessionTimeoutMinutes: 20,
+    customerRescheduleCutoffHours: 12,
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     updatedAt: new Date().toISOString(),
@@ -102,6 +103,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
       paymentExpiryMinutes: input.paymentExpiryMinutes,
       kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
       customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
+      customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? 12,
       landingPreviewPhotos:
         input.landingPreviewPhotos !== undefined
           ? [...input.landingPreviewPhotos]

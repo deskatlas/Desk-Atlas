@@ -1187,10 +1187,10 @@ export function MapEditor() {
           zIndex: index + 1,
           label: obj.name || (isKioskMarker ? 'You Are Here' : null),
           properties: {
+            ...(obj.properties || {}),
             color: obj.color,
             recommendationTags: obj.recommendationTags || [],
             ...(obj.borderStyle ? { borderStyle: obj.borderStyle } : {}),
-            ...(obj.properties || {}),
             ...(isKioskMarker ? { markerType: 'KIOSK_YOU_ARE_HERE' } : {}),
           },
           isLocked: false,
@@ -2107,7 +2107,16 @@ export function MapEditor() {
 
                                     setBuilderObjects((prev) =>
                                       prev.map((o) =>
-                                        o.id === selectedObj.id ? { ...o, recommendationTags: nextTags } : o
+                                        o.id === selectedObj.id
+                                          ? {
+                                              ...o,
+                                              recommendationTags: nextTags,
+                                              properties: {
+                                                ...(o.properties || {}),
+                                                recommendationTags: nextTags,
+                                              },
+                                            }
+                                          : o
                                       )
                                     );
                                     setSaveState('Unsaved changes');

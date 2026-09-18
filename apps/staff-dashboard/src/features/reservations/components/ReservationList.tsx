@@ -9,9 +9,11 @@ import {
   filterReservationsBySearch,
   filterStaffReservationsByStatus,
   STAFF_RESERVATION_FILTERS,
+  sortStaffReservationsBySchedule,
   type StaffOperationalReservation,
   type StaffReservationFilter,
-  type ReservationStatus
+  type ReservationStatus,
+  type ReservationSortDirection,
 } from '@deskatlas/domain';
 
 function getStatusDisplay(status: ReservationStatus) {
@@ -34,12 +36,17 @@ export function ReservationList() {
   const { searchQuery } = useSearch();
   const currentTick = useLiveCountdownClock(1000);
   const [activeFilter, setActiveFilter] = useState<StaffReservationFilter>('active');
+  const [timeSort, setTimeSort] = useState<ReservationSortDirection | 'none'>('none');
   const router = useRouter();
 
   const statusFiltered = filterStaffReservationsByStatus(reservations, activeFilter);
-  const displayedReservations = filterReservationsBySearch(statusFiltered, searchQuery);
+  const searchFiltered = filterReservationsBySearch(statusFiltered, searchQuery);
+  const displayedReservations = timeSort !== 'none'
+    ? sortStaffReservationsBySchedule(searchFiltered, timeSort)
+    : searchFiltered;
   const totalCount = reservations.length;
-  const isFiltered = activeFilter !== 'all' || Boolean(searchQuery.trim());
+  const isFiltered = activeFilter !== 'all' || Boolean(searchQuery.trim()) || timeSort !== 'none';
+
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
   if (error) return (
@@ -119,9 +126,25 @@ export function ReservationList() {
             <tr style={{ background: 'var(--da-canvas)', borderBottom: '1px solid var(--da-border)' }}>
               <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>Guest</th>
               <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>Workspace</th>
-              <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>Time</th>
+              <th
+                data-testid="sort-time-header"
+                onClick={() => {
+                  setTimeSort((prev) => (prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none'));
+                }}
+                style={{
+                  padding: '12px 16px',
+                  fontWeight: timeSort !== 'none' ? 800 : 700,
+                  color: timeSort !== 'none' ? 'var(--da-brand-dark)' : 'var(--da-text-secondary)',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+                title="Sort by time (Ascending / Descending)"
+              >
+                Time {timeSort === 'asc' ? '↑' : timeSort === 'desc' ? '↓' : '⇅'}
+              </th>
               <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>Status</th>
               <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)', textAlign: 'right' }}>Actions</th>
+
             </tr>
           </thead>
           <tbody>

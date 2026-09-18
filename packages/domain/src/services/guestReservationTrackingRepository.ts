@@ -12,6 +12,7 @@ export interface GuestReservationTrackingRecord {
   finalAssignment: GuestReservationAssignmentSummary | null;
   paymentStatus?: string | null;
   rejectionReason?: string | null;
+  rescheduleCount?: number;
 }
 
 export interface GuestReservationTrackingRepository {

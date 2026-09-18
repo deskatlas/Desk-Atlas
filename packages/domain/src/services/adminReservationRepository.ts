@@ -15,6 +15,7 @@ export interface RescheduleReservationInput {
   workspaceInstanceId?: string;
   actorUserId?: string;
   actorRole?: string;
+  cutoffHours?: number;
 }
 
 export interface RescheduleSlotAvailability {

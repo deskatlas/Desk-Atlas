@@ -9,9 +9,11 @@ import {
   countActiveFilters,
   generateReservationsCsv,
   generateReservationsCsvFilename,
+  sortAdminReservationsBySchedule,
   type AdminReservationFilter,
   type AdminReservationSummary,
   type AdminReservationAdvancedFilters,
+  type ReservationSortDirection,
 } from '@deskatlas/domain';
 import { ReservationFilterModal } from './ReservationFilterModal';
 
@@ -19,6 +21,7 @@ export function ReservationList() {
   const router = useRouter();
   const currentTick = useLiveCountdownClock(1000);
   const [activeFilter, setActiveFilter] = useState<AdminReservationFilter>('active');
+  const [scheduleSort, setScheduleSort] = useState<ReservationSortDirection | 'none'>('none');
   const [reservations, setReservations] = useState<AdminReservationSummary[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -31,7 +34,11 @@ export function ReservationList() {
   const activeFilterCount = countActiveFilters(advancedFilters);
 
   const searchFiltered = filterReservationsBySearch(reservations, searchQuery);
-  const displayedReservations = filterReservations(searchFiltered, advancedFilters);
+  const filtered = filterReservations(searchFiltered, advancedFilters);
+  const displayedReservations = scheduleSort !== 'none'
+    ? sortAdminReservationsBySchedule(filtered, scheduleSort)
+    : filtered;
+
 
   // Extract unique available template names from loaded reservations
   const availableTemplates = Array.from(
@@ -198,9 +205,34 @@ export function ReservationList() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '11px 20px', background: '#F1F8F3', fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.06em' }}>
-          <span>REFERENCE ⇅</span><span>CUSTOMER ⇅</span><span>WORKSPACE</span><span>SCHEDULE ⇅</span><span>PAYMENT</span><span>STATUS</span><span style={{ textAlign: 'right' }}>ACTIONS</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '11px 20px', background: '#F1F8F3', fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.06em', alignItems: 'center' }}>
+          <span>REFERENCE ⇅</span>
+          <span>CUSTOMER ⇅</span>
+          <span>WORKSPACE</span>
+          <span
+            data-testid="sort-schedule-header"
+            onClick={() => {
+              setScheduleSort((prev) => (prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none'));
+            }}
+            style={{
+              cursor: 'pointer',
+              userSelect: 'none',
+              color: scheduleSort !== 'none' ? 'var(--da-brand-dark)' : undefined,
+              fontWeight: scheduleSort !== 'none' ? 900 : undefined,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '3px',
+              width: 'fit-content',
+            }}
+            title="Sort by schedule/time (Ascending / Descending)"
+          >
+            SCHEDULE {scheduleSort === 'asc' ? '↑' : scheduleSort === 'desc' ? '↓' : '⇅'}
+          </span>
+          <span>PAYMENT</span>
+          <span>STATUS</span>
+          <span style={{ textAlign: 'right' }}>ACTIONS</span>
         </div>
+
 
         {loading && reservations.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>

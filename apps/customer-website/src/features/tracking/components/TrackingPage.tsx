@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useReservationTracking } from "../hooks/useReservationTracking";
+import { CustomerRescheduleModal } from "./CustomerRescheduleModal";
 
 interface TrackingPageProps {
   initialReferenceCode?: string;
@@ -15,6 +16,8 @@ export function TrackingPage({
 }: TrackingPageProps = {}) {
   const [referenceCode, setReferenceCode] = useState(initialReferenceCode);
   const [customerEmail, setCustomerEmail] = useState(initialEmail);
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { data, loading, error, trackReservation } = useReservationTracking();
 
   useEffect(() => {
@@ -86,13 +89,22 @@ export function TrackingPage({
           </label>
           <button
             type="button"
-            onClick={() => trackReservation({ referenceCode, customerEmail })}
+            onClick={() => {
+              setSuccessMessage(null);
+              trackReservation({ referenceCode, customerEmail });
+            }}
             disabled={loading}
             className="da-primary-button mt-2 w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Checking reservation..." : "Check Status"}
           </button>
         </div>
+
+        {successMessage ? (
+          <div className="mt-6 rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {successMessage}
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-6 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -152,9 +164,59 @@ export function TrackingPage({
                 <InfoCard label="Final workspace" value={finalWorkspaceValue} />
                 <InfoCard label="Booking time" value={bookingTimeValue} />
               </div>
+
+              {/* Reschedule Action Section */}
+              {!isRejected && data.status === "CONFIRMED" && (
+                <div className="mt-6 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
+                        Schedule Management
+                      </p>
+                      <p className="mt-0.5 text-xs text-[var(--da-text-primary)]">
+                        {data.canReschedule
+                          ? "Need to adjust your visit? You can reschedule your booking date/time."
+                          : data.rescheduleCount && data.rescheduleCount >= 1
+                          ? "This reservation has already been rescheduled (limit 1x)."
+                          : `Self-service rescheduling closes ${data.rescheduleCutoffHours ?? 12} hours prior to booking start time.`}
+                      </p>
+                    </div>
+
+                    {data.canReschedule ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowRescheduleModal(true)}
+                        className="da-primary-button text-xs font-bold"
+                        data-testid="customer-reschedule-button"
+                      >
+                        Reschedule Reservation
+                      </button>
+                    ) : (
+                      <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                        {data.rescheduleCount && data.rescheduleCount >= 1
+                          ? "Rescheduled (1/1)"
+                          : "Reschedule Unavailable"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })() : null}
+
+        {showRescheduleModal && data && (
+          <CustomerRescheduleModal
+            trackingData={data}
+            customerEmail={customerEmail || undefined}
+            onClose={() => setShowRescheduleModal(false)}
+            onSuccess={(msg) => {
+              setShowRescheduleModal(false);
+              setSuccessMessage(msg);
+              trackReservation({ referenceCode, customerEmail });
+            }}
+          />
+        )}
       </div>
     </main>
   );

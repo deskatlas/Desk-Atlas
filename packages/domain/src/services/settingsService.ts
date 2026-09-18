@@ -49,6 +49,7 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       businessName: string;
       timezone: string;
       customerSessionTimeoutMinutes: number;
+      customerRescheduleCutoffHours: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
       statusColors: WorkspaceStatusColors;
@@ -58,6 +59,7 @@ export function createAdminSettingsService(repository: SettingsRepository) {
         businessName: businessSettings.businessName,
         timezone: businessSettings.timezone,
         customerSessionTimeoutMinutes: businessSettings.customerSessionTimeoutMinutes ?? 20,
+        customerRescheduleCutoffHours: businessSettings.customerRescheduleCutoffHours ?? 12,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
         statusColors: normalizeWorkspaceStatusColors(businessSettings.statusColors),
@@ -488,6 +490,18 @@ function normalizeBusinessSettingsInput(
     );
   }
 
+  if (
+    input.customerRescheduleCutoffHours !== undefined &&
+    input.customerRescheduleCutoffHours !== null &&
+    (!Number.isInteger(input.customerRescheduleCutoffHours) ||
+      input.customerRescheduleCutoffHours < 0 ||
+      input.customerRescheduleCutoffHours > 720)
+  ) {
+    throw new SettingsValidationError(
+      'Customer self-service reschedule cutoff must be an integer between 0 and 720 hours'
+    );
+  }
+
   let normalizedPhotos: LandingPreviewPhoto[] | undefined = undefined;
   if (input.landingPreviewPhotos !== undefined) {
     if (!Array.isArray(input.landingPreviewPhotos)) {
@@ -552,6 +566,10 @@ function normalizeBusinessSettingsInput(
       input.customerSessionTimeoutMinutes !== undefined && input.customerSessionTimeoutMinutes !== null
         ? input.customerSessionTimeoutMinutes
         : 20,
+    customerRescheduleCutoffHours:
+      input.customerRescheduleCutoffHours !== undefined && input.customerRescheduleCutoffHours !== null
+        ? input.customerRescheduleCutoffHours
+        : 12,
     landingPreviewPhotos: normalizedPhotos,
     statusColors: normalizedStatusColors,
   };

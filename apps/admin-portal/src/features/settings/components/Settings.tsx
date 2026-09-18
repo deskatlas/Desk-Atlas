@@ -251,6 +251,7 @@ export function Settings() {
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
     customerSessionTimeoutMinutes: 20,
+    customerRescheduleCutoffHours: 12,
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
   });
@@ -767,6 +768,9 @@ export function Settings() {
       const normalizedSessionTimeout = !businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1
         ? 20
         : Math.min(180, Math.max(1, Number(businessSettings.customerSessionTimeoutMinutes)));
+      const normalizedRescheduleCutoff = businessSettings.customerRescheduleCutoffHours === undefined || businessSettings.customerRescheduleCutoffHours === null || Number(businessSettings.customerRescheduleCutoffHours) < 0
+        ? 12
+        : Math.min(720, Math.max(0, Number(businessSettings.customerRescheduleCutoffHours)));
 
       const payload = {
         ...businessSettings,
@@ -776,6 +780,7 @@ export function Settings() {
         paymentExpiryMinutes: normalizedExpiry,
         kioskTimeoutMinutes: normalizedTimeout,
         customerSessionTimeoutMinutes: normalizedSessionTimeout,
+        customerRescheduleCutoffHours: normalizedRescheduleCutoff,
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -1557,6 +1562,35 @@ export function Settings() {
                 />
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                   Default is 20 minutes. Determines when an inactive customer booking session on /reserve automatically resets.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Self-Service Reschedule Notice Cutoff (Hours)</label>
+                <input 
+                  type="number" 
+                  min={0} 
+                  max={720} 
+                  value={businessSettings.customerRescheduleCutoffHours === '' as any ? '' : (businessSettings.customerRescheduleCutoffHours ?? 12)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      customerRescheduleCutoffHours: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (businessSettings.customerRescheduleCutoffHours === undefined || businessSettings.customerRescheduleCutoffHours === null || Number(businessSettings.customerRescheduleCutoffHours) < 0) {
+                      setBusinessSettings({ ...businessSettings, customerRescheduleCutoffHours: 12 });
+                    } else if (Number(businessSettings.customerRescheduleCutoffHours) > 720) {
+                      setBusinessSettings({ ...businessSettings, customerRescheduleCutoffHours: 720 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                />
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                  Default is 12 hours. Minimum notice in hours before original start time required for customer self-service rescheduling on Track Reservation.
                 </div>
               </div>
 

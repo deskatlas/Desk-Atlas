@@ -337,6 +337,7 @@ export interface ReservationRescheduledEmailInput {
   bookingToken?: string;
   trackingUrl?: string;
   qrImageUrl?: string;
+  actorRole?: string;
 }
 
 export interface ReservationRelocatedEmailInput {
@@ -345,12 +346,33 @@ export interface ReservationRelocatedEmailInput {
   customerLastName?: string;
   referenceCode: string;
   schedule: string;
+  duration?: string;
   oldWorkspaceDisplayName: string;
   newWorkspaceDisplayName: string;
   workspaceTemplateName?: string;
   floorName?: string;
   relocationReason: string;
   relocationNotes?: string;
+  bookingAccessUrl?: string;
+  bookingToken?: string;
+  trackingUrl?: string;
+  qrImageUrl?: string;
+}
+
+export interface ReservationExtendedEmailInput {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  previousEndAt: string;
+  newEndAt: string;
+  addedDurationMinutes: number;
+  additionalFee: number;
+  paymentMethod: string;
+  currency?: string;
+  workspaceDisplayName: string;
+  workspaceTemplateName?: string;
+  floorName?: string;
   bookingAccessUrl?: string;
   bookingToken?: string;
   trackingUrl?: string;
@@ -1320,6 +1342,16 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendReservationExtendedEmail(input: ReservationExtendedEmailInput): Promise<EmailSendResult> {
+    const rendered = renderReservationExtendedEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
   async sendBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
     const rendered = renderBookingEndedSurveyEmail(input);
     return this.sendEmail({
@@ -1706,7 +1738,7 @@ export function renderReservationRescheduledEmail(input: ReservationRescheduledE
     </div>
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
-      <p>Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been rescheduled by the administration.</p>
+      <p>Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been ${input.actorRole === 'CUSTOMER' ? 'successfully rescheduled upon your request' : 'rescheduled by the administration'}.</p>
       
       <div class="schedule-box">
         <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 8px;">Updated Schedule Details</div>
@@ -1772,12 +1804,15 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
   <meta charset="utf-8">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
-    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
     .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
     .title { font-size: 18px; font-weight: 700; color: #0284c7; margin: 0 0 6px 0; }
     .content { font-size: 15px; line-height: 1.6; color: #334155; }
     .relocate-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .transaction-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0; font-size: 13px; }
     .reason-box { background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 14px; color: #92400e; }
+    .qr-box { text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; text-align: center; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
   </style>
 </head>
@@ -1805,20 +1840,60 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
           <strong>Previous Spot:</strong> ${escapeHtml(input.oldWorkspaceDisplayName)}
         </div>
         <div style="font-size: 13px; color: #334155; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #bbf7d0;">
-          <strong>Preserved Schedule:</strong> ${escapeHtml(formattedSchedule)}
+          <strong>Preserved Schedule:</strong> ${escapeHtml(formattedSchedule)}${input.duration ? ` (${escapeHtml(input.duration)})` : ''}
         </div>
       </div>
 
-      <div style="text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1;">
+      <div class="transaction-box">
+        <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 8px;">Relocation Transaction Summary</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #64748b;">Transaction Type:</span>
+          <strong style="color: #0f172a;">Spot Relocation</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #64748b;">Booking Reference:</span>
+          <strong style="color: #0f172a;">${escapeHtml(input.referenceCode)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #64748b;">New Assigned Spot:</span>
+          <strong style="color: #0f172a;">${escapeHtml(input.newWorkspaceDisplayName)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #64748b;">Previous Spot:</span>
+          <span style="color: #64748b;">${escapeHtml(input.oldWorkspaceDisplayName)}</span>
+        </div>
+        ${input.workspaceTemplateName ? `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #64748b;">Workspace Tier:</span>
+          <strong style="color: #0f172a;">${escapeHtml(input.workspaceTemplateName)}</strong>
+        </div>
+        ` : ''}
+        ${input.floorName ? `
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #64748b;">Floor / Zone:</span>
+          <strong style="color: #0f172a;">${escapeHtml(input.floorName)}</strong>
+        </div>
+        ` : ''}
+      </div>
+
+      <div class="qr-box">
         <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Digital Access QR Pass</div>
         <img src="${escapeHtml(qrImageUrl)}" alt="Digital Pass QR Code" width="200" height="200" style="display: block; margin: 0 auto; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; padding: 6px;" />
         <div style="font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 10px; margin-bottom: 4px;">${escapeHtml(input.referenceCode)}</div>
-        <p style="font-size: 12px; color: #64748b; margin: 0;">Present this QR code upon arrival at the workspace reception desk or kiosk for your relocated spot.</p>
+        <p style="font-size: 12px; color: #166534; font-weight: 600; margin: 6px 0 0 0;">
+          Your existing digital QR pass remains active and valid for your newly relocated spot.
+        </p>
+        <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">
+          Present this QR code upon arrival at the workspace reception desk or kiosk for entry and re-entry.
+        </p>
       </div>
 
       ${input.trackingUrl ? `
-      <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
-        Track Reservation: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
+      <div style="text-align: center; margin: 20px 0;">
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">View Reservation & Digital Pass</a>
+      </div>
+      <p style="font-size: 13px; color: #64748b; margin-top: 8px; text-align: center;">
+        Direct link: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
       </p>
       ` : ''}
     </div>
@@ -1837,11 +1912,165 @@ Reference: ${input.referenceCode}
 Hello ${customerName},
 
 Your workspace reservation has been relocated:
-New Spot: ${input.newWorkspaceDisplayName}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}
+Transaction: Spot Relocation
+New Spot: ${input.newWorkspaceDisplayName}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}${input.floorName ? ` - ${input.floorName}` : ''}
 Previous Spot: ${input.oldWorkspaceDisplayName}
-Schedule: ${formattedSchedule}
+Schedule: ${formattedSchedule}${input.duration ? ` (${input.duration})` : ''}
 Reason: ${reasonText}
+
 Digital Access QR Pass: ${qrImageUrl}
+Your existing digital QR pass remains active and valid for your newly relocated spot.
+
+${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function formatDurationMinutes(minutes: number): string {
+  if (minutes <= 0) return '0 mins';
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours > 0 && remainingMinutes > 0) {
+    return `${hours} hr${hours > 1 ? 's' : ''} ${remainingMinutes} min${remainingMinutes > 1 ? 's' : ''}`;
+  }
+  if (hours > 0) {
+    return `${hours} hour${hours > 1 ? 's' : ''}`;
+  }
+  return `${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''}`;
+}
+
+export function formatDurationFromDates(startAt: string, endAt: string): string {
+  const startMs = new Date(startAt).getTime();
+  const endMs = new Date(endAt).getTime();
+  if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) return '';
+  const diffMinutes = Math.round((endMs - startMs) / (1000 * 60));
+  return formatDurationMinutes(diffMinutes);
+}
+
+export function renderReservationExtendedEmail(input: ReservationExtendedEmailInput): { subject: string; html: string; text: string } {
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Your DeskAtlas Reservation Has Been Extended [${input.referenceCode}]`;
+  const formattedNewEnd = formatEmailTime(input.newEndAt);
+  const formattedPrevEnd = formatEmailTime(input.previousEndAt);
+  const durationLabel = formatDurationMinutes(input.addedDurationMinutes);
+  const currencySymbol = input.currency || 'PHP';
+  const formattedFee = `${currencySymbol === 'PHP' ? '₱' : `${currencySymbol} `}${Number(input.additionalFee || 0).toFixed(2)}`;
+  const paymentMethodLabel = input.paymentMethod || 'Cash';
+  const qrImageUrl =
+    input.qrImageUrl ||
+    `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+      input.bookingAccessUrl || input.bookingToken || input.referenceCode
+    )}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #0284c7; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .summary-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .payment-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .qr-box { text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Reservation Time Extended</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Your request to extend your workspace reservation has been approved!</p>
+      
+      <div class="summary-box">
+        <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 8px;">Updated Schedule Details</div>
+        <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
+          <strong>New Extended End Time:</strong> ${escapeHtml(formattedNewEnd)}
+        </div>
+        <div style="font-size: 13px; color: #64748b;">
+          <strong>Previous End Time:</strong> ${escapeHtml(formattedPrevEnd)}
+        </div>
+        <div style="font-size: 13px; color: #166534; margin-top: 4px;">
+          <strong>Added Duration:</strong> +${escapeHtml(durationLabel)}
+        </div>
+        <div style="font-size: 13px; color: #334155; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #bbf7d0;">
+          <strong>Allocated Spot:</strong> ${escapeHtml(input.workspaceDisplayName)}${input.workspaceTemplateName ? ` (${escapeHtml(input.workspaceTemplateName)})` : ''}${input.floorName ? ` &bull; ${escapeHtml(input.floorName)}` : ''}
+        </div>
+      </div>
+
+      <div class="payment-box">
+        <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 8px;">Extension Transaction Details</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="color: #64748b;">Additional Charge:</span>
+          <strong style="color: #0f172a;">${escapeHtml(formattedFee)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #64748b;">Payment Method:</span>
+          <strong style="color: #0f172a;">${escapeHtml(paymentMethodLabel)}</strong>
+        </div>
+      </div>
+
+      <div class="qr-box">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Digital Access QR Pass</div>
+        <img src="${escapeHtml(qrImageUrl)}" alt="Digital Pass QR Code" width="200" height="200" style="display: block; margin: 0 auto; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; padding: 6px;" />
+        <div style="font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 10px; margin-bottom: 4px;">${escapeHtml(input.referenceCode)}</div>
+        <p style="font-size: 12px; color: #166534; font-weight: 600; margin: 6px 0 0 0;">
+          ✓ Your existing QR pass remains valid and active through your new extended time (${escapeHtml(formattedNewEnd)}).
+        </p>
+        <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">
+          You can continue using this same QR code for entry and re-entry.
+        </p>
+      </div>
+
+      ${input.trackingUrl ? `
+      <div style="text-align: center;">
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">View Reservation Status</a>
+      </div>
+      <p style="font-size: 13px; color: #64748b; margin-top: 16px; text-align: center;">
+        Track Reservation: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
+      </p>
+      ` : ''}
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Reservation Time Extended - DeskAtlas
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+Your request to extend your workspace reservation has been approved!
+
+Updated Schedule Details:
+- New End Time: ${formattedNewEnd}
+- Previous End Time: ${formattedPrevEnd}
+- Added Duration: +${durationLabel}
+- Allocated Spot: ${input.workspaceDisplayName}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}
+
+Transaction Details:
+- Additional Charge: ${formattedFee}
+- Payment Method: ${paymentMethodLabel}
+
+Digital Access QR Pass:
+Your existing QR pass remains active and valid through your new extended time (${formattedNewEnd}). No new pass is needed.
+QR Pass: ${qrImageUrl}
+
 ${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
 DeskAtlas Workspace Reservation System
   `.trim();

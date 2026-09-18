@@ -545,9 +545,6 @@ export default function WorkspaceMapPage() {
                   const isWorkspace = el.elementRole === 'WORKSPACE' || Boolean(el.workspace);
                   const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
                   const isSelected = selectedObjId === el.id;
-                  const instId = el.workspace?.workspaceInstanceId;
-                  const activeOccupancy = instId ? occupancyMap.get(instId) : null;
-                  const isOccupied = Boolean(activeOccupancy);
 
                   const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
                   const isPantry = el.elementType?.toLowerCase().includes('pantry') || el.label?.toLowerCase().includes('pantry');
@@ -892,6 +889,36 @@ export default function WorkspaceMapPage() {
                     <span style={{ fontWeight: 700, color: 'var(--da-text-primary)' }}>{publishedMap?.floor.name || 'Ground Floor'}</span>
                   </div>
                 </div>
+
+                {(() => {
+                  const tags: string[] = selectedElement.workspace?.tags || [];
+                  if (tags.length === 0) return null;
+                  return (
+                    <div>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '6px' }}>
+                        Amenities & Recommendations
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {tags.map((t) => (
+                          <span
+                            key={t}
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              background: 'rgba(0,150,137,0.08)',
+                              border: '1px solid rgba(0,150,137,0.2)',
+                              color: 'var(--da-brand-dark)',
+                            }}
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>

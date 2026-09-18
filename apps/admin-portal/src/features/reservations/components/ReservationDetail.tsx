@@ -3,7 +3,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import type { AdminReservationDetail as AdminReservationDetailType } from '@deskatlas/domain';
+import {
+  type AdminReservationDetail as AdminReservationDetailType,
+  formatTimelineDate,
+  formatSchedule,
+  zonedDateTimeToUtc,
+} from '@deskatlas/domain';
 import { ProofImageViewer } from '../../payments/components/ProofImageViewer';
 import { ExtendReservationModal } from './ExtendReservationModal';
 

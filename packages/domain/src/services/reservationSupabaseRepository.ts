@@ -22,6 +22,7 @@ import {
 } from "../models/reservation";
 import {
   AdminReservationRepository,
+  RescheduleReservationInput,
   RescheduleSlotAvailability,
   ExtendReservationInput,
   CheckExtendAvailabilityInput,
@@ -1621,6 +1622,7 @@ export class ReservationSupabaseRepository
         : null,
       paymentStatus: paymentAttempt?.status ?? null,
       rejectionReason: paymentAttempt?.rejection_reason ?? null,
+      rescheduleCount: reservation.reschedule_count ?? 0,
     };
   }
 
@@ -2292,8 +2294,9 @@ export class ReservationSupabaseRepository
       (a) => a.action === "reservation_rescheduled" || a.action === "RESERVATION_RESCHEDULED"
     );
     for (const res of rescheduleEvents) {
+      const actorLabel = res.actor_role === "CUSTOMER" ? "Customer" : "Admin";
       timeline.push(
-        `${formatTimelineDate(res.created_at)} - Rescheduled by Admin to ${res.metadata?.new_schedule || schedule}`
+        `${formatTimelineDate(res.created_at)} - Rescheduled by ${actorLabel} to ${res.metadata?.new_schedule || schedule}`
       );
     }
 
@@ -2379,6 +2382,7 @@ export class ReservationSupabaseRepository
       expiryReason,
       cancellationReason: r.cancellation_reason ?? null,
       cancelledAt: r.cancelled_at ?? null,
+      rescheduleCount: r.reschedule_count ?? 0,
       paymentAttempts: paymentAttemptsSummary,
     };
   }
@@ -2440,14 +2444,7 @@ export class ReservationSupabaseRepository
     };
   }
 
-  async rescheduleReservation(input: {
-    reservationId: string;
-    startAt: string;
-    endAt: string;
-    workspaceInstanceId?: string;
-    actorUserId?: string;
-    actorRole?: string;
-  }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
+  async rescheduleReservation(input: RescheduleReservationInput): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
     const filter = isUuid
       ? `id=eq.${encodeURIComponent(input.reservationId)}`
@@ -2486,6 +2483,32 @@ export class ReservationSupabaseRepository
       throw new Error("Cannot reschedule to a past date or time.");
     }
 
+    const isCustomerActor = input.actorRole === "CUSTOMER";
+    const currentRescheduleCount = r.reschedule_count ?? 0;
+
+    if (isCustomerActor) {
+      if (currentRescheduleCount >= 1) {
+        throw new Error("Customer can only reschedule a reservation once.");
+      }
+
+      if (assigned?.start_at) {
+        const origStartMs = new Date(assigned.start_at).getTime();
+        const cutoffHours = input.cutoffHours ?? 12;
+        const cutoffMs = cutoffHours * 60 * 60 * 1000;
+        if (nowMs > origStartMs - cutoffMs) {
+          throw new Error(`Reschedule must be requested at least ${cutoffHours} hours before the scheduled start time.`);
+        }
+
+        if (assigned.end_at) {
+          const origDurationMs = new Date(assigned.end_at).getTime() - origStartMs;
+          const newDurationMs = newEndMs - newStartMs;
+          if (Math.abs(origDurationMs - newDurationMs) > 60000) {
+            throw new Error("Rescheduled reservation must have the exact same duration as the original booking.");
+          }
+        }
+      }
+    }
+
     for (const cand of conflictingCandidates ?? []) {
       const resStatus = cand.reservations?.status;
       if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
@@ -2518,6 +2541,7 @@ export class ReservationSupabaseRepository
       method: "PATCH",
       body: JSON.stringify({
         updated_at: nowIso,
+        reschedule_count: currentRescheduleCount + 1,
       }),
     });
 
