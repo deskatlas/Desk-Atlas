@@ -4,12 +4,6 @@ import React, { useState } from 'react';
 import { compareWorkspaceInstances, sortWorkspaceInstances } from '@deskatlas/domain';
 import { handleNumericKeyDown } from '@deskatlas/ui';
 
-const availableTags = [
-  'Near Window',
-  'Solo',
-  'Shared',
-  'Meeting Room',
-];
 
 const availableShapes = [
   { value: 'desk', label: 'Desk' },
@@ -49,8 +43,7 @@ export function WorkspaceList() {
   const [photoPosition, setPhotoPosition] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
   const [isAdjustingPosition, setIsAdjustingPosition] = useState(false);
   const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
-  const [recommendations, setRecommendations] = useState<string[]>([]);
-  
+
   const dragStartRef = React.useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
   const imageContainerRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -229,8 +222,6 @@ export function WorkspaceList() {
             defaultShape,
             defaultColor,
             defaultStyle: { 
-              tags: recommendations, 
-              recommendations: recommendations,
               photoPosition: photoPosition,
             },
             isActive: true,
@@ -258,8 +249,6 @@ export function WorkspaceList() {
             defaultShape,
             defaultColor,
             defaultStyle: { 
-              tags: recommendations, 
-              recommendations: recommendations,
               photoPosition: photoPosition,
             },
           }),
@@ -317,7 +306,6 @@ export function WorkspaceList() {
     setPreviewUrl(null);
     setPhotoPosition({ x: 50, y: 50 });
     setIsAdjustingPosition(false);
-    setRecommendations([]);
     setSelectedTemplateId(null);
     setModalMode('create_template');
   };
@@ -336,7 +324,6 @@ export function WorkspaceList() {
     setPreviewUrl(t.photoPath || null);
     setPhotoPosition(t.defaultStyle?.photoPosition || { x: 50, y: 50 });
     setIsAdjustingPosition(false);
-    setRecommendations(t.defaultStyle?.recommendations || t.defaultStyle?.tags || []);
     setModalMode('edit_template');
   };
 
@@ -347,11 +334,6 @@ export function WorkspaceList() {
     setModalMode('edit_instance');
   };
 
-  const toggleRecommendation = (tag: string) => {
-    setRecommendations(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
 
   return (
     <main data-screen-label="Workspaces" style={{ padding: '26px 28px 40px' }}>
@@ -741,32 +723,7 @@ export function WorkspaceList() {
                     </div>
                   </div>
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '10px' }}>Recommendation Tags</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      {availableTags.map(tag => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => toggleRecommendation(tag)}
-                          style={{
-                            padding: '10px',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            fontFamily: 'var(--da-font-family)',
-                            transition: 'all 0.2s',
-                            border: recommendations.includes(tag) ? '1px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
-                            background: recommendations.includes(tag) ? 'var(--da-brand-dark)' : 'var(--da-canvas)',
-                            color: recommendations.includes(tag) ? '#fff' : 'var(--da-text-primary)'
-                          }}
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+
                 </>
               )}
 

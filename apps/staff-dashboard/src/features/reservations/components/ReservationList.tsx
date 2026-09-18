@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useReservations } from '../hooks/useReservations';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
-import { useSearch } from '@deskatlas/ui';
+import { useSearch, useLiveCountdownClock, WorkspaceCountdownBadge } from '@deskatlas/ui';
 import {
   filterReservationsBySearch,
   filterStaffReservationsByStatus,
@@ -32,6 +32,7 @@ function getStatusDisplay(status: ReservationStatus) {
 export function ReservationList() {
   const { reservations, loading, error, refetch } = useReservations();
   const { searchQuery } = useSearch();
+  const currentTick = useLiveCountdownClock(1000);
   const [activeFilter, setActiveFilter] = useState<StaffReservationFilter>('active');
   const router = useRouter();
 
@@ -61,6 +62,8 @@ export function ReservationList() {
         return 'No upcoming reservations scheduled.';
       case 'confirmed':
         return 'No confirmed reservations found for today.';
+      case 'counter_queue':
+        return 'No counter queue reservations found.';
       case 'all':
       default:
         return 'No reservations found for today.';
@@ -127,6 +130,12 @@ export function ReservationList() {
             ) : (
               displayedReservations.map((res: StaffOperationalReservation) => {
                 const statusDisp = getStatusDisplay(res.reservationStatus);
+                const isCheckedInOrActive =
+                  (res.reservationStatus === 'CHECKED_IN' ||
+                   res.checkInState === 'CHECKED_IN' ||
+                   res.reservationStatus === 'CONFIRMED') &&
+                  res.checkInState !== 'CHECKED_OUT';
+
                 return (
                   <tr key={res.reservationId} style={{ borderBottom: '1px solid var(--da-border)' }}>
                     <td style={{ padding: '12px 16px' }}>
@@ -138,7 +147,14 @@ export function ReservationList() {
                       {res.workspaceInstanceCode && <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)' }}>{res.workspaceInstanceCode}</div>}
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--da-text-secondary)' }}>
-                      {res.bookingStartAt ? format(new Date(res.bookingStartAt), 'h:mm a') : '-'} to {res.bookingEndAt ? format(new Date(res.bookingEndAt), 'h:mm a') : '-'}
+                      <div style={{ fontWeight: 600, color: 'var(--da-text-primary)' }}>
+                        {res.bookingStartAt ? format(new Date(res.bookingStartAt), 'h:mm a') : '-'} to {res.bookingEndAt ? format(new Date(res.bookingEndAt), 'h:mm a') : '-'}
+                      </div>
+                      {isCheckedInOrActive && res.bookingEndAt && (
+                        <div style={{ marginTop: '4px' }}>
+                          <WorkspaceCountdownBadge bookingEndAt={res.bookingEndAt} nowMs={currentTick} />
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span style={{ background: statusDisp.bg, color: statusDisp.color, padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>

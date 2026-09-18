@@ -26,17 +26,29 @@ export async function fetchPublishedMap(floorId?: string): Promise<{
 
 export async function updateStaffInstanceOperationalStatus(
   instanceId: string,
-  operationalStatus: string
+  operationalStatus: string,
+  actor?: { userId?: string; role?: string }
 ): Promise<{
   instance: any;
   availability: any;
   affectedFutureReservations: any[];
   auditLogged: boolean;
 }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (actor?.userId) {
+    headers['x-user-id'] = actor.userId;
+  }
+  if (actor?.role) {
+    headers['x-user-role'] = actor.role;
+  }
+
   const response = await fetch(`/api/operations/workspaces/instances/${encodeURIComponent(instanceId)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ operationalStatus }),
+    headers,
+    body: JSON.stringify({
+      operationalStatus,
+      ...(actor ? { actor } : {}),
+    }),
   });
 
   const body = await response.json().catch(() => ({}));
@@ -46,4 +58,14 @@ export async function updateStaffInstanceOperationalStatus(
 
   return body;
 }
+
+export async function fetchStaffOccupancy(): Promise<any[]> {
+  const response = await fetch('/api/operations/occupancy', { cache: 'no-store' });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return [];
+  }
+  return body.occupancy || [];
+}
+
 

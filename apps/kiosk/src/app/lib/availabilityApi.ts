@@ -88,7 +88,11 @@ export async function fetchTemplateAvailability(input: {
 export async function fetchOccupiedInstances(input?: {
   nowIso?: string;
   durationMinutes?: number;
-}): Promise<{ occupiedInstanceIds: string[]; asOf: string }> {
+}): Promise<{
+  occupiedInstanceIds: string[];
+  occupiedDetails?: Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>;
+  asOf: string;
+}> {
   const params = new URLSearchParams({
     occupiedNow: 'true',
   });
@@ -107,7 +111,11 @@ export async function fetchOccupiedInstances(input?: {
     throw new Error(body.error ?? `Occupied instances request failed with status ${response.status}`);
   }
 
-  return body as { occupiedInstanceIds: string[]; asOf: string };
+  return body as {
+    occupiedInstanceIds: string[];
+    occupiedDetails?: Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>;
+    asOf: string;
+  };
 }
 
 export async function fetchNextUpcomingBooking(input: {

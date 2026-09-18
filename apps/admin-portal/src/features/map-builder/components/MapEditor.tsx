@@ -19,6 +19,8 @@ import {
   createAutosaveDebouncer,
   AUTOSAVE_DEBOUNCE_MS,
   NAVIGATION_WARNING_MESSAGE,
+  WORKSPACE_AMENITY_CATEGORIES,
+  type CustomStructureTemplate,
 } from '@deskatlas/domain';
 import { useNavigationGuard } from '../hooks/useNavigationGuard';
 
@@ -29,6 +31,17 @@ function getContrastColor(hexColor?: string): string {
   const b = parseInt(hexColor.slice(5, 7), 16);
   const yiq = (r * 299 + g * 587 + b * 114) / 1000;
   return yiq >= 150 ? '#111827' : '#ffffff';
+}
+
+function formatStructureLabel(raw?: string | null): string {
+  if (!raw || !raw.trim()) return 'Structure';
+  const cleaned = raw.replace(/[_-]+/g, ' ').trim();
+  if (!cleaned) return 'Structure';
+  return cleaned
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }
 
 function AmenityIcon({ type, name, color }: { type?: string; name?: string; color?: string }) {
@@ -106,6 +119,17 @@ export function MapEditor() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [builderObjects, setBuilderObjects] = useState<any[]>([]);
+  const [customStructures, setCustomStructures] = useState<CustomStructureTemplate[]>([]);
+  const [showCustomStructureModal, setShowCustomStructureModal] = useState(false);
+  const [editingCustomStructure, setEditingCustomStructure] = useState<CustomStructureTemplate | null>(null);
+  const [customFormName, setCustomFormName] = useState('');
+  const [customFormWidth, setCustomFormWidth] = useState('120');
+  const [customFormHeight, setCustomFormHeight] = useState('60');
+  const [customFormColor, setCustomFormColor] = useState('#CBD5E1');
+  const [customFormBorderStyle, setCustomFormBorderStyle] = useState<'solid' | 'dashed' | 'none'>('solid');
+  const [customFormCategory, setCustomFormCategory] = useState('ARCHITECTURAL');
+  const [customFormDescription, setCustomFormDescription] = useState('');
+  const [customStructureLoading, setCustomStructureLoading] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -216,21 +240,25 @@ export function MapEditor() {
       setLoading(true);
       setErrorMsg(null);
 
-      const [wsRes, floorsRes] = await Promise.all([
+      const [wsRes, floorsRes, structuresRes] = await Promise.all([
         fetch('/api/admin/workspaces'),
         fetch('/api/admin/workspaces/floors'),
+        fetch('/api/admin/structures'),
       ]);
 
       const wsData = wsRes.ok ? await wsRes.json() : {};
       const floorsData = floorsRes.ok ? await floorsRes.json() : {};
+      const structuresData = structuresRes.ok ? await structuresRes.json() : {};
 
       const loadedFloors = floorsData.floors || wsData.floors || [];
       const loadedTemplates = wsData.templates || [];
       const loadedInstances = wsData.instances || [];
+      const loadedCustomStructures = structuresData.templates || [];
 
       setFloors(loadedFloors);
       setTemplates(loadedTemplates);
       setInstances(loadedInstances);
+      setCustomStructures(loadedCustomStructures);
 
       if (loadedFloors.length > 0) {
         const firstFloorId = loadedFloors[0].id;
@@ -362,6 +390,14 @@ export function MapEditor() {
           else normType = 'generic';
         }
 
+        const recommendationTags = Array.isArray(el.properties?.recommendationTags)
+          ? el.properties.recommendationTags
+          : Array.isArray(el.properties?.tags)
+            ? el.properties.tags
+            : Array.isArray(el.properties?.recommendations)
+              ? el.properties.recommendations
+              : [];
+
         return {
           id: el.id,
           name: displayName,
@@ -377,6 +413,9 @@ export function MapEditor() {
           elementRole: isWorkspace ? 'WORKSPACE' : (isKioskMarker ? 'INFORMATION' : (isAmenity ? 'AMENITY' : (el.elementRole || 'STRUCTURE'))),
           elementType: normType,
           color,
+          borderStyle: el.properties?.borderStyle || 'solid',
+          properties: el.properties || {},
+          recommendationTags,
         };
       });
 
@@ -528,6 +567,7 @@ export function MapEditor() {
         elementRole: 'WORKSPACE',
         elementType: shape,
         color: tpl.defaultColor || 'rgba(200, 244, 81, 0.4)',
+        recommendationTags: [],
       };
 
       setBuilderObjects(prev => [...prev, newObj]);
@@ -620,6 +660,173 @@ export function MapEditor() {
       object: newObj,
     });
     syncUndoRedoState(selectedFloorId);
+  };
+
+  // Add Custom Structure from template
+  const handleAddCustomStructure = (cst: CustomStructureTemplate) => {
+    if (!selectedFloorId) {
+      setShowFloorModal(true);
+      return;
+    }
+
+    const initialW = cst.defaultWidth || 120;
+    const initialH = cst.defaultHeight || 60;
+    const defaultColor = cst.defaultColor || '#CBD5E1';
+    const borderStyle = cst.borderStyle || 'solid';
+    const elementType = cst.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'custom_structure';
+
+    const newObj = {
+      id: 'cstr-' + Date.now(),
+      name: cst.name,
+      x: 140,
+      y: 140,
+      w: initialW,
+      h: initialH,
+      rotation: 0,
+      bookable: false,
+      template: null,
+      status: null,
+      workspaceInstanceId: null,
+      elementRole: 'STRUCTURE',
+      elementType,
+      color: defaultColor,
+      borderStyle,
+      properties: {
+        isCustomStructure: true,
+        templateId: cst.id,
+        borderStyle,
+        category: cst.category || 'ARCHITECTURAL',
+      },
+    };
+
+    setBuilderObjects(prev => [...prev, newObj]);
+    setSelectedObjId(newObj.id);
+    setShowInspector(true);
+    setSaveState('Unsaved changes');
+
+    undoManagerRef.current.push(selectedFloorId, {
+      type: 'ADD_OBJECT',
+      object: newObj,
+    });
+    syncUndoRedoState(selectedFloorId);
+  };
+
+  const handleOpenCreateCustomStructure = () => {
+    setEditingCustomStructure(null);
+    setCustomFormName('');
+    setCustomFormWidth('120');
+    setCustomFormHeight('60');
+    setCustomFormColor('#CBD5E1');
+    setCustomFormBorderStyle('solid');
+    setCustomFormCategory('ARCHITECTURAL');
+    setCustomFormDescription('');
+    setShowCustomStructureModal(true);
+  };
+
+  const handleOpenEditCustomStructure = (cst: CustomStructureTemplate, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingCustomStructure(cst);
+    setCustomFormName(cst.name);
+    setCustomFormWidth(String(cst.defaultWidth || 120));
+    setCustomFormHeight(String(cst.defaultHeight || 60));
+    setCustomFormColor(cst.defaultColor || '#CBD5E1');
+    setCustomFormBorderStyle(cst.borderStyle || 'solid');
+    setCustomFormCategory(cst.category || 'ARCHITECTURAL');
+    setCustomFormDescription(cst.description || '');
+    setShowCustomStructureModal(true);
+  };
+
+  const handleSaveCustomStructure = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customFormName.trim()) {
+      setErrorMsg('Structure name is required');
+      return;
+    }
+    const widthNum = parseInt(customFormWidth, 10);
+    const heightNum = parseInt(customFormHeight, 10);
+    if (isNaN(widthNum) || widthNum < 20 || widthNum > 2000) {
+      setErrorMsg('Width must be between 20 and 2000 px');
+      return;
+    }
+    if (isNaN(heightNum) || heightNum < 20 || heightNum > 2000) {
+      setErrorMsg('Height must be between 20 and 2000 px');
+      return;
+    }
+
+    try {
+      setCustomStructureLoading(true);
+      setErrorMsg(null);
+
+      const payload = {
+        name: customFormName.trim(),
+        description: customFormDescription.trim() || null,
+        defaultWidth: widthNum,
+        defaultHeight: heightNum,
+        defaultColor: customFormColor || '#CBD5E1',
+        borderStyle: customFormBorderStyle,
+        category: customFormCategory || 'ARCHITECTURAL',
+        isActive: true,
+      };
+
+      if (editingCustomStructure) {
+        const res = await fetch(`/api/admin/structures/${editingCustomStructure.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to update custom structure');
+        }
+        const data = await res.json();
+        setCustomStructures(prev =>
+          prev.map(item => (item.id === editingCustomStructure.id ? data.template : item))
+        );
+        setSuccessMsg(`Structure "${data.template.name}" updated successfully`);
+      } else {
+        const res = await fetch('/api/admin/structures', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create custom structure');
+        }
+        const data = await res.json();
+        setCustomStructures(prev => [...prev, data.template]);
+        setSuccessMsg(`Custom structure "${data.template.name}" created and added to palette`);
+      }
+
+      setShowCustomStructureModal(false);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error saving custom structure');
+    } finally {
+      setCustomStructureLoading(false);
+    }
+  };
+
+  const handleDeleteCustomStructure = async (id: string, name: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Are you sure you want to delete custom structure template "${name}"? Existing placed structures on maps will not be removed.`)) {
+      return;
+    }
+    try {
+      setErrorMsg(null);
+      const res = await fetch(`/api/admin/structures/${id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete custom structure');
+      }
+      setCustomStructures(prev => prev.filter(item => item.id !== id));
+      setSuccessMsg(`Custom structure "${name}" deleted`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to delete custom structure');
+    }
   };
 
   // Add Kiosk "You Are Here" Marker (enforce at most 1 per floor)
@@ -966,6 +1173,9 @@ export function MapEditor() {
           label: obj.name || (isKioskMarker ? 'You Are Here' : null),
           properties: {
             color: obj.color,
+            recommendationTags: obj.recommendationTags || [],
+            ...(obj.borderStyle ? { borderStyle: obj.borderStyle } : {}),
+            ...(obj.properties || {}),
             ...(isKioskMarker ? { markerType: 'KIOSK_YOU_ARE_HERE' } : {}),
           },
           isLocked: false,
@@ -1372,7 +1582,25 @@ export function MapEditor() {
             ))
           )}
 
-          <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', letterSpacing: '.05em', margin: '16px 0 8px', fontFamily: 'var(--da-font-family)' }}>STRUCTURE</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', letterSpacing: '.05em', fontFamily: 'var(--da-font-family)' }}>STRUCTURE</span>
+            <button
+              onClick={handleOpenCreateCustomStructure}
+              title="Create Custom Structure Template"
+              style={{
+                border: '1px solid var(--da-border)',
+                background: 'var(--da-canvas)',
+                borderRadius: '6px',
+                padding: '2px 6px',
+                fontSize: '10px',
+                fontWeight: 700,
+                color: 'var(--da-brand-dark)',
+                cursor: 'pointer',
+              }}
+            >
+              + Custom
+            </button>
+          </div>
           {paletteStructure.map((ps, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: '1px solid var(--da-border-light)' }}>
               <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>{ps}</span>
@@ -1384,6 +1612,114 @@ export function MapEditor() {
               </button>
             </div>
           ))}
+
+          {customStructures.length > 0 && (
+            <div style={{ margin: '12px 0 4px', fontSize: '10px', fontWeight: 800, color: 'var(--da-brand-dark)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              Custom Structures
+            </div>
+          )}
+          {customStructures.map((cst) => (
+            <div
+              key={cst.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '7px 0',
+                borderTop: '1px solid var(--da-border-light)',
+                gap: '4px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '2px',
+                    background: cst.defaultColor || '#CBD5E1',
+                    border: cst.borderStyle === 'dashed' ? '1px dashed #94a3b8' : (cst.borderStyle === 'none' ? 'none' : '1px solid #cbd5e1'),
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  title={cst.name}
+                  style={{
+                    fontSize: '12px',
+                    color: 'var(--da-text-primary)',
+                    fontFamily: 'var(--da-font-family)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {cst.name}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+                <button
+                  onClick={(e) => handleOpenEditCustomStructure(cst, e)}
+                  title="Edit custom structure"
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    padding: '2px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    opacity: 0.65,
+                  }}
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={(e) => handleDeleteCustomStructure(cst.id, cst.name, e)}
+                  title="Delete custom structure"
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    padding: '2px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    opacity: 0.65,
+                  }}
+                >
+                  🗑️
+                </button>
+                <button
+                  onClick={() => handleAddCustomStructure(cst)}
+                  style={{
+                    border: '1px solid var(--da-border)',
+                    background: 'var(--da-canvas)',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ marginTop: '8px', paddingBottom: '4px' }}>
+            <button
+              onClick={handleOpenCreateCustomStructure}
+              style={{
+                width: '100%',
+                border: '1px dashed var(--da-brand-dark)',
+                background: 'rgba(0, 150, 137, 0.04)',
+                color: 'var(--da-brand-dark)',
+                borderRadius: '6px',
+                padding: '6px 8px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              + Add Custom Structure
+            </button>
+          </div>
 
           <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', letterSpacing: '.05em', margin: '16px 0 8px', fontFamily: 'var(--da-font-family)' }}>KIOSK ORIENTATION</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: '1px solid var(--da-border-light)' }}>
@@ -1523,7 +1859,15 @@ export function MapEditor() {
                           : (isKioskMarker ? (obj.color || '#DC2626') : (obj.color || (obj.bookable ? 'rgba(200, 244, 81, 0.4)' : '#F3F7F4'))),
                         border: isOutOfBounds
                           ? '2.5px solid #EF4444'
-                          : (selectedObjId === obj.id ? '2px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #fff' : '1px solid var(--da-border)')),
+                          : (selectedObjId === obj.id
+                              ? '2px solid var(--da-brand-dark)'
+                              : (isKioskMarker
+                                  ? '2px solid #fff'
+                                  : (obj.borderStyle === 'dashed' || obj.properties?.borderStyle === 'dashed'
+                                      ? '1.5px dashed var(--da-border)'
+                                      : (obj.borderStyle === 'none' || obj.properties?.borderStyle === 'none'
+                                          ? 'none'
+                                          : '1px solid var(--da-border)')))),
                         borderRadius: isKioskMarker ? '14px' : (isWall ? '2px' : '8px'),
                         boxShadow: isOutOfBounds
                           ? '0 0 16px rgba(239, 68, 68, 0.85)'
@@ -1535,7 +1879,7 @@ export function MapEditor() {
                         position: 'relative'
                       }}
                     >
-                      {obj.bookable ? (
+                      {isWorkspace ? (
                         <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {obj.name}
                         </span>
@@ -1556,7 +1900,25 @@ export function MapEditor() {
                             {obj.name}
                           </span>
                         </div>
-                      ) : null}
+                      ) : (
+                        <span
+                          style={{
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            fontSize: obj.h <= 20 ? '9px' : '11px',
+                            fontWeight: obj.h <= 20 ? 800 : 700,
+                            letterSpacing: obj.h <= 20 ? '0.05em' : 'normal',
+                            textTransform: obj.h <= 20 ? 'uppercase' : 'none',
+                            padding: '0 4px',
+                            lineHeight: 1,
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          {obj.name || formatStructureLabel(obj.elementType)}
+                        </span>
+                      )}
                     </button>
                   {selectedObjId === obj.id && (
                     <div
@@ -1644,7 +2006,7 @@ export function MapEditor() {
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '4px' }}>Status</div>
                 <select
                   value={selectedObj.status || 'ACTIVE'}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const val = e.target.value;
                     const prevStatus = selectedObj.status || 'ACTIVE';
                     if (val !== prevStatus && selectedFloorId) {
@@ -1658,13 +2020,104 @@ export function MapEditor() {
                     }
                     setBuilderObjects(prev => prev.map(o => o.id === selectedObj.id ? { ...o, status: val } : o));
                     setSaveState('Unsaved changes');
+
+                    if (selectedObj.workspaceInstanceId) {
+                      try {
+                        await fetch(`/api/admin/workspaces/instances/${selectedObj.workspaceInstanceId}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ operationalStatus: val }),
+                        });
+                        setInstances(prev =>
+                          prev.map(i => (i.id === selectedObj.workspaceInstanceId ? { ...i, operationalStatus: val } : i))
+                        );
+                      } catch {
+                        // ignore network error
+                      }
+                    }
                   }}
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', marginBottom: '14px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box', background: '#fff' }}
                 >
                   <option value="ACTIVE">Active</option>
                   <option value="MAINTENANCE">Maintenance</option>
                   <option value="UNAVAILABLE">Unavailable</option>
+                  <option value="INACTIVE">Inactive (Hidden)</option>
                 </select>
+
+                <div style={{ marginBottom: '16px', borderTop: '1px solid var(--da-border-light)', paddingTop: '14px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '3px' }}>
+                    Workspace Amenities & Recommendations
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginBottom: '12px', lineHeight: 1.4 }}>
+                    Configure individual desk features & environmental attributes
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {WORKSPACE_AMENITY_CATEGORIES.map((cat) => {
+                      const currentTags: string[] = selectedObj.recommendationTags || [];
+                      return (
+                        <div key={cat.id} style={{ background: 'var(--da-canvas)', padding: '10px 11px', borderRadius: '8px', border: '1px solid var(--da-border-light)' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '2px' }}>
+                            {cat.name}
+                          </div>
+                          <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)', marginBottom: '8px', lineHeight: 1.3 }}>
+                            {cat.description}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                            {cat.tags.map((tag) => {
+                              const isSelected = currentTags.includes(tag);
+                              return (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => {
+                                    const nextTags = isSelected
+                                      ? currentTags.filter((t) => t !== tag)
+                                      : [...currentTags, tag];
+
+                                    if (selectedFloorId) {
+                                      undoManagerRef.current.push(selectedFloorId, {
+                                        type: 'UPDATE_PROPERTIES',
+                                        id: selectedObj.id,
+                                        before: { recommendationTags: currentTags },
+                                        after: { recommendationTags: nextTags },
+                                      });
+                                      syncUndoRedoState(selectedFloorId);
+                                    }
+
+                                    setBuilderObjects((prev) =>
+                                      prev.map((o) =>
+                                        o.id === selectedObj.id ? { ...o, recommendationTags: nextTags } : o
+                                      )
+                                    );
+                                    setSaveState('Unsaved changes');
+                                  }}
+                                  style={{
+                                    border: isSelected ? '1px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
+                                    background: isSelected ? 'var(--da-brand-dark)' : '#fff',
+                                    color: isSelected ? '#fff' : 'var(--da-text-primary)',
+                                    borderRadius: '16px',
+                                    padding: '4px 9px',
+                                    fontSize: '11px',
+                                    fontWeight: isSelected ? 700 : 500,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  {isSelected && <span style={{ fontSize: '9px' }}>✓</span>}
+                                  {tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </>
             )}
 
@@ -1798,6 +2251,165 @@ export function MapEditor() {
                 {actionLoading ? 'Publishing...' : 'Confirm Publish'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit Custom Structure Modal */}
+      {showCustomStructureModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,59,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: '14px', padding: '26px', maxWidth: '440px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 12px' }}>
+              {editingCustomStructure ? 'Edit Custom Structure' : 'Create Custom Structure'}
+            </h3>
+            <form onSubmit={handleSaveCustomStructure}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                  Structure Name *
+                </label>
+                <input
+                  type="text"
+                  value={customFormName}
+                  onChange={(e) => setCustomFormName(e.target.value)}
+                  placeholder="e.g. Reception Counter, Acoustic Divider, Pillar"
+                  required
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                    Default Width (px) *
+                  </label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={2000}
+                    value={customFormWidth}
+                    onChange={(e) => setCustomFormWidth(e.target.value)}
+                    required
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                    Default Height (px) *
+                  </label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={2000}
+                    value={customFormHeight}
+                    onChange={(e) => setCustomFormHeight(e.target.value)}
+                    required
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                  Default Color
+                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={customFormColor && customFormColor.startsWith('#') && customFormColor.length === 7 ? customFormColor : '#CBD5E1'}
+                    onChange={(e) => setCustomFormColor(e.target.value)}
+                    style={{ width: '38px', height: '38px', border: '1px solid var(--da-border)', borderRadius: '8px', cursor: 'pointer', padding: '2px', background: '#fff' }}
+                  />
+                  <input
+                    type="text"
+                    value={customFormColor}
+                    onChange={(e) => setCustomFormColor(e.target.value)}
+                    placeholder="#CBD5E1"
+                    style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                  />
+                </div>
+                {/* Preset colors */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {['#CBD5E1', '#94A3B8', '#F3F7F4', '#E2E8F0', '#FEF3C7', '#E0F2FE', '#DCFCE7', '#FEE2E2', '#334155'].map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setCustomFormColor(color)}
+                      style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '4px',
+                        background: color,
+                        border: customFormColor === color ? '2px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                    Border Style
+                  </label>
+                  <select
+                    value={customFormBorderStyle}
+                    onChange={(e) => setCustomFormBorderStyle(e.target.value as any)}
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box', background: '#fff' }}
+                  >
+                    <option value="solid">Solid Border</option>
+                    <option value="dashed">Dashed Border</option>
+                    <option value="none">Borderless</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                    Category
+                  </label>
+                  <select
+                    value={customFormCategory}
+                    onChange={(e) => setCustomFormCategory(e.target.value)}
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box', background: '#fff' }}
+                  >
+                    <option value="ARCHITECTURAL">Architectural</option>
+                    <option value="BARRIER">Barrier / Partition</option>
+                    <option value="FURNITURE">Counter / Island</option>
+                    <option value="UTILITY">Utility / Storage</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '4px' }}>
+                  Description (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={customFormDescription}
+                  onChange={(e) => setCustomFormDescription(e.target.value)}
+                  placeholder="Notes or architectural purpose"
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '9px 12px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomStructureModal(false)}
+                  style={{ background: 'transparent', border: '1px solid var(--da-border)', padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={customStructureLoading}
+                  style={{ background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: customStructureLoading ? 'not-allowed' : 'pointer' }}
+                >
+                  {customStructureLoading ? 'Saving...' : (editingCustomStructure ? 'Save Changes' : 'Create Structure')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

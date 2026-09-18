@@ -20,7 +20,19 @@ import {
   ReservationResponseDTO,
   StaffOperationalReservation,
 } from "../models/reservation";
-import { AdminReservationRepository, RescheduleSlotAvailability } from "./adminReservationRepository";
+import {
+  AdminReservationRepository,
+  RescheduleSlotAvailability,
+  RelocateReservationInput,
+  AvailableRelocationSpot,
+  ListAvailableRelocationSpotsInput,
+  ExtendReservationInput,
+  CheckExtendAvailabilityInput,
+  ExtendAvailabilityResult,
+  ExtendReservationResult,
+  ExtendAvailabilityNextBooking,
+} from "./adminReservationRepository";
+import { WorkspaceRepository } from "../models/workspace";
 import {
   formatAmountWithCurrency,
   formatDuration,
@@ -93,7 +105,17 @@ export class ReservationMemoryRepository
   private operationQueue = Promise.resolve();
   private nextApprovalFailureMessage: string | null = null;
   private businessName: string = "DeskAtlas";
-  constructor(private readonly nowProvider: () => Date = () => new Date()) { }
+  private workspaceRepository?: WorkspaceRepository;
+  constructor(
+    private readonly nowProvider: () => Date = () => new Date(),
+    workspaceRepository?: WorkspaceRepository
+  ) {
+    this.workspaceRepository = workspaceRepository;
+  }
+
+  setWorkspaceRepository(repo: WorkspaceRepository): void {
+    this.workspaceRepository = repo;
+  }
 
   getStoredReservation(id: string): ReservationResponseDTO | undefined {
     return this.reservations.find((r) => r.id === id);
@@ -1404,21 +1426,33 @@ export class ReservationMemoryRepository
     const schedule = formatSchedule(effective?.startAt, effective?.endAt);
     const duration = formatDuration(effective?.startAt, effective?.endAt);
 
-    const candidates: AdminReservationCandidateSummary[] = candidateList.map((c) => ({
-      id: c.id,
-      rank: c.rank,
-      tier: getCandidateTier(c.rank),
-      workspaceInstanceId: c.workspaceInstanceId,
-      workspaceDisplayName: c.workspaceInstanceId,
-      workspaceInstanceCode: c.workspaceInstanceId,
-      workspaceTemplateName: "Workspace",
-      floorName: "Floor 1",
-      startAt: c.startAt,
-      endAt: c.endAt,
-      schedule: formatSchedule(c.startAt, c.endAt),
-      isAssigned: c.isAssigned,
-      color: getCandidateColor(c.rank),
-    }));
+    const getWorkspaceMeta = (instanceId: string) => {
+      return {
+        displayName: instanceId,
+        code: instanceId,
+        templateName: "Workspace",
+        floorName: "Floor 1",
+      };
+    };
+
+    const candidates: AdminReservationCandidateSummary[] = candidateList.map((c) => {
+      const meta = getWorkspaceMeta(c.workspaceInstanceId);
+      return {
+        id: c.id,
+        rank: c.rank,
+        tier: getCandidateTier(c.rank),
+        workspaceInstanceId: c.workspaceInstanceId,
+        workspaceDisplayName: c.workspaceDisplayName || meta.displayName,
+        workspaceInstanceCode: c.workspaceInstanceCode || meta.code,
+        workspaceTemplateName: c.workspaceTemplateName || meta.templateName,
+        floorName: c.floorName || meta.floorName,
+        startAt: c.startAt,
+        endAt: c.endAt,
+        schedule: formatSchedule(c.startAt, c.endAt),
+        isAssigned: c.isAssigned,
+        color: getCandidateColor(c.rank),
+      };
+    });
 
     const assignedCandidate: AdminReservationCandidateSummary | null = assigned
       ? {
@@ -1426,10 +1460,10 @@ export class ReservationMemoryRepository
         rank: assigned.rank,
         tier: getCandidateTier(assigned.rank),
         workspaceInstanceId: assigned.workspaceInstanceId,
-        workspaceDisplayName: assigned.workspaceInstanceId,
-        workspaceInstanceCode: assigned.workspaceInstanceId,
-        workspaceTemplateName: "Workspace",
-        floorName: "Floor 1",
+        workspaceDisplayName: assigned.workspaceDisplayName || getWorkspaceMeta(assigned.workspaceInstanceId).displayName,
+        workspaceInstanceCode: assigned.workspaceInstanceCode || getWorkspaceMeta(assigned.workspaceInstanceId).code,
+        workspaceTemplateName: assigned.workspaceTemplateName || getWorkspaceMeta(assigned.workspaceInstanceId).templateName,
+        floorName: assigned.floorName || getWorkspaceMeta(assigned.workspaceInstanceId).floorName,
         startAt: assigned.startAt,
         endAt: assigned.endAt,
         schedule: formatSchedule(assigned.startAt, assigned.endAt),
@@ -1514,6 +1548,29 @@ export class ReservationMemoryRepository
     if ((r as any).rescheduledAt) {
       timeline.push(
         `${formatTimelineDate((r as any).rescheduledAt)} - Rescheduled by Admin to ${schedule}`
+      );
+    }
+
+    const relocations = (r as any).relocations ?? [];
+    for (const rel of relocations) {
+      timeline.push(
+        `${formatTimelineDate(rel.relocatedAt)} - Relocated by Admin from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} due to: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`
+      );
+    }
+
+    const extEvents = ((r as any).extensionEvents || []) as Array<{
+      occurredAt: string;
+      actorRole: string;
+      addedMinutes: number;
+      newEndTime: string;
+    }>;
+    for (const ext of extEvents) {
+      const actor = ext.actorRole === "STAFF" ? "Staff" : "Admin";
+      const durationText = ext.addedMinutes
+        ? `${ext.addedMinutes >= 60 && ext.addedMinutes % 60 === 0 ? `${ext.addedMinutes / 60} hour${ext.addedMinutes / 60 > 1 ? 's' : ''}` : `${ext.addedMinutes} mins`}`
+        : "time";
+      timeline.push(
+        `${formatTimelineDate(ext.occurredAt)} - Time extended by ${actor} by ${durationText}`
       );
     }
 
@@ -1870,7 +1927,489 @@ export class ReservationMemoryRepository
       res.updatedAt = completedAt;
     }
   }
+
+  private operatingHoursMap: Map<number, Array<{ opensAt: string; closesAt: string; isActive?: boolean }>> = new Map();
+
+  seedOperatingHours(dayOfWeek: number, intervals: Array<{ opensAt: string; closesAt: string; isActive?: boolean }>) {
+    this.operatingHoursMap.set(dayOfWeek, intervals);
+  }
+
+  async checkExtendAvailability(input: {
+    reservationId: string;
+    extensionMinutes?: number;
+  }): Promise<ExtendAvailabilityResult> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    if (r.status === "CANCELLED" || r.status === "EXPIRED" || (r.status as string) === "REJECTED") {
+      return {
+        canExtend: false,
+        reservationId: r.id,
+        referenceCode: r.referenceCode,
+        currentEndAt: r.updatedAt,
+        maxExtensionMinutes: 0,
+        hourlyRate: 0,
+        additionalFee: 0,
+        reason: `Cannot extend a ${r.status.toLowerCase()} reservation`,
+      };
+    }
+
+    const assigned = r.candidates?.find((c) => c.isAssigned) ?? r.candidates?.[0];
+    if (!assigned || !assigned.workspaceInstanceId) {
+      return {
+        canExtend: false,
+        reservationId: r.id,
+        referenceCode: r.referenceCode,
+        currentEndAt: this.nowProvider().toISOString(),
+        maxExtensionMinutes: 0,
+        hourlyRate: 0,
+        additionalFee: 0,
+        reason: "No assigned workspace spot found for this reservation",
+      };
+    }
+
+    const targetInstanceId = assigned.workspaceInstanceId;
+    const currentEndIso = assigned.endAt;
+    const currentEndMs = new Date(currentEndIso).getTime();
+    const hourlyRate = Number(r.rateSnapshot || 150);
+    const workspaceDisplayName = assigned.workspaceDisplayName || assigned.workspaceInstanceCode || "Workspace Spot";
+    const templateName = assigned.workspaceTemplateName || undefined;
+
+    const upcomingCandidates: Array<{
+      reservationId: string;
+      referenceCode: string;
+      customerName: string;
+      startAt: string;
+      endAt: string;
+    }> = [];
+
+    for (const other of this.reservations) {
+      if (other.id === r.id || other.status === "CANCELLED" || other.status === "EXPIRED" || (other.status as string) === "REJECTED") {
+        continue;
+      }
+      for (const otherCand of other.candidates ?? []) {
+        if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== targetInstanceId) {
+          continue;
+        }
+        const candEndMs = new Date(otherCand.endAt).getTime();
+        if (candEndMs > currentEndMs) {
+          upcomingCandidates.push({
+            reservationId: other.id,
+            referenceCode: other.referenceCode,
+            customerName: `${other.customerFirstName} ${other.customerLastName}`.trim(),
+            startAt: otherCand.startAt,
+            endAt: otherCand.endAt,
+          });
+        }
+      }
+    }
+
+    upcomingCandidates.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    const nextCand = upcomingCandidates[0] ?? null;
+    let minutesUntilNextBooking: number | null = null;
+    let nextBooking: ExtendAvailabilityNextBooking | null = null;
+
+    const formatTimeInTz = (iso: string) => {
+      try {
+        return new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Manila",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).format(new Date(iso));
+      } catch {
+        return iso;
+      }
+    };
+
+    if (nextCand) {
+      const nextStartMs = new Date(nextCand.startAt).getTime();
+      minutesUntilNextBooking = Math.max(0, Math.floor((nextStartMs - currentEndMs) / (60 * 1000)));
+      nextBooking = {
+        reservationId: nextCand.reservationId,
+        referenceCode: nextCand.referenceCode,
+        customerName: nextCand.customerName,
+        startAt: nextCand.startAt,
+        startTimeFormatted: formatTimeInTz(nextCand.startAt),
+      };
+    }
+
+    const timezone = "Asia/Manila";
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date(currentEndIso));
+    const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const dateStr = `${v.year}-${v.month}-${v.day}`;
+    const dayOfWeek = new Date(currentEndIso).getDay();
+
+    const dayIntervals = (this.operatingHoursMap.get(dayOfWeek) ?? [])
+      .filter((i) => i.isActive !== false)
+      .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+
+    let operatingHoursCloseAt: string | null = null;
+    let minutesUntilClosing: number | null = null;
+
+    if (dayIntervals.length > 0) {
+      const lastInterval = dayIntervals[dayIntervals.length - 1];
+      const closeUtc = zonedDateTimeToUtc(dateStr, lastInterval.closesAt, timezone);
+      operatingHoursCloseAt = closeUtc.toISOString();
+      const diffCloseMs = closeUtc.getTime() - currentEndMs;
+      minutesUntilClosing = Math.max(0, Math.floor(diffCloseMs / (60 * 1000)));
+    }
+
+    let maxExtensionMinutes = 24 * 60;
+    if (minutesUntilClosing !== null) {
+      maxExtensionMinutes = Math.min(maxExtensionMinutes, minutesUntilClosing);
+    }
+    if (minutesUntilNextBooking !== null) {
+      maxExtensionMinutes = Math.min(maxExtensionMinutes, minutesUntilNextBooking);
+    }
+    maxExtensionMinutes = Math.max(0, maxExtensionMinutes);
+
+    const extensionMinutes = input.extensionMinutes ?? 60;
+    const additionalFee = Math.round(((extensionMinutes / 60) * hourlyRate) * 100) / 100;
+    const proposedEndMs = currentEndMs + extensionMinutes * 60 * 1000;
+    const proposedEndAt = new Date(proposedEndMs).toISOString();
+
+    let canExtend = true;
+    let reason: string | undefined;
+
+    if (maxExtensionMinutes <= 0) {
+      canExtend = false;
+      if (nextBooking) {
+        reason = `Spot is reserved starting at ${nextBooking.startTimeFormatted || nextBooking.startAt}. No further extension is possible.`;
+      } else if (minutesUntilClosing !== null && minutesUntilClosing <= 0) {
+        reason = "Venue is at or past operating closing time.";
+      } else {
+        reason = "No extension available for this slot.";
+      }
+    } else if (input.extensionMinutes !== undefined && input.extensionMinutes > maxExtensionMinutes) {
+      canExtend = false;
+      const extStr = extensionMinutes >= 60 ? `${extensionMinutes / 60} hour(s)` : `${extensionMinutes} mins`;
+      if (minutesUntilNextBooking !== null && maxExtensionMinutes === minutesUntilNextBooking) {
+        const who = nextBooking?.customerName || nextBooking?.referenceCode || "another booking";
+        reason = `Cannot extend by ${extStr}: Desk is reserved by ${who} starting at ${nextBooking?.startTimeFormatted || nextBooking?.startAt}. Maximum extension possible: ${maxExtensionMinutes} minutes.`;
+      } else if (minutesUntilClosing !== null && maxExtensionMinutes === minutesUntilClosing) {
+        const closeFormatted = operatingHoursCloseAt ? formatTimeInTz(operatingHoursCloseAt) : "closing time";
+        reason = `Cannot extend by ${extStr}: Venue closes at ${closeFormatted}. Maximum extension possible: ${maxExtensionMinutes} minutes.`;
+      } else {
+        reason = `Cannot extend by ${extStr}. Maximum extension possible: ${maxExtensionMinutes} minutes.`;
+      }
+    }
+
+    return {
+      canExtend,
+      reservationId: r.id,
+      referenceCode: r.referenceCode,
+      currentEndAt: currentEndIso,
+      proposedEndAt,
+      extensionMinutes,
+      maxExtensionMinutes,
+      hourlyRate,
+      additionalFee,
+      nextBooking,
+      closingTime: operatingHoursCloseAt,
+      reason,
+      workspaceDisplayName,
+      templateName,
+    };
+  }
+
+  async extendReservation(input: ExtendReservationInput): Promise<ExtendReservationResult> {
+    const availability = await this.checkExtendAvailability({
+      reservationId: input.reservationId,
+      extensionMinutes: input.extensionMinutes,
+    });
+
+    if (!availability.canExtend) {
+      throw new Error(availability.reason || `Cannot extend reservation by ${input.extensionMinutes} minutes`);
+    }
+
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const assigned = r.candidates?.find((c) => c.isAssigned) ?? r.candidates?.[0];
+    if (!assigned) {
+      throw new Error("Assigned reservation candidate not found");
+    }
+
+    const previousEndAt = assigned.endAt;
+    const newEndAt = availability.proposedEndAt!;
+    const nowIso = this.nowProvider().toISOString();
+    const additionalFee = input.additionalFee ?? availability.additionalFee;
+    const paymentMethod = input.paymentMethod ?? "CASH";
+
+    assigned.endAt = newEndAt;
+    r.amountDue = Number(r.amountDue || 0) + additionalFee;
+    r.updatedAt = nowIso;
+
+    if (!(r as any).extensionEvents) {
+      (r as any).extensionEvents = [];
+    }
+    (r as any).extensionEvents.push({
+      occurredAt: nowIso,
+      actorRole: input.actorRole ?? "ADMIN",
+      addedMinutes: input.extensionMinutes,
+      newEndTime: newEndAt,
+      fee: additionalFee,
+    });
+
+    this.operationalAuditEvents.push({
+      reservationId: r.id,
+      referenceCode: r.referenceCode,
+      customerName: `${r.customerFirstName} ${r.customerLastName}`.trim(),
+      workspaceDisplayName: assigned.workspaceDisplayName || null,
+      workspaceInstanceCode: assigned.workspaceInstanceCode || null,
+      activityType: "CHECK_IN",
+      occurredAt: nowIso,
+      actorUserId: input.actorUserId ?? null,
+      actorRole: (input.actorRole ?? "ADMIN") as any,
+    });
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to retrieve updated reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      previousEndAt,
+      newEndAt,
+      addedDurationMinutes: input.extensionMinutes,
+      additionalFee,
+      paymentMethod,
+      message: "Reservation time extended successfully",
+    };
+  }
+
+  async listAvailableRelocationSpots(input: ListAvailableRelocationSpotsInput): Promise<AvailableRelocationSpot[]> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+    if (!r) {
+      return [];
+    }
+
+    const assigned = (r.candidates ?? []).find((c) => c.isAssigned) ?? (r.candidates ?? [])[0];
+    if (!assigned) {
+      return [];
+    }
+
+    const startMs = new Date(assigned.startAt).getTime();
+    const endMs = new Date(assigned.endAt).getTime();
+
+    if (!this.workspaceRepository) {
+      return [];
+    }
+
+    const catalog = await this.workspaceRepository.listCatalog();
+    const currentInstance = catalog.instances.find((i) => i.id === assigned.workspaceInstanceId);
+    if (!currentInstance) {
+      return [];
+    }
+
+    const targetTemplateId = currentInstance.templateId;
+    const template = catalog.templates.find((t) => t.id === targetTemplateId);
+    const siblingInstances = catalog.instances.filter(
+      (i) => i.templateId === targetTemplateId && i.id !== currentInstance.id && !(i as any).isArchived
+    );
+
+    const spots: AvailableRelocationSpot[] = [];
+
+    for (const inst of siblingInstances) {
+      const floor = catalog.floors.find((f) => f.id === inst.floorId);
+      let isAvailable = true;
+      let reason: string | undefined;
+
+      const opStatus = (inst.operationalStatus || (inst as any).status || "ACTIVE").toUpperCase();
+      if (opStatus === "MAINTENANCE") {
+        isAvailable = false;
+        reason = "Under Maintenance";
+      } else if (opStatus === "INACTIVE") {
+        isAvailable = false;
+        reason = "Inactive";
+      } else {
+        // Check overlapping active reservations
+        for (const other of this.reservations) {
+          if (other.id === r.id || other.status === "CANCELLED" || other.status === "EXPIRED" || (other.status as string) === "REJECTED") {
+            continue;
+          }
+          if (other.status !== "CONFIRMED" && other.status !== "CHECKED_IN") {
+            continue;
+          }
+          for (const otherCand of other.candidates ?? []) {
+            if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== inst.id) {
+              continue;
+            }
+            const otherStartMs = new Date(otherCand.startAt).getTime();
+            const otherEndMs = new Date(otherCand.endAt).getTime();
+            if (startMs < otherEndMs && endMs > otherStartMs) {
+              isAvailable = false;
+              reason = "Already booked for this time window";
+              break;
+            }
+          }
+          if (!isAvailable) break;
+        }
+      }
+
+      if (isAvailable) {
+        spots.push({
+          id: inst.id,
+          instanceCode: inst.instanceCode || inst.displayName,
+          displayName: inst.displayName,
+          templateId: inst.templateId,
+          templateName: template?.name || "Workspace",
+          floorId: inst.floorId,
+          floorName: floor?.name || "Floor",
+          isAvailable: true,
+        });
+      }
+    }
+
+    return spots;
+  }
+
+  async relocateReservation(input: RelocateReservationInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+    oldWorkspaceDisplayName?: string;
+    newWorkspaceDisplayName?: string;
+    previousSpotName?: string;
+    newSpotName?: string;
+  }> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    if (r.status !== "CONFIRMED" && r.status !== "CHECKED_IN") {
+      throw new Error(`Only confirmed or checked-in reservations can be relocated (current status: ${r.status})`);
+    }
+
+    const assigned = (r.candidates ?? []).find((c) => c.isAssigned) ?? (r.candidates ?? [])[0];
+    if (!assigned) {
+      throw new Error("No assigned workspace spot found for this reservation");
+    }
+
+    const oldInstanceId = assigned.workspaceInstanceId;
+    if (oldInstanceId === input.targetWorkspaceInstanceId) {
+      throw new Error("Target spot must be different from current spot");
+    }
+
+    let oldWorkspaceDisplayName = oldInstanceId;
+    let newWorkspaceDisplayName = input.targetWorkspaceInstanceId;
+
+    if (this.workspaceRepository) {
+      const catalog = await this.workspaceRepository.listCatalog();
+      const currentInst = catalog.instances.find((i) => i.id === oldInstanceId);
+      const targetInst = catalog.instances.find((i) => i.id === input.targetWorkspaceInstanceId);
+
+      if (!targetInst) {
+        throw new Error("Target workspace spot not found");
+      }
+
+      if (currentInst) {
+        oldWorkspaceDisplayName = currentInst.displayName;
+        if (targetInst.templateId !== currentInst.templateId) {
+          throw new Error("Relocation is only allowed to spots of the exact same workspace template (tier)");
+        }
+      }
+      newWorkspaceDisplayName = targetInst.displayName;
+
+      const opStatus = (targetInst.operationalStatus || (targetInst as any).status || "ACTIVE").toUpperCase();
+      if (opStatus === "MAINTENANCE" || opStatus === "INACTIVE") {
+        throw new Error(`Cannot relocate to a spot that is ${opStatus.toLowerCase()}`);
+      }
+    }
+
+    const startMs = new Date(assigned.startAt).getTime();
+    const endMs = new Date(assigned.endAt).getTime();
+
+    // Overlap conflict check
+    for (const other of this.reservations) {
+      if (other.id === r.id || other.status === "CANCELLED" || other.status === "EXPIRED" || (other.status as string) === "REJECTED") {
+        continue;
+      }
+      if (other.status !== "CONFIRMED" && other.status !== "CHECKED_IN") {
+        continue;
+      }
+      for (const otherCand of other.candidates ?? []) {
+        if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== input.targetWorkspaceInstanceId) {
+          continue;
+        }
+        const otherStartMs = new Date(otherCand.startAt).getTime();
+        const otherEndMs = new Date(otherCand.endAt).getTime();
+        if (startMs < otherEndMs && endMs > otherStartMs) {
+          throw new Error("Target workspace spot is already booked for this time window");
+        }
+      }
+    }
+
+    const nowIso = this.nowProvider().toISOString();
+    assigned.workspaceInstanceId = input.targetWorkspaceInstanceId;
+    assigned.workspaceDisplayName = newWorkspaceDisplayName;
+    assigned.isAssigned = true;
+    r.updatedAt = nowIso;
+
+    if (!(r as any).relocations) {
+      (r as any).relocations = [];
+    }
+    (r as any).relocations.push({
+      oldWorkspaceInstanceId: oldInstanceId,
+      newWorkspaceInstanceId: input.targetWorkspaceInstanceId,
+      oldWorkspaceDisplayName,
+      newWorkspaceDisplayName,
+      reason: input.reason,
+      notes: input.notes,
+      relocatedAt: nowIso,
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole,
+    });
+
+    this.recordOperationalAudit({
+      reservation: r,
+      action: "RESERVATION_RELOCATED" as any,
+      actedAt: nowIso,
+      actorRole: (input.actorRole === "STAFF" ? "STAFF" : "ADMIN"),
+      actorUserId: input.actorUserId ?? "admin",
+      reentry: false,
+    });
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to retrieve updated reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      oldWorkspaceDisplayName,
+      newWorkspaceDisplayName,
+      previousSpotName: oldWorkspaceDisplayName,
+      newSpotName: newWorkspaceDisplayName,
+      message: "Reservation relocated successfully",
+    };
+  }
 }
+
 
 function getCheckInState(checkedInAt: string | null, checkedOutAt: string | null) {
   if (checkedOutAt) {

@@ -21,6 +21,7 @@ export interface Desk {
   type: 'desk' | 'meeting-room' | 'phone-booth';
   zone: string;
   status: DeskStatus;
+  occupiedUntil?: string | null;
   x: number;
   y: number;
   width: number;

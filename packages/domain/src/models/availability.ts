@@ -49,10 +49,20 @@ export interface AvailabilityRepository {
   ): Promise<BlockingReservationWindow[]>;
   listWorkspaceInstancesByTemplate?(templateId: string): Promise<WorkspaceInstanceDetails[]>;
   listOccupiedInstances?(rangeStartIso: string, rangeEndIso: string): Promise<string[]>;
+  listOccupiedInstanceDetails?(
+    rangeStartIso: string,
+    rangeEndIso: string
+  ): Promise<OccupiedInstanceDetail[]>;
+}
+
+export interface OccupiedInstanceDetail {
+  workspaceInstanceId: string;
+  bookingEndAt: string | null;
 }
 
 export interface OccupiedInstancesResult {
   occupiedInstanceIds: string[];
+  occupiedDetails?: OccupiedInstanceDetail[];
   asOf: string;
 }
 

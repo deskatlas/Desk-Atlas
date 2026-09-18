@@ -349,6 +349,26 @@ CREATE TABLE public.workspace_templates (
     CHECK (jsonb_typeof(default_style) = 'object')
 );
 
+CREATE TABLE public.custom_structure_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  default_width integer NOT NULL DEFAULT 120,
+  default_height integer NOT NULL DEFAULT 60,
+  default_color text NOT NULL DEFAULT '#CBD5E1',
+  border_style text NOT NULL DEFAULT 'solid',
+  category text NOT NULL DEFAULT 'ARCHITECTURAL',
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT custom_structure_templates_name_nonblank CHECK (btrim(name) <> ''),
+  CONSTRAINT custom_structure_templates_width_positive CHECK (default_width > 0),
+  CONSTRAINT custom_structure_templates_height_positive CHECK (default_height > 0),
+  CONSTRAINT custom_structure_templates_color_nonblank CHECK (btrim(default_color) <> ''),
+  CONSTRAINT custom_structure_templates_border_style_valid CHECK (border_style IN ('solid', 'dashed', 'none'))
+);
+
 CREATE TABLE public.floors (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,

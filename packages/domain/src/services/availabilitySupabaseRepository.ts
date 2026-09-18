@@ -246,26 +246,26 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
       }));
   }
 
-  async listOccupiedInstances(
+  async listOccupiedInstanceDetails(
     rangeStartIso: string,
     rangeEndIso: string
-  ): Promise<string[]> {
+  ): Promise<Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>> {
     const [candidateRows, pendingRows, blockRows] = await Promise.all([
-      this.request<Array<{ workspace_instance_id: string }>>(
+      this.request<Array<{ workspace_instance_id: string; end_at?: string }>>(
         `/reservation_candidates?select=workspace_instance_id,start_at,end_at,is_assigned,reservation:reservations!inner(id,status)&start_at=lt.${encodeURIComponent(
           rangeEndIso
         )}&end_at=gt.${encodeURIComponent(
           rangeStartIso
         )}&is_assigned=eq.true&reservation.status=in.(CONFIRMED,CHECKED_IN)`
       ),
-      this.request<Array<{ workspace_instance_id: string; reservation?: { id: string; status: string; created_at?: string } }>>(
+      this.request<Array<{ workspace_instance_id: string; end_at?: string; reservation?: { id: string; status: string; created_at?: string } }>>(
         `/reservation_candidates?select=workspace_instance_id,start_at,end_at,reservation:reservations!inner(id,status,created_at)&start_at=lt.${encodeURIComponent(
           rangeEndIso
         )}&end_at=gt.${encodeURIComponent(
           rangeStartIso
         )}&reservation.status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION)`
       ).catch(() => []),
-      this.request<Array<{ workspace_instance_id: string | null; scope: string }>>(
+      this.request<Array<{ workspace_instance_id: string | null; end_at?: string; scope: string }>>(
         `/schedule_blocks?select=workspace_instance_id,start_at,end_at,scope&start_at=lt.${encodeURIComponent(
           rangeEndIso
         )}&end_at=gt.${encodeURIComponent(
@@ -274,9 +274,15 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
       ).catch(() => []),
     ]);
 
-    const occupied = new Set<string>();
+    const detailsMap = new Map<string, string | null>();
     for (const r of candidateRows || []) {
-      if (r.workspace_instance_id) occupied.add(r.workspace_instance_id);
+      if (r.workspace_instance_id) {
+        const existingEnd = detailsMap.get(r.workspace_instance_id);
+        const endAt = r.end_at || null;
+        if (!existingEnd || (endAt && new Date(endAt).getTime() > new Date(existingEnd).getTime())) {
+          detailsMap.set(r.workspace_instance_id, endAt);
+        }
+      }
     }
     const nowMs = Date.now();
     for (const p of pendingRows || []) {
@@ -287,7 +293,11 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
             continue;
           }
         }
-        occupied.add(p.workspace_instance_id);
+        const existingEnd = detailsMap.get(p.workspace_instance_id);
+        const endAt = p.end_at || null;
+        if (!existingEnd || (endAt && new Date(endAt).getTime() > new Date(existingEnd).getTime())) {
+          detailsMap.set(p.workspace_instance_id, endAt);
+        }
       }
     }
     const hasBusinessClosure = (blockRows || []).some((b) => b.scope === 'BUSINESS');
@@ -295,15 +305,34 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
       const allInstances = await this.request<Array<{ id: string }>>(
         `/workspace_instances?select=id&operational_status=neq.INACTIVE`
       ).catch(() => []);
+      const closureBlock = (blockRows || []).find((b) => b.scope === 'BUSINESS');
+      const closureEnd = closureBlock?.end_at || null;
       for (const inst of allInstances) {
-        occupied.add(inst.id);
+        if (!detailsMap.has(inst.id)) {
+          detailsMap.set(inst.id, closureEnd);
+        }
       }
     }
     for (const b of blockRows || []) {
-      if (b.workspace_instance_id) occupied.add(b.workspace_instance_id);
+      if (b.workspace_instance_id) {
+        if (!detailsMap.has(b.workspace_instance_id)) {
+          detailsMap.set(b.workspace_instance_id, b.end_at || null);
+        }
+      }
     }
 
-    return Array.from(occupied);
+    return Array.from(detailsMap.entries()).map(([workspaceInstanceId, bookingEndAt]) => ({
+      workspaceInstanceId,
+      bookingEndAt,
+    }));
+  }
+
+  async listOccupiedInstances(
+    rangeStartIso: string,
+    rangeEndIso: string
+  ): Promise<string[]> {
+    const details = await this.listOccupiedInstanceDetails(rangeStartIso, rangeEndIso);
+    return details.map((d) => d.workspaceInstanceId);
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {

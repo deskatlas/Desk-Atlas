@@ -5,7 +5,8 @@ export type StaffReservationFilter =
   | "all"
   | "checked_in"
   | "upcoming"
-  | "confirmed";
+  | "confirmed"
+  | "counter_queue";
 
 export interface StaffReservationFilterOption {
   label: string;
@@ -18,6 +19,7 @@ export const STAFF_RESERVATION_FILTERS: StaffReservationFilterOption[] = [
   { label: "Checked In", filter: "checked_in" },
   { label: "Upcoming", filter: "upcoming" },
   { label: "Confirmed", filter: "confirmed" },
+  { label: "Counter Queue", filter: "counter_queue" },
 ];
 
 export function matchesStaffReservationFilter(
@@ -26,14 +28,27 @@ export function matchesStaffReservationFilter(
   now: Date = new Date()
 ): boolean {
   const nowMs = now.getTime();
+  const isTimeEnded = Boolean(
+    res.bookingEndAt &&
+    !isNaN(new Date(res.bookingEndAt).getTime()) &&
+    new Date(res.bookingEndAt).getTime() <= nowMs
+  );
 
   switch (filter) {
     case "all":
       return true;
 
     case "active":
+      // Ended bookings are automatically checked out / completed and removed from Active
+      if (isTimeEnded) {
+        return false;
+      }
       // Currently active reservations — either explicitly CHECKED_IN or CONFIRMED where now >= bookingStartAt and now < bookingEndAt.
-      if (res.reservationStatus === "CHECKED_IN") {
+      if (
+        (res.reservationStatus === "CHECKED_IN" || res.checkInState === "CHECKED_IN") &&
+        res.checkInState !== "CHECKED_OUT" &&
+        res.reservationStatus !== "COMPLETED"
+      ) {
         return true;
       }
       if (res.reservationStatus === "CONFIRMED") {
@@ -46,10 +61,18 @@ export function matchesStaffReservationFilter(
       return false;
 
     case "checked_in":
-      // Reservations with reservationStatus === 'CHECKED_IN'
-      return res.reservationStatus === "CHECKED_IN";
+      // Ended bookings are automatically checked out and removed from Checked In
+      if (isTimeEnded) {
+        return false;
+      }
+      return (
+        (res.reservationStatus === "CHECKED_IN" || res.checkInState === "CHECKED_IN") &&
+        res.checkInState !== "CHECKED_OUT" &&
+        res.reservationStatus !== "COMPLETED"
+      );
 
     case "upcoming": {
+      if (isTimeEnded) return false;
       // Confirmed reservations that have not started yet (reservationStatus === 'CONFIRMED' and new Date(bookingStartAt).getTime() > now)
       if (res.reservationStatus !== "CONFIRMED") return false;
       if (!res.bookingStartAt) return false;
@@ -59,8 +82,14 @@ export function matchesStaffReservationFilter(
     }
 
     case "confirmed":
+      if (isTimeEnded) return false;
       // Reservations with reservationStatus === 'CONFIRMED'
       return res.reservationStatus === "CONFIRMED";
+
+    case "counter_queue":
+      if (isTimeEnded) return false;
+      // Reservations awaiting counter confirmation (reservationStatus === 'PENDING_COUNTER_CONFIRMATION')
+      return res.reservationStatus === "PENDING_COUNTER_CONFIRMATION";
 
     default:
       return true;

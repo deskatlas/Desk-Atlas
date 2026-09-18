@@ -22,4 +22,6 @@ export interface StaffOperationsRepository {
     actorRole: "ADMIN" | "STAFF";
     actedAt: string;
   }): Promise<ReservationOperationalActionResult>;
+  checkExtendAvailability?(input: any): Promise<any>;
+  extendReservation?(input: any): Promise<any>;
 }

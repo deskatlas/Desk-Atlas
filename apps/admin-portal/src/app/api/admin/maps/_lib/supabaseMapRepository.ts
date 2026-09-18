@@ -1,4 +1,6 @@
 import type {
+  CreateCustomStructureTemplateInput,
+  CustomStructureTemplate,
   Floor,
   FloorMap,
   MapElement,
@@ -9,8 +11,23 @@ import type {
   MapVersionStatus,
   PublishMapDraftInput,
   SaveMapDraftInput,
+  UpdateCustomStructureTemplateInput,
   WorkspaceInstancePlacement,
 } from '@deskatlas/domain';
+
+type CustomStructureTemplateRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  default_width: number;
+  default_height: number;
+  default_color: string;
+  border_style: 'solid' | 'dashed' | 'none';
+  category: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
 
 type FloorRow = {
   id: string;
@@ -227,6 +244,81 @@ export class SupabaseMapRepository implements MapRepository {
     return { floor, version, elements };
   }
 
+  async listCustomStructureTemplates(): Promise<CustomStructureTemplate[]> {
+    const rows = await this.request<CustomStructureTemplateRow[]>(
+      '/custom_structure_templates?select=*&is_active=eq.true&order=name.asc'
+    );
+    return rows.map(mapCustomStructureTemplate);
+  }
+
+  async getCustomStructureTemplate(id: string): Promise<CustomStructureTemplate | null> {
+    const [row] = await this.request<CustomStructureTemplateRow[]>(
+      `/custom_structure_templates?select=*&id=eq.${encodeURIComponent(id)}&limit=1`
+    );
+    return row ? mapCustomStructureTemplate(row) : null;
+  }
+
+  async createCustomStructureTemplate(
+    input: CreateCustomStructureTemplateInput
+  ): Promise<CustomStructureTemplate> {
+    const [row] = await this.request<CustomStructureTemplateRow[]>(
+      '/custom_structure_templates',
+      {
+        method: 'POST',
+        prefer: 'return=representation',
+        body: JSON.stringify({
+          name: input.name,
+          description: input.description ?? null,
+          default_width: input.defaultWidth ?? 120,
+          default_height: input.defaultHeight ?? 60,
+          default_color: input.defaultColor ?? '#CBD5E1',
+          border_style: input.borderStyle ?? 'solid',
+          category: input.category ?? 'ARCHITECTURAL',
+          is_active: input.isActive ?? true,
+        }),
+      }
+    );
+    if (!row) throw new Error('Failed to create custom structure template');
+    return mapCustomStructureTemplate(row);
+  }
+
+  async updateCustomStructureTemplate(
+    id: string,
+    input: UpdateCustomStructureTemplateInput
+  ): Promise<CustomStructureTemplate> {
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (input.name !== undefined) payload.name = input.name;
+    if (input.description !== undefined) payload.description = input.description;
+    if (input.defaultWidth !== undefined) payload.default_width = input.defaultWidth;
+    if (input.defaultHeight !== undefined) payload.default_height = input.defaultHeight;
+    if (input.defaultColor !== undefined) payload.default_color = input.defaultColor;
+    if (input.borderStyle !== undefined) payload.border_style = input.borderStyle;
+    if (input.category !== undefined) payload.category = input.category;
+    if (input.isActive !== undefined) payload.is_active = input.isActive;
+
+    const [row] = await this.request<CustomStructureTemplateRow[]>(
+      `/custom_structure_templates?id=eq.${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        prefer: 'return=representation',
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!row) throw new Error(`Custom structure template not found: ${id}`);
+    return mapCustomStructureTemplate(row);
+  }
+
+  async deleteCustomStructureTemplate(id: string): Promise<void> {
+    await this.request<void>(
+      `/custom_structure_templates?id=eq.${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  }
+
   private async loadElements(mapVersionId: string): Promise<MapElement[]> {
     const rows = await this.request<MapElementRow[]>(
       `/map_elements?select=*&map_version_id=eq.${encodeURIComponent(mapVersionId)}&order=z_index.asc,id.asc`
@@ -339,3 +431,20 @@ function mapElement(row: MapElementRow): MapElement {
     updatedAt: row.updated_at,
   };
 }
+
+function mapCustomStructureTemplate(row: CustomStructureTemplateRow): CustomStructureTemplate {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    defaultWidth: Number(row.default_width),
+    defaultHeight: Number(row.default_height),
+    defaultColor: row.default_color,
+    borderStyle: row.border_style,
+    category: row.category,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+

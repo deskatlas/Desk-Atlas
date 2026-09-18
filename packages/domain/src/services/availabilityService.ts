@@ -252,12 +252,19 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       const rangeStartIso = now.toISOString();
       const rangeEndIso = endWindow.toISOString();
 
-      if (repository.listOccupiedInstances) {
-        const ids = await repository.listOccupiedInstances(rangeStartIso, rangeEndIso);
-        return { occupiedInstanceIds: ids, asOf: rangeStartIso };
+      if (repository.listOccupiedInstanceDetails) {
+        const details = await repository.listOccupiedInstanceDetails(rangeStartIso, rangeEndIso);
+        const ids = details.map((d) => d.workspaceInstanceId);
+        return { occupiedInstanceIds: ids, occupiedDetails: details, asOf: rangeStartIso };
       }
 
-      return { occupiedInstanceIds: [], asOf: rangeStartIso };
+      if (repository.listOccupiedInstances) {
+        const ids = await repository.listOccupiedInstances(rangeStartIso, rangeEndIso);
+        const details = ids.map((id) => ({ workspaceInstanceId: id, bookingEndAt: null }));
+        return { occupiedInstanceIds: ids, occupiedDetails: details, asOf: rangeStartIso };
+      }
+
+      return { occupiedInstanceIds: [], occupiedDetails: [], asOf: rangeStartIso };
     },
 
     async getNextUpcomingBooking(

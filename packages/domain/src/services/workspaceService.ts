@@ -419,10 +419,14 @@ function buildWorkspaceAuditMetadata(
   };
 }
 
-function extractRecommendationTags(defaultStyle: Record<string, unknown>): string[] | undefined {
-  const tags = defaultStyle.recommendations;
-  if (!Array.isArray(tags)) return undefined;
-  return tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+function extractRecommendationTags(defaultStyle: Record<string, unknown> | null | undefined): string[] | undefined {
+  if (!defaultStyle) return undefined;
+  const tags = defaultStyle.recommendationTags ?? defaultStyle.recommendations ?? defaultStyle.tags;
+  if (Array.isArray(tags)) {
+    const list = tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+    return list.length > 0 ? list : undefined;
+  }
+  return undefined;
 }
 
 function inferShapeFromName(name: string): string {

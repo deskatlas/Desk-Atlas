@@ -135,11 +135,11 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
       .map(({ workspaceInstanceId: _workspaceInstanceId, ...reservation }) => ({ ...reservation }));
   }
 
-  async listOccupiedInstances(
+  async listOccupiedInstanceDetails(
     rangeStartIso: string,
     rangeEndIso: string
-  ): Promise<string[]> {
-    const occupied = new Set<string>();
+  ): Promise<Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>> {
+    const detailsMap = new Map<string, string | null>();
     const blockingStatuses = new Set([
       'CONFIRMED',
       'CHECKED_IN',
@@ -152,21 +152,39 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
         blockingStatuses.has(res.reservationStatus) &&
         overlaps(res.startAt, res.endAt, rangeStartIso, rangeEndIso)
       ) {
-        occupied.add(res.workspaceInstanceId);
+        const existingEnd = detailsMap.get(res.workspaceInstanceId);
+        if (!existingEnd || new Date(res.endAt).getTime() > new Date(existingEnd).getTime()) {
+          detailsMap.set(res.workspaceInstanceId, res.endAt);
+        }
       }
     }
     for (const block of this.scheduleBlocks) {
       if (overlaps(block.startAt, block.endAt, rangeStartIso, rangeEndIso)) {
         if (block.scope === 'BUSINESS') {
           for (const inst of this.instances.values()) {
-            occupied.add(inst.id);
+            if (!detailsMap.has(inst.id)) {
+              detailsMap.set(inst.id, block.endAt);
+            }
           }
         } else if (block.workspaceInstanceId) {
-          occupied.add(block.workspaceInstanceId);
+          if (!detailsMap.has(block.workspaceInstanceId)) {
+            detailsMap.set(block.workspaceInstanceId, block.endAt);
+          }
         }
       }
     }
-    return Array.from(occupied);
+    return Array.from(detailsMap.entries()).map(([workspaceInstanceId, bookingEndAt]) => ({
+      workspaceInstanceId,
+      bookingEndAt,
+    }));
+  }
+
+  async listOccupiedInstances(
+    rangeStartIso: string,
+    rangeEndIso: string
+  ): Promise<string[]> {
+    const details = await this.listOccupiedInstanceDetails(rangeStartIso, rangeEndIso);
+    return details.map((d) => d.workspaceInstanceId);
   }
 }
 

@@ -23,7 +23,7 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
 
   async loadPublishedFloorMap(
     floorId: string,
-    _options?: { audience?: PublishedMapAudience }
+    options?: { audience?: PublishedMapAudience }
   ): Promise<PublishedFloorMap | null> {
     const floor = this.floors.get(floorId);
     if (!floor || !floor.isActive) {
@@ -33,7 +33,13 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
     const map = this.publishedMaps.get(floorId);
     if (!map) return null;
 
-    return clonePublishedFloorMap(map);
+    const cloned = clonePublishedFloorMap(map);
+    if (options?.audience === 'CUSTOMER' || options?.audience === 'KIOSK') {
+      cloned.elements = cloned.elements.filter(
+        (el) => el.elementRole !== 'WORKSPACE' || el.workspace?.operationalStatus !== 'INACTIVE'
+      );
+    }
+    return cloned;
   }
 }
 

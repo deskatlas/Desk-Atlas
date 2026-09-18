@@ -66,9 +66,12 @@ export class StaffDashboardService {
       subText: "vs yesterday",
     };
 
-    // 2. Metric: Currently Checked In
+    // 2. Metric: Currently Checked In (auto-excludes ended bookings)
     const currentlyCheckedInCount = reservations.filter(
-      (r) => r.checkedInAt !== null && r.checkedOutAt === null
+      (r) =>
+        r.checkedInAt !== null &&
+        r.checkedOutAt === null &&
+        (!r.bookingEndAt || isNaN(new Date(r.bookingEndAt).getTime()) || new Date(r.bookingEndAt).getTime() > now.getTime())
     ).length;
     const totalCapacity = catalog.instances.length;
     const capacityPct = totalCapacity > 0 ? Math.round((currentlyCheckedInCount / totalCapacity) * 100) : 0;
@@ -274,8 +277,12 @@ function buildWorkspaceOverview(
     (inst) => inst.operationalStatus === "MAINTENANCE" || inst.operationalStatus === "INACTIVE"
   ).length;
 
+  const nowMs = new Date(nowIso).getTime();
   const inUseCount = reservations.filter(
-    (r) => r.checkedInAt !== null && r.checkedOutAt === null
+    (r) =>
+      r.checkedInAt !== null &&
+      r.checkedOutAt === null &&
+      (!r.bookingEndAt || isNaN(new Date(r.bookingEndAt).getTime()) || new Date(r.bookingEndAt).getTime() > nowMs)
   ).length;
 
   const reservedCount = occupancyList.filter(

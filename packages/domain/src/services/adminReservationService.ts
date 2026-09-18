@@ -14,6 +14,13 @@ import {
   RescheduleReservationInput,
   CheckRescheduleAvailabilityInput,
   RescheduleAvailabilityResult,
+  RelocateReservationInput,
+  AvailableRelocationSpot,
+  ListAvailableRelocationSpotsInput,
+  ExtendReservationInput,
+  CheckExtendAvailabilityInput,
+  ExtendAvailabilityResult,
+  ExtendReservationResult,
 } from "./adminReservationRepository";
 import { filterReservationsBySearch } from "./reservationSearch";
 import {
@@ -397,6 +404,126 @@ export class AdminReservationService {
       return { available: true };
     }
     return this.repository.checkRescheduleAvailability(input);
+  }
+
+  async listAvailableRelocationSpots(
+    reservationId: string
+  ): Promise<AvailableRelocationSpot[]> {
+    if (!reservationId || reservationId.trim() === "") {
+      return [];
+    }
+    if (!this.repository.listAvailableRelocationSpots) {
+      return [];
+    }
+    return this.repository.listAvailableRelocationSpots({ reservationId: reservationId.trim() });
+  }
+
+  async relocateReservation(input: RelocateReservationInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+    previousSpotName?: string;
+    newSpotName?: string;
+    oldWorkspaceDisplayName?: string;
+    newWorkspaceDisplayName?: string;
+  }> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (!input.targetWorkspaceInstanceId || input.targetWorkspaceInstanceId.trim() === "") {
+      throw new AdminReservationError("Target workspace instance ID is required.");
+    }
+    if (!input.reason || input.reason.trim() === "") {
+      throw new AdminReservationError("Relocation reason is required.");
+    }
+    if (!this.repository.relocateReservation) {
+      throw new AdminReservationError("Relocation is not supported by the repository.");
+    }
+
+    const result = await this.repository.relocateReservation({
+      reservationId: input.reservationId.trim(),
+      targetWorkspaceInstanceId: input.targetWorkspaceInstanceId.trim(),
+      reason: input.reason.trim(),
+      notes: input.notes?.trim(),
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole ?? "ADMIN",
+    });
+
+    const previousSpotName = result.previousSpotName || result.oldWorkspaceDisplayName || "Previous Spot";
+    const newSpotName = result.newSpotName || result.newWorkspaceDisplayName || "New Spot";
+
+    if (result.reservation && result.reservation.customerEmail) {
+      try {
+        const trackingUrl = buildReservationTrackingUrl(
+          process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
+          result.reservation.referenceCode
+        );
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates[0];
+        await this.emailService.sendReservationRelocatedEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          schedule: result.reservation.schedule,
+          oldWorkspaceDisplayName: previousSpotName,
+          newWorkspaceDisplayName: newSpotName || assigned?.workspaceDisplayName || "New Spot",
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          floorName: assigned?.floorName || undefined,
+          relocationReason: input.reason.trim(),
+          relocationNotes: input.notes?.trim(),
+          bookingAccessUrl: result.reservation.bookingAccessUrl || undefined,
+          bookingToken: result.reservation.bookingToken || undefined,
+          trackingUrl,
+        });
+      } catch (emailErr: any) {
+        console.warn("[AdminReservationService] Failed to send relocated email:", emailErr?.message);
+      }
+    }
+
+    return {
+      ...result,
+      previousSpotName,
+      newSpotName,
+    };
+  }
+
+  async checkExtendAvailability(
+    input: CheckExtendAvailabilityInput
+  ): Promise<ExtendAvailabilityResult> {
+    if (!this.repository.checkExtendAvailability) {
+      return {
+        canExtend: false,
+        reservationId: input.reservationId,
+        referenceCode: input.reservationId,
+        currentEndAt: this.nowProvider().toISOString(),
+        maxExtensionMinutes: 0,
+        hourlyRate: 0,
+        additionalFee: 0,
+        reason: "Extension availability check is not supported by repository",
+      };
+    }
+    return this.repository.checkExtendAvailability(input);
+  }
+
+  async extendReservation(input: ExtendReservationInput): Promise<ExtendReservationResult> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (!input.extensionMinutes || input.extensionMinutes <= 0) {
+      throw new AdminReservationError("Extension duration in minutes must be greater than 0.");
+    }
+    if (!this.repository.extendReservation) {
+      throw new AdminReservationError("Extension is not supported by repository.");
+    }
+
+    return this.repository.extendReservation({
+      reservationId: input.reservationId.trim(),
+      extensionMinutes: input.extensionMinutes,
+      additionalFee: input.additionalFee,
+      paymentMethod: input.paymentMethod,
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole ?? "ADMIN",
+    });
   }
 }
 

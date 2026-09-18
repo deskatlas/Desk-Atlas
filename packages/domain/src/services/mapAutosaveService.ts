@@ -28,6 +28,9 @@ export function normalizeMapElementForSnapshot(element: Record<string, any>): Re
     elementRole: element.elementRole ? String(element.elementRole) : 'STRUCTURE',
     elementType: element.elementType ? String(element.elementType) : 'generic',
     color: element.color ? String(element.color).toLowerCase() : null,
+    recommendationTags: Array.isArray(element.recommendationTags)
+      ? [...element.recommendationTags].filter(Boolean).map((t) => String(t).trim()).sort()
+      : [],
   };
 }
 

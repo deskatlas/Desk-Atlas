@@ -119,13 +119,14 @@ describe("MF-110: Staff Dashboard Reservations Status Filter Tags Parity", () =>
     },
   ];
 
-  it("exports the required 5 status filter options in expected order", () => {
+  it("exports the required 6 status filter options in expected order", () => {
     expect(STAFF_RESERVATION_FILTERS).toEqual([
       { label: "Active", filter: "active" },
       { label: "All", filter: "all" },
       { label: "Checked In", filter: "checked_in" },
       { label: "Upcoming", filter: "upcoming" },
       { label: "Confirmed", filter: "confirmed" },
+      { label: "Counter Queue", filter: "counter_queue" },
     ]);
   });
 
@@ -162,6 +163,12 @@ describe("MF-110: Staff Dashboard Reservations Status Filter Tags Parity", () =>
     const result = filterStaffReservationsByStatus(sampleReservations, "confirmed", fixedNow);
     // res-2 and res-3 are CONFIRMED
     expect(result.map((r) => r.reservationId)).toEqual(["res-2", "res-3"]);
+  });
+
+  it("filters by 'Counter Queue' to return reservations pending counter confirmation", () => {
+    const result = filterStaffReservationsByStatus(sampleReservations, "counter_queue", fixedNow);
+    expect(result.map((r) => r.reservationId)).toEqual(["res-5"]);
+    expect(result[0].customerFirstName).toBe("Evan");
   });
 
   it("combines status filtering with search queries accurately", () => {
