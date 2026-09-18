@@ -950,11 +950,12 @@ export default function KioskReservePage() {
                             const isWorkspace = el.elementRole === "WORKSPACE" || Boolean(el.workspace);
                             const isWall =
                               !isWorkspace &&
-                              (el.elementRole === "STRUCTURE" ||
-                                el.elementType?.toLowerCase().includes("wall") ||
+                              (el.elementType?.toLowerCase().includes("wall") ||
                                 el.elementType?.toLowerCase().includes("thin_wall") ||
                                 el.elementType?.toLowerCase().includes("glass") ||
-                                el.elementType?.toLowerCase().includes("separator"));
+                                el.elementType?.toLowerCase().includes("separator") ||
+                                el.label?.toLowerCase().includes("wall") ||
+                                el.label?.toLowerCase().includes("separator"));
 
                             const isRestroom =
                               el.elementType?.toLowerCase().includes("restroom") ||
@@ -1205,6 +1206,16 @@ export default function KioskReservePage() {
                               );
                             }
 
+                            const borderStyle = el.style?.borderStyle || (el.style as any)?.borderStyle || (el as any).properties?.borderStyle;
+                            let structureBorder = "1px solid rgba(0, 0, 0, 0.15)";
+                            if (borderStyle === "dashed") {
+                              structureBorder = "1.5px dashed var(--da-border, #CBD5E1)";
+                            } else if (borderStyle === "none") {
+                              structureBorder = "none";
+                            } else if (el.elementType?.toLowerCase().includes("door")) {
+                              structureBorder = "2px dashed var(--da-brand-dark, #0C3B27)";
+                            }
+
                             return (
                               <div
                                 key={el.id}
@@ -1217,8 +1228,8 @@ export default function KioskReservePage() {
                                   transform: `rotate(${el.rotation || 0}deg)`,
                                   zIndex: el.zIndex || 1,
                                   backgroundColor: bg,
-                                  borderRadius: "6px",
-                                  border: "1px solid rgba(0, 0, 0, 0.1)",
+                                  borderRadius: "8px",
+                                  border: structureBorder,
                                   pointerEvents: "none",
                                   display: "flex",
                                   alignItems: "center",
