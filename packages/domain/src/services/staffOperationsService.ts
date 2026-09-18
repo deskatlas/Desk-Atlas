@@ -30,13 +30,15 @@ export class StaffOperationsService {
   ) {}
 
   async listOperationalReservations(search?: string): Promise<StaffOperationalReservation[]> {
+    const nowMs = this.nowProvider().getTime();
     const list = await this.staffOperationsRepository.listOperationalReservations(
       this.nowProvider().toISOString()
     );
+    const mapped = list.map((res) => applyStaffOperationalDerivation(res, nowMs));
     if (search && search.trim() !== "") {
-      return filterReservationsBySearch(list, search);
+      return filterReservationsBySearch(mapped, search);
     }
-    return list;
+    return mapped;
   }
 
   async getOperationalReservation(
@@ -46,9 +48,13 @@ export class StaffOperationsService {
       throw new StaffOperationsError("Reservation ID is required.");
     }
 
-    return this.staffOperationsRepository.getOperationalReservation(
+    const res = await this.staffOperationsRepository.getOperationalReservation(
       idOrReferenceCode.trim()
     );
+    if (!res) {
+      return null;
+    }
+    return applyStaffOperationalDerivation(res, this.nowProvider().getTime());
   }
 
   async listOccupancy(): Promise<OccupancyRecord[]> {
@@ -93,7 +99,41 @@ export class StaffOperationsService {
       actedAt: this.nowProvider().toISOString(),
     });
   }
+
+  async checkExtendAvailability(input: {
+    reservationId: string;
+    extensionMinutes?: number;
+  }) {
+    if (this.staffOperationsRepository.checkExtendAvailability) {
+      return this.staffOperationsRepository.checkExtendAvailability(input);
+    }
+    throw new StaffOperationsError("Extension check not supported");
+  }
+
+  async extendReservation(input: {
+    reservationId: string;
+    extensionMinutes: number;
+    additionalFee?: number;
+    paymentMethod?: string;
+    actorUserId?: string;
+    actorRole?: "ADMIN" | "STAFF";
+  }) {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new StaffOperationsError("Reservation ID is required.");
+    }
+    if (!input.extensionMinutes || input.extensionMinutes <= 0) {
+      throw new StaffOperationsError("Extension duration in minutes must be greater than 0.");
+    }
+    if (this.staffOperationsRepository.extendReservation) {
+      return this.staffOperationsRepository.extendReservation({
+        ...input,
+        actorRole: input.actorRole ?? "STAFF",
+      });
+    }
+    throw new StaffOperationsError("Extension not supported by repository");
+  }
 }
+
 
 function validateActor(request: ReservationOperationalActionRequest) {
   if (!request.reservationId || request.reservationId.trim() === "") {
@@ -115,6 +155,32 @@ function validateActor(request: ReservationOperationalActionRequest) {
     ...request.actor,
     role: normalizedRole as "ADMIN" | "STAFF",
   };
+}
+
+export function applyStaffOperationalDerivation(
+  res: StaffOperationalReservation,
+  nowMs: number
+): StaffOperationalReservation {
+  const endMs = res.bookingEndAt ? new Date(res.bookingEndAt).getTime() : NaN;
+  const isTimeEnded = !isNaN(endMs) && endMs <= nowMs;
+
+  if (isTimeEnded && res.reservationStatus !== "CANCELLED") {
+    if (res.checkedInAt) {
+      return {
+        ...res,
+        reservationStatus: "COMPLETED",
+        checkInState: "CHECKED_OUT",
+        checkedOutAt: res.checkedOutAt ?? res.bookingEndAt ?? new Date(nowMs).toISOString(),
+      };
+    }
+    if (res.reservationStatus === "CONFIRMED") {
+      return {
+        ...res,
+        reservationStatus: "EXPIRED",
+      };
+    }
+  }
+  return res;
 }
 
 export function createStaffOperationsService(

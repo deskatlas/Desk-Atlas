@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useReservationDetail } from '../hooks/useReservations';
 import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '@/features/check-in';
+import { ExtendReservationModal } from './ExtendReservationModal';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 
@@ -12,6 +13,7 @@ export function ReservationDetail({ id }: { id: string }) {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [showEarlyModal, setShowEarlyModal] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
   const router = useRouter();
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
@@ -148,6 +150,16 @@ export function ReservationDetail({ id }: { id: string }) {
               </button>
             )}
 
+            {(reservation.reservationStatus === 'CONFIRMED' || reservation.checkInState === 'CHECKED_IN' || reservation.reservationStatus === 'CHECKED_IN') && (
+              <button
+                data-testid="extend-booking-button"
+                onClick={() => setShowExtendModal(true)}
+                style={{ padding: '10px 20px', background: '#fff', color: 'var(--da-brand-dark)', border: '1px solid var(--da-brand-dark)', borderRadius: '8px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', flex: 1 }}
+              >
+                Extend Time
+              </button>
+            )}
+
             {/* Display message if no actions available */}
             {(reservation.reservationStatus !== 'CONFIRMED' && reservation.reservationStatus !== 'PENDING_COUNTER_CONFIRMATION' && reservation.reservationStatus !== 'CHECKED_IN' && reservation.checkInState !== 'CHECKED_IN') && (
               <div style={{ fontSize: '14px', color: 'var(--da-text-secondary)', flex: 1, textAlign: 'center', padding: '8px 0' }}>
@@ -170,6 +182,29 @@ export function ReservationDetail({ id }: { id: string }) {
         bookingStartAt={reservation.bookingStartAt}
         bookingEndAt={reservation.bookingEndAt}
       />
+
+      <ExtendReservationModal
+        isOpen={showExtendModal}
+        onClose={() => setShowExtendModal(false)}
+        onSuccess={() => {
+          refetch();
+        }}
+        reservationId={reservation.reservationId || id}
+        referenceCode={reservation.referenceCode}
+        customerName={`${reservation.customerFirstName} ${reservation.customerLastName}`.trim()}
+        spotDisplayName={reservation.workspaceDisplayName || reservation.workspaceInstanceCode || 'Spot'}
+        templateName={reservation.workspaceTemplateName || undefined}
+        currentSchedule={
+          reservation.bookingStartAt && reservation.bookingEndAt
+            ? `${format(new Date(reservation.bookingStartAt), 'h:mm a')} – ${format(new Date(reservation.bookingEndAt), 'h:mm a')}`
+            : undefined
+        }
+        currentEndAt={reservation.bookingEndAt || undefined}
+        hourlyRate={150}
+        apiPrefix="/api/operations/reservations"
+        actorRole="STAFF"
+      />
     </main>
   );
+
 }

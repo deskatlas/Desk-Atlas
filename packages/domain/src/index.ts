@@ -1,4 +1,5 @@
 export type { AppRole, DeskAtlasUser } from './models/user';
+export * from './models/amenities';
 export * from './models/reservation';
 export * from './models/availability';
 export {
@@ -21,6 +22,8 @@ export type {
   TimeAvailabilityResult,
 } from './models/availability';
 export type {
+  CreateCustomStructureTemplateInput,
+  CustomStructureTemplate,
   FloorMap,
   MapElement,
   MapElementInput,
@@ -31,6 +34,7 @@ export type {
   MapVersionStatus,
   PublishMapDraftInput,
   SaveMapDraftInput,
+  UpdateCustomStructureTemplateInput,
   WorkspaceInstancePlacement,
 } from './models/map';
 export type {
@@ -92,6 +96,8 @@ export {
   MapConflictError,
   MapValidationError,
   createMapService,
+  normalizeCreateCustomStructureTemplateInput,
+  normalizeUpdateCustomStructureTemplateInput,
   sortMapElements,
   validateMapForPublish,
 } from './services/mapService';
@@ -101,7 +107,10 @@ export {
   PublishedMapNotFoundError,
   createPublishedMapService,
 } from './services/publishedMapService';
-export { SupabasePublishedMapRepository } from './services/publishedMapSupabaseRepository';
+export {
+  SupabasePublishedMapRepository,
+  mapPublishedElement,
+} from './services/publishedMapSupabaseRepository';
 export { InMemoryAvailabilityRepository } from './services/availabilityMemoryRepository';
 export {
   AvailabilityValidationError,

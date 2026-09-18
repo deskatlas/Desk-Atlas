@@ -322,6 +322,127 @@ describe("MF-65: Workspace Operational Status & Audit Log Fixes", () => {
       assert.equal(auditBody.actor_role, "STAFF");
       assert.notEqual(auditBody.actor_user_id, "STAFF_OPERATOR");
     });
+
+    it("resolves role ADMIN when staff_profile has role ADMIN, avoiding audit_actor constraint violation", async () => {
+      const validAdminUuid = "33333333-4444-5555-6666-777777777777";
+      const recordedRequests: Array<{ url: string; options: RequestInit }> = [];
+
+      global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        const urlStr = String(url);
+        recordedRequests.push({ url: urlStr, options: init || {} });
+
+        if (urlStr.includes("/staff_profiles")) {
+          return new Response(JSON.stringify([{ user_id: validAdminUuid, role: "ADMIN" }]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        if (urlStr.includes("/workspace_instances?id=eq.inst-1") && (!init?.method || init?.method === "GET")) {
+          return new Response(
+            JSON.stringify([
+              {
+                id: "inst-1",
+                template_id: "tpl-1",
+                floor_id: "flr-1",
+                instance_code: "D-01",
+                display_name: "Desk 01",
+                operational_status: "ACTIVE",
+                template: {
+                  id: "tpl-1",
+                  name: "Standard Desk",
+                  capacity: 1,
+                  rate_amount: 50,
+                  pricing_unit: "HOURLY",
+                  default_shape: "rectangle",
+                  default_color: "#333",
+                  default_style: {},
+                  is_active: true,
+                },
+                floor: {
+                  id: "flr-1",
+                  name: "Floor 1",
+                  floor_number: 1,
+                  display_order: 1,
+                  is_active: true,
+                },
+              },
+            ]),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        }
+
+        if (urlStr.includes("/workspace_instances?id=eq.inst-1") && init?.method === "PATCH") {
+          return new Response(
+            JSON.stringify([
+              {
+                id: "inst-1",
+                template_id: "tpl-1",
+                floor_id: "flr-1",
+                instance_code: "D-01",
+                display_name: "Desk 01",
+                operational_status: "MAINTENANCE",
+                template: {
+                  id: "tpl-1",
+                  name: "Standard Desk",
+                  capacity: 1,
+                  rate_amount: 50,
+                  pricing_unit: "HOURLY",
+                  default_shape: "rectangle",
+                  default_color: "#333",
+                  default_style: {},
+                  is_active: true,
+                },
+                floor: {
+                  id: "flr-1",
+                  name: "Floor 1",
+                  floor_number: 1,
+                  display_order: 1,
+                  is_active: true,
+                },
+              },
+            ]),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        }
+
+        if (urlStr.includes("/reservation_candidates")) {
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        if (urlStr.includes("/audit_logs")) {
+          return new Response("", {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response("Not found", { status: 404 });
+      }) as typeof fetch;
+
+      const req = new Request("http://localhost/api/operations/workspaces/instances/inst-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationalStatus: "MAINTENANCE" }),
+      });
+
+      const res = await staffPatchInstance(req, {
+        params: Promise.resolve({ instanceId: "inst-1" }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.instance.operationalStatus, "MAINTENANCE");
+
+      const auditRequest = recordedRequests.find((r) => r.url.includes("/audit_logs"));
+      assert.ok(auditRequest, "Audit log request should be made");
+      const auditBody = JSON.parse(auditRequest.options.body as string);
+      assert.equal(auditBody.actor_user_id, validAdminUuid);
+      assert.equal(auditBody.actor_role, "ADMIN");
+    });
   });
 
   describe("Admin Portal instance PATCH route", () => {

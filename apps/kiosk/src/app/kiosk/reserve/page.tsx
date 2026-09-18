@@ -27,7 +27,7 @@ import {
   getWorkspacePhotoObjectPosition,
 } from "../../features/reservation/SpotDetailModal";
 import { fetchTemplateAvailability, fetchOccupiedInstances, fetchNextUpcomingBooking } from "../../lib/availabilityApi";
-import { handleNumericKeyDown } from "@deskatlas/ui";
+import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock } from "@deskatlas/ui";
 
 export interface WorkspaceTemplateSummary {
   id: string;
@@ -110,6 +110,17 @@ function getContrastColor(hexColor?: string): string {
   const b = parseInt(hexColor.slice(5, 7), 16);
   const yiq = (r * 299 + g * 587 + b * 114) / 1000;
   return yiq >= 150 ? "#111827" : "#ffffff";
+}
+
+function formatStructureLabel(raw?: string | null): string {
+  if (!raw || !raw.trim()) return "Structure";
+  const cleaned = raw.replace(/[_-]+/g, " ").trim();
+  if (!cleaned) return "Structure";
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function formatTime12Hour(time24: string): string {
@@ -321,6 +332,7 @@ export default function KioskReservePage() {
   const [referenceCode, setReferenceCode] = useState<string | null>(null);
 
   // Map & Catalog states
+  const currentTick = useLiveCountdownClock(1000);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [floorId, setFloorId] = useState<string>("");
   const [published, setPublished] = useState<PublishedFloorMap | null>(null);
@@ -328,6 +340,7 @@ export default function KioskReservePage() {
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
   const [occupiedInstanceIds, setOccupiedInstanceIds] = useState<Set<string>>(new Set());
+  const [occupiedDetailsMap, setOccupiedDetailsMap] = useState<Map<string, string | null>>(new Map());
 
   // Real-time instances for category flow
   const [categoryInstances, setCategoryInstances] = useState<AvailableInstanceSummary[]>([]);
@@ -348,6 +361,13 @@ export default function KioskReservePage() {
       });
       if (res?.occupiedInstanceIds) {
         setOccupiedInstanceIds(new Set(res.occupiedInstanceIds));
+      }
+      if (res?.occupiedDetails) {
+        const detailMap = new Map<string, string | null>();
+        for (const d of res.occupiedDetails) {
+          detailMap.set(d.workspaceInstanceId, d.bookingEndAt);
+        }
+        setOccupiedDetailsMap(detailMap);
       }
     } catch {
       // Keep existing occupied list on fetch error
@@ -1040,7 +1060,7 @@ export default function KioskReservePage() {
                               el.workspace?.displayName ||
                               el.label ||
                               el.workspace?.templateName ||
-                              el.elementType;
+                              formatStructureLabel(el.elementType);
                             const itemColor =
                               el.style?.color ||
                               (el.style as any)?.fillColor ||
@@ -1128,9 +1148,11 @@ export default function KioskReservePage() {
                                       {displayName}
                                     </span>
                                     {isOccupied && (
-                                      <span className="text-[9px] font-extrabold uppercase tracking-tight text-slate-500 mt-0.5">
-                                        Occupied
-                                      </span>
+                                      <WorkspaceCountdownBadge
+                                        bookingEndAt={occupiedDetailsMap.get(el.workspace?.workspaceInstanceId || "")}
+                                        nowMs={currentTick}
+                                        style={{ marginTop: '2px' }}
+                                      />
                                     )}
                                   </button>
                                 </div>
@@ -1152,8 +1174,31 @@ export default function KioskReservePage() {
                                     backgroundColor: bg,
                                     borderRadius: "2px",
                                     pointerEvents: "none",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    overflow: "hidden",
+                                    color: textColor,
+                                    boxSizing: "border-box",
                                   }}
-                                />
+                                >
+                                  <span
+                                    style={{
+                                      maxWidth: "100%",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      fontSize: el.height <= 20 ? "9px" : "11px",
+                                      fontWeight: el.height <= 20 ? 800 : 700,
+                                      letterSpacing: el.height <= 20 ? "0.05em" : "normal",
+                                      textTransform: el.height <= 20 ? "uppercase" : "none",
+                                      padding: "0 4px",
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    {displayName}
+                                  </span>
+                                </div>
                               );
                             }
 
@@ -1190,7 +1235,47 @@ export default function KioskReservePage() {
                               );
                             }
 
-                            return null;
+                            return (
+                              <div
+                                key={el.id}
+                                style={{
+                                  position: "absolute",
+                                  left: el.x,
+                                  top: el.y,
+                                  width: el.width,
+                                  height: el.height,
+                                  transform: `rotate(${el.rotation || 0}deg)`,
+                                  zIndex: el.zIndex || 1,
+                                  backgroundColor: bg,
+                                  borderRadius: "6px",
+                                  border: "1px solid rgba(0, 0, 0, 0.1)",
+                                  pointerEvents: "none",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  overflow: "hidden",
+                                  color: textColor,
+                                  boxSizing: "border-box",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    maxWidth: "100%",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    fontSize: el.height <= 20 ? "9px" : "11px",
+                                    fontWeight: el.height <= 20 ? 800 : 700,
+                                    letterSpacing: el.height <= 20 ? "0.05em" : "normal",
+                                    textTransform: el.height <= 20 ? "uppercase" : "none",
+                                    padding: "0 4px",
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  {displayName}
+                                </span>
+                              </div>
+                            );
                           })}
                         </div>
                       </div>

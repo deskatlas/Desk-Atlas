@@ -4,8 +4,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import type { AdminReservationDetail as AdminReservationDetailType } from '@deskatlas/domain';
-import { formatTimelineDate, formatSchedule, zonedDateTimeToUtc } from '@deskatlas/domain';
 import { ProofImageViewer } from '../../payments/components/ProofImageViewer';
+import { ExtendReservationModal } from './ExtendReservationModal';
 
 export function canViewBookingQr(detail: AdminReservationDetailType | null): boolean {
   if (!detail) return false;
@@ -77,6 +77,14 @@ const CANCELLATION_REASONS = [
   "Other",
 ];
 
+const RELOCATION_REASONS = [
+  "Spot Maintenance / Repairs",
+  "Spot Inactive / Out of Order",
+  "Facility Issue",
+  "Customer Request / Operational Adjustment",
+  "Other",
+];
+
 const TIME_OPTIONS = [
   "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
   "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
@@ -109,6 +117,16 @@ export function ReservationDetail({ id }: { id: string }) {
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
+  // Relocation modal states
+  const [showRelocateModal, setShowRelocateModal] = useState<boolean>(false);
+  const [relocationSpots, setRelocationSpots] = useState<any[]>([]);
+  const [selectedRelocationSpotId, setSelectedRelocationSpotId] = useState<string>("");
+  const [relocationReason, setRelocationReason] = useState<string>("Spot Maintenance / Repairs");
+  const [relocationNotes, setRelocationNotes] = useState<string>("");
+  const [isRelocating, setIsRelocating] = useState<boolean>(false);
+  const [isLoadingRelocationSpots, setIsLoadingRelocationSpots] = useState<boolean>(false);
+  const [relocateError, setRelocateError] = useState<string | null>(null);
+
   // Reschedule modal states
   const [showRescheduleModal, setShowRescheduleModal] = useState<boolean>(false);
   const [catalogInstances, setCatalogInstances] = useState<any[]>([]);
@@ -131,6 +149,7 @@ export function ReservationDetail({ id }: { id: string }) {
   } | null>(null);
   const [isRescheduling, setIsRescheduling] = useState<boolean>(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+  const [showExtendModal, setShowExtendModal] = useState<boolean>(false);
 
   // Payment proof inspection modal states
   const [viewingProofAttemptId, setViewingProofAttemptId] = useState<string | null>(null);
@@ -336,6 +355,88 @@ export function ReservationDetail({ id }: { id: string }) {
     };
   }, [showRescheduleModal, rescheduleDate, rescheduleStartTime, rescheduleDuration, selectedSpotId, id, effectiveCandidate]);
 
+  // Load available relocation spots when relocate modal opens
+  useEffect(() => {
+    if (showRelocateModal && id) {
+      let isCancelled = false;
+      setIsLoadingRelocationSpots(true);
+      setRelocateError(null);
+      fetch(`/api/admin/reservations/${encodeURIComponent(id)}/available-relocation-spots`, { cache: 'no-store' })
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to load available spots');
+          return res.json();
+        })
+        .then((data) => {
+          if (!isCancelled) {
+            const spots = data.spots || [];
+            setRelocationSpots(spots);
+            if (spots.length > 0) {
+              setSelectedRelocationSpotId(spots[0].id);
+            } else {
+              setSelectedRelocationSpotId("");
+            }
+          }
+        })
+        .catch((err) => {
+          if (!isCancelled) {
+            setRelocateError(err.message || 'Failed to load available relocation spots');
+          }
+        })
+        .finally(() => {
+          if (!isCancelled) {
+            setIsLoadingRelocationSpots(false);
+          }
+        });
+
+      return () => {
+        isCancelled = true;
+      };
+    }
+  }, [showRelocateModal, id]);
+
+  const handleConfirmRelocation = async () => {
+    if (!selectedRelocationSpotId) {
+      setRelocateError("Please select an available target spot.");
+      return;
+    }
+    if (!relocationReason) {
+      setRelocateError("Please select a relocation reason.");
+      return;
+    }
+
+    setIsRelocating(true);
+    setRelocateError(null);
+    try {
+      const response = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/relocate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetWorkspaceInstanceId: selectedRelocationSpotId,
+          reason: relocationReason,
+          notes: relocationNotes || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to relocate reservation");
+      }
+
+      if (data.reservation) {
+        setDetail(data.reservation);
+      } else {
+        await fetchDetail();
+      }
+
+      setShowRelocateModal(false);
+      setToastMessage({ text: "Reservation relocated successfully.", type: "success" });
+    } catch (err: any) {
+      setRelocateError(err?.message || "Failed to relocate reservation");
+    } finally {
+      setIsRelocating(false);
+    }
+  };
+
   const handleConfirmCancellation = async () => {
     if (!cancelReason) {
       setCancelError("Please select a cancellation reason.");
@@ -479,6 +580,12 @@ export function ReservationDetail({ id }: { id: string }) {
   }> = [];
 
   if (isConfirmed) {
+    detailActions.push({
+      label: 'Relocate Spot',
+      style: { background: 'transparent', color: '#0D9488', border: '1px solid #99F6E4' },
+      onClick: () => setShowRelocateModal(true),
+      testId: 'relocate-booking-button',
+    });
     detailActions.push({
       label: 'Reschedule',
       style: { background: 'transparent', color: 'var(--da-text-primary)', border: '1px solid var(--da-border)' },
@@ -666,13 +773,14 @@ export function ReservationDetail({ id }: { id: string }) {
             const isReentry = t.toLowerCase().includes("re-entered") || t.toLowerCase().includes("re-entry") || t.toLowerCase().includes("re-check-in");
             const isCancel = t.toLowerCase().includes("cancelled");
             const isReschedule = t.toLowerCase().includes("rescheduled");
+            const isRelocate = t.toLowerCase().includes("relocated");
             return (
               <div
                 key={i}
                 style={{
                   fontSize: '12px',
-                  color: isCancel ? 'var(--da-danger)' : isReschedule ? '#0369A1' : isReentry ? '#0369A1' : 'var(--da-text-primary)',
-                  fontWeight: isCancel || isReschedule || isReentry ? 600 : 400,
+                  color: isCancel ? 'var(--da-danger)' : isReschedule ? '#0369A1' : isRelocate ? '#0D9488' : isReentry ? '#0369A1' : 'var(--da-text-primary)',
+                  fontWeight: isCancel || isReschedule || isRelocate || isReentry ? 600 : 400,
                   fontFamily: 'var(--da-font-family)',
                   padding: '6px 0',
                   borderTop: i === 0 ? 'none' : '1px solid var(--da-border-light)',
@@ -684,12 +792,246 @@ export function ReservationDetail({ id }: { id: string }) {
                 {isReentry && <span aria-hidden="true" style={{ fontSize: '11px', color: '#0284C7', fontWeight: 800 }}>↺</span>}
                 {isCancel && <span aria-hidden="true" style={{ fontSize: '11px', color: 'var(--da-danger)', fontWeight: 800 }}>✕</span>}
                 {isReschedule && <span aria-hidden="true" style={{ fontSize: '11px', color: '#0284C7', fontWeight: 800 }}>📅</span>}
+                {isRelocate && <span aria-hidden="true" style={{ fontSize: '11px', color: '#0D9488', fontWeight: 800 }}>🔀</span>}
                 <span>{t}</span>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Relocate Spot Modal */}
+      {showRelocateModal && (
+        <div
+          data-modal="relocate-booking-modal"
+          data-testid="relocate-booking-modal"
+          onClick={() => !isRelocating && setShowRelocateModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '16px',
+              maxWidth: '520px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+              border: '1px solid var(--da-border)',
+              boxSizing: 'border-box',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+                  Relocate Spot
+                </h2>
+                <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', margin: 0 }}>
+                  Relocate reservation <strong>#{detail.referenceCode}</strong> to an available spot (same template &amp; preserved schedule).
+                </p>
+              </div>
+              <button
+                data-testid="close-relocate-modal-x-button"
+                onClick={() => !isRelocating && setShowRelocateModal(false)}
+                aria-label="Close modal"
+                disabled={isRelocating}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: 'var(--da-text-secondary)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {relocateError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>
+                {relocateError}
+              </div>
+            )}
+
+            <div style={{ background: '#F8FAFC', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--da-text-secondary)' }}>Customer:</span>
+                <span style={{ fontWeight: 700 }}>{detail.customerName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--da-text-secondary)' }}>Current Spot:</span>
+                <span style={{ fontWeight: 700 }}>{allocatedSpotName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--da-text-secondary)' }}>Workspace Template:</span>
+                <span style={{ fontWeight: 700 }}>{detail.assignedCandidate?.workspaceTemplateName || "Standard"}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--da-text-secondary)' }}>Preserved Schedule:</span>
+                <span style={{ fontWeight: 700 }}>{detail.schedule} ({detail.duration})</span>
+              </div>
+            </div>
+
+            {isLoadingRelocationSpots ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px' }}>
+                Checking available sibling spots for this time slot...
+              </div>
+            ) : relocationSpots.length === 0 ? (
+              <div
+                data-testid="no-relocation-spots-alert"
+                style={{
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                  fontSize: '12px',
+                  color: '#991B1B',
+                  lineHeight: 1.4,
+                }}
+              >
+                ⚠️ <strong>No available spots of the same template for this time slot.</strong> All sibling spots have overlapping bookings or are under maintenance. Please reschedule or contact the customer.
+              </div>
+            ) : (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                  Target Available Spot *
+                </label>
+                <select
+                  data-testid="relocate-spot-select"
+                  value={selectedRelocationSpotId}
+                  onChange={(e) => setSelectedRelocationSpotId(e.target.value)}
+                  disabled={isRelocating}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--da-border)',
+                    fontSize: '13px',
+                    color: 'var(--da-text-primary)',
+                    backgroundColor: '#fff',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                >
+                  {relocationSpots.map((spot) => (
+                    <option key={spot.id} value={spot.id}>
+                      {spot.displayName || spot.instanceCode} {spot.floorName ? `· ${spot.floorName}` : ''} (Available)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                Relocation Reason *
+              </label>
+              <select
+                data-testid="relocation-reason-select"
+                value={relocationReason}
+                onChange={(e) => setRelocationReason(e.target.value)}
+                disabled={isRelocating}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border)',
+                  fontSize: '13px',
+                  color: 'var(--da-text-primary)',
+                  backgroundColor: '#fff',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                }}
+              >
+                {RELOCATION_REASONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                Additional Notes (Optional)
+              </label>
+              <textarea
+                data-testid="relocation-notes-input"
+                value={relocationNotes}
+                onChange={(e) => setRelocationNotes(e.target.value)}
+                placeholder="Add any context regarding the spot issue or customer notification..."
+                disabled={isRelocating}
+                rows={2}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border)',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                  fontFamily: 'var(--da-font-family)',
+                  outline: 'none',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                data-testid="relocate-modal-cancel-button"
+                onClick={() => setShowRelocateModal(false)}
+                disabled={isRelocating}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  color: 'var(--da-text-primary)',
+                  border: '1px solid var(--da-border)',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="confirm-relocate-button"
+                onClick={handleConfirmRelocation}
+                disabled={isRelocating || isLoadingRelocationSpots || relocationSpots.length === 0 || !selectedRelocationSpotId}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: (isRelocating || isLoadingRelocationSpots || relocationSpots.length === 0 || !selectedRelocationSpotId) ? 'not-allowed' : 'pointer',
+                  background: '#0D9488',
+                  color: '#fff',
+                  border: 'none',
+                  fontFamily: 'var(--da-font-family)',
+                  opacity: (isRelocating || isLoadingRelocationSpots || relocationSpots.length === 0 || !selectedRelocationSpotId) ? 0.6 : 1,
+                }}
+              >
+                {isRelocating ? 'Relocating...' : 'Confirm Relocation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cancel Confirmation Modal */}
       {showCancelModal && (
@@ -1431,6 +1773,32 @@ export function ReservationDetail({ id }: { id: string }) {
           </div>
         </div>
       )}
+
+      {detail && (
+        <ExtendReservationModal
+          isOpen={showExtendModal}
+          onClose={() => setShowExtendModal(false)}
+          onSuccess={() => {
+            fetchDetail();
+            setToastMessage({
+              type: 'success',
+              text: 'Reservation time extended successfully.',
+            });
+          }}
+          reservationId={detail.id}
+          referenceCode={detail.referenceCode}
+          customerName={detail.customerName}
+          spotDisplayName={detail.assignedCandidate?.workspaceDisplayName || detail.assignedCandidate?.workspaceInstanceCode || 'Spot'}
+          templateName={detail.assignedCandidate?.workspaceTemplateName || undefined}
+          currentSchedule={detail.schedule}
+          currentEndAt={detail.endAt || undefined}
+          hourlyRate={detail.rateSnapshot || 150}
+          apiPrefix="/api/admin/reservations"
+          actorRole="ADMIN"
+        />
+      )}
+      )}
     </main>
   );
 }
+

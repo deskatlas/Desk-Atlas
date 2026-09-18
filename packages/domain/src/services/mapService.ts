@@ -1,4 +1,6 @@
 import type {
+  CreateCustomStructureTemplateInput,
+  CustomStructureTemplate,
   FloorMap,
   MapElement,
   MapElementInput,
@@ -6,6 +8,7 @@ import type {
   MapRepository,
   PublishMapDraftInput,
   SaveMapDraftInput,
+  UpdateCustomStructureTemplateInput,
 } from '../models/map';
 import { computeRotatedAABB } from './mapGeometryService';
 
@@ -93,6 +96,44 @@ export function createMapService(repository: MapRepository) {
     async loadPublished(floorId?: string) {
       const floor = floorId ? await requireFloor(repository, floorId) : await repository.getDefaultFloor();
       return repository.loadPublished(floor.id);
+    },
+
+    async listCustomStructureTemplates(): Promise<CustomStructureTemplate[]> {
+      if (!repository.listCustomStructureTemplates) return [];
+      return repository.listCustomStructureTemplates();
+    },
+
+    async getCustomStructureTemplate(id: string): Promise<CustomStructureTemplate | null> {
+      if (!repository.getCustomStructureTemplate) return null;
+      return repository.getCustomStructureTemplate(id);
+    },
+
+    async createCustomStructureTemplate(
+      input: CreateCustomStructureTemplateInput
+    ): Promise<CustomStructureTemplate> {
+      if (!repository.createCustomStructureTemplate) {
+        throw new Error('Custom structure templates are not supported by this repository');
+      }
+      const normalized = normalizeCreateCustomStructureTemplateInput(input);
+      return repository.createCustomStructureTemplate(normalized);
+    },
+
+    async updateCustomStructureTemplate(
+      id: string,
+      input: UpdateCustomStructureTemplateInput
+    ): Promise<CustomStructureTemplate> {
+      if (!repository.updateCustomStructureTemplate) {
+        throw new Error('Custom structure templates are not supported by this repository');
+      }
+      const normalized = normalizeUpdateCustomStructureTemplateInput(input);
+      return repository.updateCustomStructureTemplate(id, normalized);
+    },
+
+    async deleteCustomStructureTemplate(id: string): Promise<void> {
+      if (!repository.deleteCustomStructureTemplate) {
+        throw new Error('Custom structure templates are not supported by this repository');
+      }
+      return repository.deleteCustomStructureTemplate(id);
     },
   };
 }
@@ -191,9 +232,6 @@ async function normalizeElements(
       }
       if (instance.floorId !== floorId) {
         throw new MapValidationError('Workspace instance must belong to the same floor as the map');
-      }
-      if (instance.operationalStatus === 'INACTIVE') {
-        throw new MapValidationError('Inactive workspace instances cannot be placed on a published map');
       }
     } else if (element.workspaceInstanceId) {
       throw new MapValidationError('Only bookable workspace elements can link to a workspace instance');
@@ -369,3 +407,75 @@ function requirePlainObject(value: Record<string, unknown>): Record<string, unkn
 export function sortMapElements(elements: MapElement[]): MapElement[] {
   return [...elements].sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id));
 }
+
+export function normalizeCreateCustomStructureTemplateInput(
+  input: CreateCustomStructureTemplateInput
+): CreateCustomStructureTemplateInput {
+  const name = requireNonBlank(input.name, 'Custom structure template name');
+  const defaultWidth = normalizeSize(input.defaultWidth ?? 120, 20, 2000, 'Default width');
+  const defaultHeight = normalizeSize(input.defaultHeight ?? 60, 20, 2000, 'Default height');
+  const defaultColor = requireNonBlank(input.defaultColor ?? '#CBD5E1', 'Default color');
+  const borderStyle = normalizeBorderStyle(input.borderStyle);
+  const category = (input.category && input.category.trim()) || 'ARCHITECTURAL';
+
+  return {
+    name,
+    description: normalizeNullableText(input.description),
+    defaultWidth,
+    defaultHeight,
+    defaultColor,
+    borderStyle,
+    category,
+    isActive: input.isActive ?? true,
+  };
+}
+
+export function normalizeUpdateCustomStructureTemplateInput(
+  input: UpdateCustomStructureTemplateInput
+): UpdateCustomStructureTemplateInput {
+  const normalized: UpdateCustomStructureTemplateInput = {};
+
+  if (input.name !== undefined) {
+    normalized.name = requireNonBlank(input.name, 'Custom structure template name');
+  }
+  if (input.description !== undefined) {
+    normalized.description = normalizeNullableText(input.description);
+  }
+  if (input.defaultWidth !== undefined) {
+    normalized.defaultWidth = normalizeSize(input.defaultWidth, 20, 2000, 'Default width');
+  }
+  if (input.defaultHeight !== undefined) {
+    normalized.defaultHeight = normalizeSize(input.defaultHeight, 20, 2000, 'Default height');
+  }
+  if (input.defaultColor !== undefined) {
+    normalized.defaultColor = requireNonBlank(input.defaultColor, 'Default color');
+  }
+  if (input.borderStyle !== undefined) {
+    normalized.borderStyle = normalizeBorderStyle(input.borderStyle);
+  }
+  if (input.category !== undefined) {
+    normalized.category = (input.category && input.category.trim()) || 'ARCHITECTURAL';
+  }
+  if (input.isActive !== undefined) {
+    normalized.isActive = Boolean(input.isActive);
+  }
+
+  return normalized;
+}
+
+function normalizeBorderStyle(value?: string | null): 'solid' | 'dashed' | 'none' {
+  if (!value) return 'solid';
+  const norm = value.toLowerCase().trim();
+  if (norm === 'dashed') return 'dashed';
+  if (norm === 'none') return 'none';
+  return 'solid';
+}
+
+function normalizeSize(value: number, min: number, max: number, label: string): number {
+  const num = requirePositiveNumber(value, label);
+  if (num < min || num > max) {
+    throw new MapValidationError(`${label} must be between ${min} and ${max}`);
+  }
+  return Math.round(num);
+}
+

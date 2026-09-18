@@ -1,5 +1,7 @@
 import type { Floor } from '../models/workspace';
 import type {
+  CreateCustomStructureTemplateInput,
+  CustomStructureTemplate,
   FloorMap,
   MapElement,
   MapElementInput,
@@ -8,6 +10,7 @@ import type {
   MapVersion,
   PublishMapDraftInput,
   SaveMapDraftInput,
+  UpdateCustomStructureTemplateInput,
   WorkspaceInstancePlacement,
 } from '../models/map';
 
@@ -16,9 +19,14 @@ export class InMemoryMapRepository implements MapRepository {
   private workspaceInstances = new Map<string, WorkspaceInstancePlacement>();
   private versions = new Map<string, MapVersion>();
   private elements = new Map<string, MapElement[]>();
+  private customStructureTemplates = new Map<string, CustomStructureTemplate>();
   private sequence = 1;
 
-  constructor(input?: { floors?: Floor[]; workspaceInstances?: WorkspaceInstancePlacement[] }) {
+  constructor(input?: {
+    floors?: Floor[];
+    workspaceInstances?: WorkspaceInstancePlacement[];
+    customStructureTemplates?: CustomStructureTemplate[];
+  }) {
     const defaultFloor: Floor = {
       id: 'floor-default',
       name: 'Main Floor',
@@ -33,6 +41,10 @@ export class InMemoryMapRepository implements MapRepository {
 
     for (const instance of input?.workspaceInstances ?? []) {
       this.workspaceInstances.set(instance.id, instance);
+    }
+
+    for (const template of input?.customStructureTemplates ?? []) {
+      this.customStructureTemplates.set(template.id, { ...template });
     }
   }
 
@@ -179,6 +191,71 @@ export class InMemoryMapRepository implements MapRepository {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  async listCustomStructureTemplates(): Promise<CustomStructureTemplate[]> {
+    return Array.from(this.customStructureTemplates.values())
+      .filter((t) => t.isActive)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getCustomStructureTemplate(id: string): Promise<CustomStructureTemplate | null> {
+    const template = this.customStructureTemplates.get(id);
+    return template ? { ...template } : null;
+  }
+
+  async createCustomStructureTemplate(
+    input: CreateCustomStructureTemplateInput
+  ): Promise<CustomStructureTemplate> {
+    const id = this.nextId('cstr-tmpl');
+    const now = new Date().toISOString();
+    const template: CustomStructureTemplate = {
+      id,
+      name: input.name,
+      description: input.description ?? null,
+      defaultWidth: input.defaultWidth ?? 120,
+      defaultHeight: input.defaultHeight ?? 60,
+      defaultColor: input.defaultColor ?? '#CBD5E1',
+      borderStyle: input.borderStyle ?? 'solid',
+      category: input.category ?? 'ARCHITECTURAL',
+      isActive: input.isActive ?? true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.customStructureTemplates.set(id, template);
+    return { ...template };
+  }
+
+  async updateCustomStructureTemplate(
+    id: string,
+    input: UpdateCustomStructureTemplateInput
+  ): Promise<CustomStructureTemplate> {
+    const existing = this.customStructureTemplates.get(id);
+    if (!existing) {
+      throw new Error(`Custom structure template not found: ${id}`);
+    }
+    const updated: CustomStructureTemplate = {
+      ...existing,
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.defaultWidth !== undefined ? { defaultWidth: input.defaultWidth } : {}),
+      ...(input.defaultHeight !== undefined ? { defaultHeight: input.defaultHeight } : {}),
+      ...(input.defaultColor !== undefined ? { defaultColor: input.defaultColor } : {}),
+      ...(input.borderStyle !== undefined ? { borderStyle: input.borderStyle } : {}),
+      ...(input.category !== undefined ? { category: input.category } : {}),
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    this.customStructureTemplates.set(id, updated);
+    return { ...updated };
+  }
+
+  async deleteCustomStructureTemplate(id: string): Promise<void> {
+    const existing = this.customStructureTemplates.get(id);
+    if (!existing) {
+      throw new Error(`Custom structure template not found: ${id}`);
+    }
+    this.customStructureTemplates.delete(id);
   }
 
   private cloneElements(mapVersionId: string): MapElement[] {

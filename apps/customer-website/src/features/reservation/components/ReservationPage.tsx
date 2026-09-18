@@ -78,6 +78,17 @@ function getContrastColor(hexColor?: string): string {
   return yiq >= 150 ? "#111827" : "#ffffff";
 }
 
+function formatStructureLabel(raw?: string | null): string {
+  if (!raw || !raw.trim()) return "Structure";
+  const cleaned = raw.replace(/[_-]+/g, " ").trim();
+  if (!cleaned) return "Structure";
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function formatTime12Hour(time24: string): string {
   if (!time24) return "";
   const [hStr, mStr] = time24.split(":");
@@ -1514,7 +1525,7 @@ export function ReservationPage() {
                               el.workspace?.displayName ||
                               el.label ||
                               el.workspace?.templateName ||
-                              el.elementType;
+                              formatStructureLabel(el.elementType);
                             const itemColor =
                               el.style?.color ||
                               (el.style as any)?.fillColor ||
@@ -1620,8 +1631,31 @@ export function ReservationPage() {
                                     backgroundColor: bg,
                                     borderRadius: "2px",
                                     pointerEvents: "none",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    overflow: "hidden",
+                                    color: textColor,
+                                    boxSizing: "border-box",
                                   }}
-                                />
+                                >
+                                  <span
+                                    style={{
+                                      maxWidth: "100%",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      fontSize: el.height <= 20 ? "9px" : "11px",
+                                      fontWeight: el.height <= 20 ? 800 : 700,
+                                      letterSpacing: el.height <= 20 ? "0.05em" : "normal",
+                                      textTransform: el.height <= 20 ? "uppercase" : "none",
+                                      padding: "0 4px",
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    {displayName}
+                                  </span>
+                                </div>
                               );
                             }
 
@@ -1673,9 +1707,33 @@ export function ReservationPage() {
                                   zIndex: el.zIndex || 1,
                                   backgroundColor: bg,
                                   borderRadius: "6px",
+                                  border: "1px solid rgba(0, 0, 0, 0.1)",
                                   pointerEvents: "none",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  overflow: "hidden",
+                                  color: textColor,
+                                  boxSizing: "border-box",
                                 }}
-                              />
+                              >
+                                <span
+                                  style={{
+                                    maxWidth: "100%",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    fontSize: el.height <= 20 ? "9px" : "11px",
+                                    fontWeight: el.height <= 20 ? 800 : 700,
+                                    letterSpacing: el.height <= 20 ? "0.05em" : "normal",
+                                    textTransform: el.height <= 20 ? "uppercase" : "none",
+                                    padding: "0 4px",
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  {displayName}
+                                </span>
+                              </div>
                             );
                           })}
                         </div>

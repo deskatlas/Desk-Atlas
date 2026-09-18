@@ -202,7 +202,7 @@ function mapPublishedVersion(row: PublishedVersionRow): PublishedMapVersion {
   };
 }
 
-function mapPublishedElement(row: PublishedElementRow, floor: FloorRow): PublishedMapElement {
+export function mapPublishedElement(row: PublishedElementRow, floor: FloorRow): PublishedMapElement {
   return {
     id: row.id,
     elementRole: row.element_role === 'EDITOR_AID' ? 'INFORMATION' : row.element_role,
@@ -215,18 +215,24 @@ function mapPublishedElement(row: PublishedElementRow, floor: FloorRow): Publish
     zIndex: row.z_index,
     label: row.label,
     style: sanitizeStyle(row.properties),
-    workspace: row.workspace_instance ? mapPublishedWorkspace(row.workspace_instance, floor) : null,
+    workspace: row.workspace_instance ? mapPublishedWorkspace(row.workspace_instance, floor, row.properties) : null,
   };
 }
 
-function mapPublishedWorkspace(row: WorkspaceInstanceRow, floor: FloorRow): PublishedWorkspaceSummary {
+function mapPublishedWorkspace(
+  row: WorkspaceInstanceRow,
+  floor: FloorRow,
+  elementProperties?: Record<string, unknown> | null
+): PublishedWorkspaceSummary {
   if (!row.template) {
     throw new Error(`Workspace instance ${row.id} is missing its template relation`);
   }
 
   const instance = mapWorkspaceInstanceDetails(row, floor);
   const availability = getWorkspaceAvailabilityStatus(instance);
-  const tags = extractRecommendationTags(instance.template.defaultStyle);
+  const elementTags = extractRecommendationTags(elementProperties);
+  const templateTags = extractRecommendationTags(instance.template.defaultStyle);
+  const tags = elementTags ?? templateTags;
   const photoPosition = extractPhotoPosition(instance.template.defaultStyle);
 
   return {
@@ -260,11 +266,20 @@ function extractPhotoPosition(
   return undefined;
 }
 
-function extractRecommendationTags(defaultStyle: Record<string, unknown> | null | undefined): string[] | undefined {
-  if (!defaultStyle) return undefined;
-  const tags = defaultStyle.recommendations;
-  if (!Array.isArray(tags)) return undefined;
-  return tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+function extractRecommendationTags(props: Record<string, unknown> | null | undefined): string[] | undefined {
+  if (!props) return undefined;
+  const tagsCandidate = props.recommendationTags ?? props.recommendations ?? props.tags;
+  if (Array.isArray(tagsCandidate)) {
+    const list = tagsCandidate.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+    return list.length > 0 ? list : undefined;
+  }
+  if (typeof tagsCandidate === 'object' && tagsCandidate !== null) {
+    const flattened = Object.values(tagsCandidate)
+      .flat()
+      .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+    return flattened.length > 0 ? flattened : undefined;
+  }
+  return undefined;
 }
 
 function mapWorkspaceInstanceDetails(row: WorkspaceInstanceRow, floor: FloorRow): WorkspaceInstanceDetails {
@@ -317,6 +332,10 @@ function sanitizeStyle(
     'amenityType',
     'markerType',
     'kioskId',
+    'borderStyle',
+    'isCustomStructure',
+    'templateId',
+    'category',
   ]);
   const sanitized: Record<string, string | number | boolean | null> = {};
 

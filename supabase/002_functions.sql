@@ -92,7 +92,6 @@ BEGIN
       e.workspace_instance_id IS NULL
       OR wi.id IS NULL
       OR wi.floor_id <> v_draft.floor_id
-      OR wi.operational_status = 'INACTIVE'
     )
   LIMIT 1;
 
@@ -2646,5 +2645,164 @@ $$;
 
 REVOKE ALL ON FUNCTION public.admin_complete_password_reset(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_complete_password_reset(text, text) TO anon, authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 12. Admin Reservation Relocation RPC (MF-124)
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.relocate_reservation(
+  p_reservation_id uuid,
+  p_target_workspace_instance_id uuid,
+  p_reason text,
+  p_notes text DEFAULT NULL,
+  p_actor_user_id uuid DEFAULT NULL,
+  p_actor_role text DEFAULT 'ADMIN'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_res public.reservations%ROWTYPE;
+  v_assigned public.reservation_candidates%ROWTYPE;
+  v_old_inst public.workspace_instances%ROWTYPE;
+  v_target_inst public.workspace_instances%ROWTYPE;
+  v_now timestamptz := now();
+  v_conflict_count int;
+BEGIN
+  IF p_reservation_id IS NULL THEN
+    RAISE EXCEPTION 'reservation_id is required';
+  END IF;
+
+  IF p_target_workspace_instance_id IS NULL THEN
+    RAISE EXCEPTION 'target_workspace_instance_id is required';
+  END IF;
+
+  IF p_reason IS NULL OR btrim(p_reason) = '' THEN
+    RAISE EXCEPTION 'relocation reason is required';
+  END IF;
+
+  SELECT * INTO v_res
+  FROM public.reservations
+  WHERE id = p_reservation_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Reservation % not found', p_reservation_id;
+  END IF;
+
+  IF v_res.status NOT IN ('CONFIRMED', 'CHECKED_IN') THEN
+    RAISE EXCEPTION 'Only confirmed or checked-in reservations can be relocated (current status: %)', v_res.status;
+  END IF;
+
+  SELECT * INTO v_assigned
+  FROM public.reservation_candidates
+  WHERE reservation_id = p_reservation_id
+    AND is_assigned = true
+  LIMIT 1
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    SELECT * INTO v_assigned
+    FROM public.reservation_candidates
+    WHERE reservation_id = p_reservation_id
+    ORDER BY rank ASC
+    LIMIT 1
+    FOR UPDATE;
+  END IF;
+
+  IF v_assigned.id IS NULL THEN
+    RAISE EXCEPTION 'No candidate found for reservation %', p_reservation_id;
+  END IF;
+
+  IF v_assigned.workspace_instance_id = p_target_workspace_instance_id THEN
+    RAISE EXCEPTION 'Target spot must be different from current spot';
+  END IF;
+
+  SELECT * INTO v_old_inst
+  FROM public.workspace_instances
+  WHERE id = v_assigned.workspace_instance_id;
+
+  SELECT * INTO v_target_inst
+  FROM public.workspace_instances
+  WHERE id = p_target_workspace_instance_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Target workspace instance % not found', p_target_workspace_instance_id;
+  END IF;
+
+  IF v_old_inst.id IS NOT NULL AND v_target_inst.template_id <> v_old_inst.template_id THEN
+    RAISE EXCEPTION 'Relocation is only allowed to spots of the exact same workspace template (tier)';
+  END IF;
+
+  IF upper(COALESCE(v_target_inst.operational_status::text, v_target_inst.status::text, 'ACTIVE')) IN ('MAINTENANCE', 'INACTIVE') THEN
+    RAISE EXCEPTION 'Cannot relocate to a spot that is under maintenance or inactive';
+  END IF;
+
+  SELECT count(*) INTO v_conflict_count
+  FROM public.reservation_candidates rc
+  JOIN public.reservations r ON r.id = rc.reservation_id
+  WHERE rc.workspace_instance_id = p_target_workspace_instance_id
+    AND rc.is_assigned = true
+    AND rc.reservation_id <> p_reservation_id
+    AND r.status IN ('CONFIRMED', 'CHECKED_IN')
+    AND v_assigned.start_at < rc.end_at
+    AND v_assigned.end_at > rc.start_at;
+
+  IF v_conflict_count > 0 THEN
+    RAISE EXCEPTION 'Target workspace spot is already booked for this time window';
+  END IF;
+
+  UPDATE public.reservation_candidates
+  SET workspace_instance_id = p_target_workspace_instance_id,
+      is_assigned = true
+  WHERE id = v_assigned.id;
+
+  UPDATE public.reservations
+  SET updated_at = v_now
+  WHERE id = p_reservation_id;
+
+  INSERT INTO public.audit_logs (
+    id,
+    actor_user_id,
+    actor_role,
+    action,
+    entity_type,
+    entity_id,
+    metadata,
+    created_at
+  )
+  VALUES (
+    gen_random_uuid(),
+    p_actor_user_id,
+    'ADMIN',
+    'reservation_relocated',
+    'reservation',
+    p_reservation_id,
+    jsonb_build_object(
+      'old_instance_id', v_assigned.workspace_instance_id,
+      'new_instance_id', p_target_workspace_instance_id,
+      'old_workspace_name', COALESCE(v_old_inst.display_name, v_old_inst.instance_code, v_assigned.workspace_instance_id::text),
+      'new_workspace_name', COALESCE(v_target_inst.display_name, v_target_inst.instance_code, p_target_workspace_instance_id::text),
+      'reason', p_reason,
+      'notes', p_notes,
+      'relocated_at', v_now,
+      'reference_code', v_res.reference_code
+    ),
+    v_now
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'old_workspace_name', COALESCE(v_old_inst.display_name, v_old_inst.instance_code, v_assigned.workspace_instance_id::text),
+    'new_workspace_name', COALESCE(v_target_inst.display_name, v_target_inst.instance_code, p_target_workspace_instance_id::text)
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.relocate_reservation(uuid, uuid, text, text, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.relocate_reservation(uuid, uuid, text, text, uuid, text) TO authenticated, service_role;
 
 COMMIT;

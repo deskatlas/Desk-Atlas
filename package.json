@@ -103,7 +103,14 @@
     "test:mf109": "vitest run tests/mf109-realtime-deactivation-modal.test.ts",
     "test:mf111": "vitest run tests/mf111-camera-selection-and-kiosk-front-cam.test.ts",
     "test:mf114": "vitest run tests/mf114-admin-payment-proof-zoom-and-pan-inspection.test.ts",
-    "test:mf122": "vitest run tests/mf122-kiosk-reference-code-check-in.test.ts"
+    "test:mf122": "vitest run tests/mf122-kiosk-reference-code-check-in.test.ts",
+    "test:mf123": "vitest run tests/mf123-inactive-workspace-instances-map-placement.test.ts",
+    "test:mf124": "vitest run tests/mf124-admin-reservation-relocation.test.ts",
+    "test:mf125": "vitest run tests/mf125-map-structure-label-title-visibility.test.ts",
+    "test:mf126": "vitest run tests/mf126-admin-custom-structure-templates.test.ts",
+    "test:mf127": "vitest run tests/mf127-admin-staff-reservation-extension.test.ts",
+    "test:mf128": "vitest run tests/mf128-workspace-map-occupied-countdown-timer.test.ts",
+    "test:mf129": "vitest run tests/mf129-instance-recommendation-tags-map-builder.test.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.4",

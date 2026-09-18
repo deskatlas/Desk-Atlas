@@ -152,6 +152,22 @@ CREATE POLICY p_workspace_templates_admin_write ON public.workspace_templates
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
+-- custom_structure_templates
+ALTER TABLE public.custom_structure_templates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS p_custom_structure_templates_public_read ON public.custom_structure_templates;
+CREATE POLICY p_custom_structure_templates_public_read ON public.custom_structure_templates
+  FOR SELECT
+  TO public
+  USING (is_active = true OR public.is_staff_or_admin());
+
+DROP POLICY IF EXISTS p_custom_structure_templates_admin_all ON public.custom_structure_templates;
+CREATE POLICY p_custom_structure_templates_admin_all ON public.custom_structure_templates
+  FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
 -- workspace_instances
 ALTER TABLE public.workspace_instances ENABLE ROW LEVEL SECURITY;
 

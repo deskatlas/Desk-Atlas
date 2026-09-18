@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,7 +16,19 @@ import {
   getContrastColor,
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
+import { WorkspaceCountdownBadge, useLiveCountdownClock } from '@deskatlas/ui';
+import { ExtendReservationModal } from '@/features/reservations/components/ExtendReservationModal';
 
+function formatStructureLabel(raw?: string | null): string {
+  if (!raw || !raw.trim()) return 'Structure';
+  const cleaned = raw.replace(/[_-]+/g, ' ').trim();
+  if (!cleaned) return 'Structure';
+  return cleaned
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
 function AmenityIcon({ type, name, color }: { type?: string; name?: string; color?: string }) {
   const norm = (type || name || '').toLowerCase();
   const iconColor = color || '#1e293b';
@@ -71,6 +83,7 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
 
 export default function WorkspaceMapPage() {
   const router = useRouter();
+  const currentTick = useLiveCountdownClock(1000);
   const [builderZoom, setBuilderZoom] = useState(1);
   const [selectedObjId, setSelectedObjId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -93,6 +106,31 @@ export default function WorkspaceMapPage() {
   const [instances, setInstances] = useState<any[]>([]);
   const [publishedMap, setPublishedMap] = useState<any | null>(null);
   const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(DEFAULT_WORKSPACE_STATUS_COLORS);
+  const [occupancyList, setOccupancyList] = useState<any[]>([]);
+  const [showExtendModal, setShowExtendModal] = useState<boolean>(false);
+  const [extendModalData, setExtendModalData] = useState<any>(null);
+
+  const loadOccupancy = async () => {
+    try {
+      const res = await fetch('/api/admin/occupancy');
+      if (res.ok) {
+        const data = await res.json();
+        setOccupancyList(data.occupancy || []);
+      }
+    } catch {
+      // preserve occupancy state
+    }
+  };
+
+  const occupancyByInstanceId = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const occ of occupancyList) {
+      if (occ.workspaceInstanceId) {
+        map.set(occ.workspaceInstanceId, occ);
+      }
+    }
+    return map;
+  }, [occupancyList]);
 
   // Load catalog and initial floor
   const loadInitialData = async () => {
@@ -104,6 +142,7 @@ export default function WorkspaceMapPage() {
         fetch('/api/admin/workspaces'),
         fetch('/api/admin/workspaces/floors'),
         fetch('/api/admin/settings').catch(() => null),
+        loadOccupancy(),
       ]);
 
       const wsData = wsRes.ok ? await wsRes.json() : {};
@@ -178,6 +217,8 @@ export default function WorkspaceMapPage() {
 
   useEffect(() => {
     loadInitialData();
+    const interval = setInterval(loadOccupancy, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -447,8 +488,11 @@ export default function WorkspaceMapPage() {
                   else if (isPantry) defaultAmenityColor = '#FEF3C7';
                   else if (isEmergencyExit) defaultAmenityColor = '#DCFCE7';
 
-                  const displayName = inst?.displayName || el.label || (isKioskMarker ? 'You Are Here' : (tmpl?.name || el.elementType));
+                  const displayName = inst?.displayName || el.label || (isKioskMarker ? 'You Are Here' : (tmpl?.name || formatStructureLabel(el.elementType)));
                   const itemColor = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : (isWall ? '#334155' : '#F3F7F4'))));
+
+                  const occupancy = isWorkspace && el.workspaceInstanceId ? occupancyByInstanceId.get(el.workspaceInstanceId) : null;
+                  const isOccupied = Boolean(occupancy);
 
                   const isInactive = isWorkspace && status === 'INACTIVE';
                   let bg = el.properties?.color || itemColor;
@@ -463,6 +507,14 @@ export default function WorkspaceMapPage() {
                     } else if (status === 'INACTIVE') {
                       border = `2px dashed ${statusColors.unavailable}`;
                       bg = statusColors.unavailable;
+                      textColor = getContrastColor(bg);
+                    } else if (isOccupied) {
+                      border = isSelected ? '3px solid var(--da-brand-dark)' : `2px solid ${statusColors.occupied}`;
+                      bg = statusColors.occupied;
+                      textColor = getContrastColor(bg);
+                    } else {
+                      border = isSelected ? '3px solid var(--da-brand-dark)' : '1px solid rgba(0, 0, 0, 0.15)';
+                      bg = statusColors.available;
                       textColor = getContrastColor(bg);
                     }
                   } else if (el.elementType?.toLowerCase().includes('door')) {
@@ -511,9 +563,17 @@ export default function WorkspaceMapPage() {
                         }}
                       >
                         {isWorkspace ? (
-                          <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {displayName}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', gap: '2px' }}>
+                            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {displayName}
+                            </span>
+                            {isOccupied && (
+                              <WorkspaceCountdownBadge
+                                bookingEndAt={occupancy.bookingEndAt}
+                                nowMs={currentTick}
+                              />
+                            )}
+                          </div>
                         ) : isKioskMarker ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">
@@ -531,7 +591,25 @@ export default function WorkspaceMapPage() {
                               {displayName}
                             </span>
                           </div>
-                        ) : null}
+                        ) : (
+                          <span
+                            style={{
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              fontSize: el.height <= 20 ? '9px' : '11px',
+                              fontWeight: el.height <= 20 ? 800 : 700,
+                              letterSpacing: el.height <= 20 ? '0.05em' : 'normal',
+                              textTransform: el.height <= 20 ? 'uppercase' : 'none',
+                              padding: '0 4px',
+                              lineHeight: 1,
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            {displayName}
+                          </span>
+                        )}
                       </button>
                     </div>
                   );
@@ -558,6 +636,82 @@ export default function WorkspaceMapPage() {
 
             {selectedInstance ? (
               <>
+                {selectedInstance.id && occupancyByInstanceId.get(selectedInstance.id) && (
+                  <div style={{ padding: '12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, color: '#991B1B', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        Occupied Spot
+                      </span>
+                      <WorkspaceCountdownBadge
+                        bookingEndAt={occupancyByInstanceId.get(selectedInstance.id).bookingEndAt}
+                        nowMs={currentTick}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#7F1D1D' }}>Customer:</span>
+                      <span style={{ fontWeight: 700, color: '#991B1B' }}>
+                        {occupancyByInstanceId.get(selectedInstance.id).customerFirstName} {occupancyByInstanceId.get(selectedInstance.id).customerLastName}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#7F1D1D' }}>Reference:</span>
+                      <span style={{ fontWeight: 700, color: '#991B1B', fontFamily: 'monospace' }}>
+                        {occupancyByInstanceId.get(selectedInstance.id).referenceCode}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#7F1D1D' }}>Status:</span>
+                      <span style={{ fontWeight: 700, color: '#991B1B' }}>
+                        {occupancyByInstanceId.get(selectedInstance.id).reservationStatus === 'CHECKED_IN' ? 'Checked In' : 'Confirmed'}
+                      </span>
+                    </div>
+                    {occupancyByInstanceId.get(selectedInstance.id).bookingStartAt && occupancyByInstanceId.get(selectedInstance.id).bookingEndAt && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#7F1D1D' }}>Window:</span>
+                        <span style={{ fontWeight: 600, color: '#991B1B' }}>
+                          {new Date(occupancyByInstanceId.get(selectedInstance.id).bookingStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(occupancyByInstanceId.get(selectedInstance.id).bookingEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      data-testid="map-extend-booking-button"
+                      onClick={() => {
+                        const occ = occupancyByInstanceId.get(selectedInstance.id);
+                        if (occ) {
+                          setExtendModalData({
+                            reservationId: occ.reservationId || occ.id,
+                            referenceCode: occ.referenceCode,
+                            customerName: `${occ.customerFirstName} ${occ.customerLastName}`.trim(),
+                            spotDisplayName: selectedInstance.displayName || selectedInstance.instanceCode,
+                            templateName: selectedTemplate?.name,
+                            currentSchedule: occ.bookingStartAt && occ.bookingEndAt
+                              ? `${new Date(occ.bookingStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(occ.bookingEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                              : undefined,
+                            currentEndAt: occ.bookingEndAt || undefined,
+                            hourlyRate: selectedTemplate?.rateAmount ?? 150,
+                          });
+                          setShowExtendModal(true);
+                        }
+                      }}
+                      style={{
+                        marginTop: '6px',
+                        padding: '7px 12px',
+                        backgroundColor: '#fff',
+                        border: '1px solid #DC2626',
+                        borderRadius: '6px',
+                        color: '#991B1B',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        width: '100%',
+                      }}
+                    >
+                      Extend Time
+                    </button>
+                  </div>
+                )}
+
+
                 <div style={{ padding: '12px', background: 'var(--da-canvas)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--da-text-secondary)' }}>Template:</span>
@@ -596,6 +750,40 @@ export default function WorkspaceMapPage() {
                     <option value="INACTIVE">Inactive (Hidden)</option>
                   </select>
                 </div>
+
+                {occupancyByInstanceId.get(selectedInstance.id) && (selectedInstance.operationalStatus === 'MAINTENANCE' || selectedInstance.operationalStatus === 'INACTIVE') && (
+                  <div
+                    data-testid="relocation-warning-badge"
+                    style={{
+                      padding: '10px 12px',
+                      background: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      color: '#991B1B',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>⚠️ Reservation needs relocation</div>
+                    <div style={{ fontSize: '11px', color: '#7F1D1D' }}>
+                      Spot is marked {selectedInstance.operationalStatus}, but has an active/confirmed booking (#{occupancyByInstanceId.get(selectedInstance.id).referenceCode}).
+                    </div>
+                    <Link
+                      href={`/manage/reservations/${occupancyByInstanceId.get(selectedInstance.id).reservationId || occupancyByInstanceId.get(selectedInstance.id).id}`}
+                      style={{
+                        display: 'inline-block',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#991B1B',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Relocate Reservation &rarr;
+                    </Link>
+                  </div>
+                )}
               </>
             ) : (
               <div style={{ padding: '12px', background: 'var(--da-canvas)', borderRadius: '8px', fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -616,6 +804,31 @@ export default function WorkspaceMapPage() {
           </aside>
         )}
       </div>
+
+      {extendModalData && (
+        <ExtendReservationModal
+          isOpen={showExtendModal}
+          onClose={() => {
+            setShowExtendModal(false);
+            setExtendModalData(null);
+          }}
+          onSuccess={() => {
+            loadOccupancy();
+            setSuccessMsg('Reservation time extended successfully.');
+          }}
+          reservationId={extendModalData.reservationId}
+          referenceCode={extendModalData.referenceCode}
+          customerName={extendModalData.customerName}
+          spotDisplayName={extendModalData.spotDisplayName}
+          templateName={extendModalData.templateName}
+          currentSchedule={extendModalData.currentSchedule}
+          currentEndAt={extendModalData.currentEndAt}
+          hourlyRate={extendModalData.hourlyRate}
+          apiPrefix="/api/admin/reservations"
+          actorRole="ADMIN"
+        />
+      )}
     </main>
   );
 }
+

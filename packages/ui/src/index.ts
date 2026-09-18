@@ -16,6 +16,17 @@ export { ProfileDropdown } from './components/ProfileDropdown';
 export type { ProfileDropdownProps, ProfileUser } from './components/ProfileDropdown';
 export { DeactivatedAccountModal } from './components/DeactivatedAccountModal';
 export type { DeactivatedAccountModalProps } from './components/DeactivatedAccountModal';
+export { WorkspaceCountdownBadge } from './components/WorkspaceCountdownBadge';
+export type { WorkspaceCountdownBadgeProps } from './components/WorkspaceCountdownBadge';
+export {
+  useLiveCountdownClock,
+  useRemainingTime,
+  formatRemainingDuration,
+} from './hooks/useLiveCountdownClock';
+export type {
+  CountdownUrgency,
+  FormattedRemainingDuration,
+} from './hooks/useLiveCountdownClock';
 export const appShellClassName = 'min-h-screen bg-slate-950 text-slate-100';
 
 

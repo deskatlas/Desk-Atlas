@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSearch } from '@deskatlas/ui';
+import { useSearch, useLiveCountdownClock, WorkspaceCountdownBadge } from '@deskatlas/ui';
 import {
   filterReservationsBySearch,
   filterReservations,
@@ -17,6 +17,7 @@ import { ReservationFilterModal } from './ReservationFilterModal';
 
 export function ReservationList() {
   const router = useRouter();
+  const currentTick = useLiveCountdownClock(1000);
   const [activeFilter, setActiveFilter] = useState<AdminReservationFilter>('active');
   const [reservations, setReservations] = useState<AdminReservationSummary[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -214,26 +215,43 @@ export function ReservationList() {
             No reservations match your filters.
           </div>
         ) : (
-          displayedReservations.map((r, i) => (
-            <div
-              key={r.id || i}
-              onClick={() => router.push(`/manage/reservations/${r.referenceCode}`)}
-              style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', cursor: 'pointer', alignItems: 'center' }}
-            >
-              <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)' }}>{r.referenceCode}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--da-canvas)', color: 'var(--da-text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, flexShrink: 0 }}>{r.customerInitials}</div>
-                <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+          displayedReservations.map((r, i) => {
+            const isCheckedInOrActive =
+              Boolean(
+                r.reservationStatus === 'CHECKED_IN' ||
+                r.reservationStatus === 'CONFIRMED' ||
+                r.status?.toLowerCase().includes('checked') ||
+                r.status?.toLowerCase().includes('confirmed')
+              );
+
+            return (
+              <div
+                key={r.id || i}
+                onClick={() => router.push(`/manage/reservations/${r.referenceCode}`)}
+                style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', cursor: 'pointer', alignItems: 'center' }}
+              >
+                <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)' }}>{r.referenceCode}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--da-canvas)', color: 'var(--da-text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, flexShrink: 0 }}>{r.customerInitials}</div>
+                  <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+                </div>
+                <span>{r.workspaceDisplayName}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ color: 'var(--da-text-primary)' }}>{r.schedule}</span>
+                  {isCheckedInOrActive && r.endAt && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <WorkspaceCountdownBadge bookingEndAt={r.endAt} nowMs={currentTick} />
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: r.paymentColor }}>{r.paymentStatus}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '9999px', whiteSpace: 'nowrap', width: 'fit-content', ...r.statusStyle }}>
+                  <span aria-hidden="true" style={{ fontSize: '10px', lineHeight: 1 }}>{r.mark}</span>{r.status}
+                </span>
+                <span style={{ textAlign: 'right', color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
               </div>
-              <span>{r.workspaceDisplayName}</span>
-              <span style={{ color: 'var(--da-text-primary)' }}>{r.schedule}</span>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: r.paymentColor }}>{r.paymentStatus}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '9999px', whiteSpace: 'nowrap', width: 'fit-content', ...r.statusStyle }}>
-                <span aria-hidden="true" style={{ fontSize: '10px', lineHeight: 1 }}>{r.mark}</span>{r.status}
-              </span>
-              <span style={{ textAlign: 'right', color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
-            </div>
-          ))
+            );
+          })
         )}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', flexWrap: 'wrap', gap: '10px' }}>

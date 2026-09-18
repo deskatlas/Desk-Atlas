@@ -27,13 +27,37 @@ export async function POST(
     }
     const service = createStaffOperationsService(new ReservationSupabaseRepository());
     let actorUserId = String(body.actor?.userId ?? body.actorUserId ?? "").trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
-      const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (supabaseUrl && serviceRoleKey) {
+    let actorRole = String(body.actor?.role ?? body.actorRole ?? "").trim().toUpperCase();
+
+    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (supabaseUrl && serviceRoleKey) {
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
         try {
           const res = await fetch(
-            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?select=user_id&is_active=eq.true&limit=1`,
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?user_id=eq.${actorUserId}&select=user_id,role&limit=1`,
+            {
+              headers: {
+                apikey: serviceRoleKey,
+                Authorization: `Bearer ${serviceRoleKey}`,
+              },
+              cache: "no-store",
+            }
+          );
+          if (res.ok) {
+            const profiles = await res.json();
+            if (Array.isArray(profiles) && profiles[0]?.role) {
+              actorRole = profiles[0].role;
+            }
+          }
+        } catch {
+          // fallback
+        }
+      } else {
+        try {
+          const res = await fetch(
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?select=user_id,role&is_active=eq.true&limit=1`,
             {
               headers: {
                 apikey: serviceRoleKey,
@@ -46,6 +70,7 @@ export async function POST(
             const profiles = await res.json();
             if (Array.isArray(profiles) && profiles[0]?.user_id) {
               actorUserId = profiles[0].user_id;
+              actorRole = profiles[0].role || "STAFF";
             }
           }
         } catch {
@@ -53,13 +78,13 @@ export async function POST(
         }
       }
     }
-    const actorRole = (String(body.actor?.role ?? body.actorRole ?? "STAFF")).toUpperCase() === "ADMIN" ? "ADMIN" : "STAFF";
+    const resolvedRole: "ADMIN" | "STAFF" = actorRole === "ADMIN" ? "ADMIN" : "STAFF";
 
     const result = await service.checkOutReservation({
       reservationId,
       actor: {
         userId: actorUserId,
-        role: actorRole,
+        role: resolvedRole,
       },
     });
 

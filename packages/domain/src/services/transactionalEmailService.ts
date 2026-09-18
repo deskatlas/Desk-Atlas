@@ -339,6 +339,24 @@ export interface ReservationRescheduledEmailInput {
   qrImageUrl?: string;
 }
 
+export interface ReservationRelocatedEmailInput {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  schedule: string;
+  oldWorkspaceDisplayName: string;
+  newWorkspaceDisplayName: string;
+  workspaceTemplateName?: string;
+  floorName?: string;
+  relocationReason: string;
+  relocationNotes?: string;
+  bookingAccessUrl?: string;
+  bookingToken?: string;
+  trackingUrl?: string;
+  qrImageUrl?: string;
+}
+
 export interface RawEmailInput {
   to: string | string[];
   from?: string;
@@ -1292,6 +1310,16 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendReservationRelocatedEmail(input: ReservationRelocatedEmailInput): Promise<EmailSendResult> {
+    const rendered = renderReservationRelocatedEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
   async sendBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
     const rendered = renderBookingEndedSurveyEmail(input);
     return this.sendEmail({
@@ -1718,6 +1746,101 @@ Your reservation has been rescheduled:
 New Schedule: ${formattedNewSchedule}
 Previous Schedule: ${formattedOldSchedule}
 Allocated Spot: ${input.workspaceDisplayName}
+Digital Access QR Pass: ${qrImageUrl}
+${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderReservationRelocatedEmail(input: ReservationRelocatedEmailInput): { subject: string; html: string; text: string } {
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Your DeskAtlas Reservation Spot Has Been Relocated [${input.referenceCode}]`;
+  const formattedSchedule = formatEmailSchedule(input.schedule);
+  const reasonText = input.relocationNotes ? `${input.relocationReason} - ${input.relocationNotes}` : input.relocationReason;
+  const qrImageUrl =
+    input.qrImageUrl ||
+    `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+      input.bookingAccessUrl || input.bookingToken || input.referenceCode
+    )}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #0284c7; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .relocate-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .reason-box { background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 14px; color: #92400e; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Workspace Spot Relocation Notice</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been relocated to a new conflict-free spot for your exact scheduled time slot.</p>
+      
+      <div class="reason-box">
+        <strong>Reason for Relocation:</strong><br>
+        ${escapeHtml(reasonText)}
+      </div>
+
+      <div class="relocate-box">
+        <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 8px;">Updated Spot Assignment</div>
+        <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
+          <strong>New Spot:</strong> ${escapeHtml(input.newWorkspaceDisplayName)}${input.workspaceTemplateName ? ` (${escapeHtml(input.workspaceTemplateName)})` : ''}${input.floorName ? ` &bull; ${escapeHtml(input.floorName)}` : ''}
+        </div>
+        <div style="font-size: 13px; color: #64748b;">
+          <strong>Previous Spot:</strong> ${escapeHtml(input.oldWorkspaceDisplayName)}
+        </div>
+        <div style="font-size: 13px; color: #334155; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #bbf7d0;">
+          <strong>Preserved Schedule:</strong> ${escapeHtml(formattedSchedule)}
+        </div>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1;">
+        <div style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Digital Access QR Pass</div>
+        <img src="${escapeHtml(qrImageUrl)}" alt="Digital Pass QR Code" width="200" height="200" style="display: block; margin: 0 auto; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; padding: 6px;" />
+        <div style="font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 10px; margin-bottom: 4px;">${escapeHtml(input.referenceCode)}</div>
+        <p style="font-size: 12px; color: #64748b; margin: 0;">Present this QR code upon arrival at the workspace reception desk or kiosk for your relocated spot.</p>
+      </div>
+
+      ${input.trackingUrl ? `
+      <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
+        Track Reservation: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
+      </p>
+      ` : ''}
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Workspace Spot Relocation Notice - DeskAtlas
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+Your workspace reservation has been relocated:
+New Spot: ${input.newWorkspaceDisplayName}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}
+Previous Spot: ${input.oldWorkspaceDisplayName}
+Schedule: ${formattedSchedule}
+Reason: ${reasonText}
 Digital Access QR Pass: ${qrImageUrl}
 ${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
 DeskAtlas Workspace Reservation System
