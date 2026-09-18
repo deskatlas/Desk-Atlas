@@ -44,8 +44,7 @@ export function ExtendReservationModal({
 }: ExtendReservationModalProps) {
   const [selectedMinutes, setSelectedMinutes] = useState<number>(60);
   const [isCustom, setIsCustom] = useState<boolean>(false);
-  const [customValue, setCustomValue] = useState<string>("60");
-  const [customUnit, setCustomUnit] = useState<"MINUTES" | "HOURS">("MINUTES");
+  const [customHours, setCustomHours] = useState<string>("1");
   const [paymentMethod, setPaymentMethod] = useState<string>("CASH");
 
   const [loadingAvailability, setLoadingAvailability] = useState<boolean>(false);
@@ -54,7 +53,7 @@ export function ExtendReservationModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const activeMinutes = isCustom
-    ? (customUnit === "HOURS" ? Number(customValue) * 60 : Number(customValue)) || 0
+    ? (Number(customHours) || 0) * 60
     : selectedMinutes;
 
   useEffect(() => {
@@ -246,10 +245,10 @@ export function ExtendReservationModal({
             </label>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr) auto", gap: "8px" }}>
               {[
-                { label: "+30 mins", minutes: 30 },
                 { label: "+1 hour", minutes: 60 },
                 { label: "+2 hours", minutes: 120 },
                 { label: "+3 hours", minutes: 180 },
+                { label: "+4 hours", minutes: 240 },
               ].map((opt) => {
                 const isSelected = !isCustom && selectedMinutes === opt.minutes;
                 return (
@@ -302,9 +301,10 @@ export function ExtendReservationModal({
                 <input
                   type="number"
                   min="1"
-                  max="1440"
-                  value={customValue}
-                  onChange={(e) => setCustomValue(e.target.value)}
+                  max="24"
+                  step="1"
+                  value={customHours}
+                  onChange={(e) => setCustomHours(e.target.value)}
                   style={{
                     width: "100px",
                     padding: "8px 12px",
@@ -314,21 +314,9 @@ export function ExtendReservationModal({
                     fontWeight: 700,
                   }}
                 />
-                <select
-                  value={customUnit}
-                  onChange={(e) => setCustomUnit(e.target.value as any)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--da-border)",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    backgroundColor: "#fff",
-                  }}
-                >
-                  <option value="MINUTES">Minutes</option>
-                  <option value="HOURS">Hours</option>
-                </select>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--da-text-primary)" }}>
+                  Hour(s)
+                </span>
                 <span style={{ fontSize: "12px", color: "var(--da-text-secondary)", fontWeight: 600 }}>
                   ({formatMinutes(activeMinutes)})
                 </span>

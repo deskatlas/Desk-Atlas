@@ -3007,11 +3007,9 @@ export class ReservationSupabaseRepository
       }),
     });
 
-    const newAmountDue = Number(r.amount_due) + additionalFee;
     await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
       method: "PATCH",
       body: JSON.stringify({
-        amount_due: newAmountDue,
         updated_at: nowIso,
       }),
     });

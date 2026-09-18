@@ -575,6 +575,8 @@ export default function WorkspaceMapPage() {
                   let textColor = isKioskMarker ? '#ffffff' : getContrastColor(bg);
                   let border = isSelected ? '3px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #ffffff' : '1px solid rgba(0, 0, 0, 0.15)');
 
+                  const borderStyle = (el as any).properties?.borderStyle || el.style?.borderStyle || (el.style as any)?.borderStyle;
+
                   const status = el.workspace?.operationalStatus || 'ACTIVE';
                   const isInactive = isWorkspace && (status === 'INACTIVE' || status === 'BROKEN');
                   if (isWorkspace) {
@@ -595,6 +597,10 @@ export default function WorkspaceMapPage() {
                       bg = statusColors.available;
                       textColor = getContrastColor(bg);
                     }
+                  } else if (borderStyle === 'dashed') {
+                    border = isSelected ? '3px solid var(--da-brand-dark)' : '1.5px dashed var(--da-border, #CBD5E1)';
+                  } else if (borderStyle === 'none') {
+                    border = isSelected ? '3px solid var(--da-brand-dark)' : 'none';
                   } else if (el.elementType?.toLowerCase().includes('door')) {
                     border = '2px dashed var(--da-brand-dark)';
                   }
