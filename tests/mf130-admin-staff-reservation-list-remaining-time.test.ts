@@ -185,7 +185,7 @@ describe('MF-130: Remaining Time for Checked In / Active Reservations on Admin a
         },
       ];
 
-      const checkedInFiltered = filterStaffReservationsByStatus(mockReservations, 'checked_in');
+      const checkedInFiltered = filterStaffReservationsByStatus(mockReservations, 'checked_in', baseNow);
       assert.equal(checkedInFiltered.length, 1);
       assert.equal(checkedInFiltered[0].referenceCode, 'REF-001');
 

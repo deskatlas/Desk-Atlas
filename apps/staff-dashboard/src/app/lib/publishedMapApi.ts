@@ -102,12 +102,3 @@ export async function updateStaffInstanceOperationalStatus(
   return body;
 }
 
-export async function fetchStaffOccupancy(): Promise<any[]> {
-  const response = await fetch('/api/operations/occupancy', { cache: 'no-store' });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return [];
-  }
-  return body.occupancy || [];
-}
-

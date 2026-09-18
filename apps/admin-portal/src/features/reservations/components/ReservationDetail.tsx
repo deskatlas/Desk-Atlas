@@ -1797,7 +1797,6 @@ export function ReservationDetail({ id }: { id: string }) {
           actorRole="ADMIN"
         />
       )}
-      )}
     </main>
   );
 }

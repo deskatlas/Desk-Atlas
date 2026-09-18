@@ -25,9 +25,9 @@ export const STAFF_RESERVATION_FILTERS: StaffReservationFilterOption[] = [
 export function matchesStaffReservationFilter(
   res: StaffOperationalReservation,
   filter: StaffReservationFilter,
-  now: Date = new Date()
+  now: Date | number = new Date()
 ): boolean {
-  const nowMs = now.getTime();
+  const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
   const isTimeEnded = Boolean(
     res.bookingEndAt &&
     !isNaN(new Date(res.bookingEndAt).getTime()) &&
@@ -99,7 +99,7 @@ export function matchesStaffReservationFilter(
 export function filterStaffReservationsByStatus(
   reservations: StaffOperationalReservation[],
   filter: StaffReservationFilter,
-  now: Date = new Date()
+  now: Date | number = new Date()
 ): StaffOperationalReservation[] {
   if (filter === "all") {
     return reservations;
