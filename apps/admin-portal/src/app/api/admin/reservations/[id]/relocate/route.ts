@@ -37,7 +37,10 @@ export async function POST(
     }
 
     const actorRole = typeof body.actorRole === "string" ? body.actorRole.trim() : "ADMIN";
-    const actorUserId = typeof body.actorUserId === "string" ? body.actorUserId.trim() : undefined;
+    const actorUserId =
+      typeof body.actorUserId === "string" && body.actorUserId.trim()
+        ? body.actorUserId.trim()
+        : request.headers.get("x-user-id") ?? undefined;
 
     const service = getAdminReservationService();
     const result = await service.relocateReservation({

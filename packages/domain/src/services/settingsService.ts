@@ -52,7 +52,11 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       customerRescheduleCutoffHours: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
+      kioskAllowanceMinutes: number;
       statusColors: WorkspaceStatusColors;
+      cancellationPolicyPdfUrl?: string | null;
+      cancellationPolicyPdfFilename?: string | null;
+      cancellationPolicyUpdatedAt?: string | null;
     }> {
       const businessSettings = await repository.getBusinessSettings();
       return {
@@ -62,7 +66,11 @@ export function createAdminSettingsService(repository: SettingsRepository) {
         customerRescheduleCutoffHours: businessSettings.customerRescheduleCutoffHours ?? 12,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
+        kioskAllowanceMinutes: getKioskAllowanceMinutes(businessSettings.kioskAllowanceMinutes),
         statusColors: normalizeWorkspaceStatusColors(businessSettings.statusColors),
+        cancellationPolicyPdfUrl: businessSettings.cancellationPolicyPdfUrl ?? null,
+        cancellationPolicyPdfFilename: businessSettings.cancellationPolicyPdfFilename ?? null,
+        cancellationPolicyUpdatedAt: businessSettings.cancellationPolicyUpdatedAt ?? null,
       };
     },
 
@@ -419,6 +427,20 @@ export function buildOperatingHoursConfig(
   };
 }
 
+export function getKioskAllowanceMinutes(configuredMinutes?: number | null): number {
+  if (
+    configuredMinutes === undefined ||
+    configuredMinutes === null ||
+    isNaN(configuredMinutes) ||
+    !Number.isInteger(configuredMinutes) ||
+    configuredMinutes < 0 ||
+    configuredMinutes > 60
+  ) {
+    return 5;
+  }
+  return configuredMinutes;
+}
+
 function normalizeBusinessSettingsInput(
   input: UpdateBusinessSettingsInput
 ): UpdateBusinessSettingsInput {
@@ -466,8 +488,14 @@ function normalizeBusinessSettingsInput(
     );
   }
 
-  if (!Number.isInteger(input.paymentExpiryMinutes) || input.paymentExpiryMinutes <= 0) {
-    throw new SettingsValidationError('Payment expiry must be a positive integer in minutes');
+  if (
+    !Number.isInteger(input.paymentExpiryMinutes) ||
+    input.paymentExpiryMinutes <= 0 ||
+    input.paymentExpiryMinutes > 1440
+  ) {
+    throw new SettingsValidationError(
+      'Payment expiry must be a positive integer in minutes (maximum 1440 minutes)'
+    );
   }
 
   if (
@@ -476,6 +504,18 @@ function normalizeBusinessSettingsInput(
     (!Number.isInteger(input.kioskTimeoutMinutes) || input.kioskTimeoutMinutes <= 0)
   ) {
     throw new SettingsValidationError('Kiosk timeout must be a positive integer in minutes');
+  }
+
+  if (
+    input.kioskAllowanceMinutes !== undefined &&
+    input.kioskAllowanceMinutes !== null &&
+    (!Number.isInteger(input.kioskAllowanceMinutes) ||
+      input.kioskAllowanceMinutes < 0 ||
+      input.kioskAllowanceMinutes > 60)
+  ) {
+    throw new SettingsValidationError(
+      'Kiosk booking allowance must be an integer between 0 and 60 minutes'
+    );
   }
 
   if (
@@ -562,6 +602,10 @@ function normalizeBusinessSettingsInput(
     bookingIntervalMinutes: input.bookingIntervalMinutes,
     paymentExpiryMinutes: input.paymentExpiryMinutes,
     kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
+    kioskAllowanceMinutes:
+      input.kioskAllowanceMinutes !== undefined && input.kioskAllowanceMinutes !== null
+        ? input.kioskAllowanceMinutes
+        : 5,
     customerSessionTimeoutMinutes:
       input.customerSessionTimeoutMinutes !== undefined && input.customerSessionTimeoutMinutes !== null
         ? input.customerSessionTimeoutMinutes
@@ -572,6 +616,12 @@ function normalizeBusinessSettingsInput(
         : 12,
     landingPreviewPhotos: normalizedPhotos,
     statusColors: normalizedStatusColors,
+    cancellationPolicyPdfUrl:
+      input.cancellationPolicyPdfUrl !== undefined ? input.cancellationPolicyPdfUrl : undefined,
+    cancellationPolicyPdfFilename:
+      input.cancellationPolicyPdfFilename !== undefined ? input.cancellationPolicyPdfFilename : undefined,
+    cancellationPolicyUpdatedAt:
+      input.cancellationPolicyUpdatedAt !== undefined ? input.cancellationPolicyUpdatedAt : undefined,
   };
 }
 

@@ -19,6 +19,7 @@ import {
   ReservationCandidate,
   ReservationResponseDTO,
   StaffOperationalReservation,
+  CustomerRelocationRequest,
 } from "../models/reservation";
 import {
   AdminReservationRepository,
@@ -27,6 +28,8 @@ import {
   RelocateReservationInput,
   AvailableRelocationSpot,
   ListAvailableRelocationSpotsInput,
+  RequestCustomerRelocationInput,
+  DecideCustomerRelocationInput,
   ExtendReservationInput,
   CheckExtendAvailabilityInput,
   ExtendAvailabilityResult,
@@ -767,10 +770,10 @@ export class ReservationMemoryRepository
       checkedInAt: reservation.checkedInAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
       assignedWorkspaceInstanceId: assignedCandidate.workspaceInstanceId,
-      assignedWorkspaceDisplayName: assignedCandidate.workspaceInstanceId,
-      assignedWorkspaceInstanceCode: assignedCandidate.workspaceInstanceId,
-      assignedWorkspaceTemplateName: "Workspace",
-      assignedFloorName: "Unknown Floor",
+      assignedWorkspaceDisplayName: (assignedCandidate as any).workspaceDisplayName || assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceInstanceCode: (assignedCandidate as any).workspaceInstanceCode || assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceTemplateName: (assignedCandidate as any).workspaceTemplateName || "Workspace",
+      assignedFloorName: (assignedCandidate as any).floorName || "Unknown Floor",
       assignedStartAt: assignedCandidate.startAt,
       assignedEndAt: assignedCandidate.endAt,
     };
@@ -810,10 +813,10 @@ export class ReservationMemoryRepository
       checkedInAt: reservation.checkedInAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
       assignedWorkspaceInstanceId: assignedCandidate.workspaceInstanceId,
-      assignedWorkspaceDisplayName: assignedCandidate.workspaceInstanceId,
-      assignedWorkspaceInstanceCode: assignedCandidate.workspaceInstanceId,
-      assignedWorkspaceTemplateName: "Workspace",
-      assignedFloorName: "Unknown Floor",
+      assignedWorkspaceDisplayName: (assignedCandidate as any).workspaceDisplayName || assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceInstanceCode: (assignedCandidate as any).workspaceInstanceCode || assignedCandidate.workspaceInstanceId,
+      assignedWorkspaceTemplateName: (assignedCandidate as any).workspaceTemplateName || "Workspace",
+      assignedFloorName: (assignedCandidate as any).floorName || "Unknown Floor",
       assignedStartAt: assignedCandidate.startAt,
       assignedEndAt: assignedCandidate.endAt,
     };
@@ -1021,6 +1024,7 @@ export class ReservationMemoryRepository
       paymentStatus: latestAttempt?.status ?? null,
       rejectionReason: latestAttempt?.rejectionReason ?? null,
       rescheduleCount: (reservation as any).rescheduleCount ?? 0,
+      pendingRelocationRequest: (reservation as any).pendingRelocationRequest ?? null,
     };
   }
 
@@ -1300,8 +1304,8 @@ export class ReservationMemoryRepository
       reservationStatus: reservation.status,
       checkInState: getCheckInState(reservation.checkedInAt ?? null, reservation.checkedOutAt ?? null),
       workspaceInstanceId: candidate?.workspaceInstanceId ?? null,
-      workspaceDisplayName: candidate?.workspaceInstanceId ?? null,
-      workspaceInstanceCode: candidate?.workspaceInstanceId ?? null,
+      workspaceDisplayName: ((candidate as any)?.workspaceDisplayName || candidate?.workspaceInstanceId) ?? null,
+      workspaceInstanceCode: ((candidate as any)?.workspaceInstanceCode || candidate?.workspaceInstanceId) ?? null,
       workspaceTemplateName: candidate ? "Workspace" : null,
       floorName: candidate ? "Unknown Floor" : null,
       bookingStartAt: candidate?.startAt ?? null,
@@ -1313,6 +1317,7 @@ export class ReservationMemoryRepository
       paymentMethodId: attempt?.paymentMethodId ?? null,
       paymentMethodType: method?.methodType ?? null,
       paymentMethodDisplayName: method?.displayName ?? null,
+      pendingRelocationRequest: (reservation as any).pendingRelocationRequest ?? null,
     };
   }
 
@@ -1576,8 +1581,45 @@ export class ReservationMemoryRepository
 
     const relocations = (r as any).relocations ?? [];
     for (const rel of relocations) {
+      const actorLabel =
+        rel.actorRole === "STAFF"
+          ? "Staff"
+          : rel.actorRole === "CUSTOMER"
+          ? "Customer"
+          : rel.actorRole === "SUPERADMIN" || rel.actorRole === "SUPER_ADMIN"
+          ? "Super Admin"
+          : "Admin";
+
+      if (rel.inSession && rel.remainingMinutes) {
+        const remainingHours = Math.floor(rel.remainingMinutes / 60);
+        const remMins = rel.remainingMinutes % 60;
+        const remText =
+          remainingHours > 0
+            ? `${remainingHours}h${remMins > 0 ? ` ${remMins}m` : ""}`
+            : `${remMins}m`;
+
+        timeline.push(
+          `${formatTimelineDate(rel.relocatedAt)} - In-session spot relocated from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} by ${actorLabel} for remaining time (${remText} remaining). Reason: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`
+        );
+      } else {
+        timeline.push(
+          `${formatTimelineDate(rel.relocatedAt)} - Relocated by ${actorLabel} from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} due to: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`
+        );
+      }
+    }
+
+    if ((r as any).pendingRelocationRequest) {
+      const preq = (r as any).pendingRelocationRequest as CustomerRelocationRequest;
       timeline.push(
-        `${formatTimelineDate(rel.relocatedAt)} - Relocated by Admin from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} due to: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`
+        `${formatTimelineDate(preq.requestedAt)} - Customer requested spot relocation to ${preq.targetWorkspaceDisplayName}. Reason: ${preq.reason}${preq.notes ? ` (${preq.notes})` : ""}`
+      );
+    }
+
+    if ((r as any).declinedRelocationRequest) {
+      const dreq = (r as any).declinedRelocationRequest as CustomerRelocationRequest;
+      const decActor = dreq.decisionRole === "STAFF" ? "Staff" : "Admin";
+      timeline.push(
+        `${formatTimelineDate(dreq.decisionAt || dreq.requestedAt)} - Customer spot relocation request declined by ${decActor}. Reason: ${dreq.decisionNotes || "Unavailable"}`
       );
     }
 
@@ -1649,6 +1691,7 @@ export class ReservationMemoryRepository
       cancelledAt: (r as any).cancelledAt ?? null,
       rescheduleCount: (r as any).rescheduleCount ?? 0,
       paymentAttempts: paymentAttemptsSummary,
+      pendingRelocationRequest: (r as any).pendingRelocationRequest ?? null,
     };
   }
 
@@ -2253,8 +2296,17 @@ export class ReservationMemoryRepository
       return [];
     }
 
+    const nowMs = input.evaluationTime
+      ? new Date(input.evaluationTime).getTime()
+      : this.nowProvider().getTime();
     const startMs = new Date(assigned.startAt).getTime();
     const endMs = new Date(assigned.endAt).getTime();
+
+    const isInSession =
+      (r.status === "CONFIRMED" || r.status === "CHECKED_IN") &&
+      nowMs >= startMs &&
+      nowMs < endMs;
+    const effectiveStartMs = isInSession ? Math.max(nowMs, startMs) : startMs;
 
     if (!this.workspaceRepository) {
       return [];
@@ -2301,7 +2353,7 @@ export class ReservationMemoryRepository
             }
             const otherStartMs = new Date(otherCand.startAt).getTime();
             const otherEndMs = new Date(otherCand.endAt).getTime();
-            if (startMs < otherEndMs && endMs > otherStartMs) {
+            if (effectiveStartMs < otherEndMs && endMs > otherStartMs) {
               isAvailable = false;
               reason = "Already booked for this time window";
               break;
@@ -2385,8 +2437,17 @@ export class ReservationMemoryRepository
       }
     }
 
+    const nowMs = input.evaluationTime
+      ? new Date(input.evaluationTime).getTime()
+      : this.nowProvider().getTime();
     const startMs = new Date(assigned.startAt).getTime();
     const endMs = new Date(assigned.endAt).getTime();
+
+    const isInSession =
+      (r.status === "CONFIRMED" || r.status === "CHECKED_IN") &&
+      nowMs >= startMs &&
+      nowMs < endMs;
+    const effectiveStartMs = isInSession ? Math.max(nowMs, startMs) : startMs;
 
     // Overlap conflict check
     for (const other of this.reservations) {
@@ -2402,11 +2463,15 @@ export class ReservationMemoryRepository
         }
         const otherStartMs = new Date(otherCand.startAt).getTime();
         const otherEndMs = new Date(otherCand.endAt).getTime();
-        if (startMs < otherEndMs && endMs > otherStartMs) {
+        if (effectiveStartMs < otherEndMs && endMs > otherStartMs) {
           throw new Error("Target workspace spot is already booked for this time window");
         }
       }
     }
+
+    const remainingMinutes = isInSession
+      ? Math.max(0, Math.round((endMs - effectiveStartMs) / 60000))
+      : undefined;
 
     const nowIso = this.nowProvider().toISOString();
     assigned.workspaceInstanceId = input.targetWorkspaceInstanceId;
@@ -2427,14 +2492,25 @@ export class ReservationMemoryRepository
       relocatedAt: nowIso,
       actorUserId: input.actorUserId,
       actorRole: input.actorRole,
+      inSession: isInSession,
+      remainingMinutes,
     });
+
+    const normalizedActorRole =
+      input.actorRole === "STAFF"
+        ? "STAFF"
+        : input.actorRole === "CUSTOMER"
+        ? "CUSTOMER"
+        : input.actorRole === "SUPERADMIN" || input.actorRole === "SUPER_ADMIN"
+        ? "SUPERADMIN"
+        : "ADMIN";
 
     this.recordOperationalAudit({
       reservation: r,
       action: "RESERVATION_RELOCATED" as any,
       actedAt: nowIso,
-      actorRole: (input.actorRole === "STAFF" ? "STAFF" : "ADMIN"),
-      actorUserId: input.actorUserId ?? "admin",
+      actorRole: normalizedActorRole as any,
+      actorUserId: input.actorUserId ?? (input.actorRole === "CUSTOMER" ? "customer" : "admin"),
       reentry: false,
     });
 
@@ -2452,6 +2528,116 @@ export class ReservationMemoryRepository
       newSpotName: newWorkspaceDisplayName,
       message: "Reservation relocated successfully",
     };
+  }
+
+  async requestCustomerRelocation(input: RequestCustomerRelocationInput): Promise<CustomerRelocationRequest> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+    if (r.status !== "CONFIRMED" && r.status !== "CHECKED_IN") {
+      throw new Error(`Only confirmed or checked-in reservations can request relocation (current status: ${r.status})`);
+    }
+    const assigned = (r.candidates ?? []).find((c) => c.isAssigned) ?? (r.candidates ?? [])[0];
+    if (!assigned) {
+      throw new Error("No assigned workspace spot found for this reservation");
+    }
+    if (assigned.workspaceInstanceId === input.targetWorkspaceInstanceId) {
+      throw new Error("Target spot must be different from current spot");
+    }
+
+    let targetWorkspaceDisplayName = input.targetWorkspaceInstanceId;
+    if (this.workspaceRepository) {
+      const catalog = await this.workspaceRepository.listCatalog();
+      const currentInst = catalog.instances.find((i) => i.id === assigned.workspaceInstanceId);
+      const targetInst = catalog.instances.find((i) => i.id === input.targetWorkspaceInstanceId);
+      if (!targetInst) {
+        throw new Error("Target workspace spot not found");
+      }
+      if (currentInst && targetInst.templateId !== currentInst.templateId) {
+        throw new Error("Relocation is only allowed to spots of the exact same workspace template (tier)");
+      }
+      targetWorkspaceDisplayName = targetInst.displayName;
+    }
+
+    const req: CustomerRelocationRequest = {
+      requestId: `req-${Date.now()}`,
+      targetWorkspaceInstanceId: input.targetWorkspaceInstanceId,
+      targetWorkspaceDisplayName,
+      reason: input.reason,
+      notes: input.notes ?? null,
+      requestedAt: this.nowProvider().toISOString(),
+      status: "PENDING",
+    };
+
+    (r as any).pendingRelocationRequest = req;
+    return req;
+  }
+
+  async decideCustomerRelocation(input: DecideCustomerRelocationInput): Promise<{
+    success: boolean;
+    decision: "APPROVE" | "DECLINE";
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    const r = this.reservations.find(
+      (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
+    );
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+    const pending = (r as any).pendingRelocationRequest as CustomerRelocationRequest | undefined;
+    if (!pending || pending.status !== "PENDING") {
+      throw new Error("No pending relocation request found for this reservation");
+    }
+
+    const nowIso = this.nowProvider().toISOString();
+    if (input.decision === "APPROVE") {
+      pending.status = "APPROVED";
+      pending.decisionNotes = input.notes ?? null;
+      pending.decisionBy = input.actorUserId ?? null;
+      pending.decisionRole = input.actorRole;
+      pending.decisionAt = nowIso;
+
+      const relocRes = await this.relocateReservation({
+        reservationId: r.id,
+        targetWorkspaceInstanceId: pending.targetWorkspaceInstanceId,
+        reason: pending.reason,
+        notes: pending.notes ?? undefined,
+        actorUserId: input.actorUserId ?? undefined,
+        actorRole: input.actorRole,
+      });
+
+      (r as any).pendingRelocationRequest = null;
+      return {
+        success: true,
+        decision: "APPROVE",
+        reservation: relocRes.reservation,
+        message: "Customer relocation request approved and completed successfully",
+      };
+    } else {
+      pending.status = "DECLINED";
+      pending.decisionNotes = input.notes ?? null;
+      pending.decisionBy = input.actorUserId ?? null;
+      pending.decisionRole = input.actorRole;
+      pending.decisionAt = nowIso;
+
+      (r as any).pendingRelocationRequest = null;
+      (r as any).declinedRelocationRequest = pending;
+
+      const detail = await this.getAdminReservationDetail(r.id);
+      if (!detail) {
+        throw new Error("Failed to load reservation detail");
+      }
+      return {
+        success: true,
+        decision: "DECLINE",
+        reservation: detail,
+        message: "Customer relocation request was declined",
+      };
+    }
   }
 }
 

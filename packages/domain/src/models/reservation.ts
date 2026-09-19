@@ -102,6 +102,7 @@ export interface ReservationPaymentSession {
   token: string;
   expiresAt: string;
   paymentUrl: string;
+  expiryMinutes?: number;
 }
 
 export interface PaymentSessionRecord {
@@ -289,6 +290,7 @@ export interface StaffOperationalReservation {
   paymentMethodId?: string | null;
   paymentMethodType?: PaymentMethodType | null;
   paymentMethodDisplayName?: string | null;
+  pendingRelocationRequest?: CustomerRelocationRequest | null;
 }
 
 export type OccupancyState = "RESERVED" | "OCCUPIED";
@@ -345,6 +347,20 @@ export interface GuestReservationAssignmentSummary {
   bookingEndAt: string;
 }
 
+export interface CustomerRelocationRequest {
+  requestId: string;
+  targetWorkspaceInstanceId: string;
+  targetWorkspaceDisplayName: string;
+  reason: string;
+  notes?: string | null;
+  requestedAt: string;
+  status: "PENDING" | "APPROVED" | "DECLINED";
+  decisionNotes?: string | null;
+  decisionBy?: string | null;
+  decisionAt?: string | null;
+  decisionRole?: "STAFF" | "ADMIN" | "SUPERADMIN" | null;
+}
+
 export interface GuestReservationTrackingResult {
   reservationId: string;
   referenceCode: string;
@@ -359,6 +375,10 @@ export interface GuestReservationTrackingResult {
   rescheduleCount?: number;
   canReschedule?: boolean;
   rescheduleCutoffHours?: number;
+  isInSession?: boolean;
+  canRelocate?: boolean;
+  remainingMinutes?: number;
+  pendingRelocationRequest?: CustomerRelocationRequest | null;
 }
 
 export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue";
@@ -478,6 +498,7 @@ export interface AdminReservationDetail {
   cancelledAt?: string | null;
   rescheduleCount?: number;
   paymentAttempts?: AdminReservationPaymentAttemptSummary[];
+  pendingRelocationRequest?: CustomerRelocationRequest | null;
 }
 
 

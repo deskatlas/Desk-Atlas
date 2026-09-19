@@ -43,6 +43,7 @@ export class PaymentSessionService {
       tokenHash,
       expiresAt,
       paymentUrl,
+      expiryMinutes,
     };
   }
 

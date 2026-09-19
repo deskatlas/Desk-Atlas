@@ -14,7 +14,7 @@ import type {
   WorkspaceRepository,
   WorkspaceTemplate,
 } from '../models/workspace';
-import { WorkspaceConflictError, sortWorkspaceInstances } from './workspaceService';
+import { WorkspaceConflictError, WorkspaceValidationError, sortWorkspaceInstances } from './workspaceService';
 
 export class InMemoryWorkspaceRepository implements WorkspaceRepository {
   private templates = new Map<string, WorkspaceTemplate>();
@@ -37,7 +37,7 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
   async listCatalog(): Promise<WorkspaceCatalog> {
     return {
       templates: Array.from(this.templates.values()),
-      floors: Array.from(this.floors.values()),
+      floors: Array.from(this.floors.values()).filter((f) => f.isActive !== false),
       instances: sortWorkspaceInstances(Array.from(this.instances.values())),
     };
   }
@@ -52,6 +52,45 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     };
     this.floors.set(floor.id, floor);
     return floor;
+  }
+
+  async deleteFloor(id: string): Promise<{ deleted: boolean; deactivated?: boolean; removedInstancesCount?: number }> {
+    const floor = this.requireFloor(id);
+    const activeFloors = Array.from(this.floors.values()).filter((f) => f.isActive !== false);
+    if (activeFloors.length <= 1) {
+      throw new WorkspaceValidationError('Cannot delete floor: DeskAtlas requires at least one floor to remain active.');
+    }
+
+    const instances = Array.from(this.instances.values()).filter((i) => i.floorId === id);
+
+    const nowIso = new Date().toISOString();
+    let activeReservationsCount = 0;
+    for (const instance of instances) {
+      const futureReservations = await this.listFutureConfirmedReservations(instance.id, nowIso);
+      activeReservationsCount += futureReservations.length;
+    }
+
+    if (activeReservationsCount > 0) {
+      throw new WorkspaceConflictError(
+        `Cannot delete floor '${floor.name}': There are ${activeReservationsCount} active or upcoming reservations on this floor. Please cancel, complete, or reallocate these reservations before deleting the floor.`
+      );
+    }
+
+    if (instances.length === 0) {
+      this.floors.delete(id);
+      return { deleted: true, removedInstancesCount: 0 };
+    }
+
+    this.floors.set(id, { ...floor, isActive: false });
+    for (const instance of instances) {
+      this.instances.set(instance.id, {
+        ...instance,
+        operationalStatus: 'INACTIVE',
+        floor: { ...floor, isActive: false },
+      });
+    }
+
+    return { deleted: true, deactivated: true, removedInstancesCount: instances.length };
   }
 
   async getInstance(id: string): Promise<WorkspaceInstanceDetails> {
@@ -232,7 +271,7 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
   private requireFloor(id: string): Floor {
     const floor = this.floors.get(id);
-    if (!floor) throw new Error(`Floor not found: ${id}`);
+    if (!floor) throw new WorkspaceValidationError(`Floor not found: ${id}`);
     return floor;
   }
 

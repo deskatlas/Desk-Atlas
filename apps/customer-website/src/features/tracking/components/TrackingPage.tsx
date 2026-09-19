@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useReservationTracking } from "../hooks/useReservationTracking";
 import { CustomerRescheduleModal } from "./CustomerRescheduleModal";
+import { CustomerRelocateModal } from "./CustomerRelocateModal";
+import { CancellationTermsModal } from "./CancellationTermsModal";
 
 interface TrackingPageProps {
   initialReferenceCode?: string;
@@ -17,6 +19,8 @@ export function TrackingPage({
   const [referenceCode, setReferenceCode] = useState(initialReferenceCode);
   const [customerEmail, setCustomerEmail] = useState(initialEmail);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [showRelocateModal, setShowRelocateModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { data, loading, error, trackReservation } = useReservationTracking();
 
@@ -62,9 +66,19 @@ export function TrackingPage({
               Check your reservation status
             </h1>
           </div>
-          <Link href="/reserve" className="da-secondary-button">
-            Reserve Workspace
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowTermsModal(true)}
+              data-testid="cancellation-terms-link"
+              className="da-secondary-button text-xs font-bold"
+            >
+              Cancellation & Rescheduling Terms
+            </button>
+            <Link href="/reserve" className="da-secondary-button">
+              Reserve Workspace
+            </Link>
+          </div>
         </div>
 
         <div className="mt-8 grid gap-4">
@@ -147,15 +161,26 @@ export function TrackingPage({
                     {data.referenceCode}
                   </p>
                 </div>
-                <span
-                  className={`rounded-full px-4 py-2 text-xs font-bold ${
-                    isRejected
-                      ? "bg-red-100 text-red-700"
-                      : "bg-[var(--da-info)] text-[var(--da-primary)]"
-                  }`}
-                >
-                  {isRejected ? "REJECTED" : data.status}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {data.isInSession && (
+                    <span
+                      data-testid="in-session-badge"
+                      className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-3.5 py-1.5 text-xs font-bold text-emerald-800"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Session In Progress {data.remainingMinutes ? `(${Math.floor(data.remainingMinutes / 60) > 0 ? `${Math.floor(data.remainingMinutes / 60)}h ` : ""}${data.remainingMinutes % 60}m remaining)` : ""}
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-4 py-2 text-xs font-bold ${
+                      isRejected
+                        ? "bg-red-100 text-red-700"
+                        : "bg-[var(--da-info)] text-[var(--da-primary)]"
+                    }`}
+                  >
+                    {isRejected ? "REJECTED" : data.status}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -165,9 +190,73 @@ export function TrackingPage({
                 <InfoCard label="Booking time" value={bookingTimeValue} />
               </div>
 
+              {/* In-Session Spot Relocation Section */}
+              {!isRejected && data.status === "CONFIRMED" && (
+                data.pendingRelocationRequest?.status === "PENDING" ? (
+                  <div
+                    data-testid="customer-pending-relocation-badge"
+                    className="mt-6 rounded-[18px] border border-amber-200 bg-amber-50 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl">⏳</span>
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
+                            Relocation Request Pending Approval
+                          </p>
+                          <span className="rounded-full bg-amber-200/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-900">
+                            Awaiting Staff
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-amber-900">
+                          Your request to move to <strong>{data.pendingRelocationRequest.targetWorkspaceDisplayName}</strong> has been submitted to on-duty staff.
+                        </p>
+                        <p className="mt-1 text-[11px] text-amber-700">
+                          Reason: <em>{data.pendingRelocationRequest.reason}</em>
+                          {data.pendingRelocationRequest.notes ? ` (${data.pendingRelocationRequest.notes})` : ""}
+                        </p>
+                        <p className="mt-1.5 text-[11px] text-amber-700/80">
+                          Please remain at your current desk until staff approves your request. Your digital QR pass will automatically update once confirmed.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-6 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
+                          Spot Relocation
+                        </p>
+                        <p className="mt-0.5 text-xs text-[var(--da-text-primary)]">
+                          {data.isInSession
+                            ? "Experiencing physical issues with your spot? You can request to relocate to another available spot."
+                            : "In-session spot swap is available while your booking is underway."}
+                        </p>
+                      </div>
+
+                      {data.isInSession ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowRelocateModal(true)}
+                          className="da-primary-button text-xs font-bold"
+                          data-testid="customer-relocate-button"
+                        >
+                          Request Spot Relocation
+                        </button>
+                      ) : (
+                        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                          Available During Session
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+
               {/* Reschedule Action Section */}
               {!isRejected && data.status === "CONFIRMED" && (
-                <div className="mt-6 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
+                <div className="mt-4 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
@@ -201,6 +290,19 @@ export function TrackingPage({
                   </div>
                 </div>
               )}
+
+              {/* View Terms & Policy Footer Link */}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--da-border-light)] pt-3 text-xs text-[var(--da-text-secondary)]">
+                <span>Need details on notice cutoffs or refund guidelines?</span>
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  data-testid="cancellation-terms-button"
+                  className="font-bold text-[var(--da-primary)] hover:underline flex items-center gap-1"
+                >
+                  View Cancellation & Rescheduling Terms ↗
+                </button>
+              </div>
             </div>
           );
         })() : null}
@@ -217,6 +319,25 @@ export function TrackingPage({
             }}
           />
         )}
+
+        {showRelocateModal && data && (
+          <CustomerRelocateModal
+            trackingData={data}
+            customerEmail={customerEmail || undefined}
+            onClose={() => setShowRelocateModal(false)}
+            onSuccess={(msg) => {
+              setShowRelocateModal(false);
+              setSuccessMessage(msg);
+              trackReservation({ referenceCode, customerEmail });
+            }}
+          />
+        )}
+
+        <CancellationTermsModal
+          isOpen={showTermsModal}
+          onClose={() => setShowTermsModal(false)}
+          defaultCutoffHours={data?.rescheduleCutoffHours ?? 12}
+        />
       </div>
     </main>
   );

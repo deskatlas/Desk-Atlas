@@ -25,3 +25,20 @@ export async function POST(request: NextRequest) {
     return workspaceErrorResponse(error);
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const url = new URL(request.url);
+    let floorId = url.searchParams.get('floorId');
+    if (!floorId) {
+      const body = await request.json().catch(() => ({}));
+      floorId = body.floorId || body.id;
+    }
+    const service = getAdminWorkspaceService();
+    const result = await service.deleteFloor(floorId || '', { actorRole: 'ADMIN', actorUserId: null });
+    return NextResponse.json(result);
+  } catch (error) {
+    return workspaceErrorResponse(error);
+  }
+}
+

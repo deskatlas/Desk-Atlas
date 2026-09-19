@@ -437,8 +437,8 @@ describe('MF-124: Admin Reservation Relocation for Sudden Maintenance or Spot In
       expect(rpcCall).toBeDefined();
       const body = JSON.parse(rpcCall!.options.body);
       expect(body.p_reservation_id).toBe('res-uuid-1');
-      expect(body.p_target_instance_id).toBe('inst-uuid-2');
-      expect(body.p_relocation_reason).toBe('Spot Maintenance - Desk leg broken');
+      expect(body.p_target_workspace_instance_id).toBe('inst-uuid-2');
+      expect(body.p_reason).toBe('Spot Maintenance - Desk leg broken');
       expect(body.p_actor_user_id).toBe('admin-uuid-9');
       expect(body.p_actor_role).toBe('ADMIN');
     });

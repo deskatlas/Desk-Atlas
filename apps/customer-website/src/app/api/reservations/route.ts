@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
         currency: reservation.currency,
         paymentUrl: reservation.paymentSession.paymentUrl,
         expiresAt: reservation.paymentSession.expiresAt,
+        expiryMinutes: reservation.paymentSession.expiryMinutes,
         trackingUrl,
         workspaceTemplateName: reservation.candidates?.[0]?.workspaceTemplateName,
         bookingDate: reservation.candidates?.[0]?.startAt,

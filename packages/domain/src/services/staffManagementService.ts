@@ -78,11 +78,28 @@ export class StaffManagementService {
       }
     }
 
-    return this.repository.createStaff({
+    const staff = await this.repository.createStaff({
       ...input,
       email,
       displayName,
     });
+
+    try {
+      let inviterNameOrEmail: string | undefined;
+      if (input.actorUserId) {
+        inviterNameOrEmail = await this.getActorNameOrEmail(input.actorUserId);
+      }
+      await this.notifyAdminsNewTeamMember({
+        memberName: staff.name || displayName,
+        memberEmail: staff.email || email,
+        role: staff.rawRole || input.role,
+        invitedBy: inviterNameOrEmail,
+      });
+    } catch (e) {
+      console.warn('[StaffManagementService] Failed to notify admins of direct staff creation:', e);
+    }
+
+    return staff;
   }
 
   async updateStaff(input: UpdateStaffInput): Promise<StaffMember> {
@@ -150,10 +167,48 @@ export class StaffManagementService {
       }
     }
 
-    return this.repository.updateStaff({
+    const updated = await this.repository.updateStaff({
       ...input,
       actorIsSuperAdmin: isSuperAdmin,
     });
+
+    if (existing.isActive !== updated.isActive) {
+      let actorNameOrEmail: string | undefined;
+      if (input.actorUserId) {
+        actorNameOrEmail = await this.getActorNameOrEmail(input.actorUserId);
+      }
+
+      if (existing.isActive && !updated.isActive) {
+        try {
+          await this.emailService.sendAccountDeactivatedEmail({
+            to: updated.email,
+            memberName: updated.name || updated.email,
+            role: updated.rawRole || updated.role,
+            effectiveAt: this.nowProvider().toISOString(),
+            changedBy: actorNameOrEmail,
+          });
+        } catch (e) {
+          console.warn('[StaffManagementService] Failed to send account deactivated email:', e);
+        }
+      } else if (!existing.isActive && updated.isActive) {
+        try {
+          const adminBaseUrl = (process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || process.env.ADMIN_PORTAL_URL || 'http://localhost:3000').replace(/\/$/, '');
+          const loginUrl = `${adminBaseUrl}/manage/login`;
+          await this.emailService.sendAccountReactivatedEmail({
+            to: updated.email,
+            memberName: updated.name || updated.email,
+            role: updated.rawRole || updated.role,
+            effectiveAt: this.nowProvider().toISOString(),
+            loginUrl,
+            changedBy: actorNameOrEmail,
+          });
+        } catch (e) {
+          console.warn('[StaffManagementService] Failed to send account reactivated email:', e);
+        }
+      }
+    }
+
+    return updated;
   }
 
   async deactivateStaff(staffUserId: string, actor: StaffManagementActor): Promise<StaffMember> {
@@ -166,6 +221,10 @@ export class StaffManagementService {
     });
   }
 
+  async deactivateStaffAccount(staffUserId: string, actor: StaffManagementActor): Promise<StaffMember> {
+    return this.deactivateStaff(staffUserId, actor);
+  }
+
   async activateStaff(staffUserId: string, actor: StaffManagementActor): Promise<StaffMember> {
     return this.updateStaff({
       staffUserId,
@@ -174,6 +233,10 @@ export class StaffManagementService {
       actorRole: actor.role,
       actorIsSuperAdmin: actor.isSuperAdmin,
     });
+  }
+
+  async reactivateStaffAccount(staffUserId: string, actor: StaffManagementActor): Promise<StaffMember> {
+    return this.activateStaff(staffUserId, actor);
   }
 
   async listActiveStaff(actor?: StaffManagementActor): Promise<StaffMember[]> {
@@ -325,7 +388,24 @@ export class StaffManagementService {
       }
     }
 
-    return this.repository.confirmStaffInvitation(input);
+    const result = await this.repository.confirmStaffInvitation(input);
+
+    try {
+      let inviterNameOrEmail: string | undefined;
+      if (result.invitation.createdByAdminId) {
+        inviterNameOrEmail = await this.getActorNameOrEmail(result.invitation.createdByAdminId);
+      }
+      await this.notifyAdminsNewTeamMember({
+        memberName: result.staff.name || result.invitation.displayName,
+        memberEmail: result.staff.email || result.invitation.email,
+        role: result.staff.rawRole || result.invitation.role,
+        invitedBy: inviterNameOrEmail,
+      });
+    } catch (e) {
+      console.warn('[StaffManagementService] Failed to notify admins on confirmed invitation:', e);
+    }
+
+    return result;
   }
 
   async cancelStaffInvitation(id: string, actor: StaffManagementActor): Promise<boolean> {
@@ -336,6 +416,62 @@ export class StaffManagementService {
       throw new StaffManagementError('Invitation ID is required.');
     }
     return this.repository.cancelStaffInvitation(id.trim(), actor.userId);
+  }
+
+  private async getActorNameOrEmail(actorUserId: string): Promise<string | undefined> {
+    try {
+      const actor = await this.repository.getStaffById(actorUserId);
+      if (actor) {
+        return actor.name || actor.email;
+      }
+    } catch {
+      // ignore
+    }
+    return undefined;
+  }
+
+  private async notifyAdminsNewTeamMember(details: {
+    memberName: string;
+    memberEmail: string;
+    role: string;
+    invitedBy?: string;
+  }): Promise<void> {
+    try {
+      const activeStaff = await this.repository.listActiveStaff();
+      const activeAdmins = activeStaff.filter(
+        (s) => s.isActive && (s.rawRole === 'ADMIN' || s.isSuperAdmin)
+      );
+      const normalizedMemberEmail = details.memberEmail.trim().toLowerCase();
+      const recipientEmails = Array.from(
+        new Set(
+          activeAdmins
+            .map((a) => a.email?.trim().toLowerCase())
+            .filter((email): email is string => Boolean(email) && email !== normalizedMemberEmail)
+        )
+      );
+
+      const nowIso = this.nowProvider().toISOString();
+      const adminBaseUrl = (process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || process.env.ADMIN_PORTAL_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const rosterUrl = `${adminBaseUrl}/manage/staff`;
+
+      for (const to of recipientEmails) {
+        try {
+          await this.emailService.sendTeamMemberJoinedEmail({
+            to,
+            memberName: details.memberName,
+            memberEmail: details.memberEmail,
+            role: details.role,
+            joinedAt: nowIso,
+            invitedBy: details.invitedBy,
+            rosterUrl,
+          });
+        } catch (err) {
+          console.warn(`[StaffManagementService] Failed to send team member joined email to ${to}:`, err);
+        }
+      }
+    } catch (err) {
+      console.warn('[StaffManagementService] Failed to notify admins of new team member:', err);
+    }
   }
 }
 

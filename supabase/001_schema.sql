@@ -277,10 +277,14 @@ CREATE TABLE public.business_settings (
   booking_interval_minutes integer NOT NULL,
   payment_expiry_minutes integer NOT NULL DEFAULT 60,
   kiosk_timeout_minutes integer,
+  kiosk_allowance_minutes integer NOT NULL DEFAULT 5,
   customer_session_timeout_minutes integer NOT NULL DEFAULT 20,
   customer_reschedule_cutoff_hours integer NOT NULL DEFAULT 12,
   landing_preview_photos jsonb NOT NULL DEFAULT '[]'::jsonb,
   status_colors jsonb NOT NULL DEFAULT '{"available": "#10B981", "occupied": "#EF4444", "maintenance": "#F59E0B", "unavailable": "#6B7280"}'::jsonb,
+  cancellation_policy_pdf_url text,
+  cancellation_policy_pdf_filename text,
+  cancellation_policy_updated_at timestamptz,
   updated_by_user_id uuid,
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -291,6 +295,8 @@ CREATE TABLE public.business_settings (
   CONSTRAINT business_settings_payment_expiry_positive CHECK (payment_expiry_minutes > 0),
   CONSTRAINT business_settings_kiosk_timeout_positive
     CHECK (kiosk_timeout_minutes IS NULL OR kiosk_timeout_minutes > 0),
+  CONSTRAINT business_settings_kiosk_allowance_bound
+    CHECK (kiosk_allowance_minutes >= 0 AND kiosk_allowance_minutes <= 60),
   CONSTRAINT business_settings_customer_session_timeout_bound
     CHECK (customer_session_timeout_minutes >= 1 AND customer_session_timeout_minutes <= 180),
 

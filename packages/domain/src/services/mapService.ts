@@ -258,6 +258,11 @@ function isThinWallElement(elementType: string, elementRole: MapElementRole): bo
   );
 }
 
+function isWindowElement(elementType: string, elementRole: MapElementRole): boolean {
+  const type = elementType.toLowerCase();
+  return elementRole === 'STRUCTURE' && (type === 'window' || type.includes('window'));
+}
+
 function normalizeElementGeometry(
   element: MapElementInput,
   index: number,
@@ -277,12 +282,15 @@ function normalizeElementGeometry(
 
   const isWall = isWallElement(elementType, elementRole);
   const isThinWall = isThinWallElement(elementType, elementRole);
+  const isWindow = isWindowElement(elementType, elementRole);
 
   const x = snapToGrid(rawX, gridSize, false);
   const y = snapToGrid(rawY, gridSize, false);
   const width = snapToGrid(requirePositiveNumber(element.width, `${label} width`), gridSize, true);
   const height = isThinWall
     ? 10
+    : isWindow
+    ? Math.max(10, Math.round(requirePositiveNumber(element.height ?? 20, `${label} height`)))
     : (isWall
       ? snapToGrid(20, gridSize, true)
       : snapToGrid(requirePositiveNumber(element.height, `${label} height`), gridSize, true));

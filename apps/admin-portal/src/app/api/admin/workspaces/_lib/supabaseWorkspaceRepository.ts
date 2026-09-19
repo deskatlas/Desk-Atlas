@@ -14,7 +14,7 @@ import type {
   WorkspaceRepository,
   WorkspaceTemplate,
 } from '@deskatlas/domain';
-import { WorkspaceConflictError, sortWorkspaceInstances } from '@deskatlas/domain';
+import { WorkspaceConflictError, WorkspaceValidationError, sortWorkspaceInstances } from '@deskatlas/domain';
 
 type TemplateRow = {
   id: string;
@@ -88,7 +88,7 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
   async listCatalog(): Promise<WorkspaceCatalog> {
     const [templates, floors, instances] = await Promise.all([
       this.request<TemplateRow[]>('/workspace_templates?select=*&order=name.asc'),
-      this.request<FloorRow[]>('/floors?select=*&order=display_order.asc'),
+      this.request<FloorRow[]>('/floors?select=*&is_active=eq.true&order=display_order.asc'),
       this.request<InstanceRow[]>(
         '/workspace_instances?select=*,template:workspace_templates(*),floor:floors(*)&order=instance_code.asc'
       ),
@@ -124,6 +124,66 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       prefer: 'return=representation',
     });
     return mapFloor(row);
+  }
+
+  async deleteFloor(id: string): Promise<{ deleted: boolean; deactivated?: boolean; removedInstancesCount?: number }> {
+    const [floor] = await this.request<FloorRow[]>(
+      `/floors?id=eq.${encodeURIComponent(id)}&limit=1`
+    );
+    if (!floor) throw new WorkspaceValidationError(`Floor not found: ${id}`);
+
+    const activeFloors = await this.request<FloorRow[]>('/floors?is_active=eq.true&select=id');
+    if (activeFloors.length <= 1) {
+      throw new WorkspaceValidationError('Cannot delete floor: DeskAtlas requires at least one floor to remain active.');
+    }
+
+    const instances = await this.request<Array<{ id: string }>>(
+      `/workspace_instances?floor_id=eq.${encodeURIComponent(id)}&select=id`
+    );
+
+    const nowIso = new Date().toISOString();
+    if (instances.length > 0) {
+      const instanceIds = instances.map((ins) => ins.id);
+      const activeReservations = await this.request<any[]>(
+        `/reservation_candidates?select=id,start_at,end_at,reservation:reservations!inner(id,status)&workspace_instance_id=in.(${instanceIds
+          .map(encodeURIComponent)
+          .join(',')})&reservation.status=in.(CONFIRMED,CHECKED_IN)&end_at=gte.${encodeURIComponent(nowIso)}`
+      );
+
+      if (activeReservations.length > 0) {
+        throw new WorkspaceConflictError(
+          `Cannot delete floor '${floor.name}': There are ${activeReservations.length} active or upcoming reservations on this floor. Please cancel, complete, or reallocate these reservations before deleting the floor.`
+        );
+      }
+    }
+
+    if (instances.length === 0) {
+      try {
+        await this.request<unknown>(`/floors?id=eq.${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+        return { deleted: true, removedInstancesCount: 0 };
+      } catch {
+        await this.request<unknown>(`/floors?id=eq.${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ is_active: false }),
+        });
+        return { deleted: true, deactivated: true, removedInstancesCount: 0 };
+      }
+    }
+
+    await Promise.all([
+      this.request<unknown>(`/floors?id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: false }),
+      }),
+      this.request<unknown>(`/workspace_instances?floor_id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ operational_status: 'INACTIVE' }),
+      }),
+    ]);
+
+    return { deleted: true, deactivated: true, removedInstancesCount: instances.length };
   }
 
   async createTemplate(input: CreateWorkspaceTemplateInput): Promise<WorkspaceTemplate> {

@@ -38,10 +38,14 @@ export interface BusinessSettings {
   bookingIntervalMinutes: number;
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes: number | null;
+  kioskAllowanceMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
+  cancellationPolicyPdfUrl?: string | null;
+  cancellationPolicyPdfFilename?: string | null;
+  cancellationPolicyUpdatedAt?: string | null;
   updatedAt?: string | null;
 }
 
@@ -83,10 +87,14 @@ export interface UpdateBusinessSettingsInput {
   bookingIntervalMinutes: number;
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes?: number | null;
+  kioskAllowanceMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
+  cancellationPolicyPdfUrl?: string | null;
+  cancellationPolicyPdfFilename?: string | null;
+  cancellationPolicyUpdatedAt?: string | null;
 }
 
 export interface UpdateOperatingHoursInput {

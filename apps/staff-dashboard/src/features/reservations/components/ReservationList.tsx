@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useReservations } from '../hooks/useReservations';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,8 @@ import {
   filterStaffReservationsByStatus,
   STAFF_RESERVATION_FILTERS,
   sortStaffReservationsBySchedule,
+  paginateList,
+  getPaginationPageNumbers,
   type StaffOperationalReservation,
   type StaffReservationFilter,
   type ReservationStatus,
@@ -37,6 +39,7 @@ export function ReservationList() {
   const currentTick = useLiveCountdownClock(1000);
   const [activeFilter, setActiveFilter] = useState<StaffReservationFilter>('active');
   const [timeSort, setTimeSort] = useState<ReservationSortDirection | 'none'>('none');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const router = useRouter();
 
   const statusFiltered = filterStaffReservationsByStatus(reservations, activeFilter);
@@ -46,6 +49,14 @@ export function ReservationList() {
     : searchFiltered;
   const totalCount = reservations.length;
   const isFiltered = activeFilter !== 'all' || Boolean(searchQuery.trim()) || timeSort !== 'none';
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter, searchQuery, timeSort]);
+
+  const pagination = paginateList(displayedReservations, currentPage, 15);
+  const paginatedReservations = pagination.items;
+  const pageNumbers = getPaginationPageNumbers(pagination.page, pagination.totalPages);
 
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
@@ -151,7 +162,7 @@ export function ReservationList() {
             {displayedReservations.length === 0 ? (
               <tr><td colSpan={5} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px' }}>{getEmptyMessage()}</td></tr>
             ) : (
-              displayedReservations.map((res: StaffOperationalReservation) => {
+              paginatedReservations.map((res: StaffOperationalReservation) => {
                 const statusDisp = getStatusDisplay(res.reservationStatus);
                 const isCheckedInOrActive =
                   (res.reservationStatus === 'CHECKED_IN' ||
@@ -198,6 +209,100 @@ export function ReservationList() {
             )}
           </tbody>
         </table>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light, var(--da-border))', flexWrap: 'wrap', gap: '10px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: "var(--da-font-family, 'Inter', sans-serif)" }}>
+            Showing {pagination.startIndex} to {pagination.endIndex} of {pagination.totalItems} entries
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.page <= 1}
+              style={{
+                height: '36px',
+                padding: '0 12px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: pagination.page <= 1 ? 'not-allowed' : 'pointer',
+                opacity: pagination.page <= 1 ? 0.5 : 1,
+                whiteSpace: 'nowrap',
+                fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
+                background: 'transparent',
+                color: 'var(--da-text-secondary)',
+                border: '1px solid var(--da-border)',
+              }}
+            >
+              Prev
+            </button>
+            {pageNumbers.map((pg, i) => {
+              if (typeof pg === 'string') {
+                return (
+                  <span
+                    key={`ellipsis-${i}`}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '13px',
+                      color: 'var(--da-text-secondary)',
+                    }}
+                  >
+                    …
+                  </span>
+                );
+              }
+              const isActive = pg === pagination.page;
+              return (
+                <button
+                  key={pg}
+                  type="button"
+                  onClick={() => setCurrentPage(pg)}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    padding: 0,
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
+                    background: isActive ? 'var(--da-brand-dark)' : 'transparent',
+                    color: isActive ? '#fff' : 'var(--da-text-secondary)',
+                    border: isActive ? 'none' : '1px solid var(--da-border)',
+                  }}
+                >
+                  {pg}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))}
+              disabled={pagination.page >= pagination.totalPages}
+              style={{
+                height: '36px',
+                padding: '0 12px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: pagination.page >= pagination.totalPages ? 'not-allowed' : 'pointer',
+                opacity: pagination.page >= pagination.totalPages ? 0.5 : 1,
+                whiteSpace: 'nowrap',
+                fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
+                background: 'transparent',
+                color: 'var(--da-text-secondary)',
+                border: '1px solid var(--da-border)',
+              }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </main>
   );

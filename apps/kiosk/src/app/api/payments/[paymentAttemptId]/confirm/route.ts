@@ -134,6 +134,8 @@ export async function POST(
             bookingToken: bookingAccess.token,
             qrIssuedAt: bookingAccess.issuedAt,
             trackingUrl,
+            digitalPassUrl: `${defaultCustomerOrigin}/pass/${bookingAccess.token}`,
+            termsUrl: `${defaultCustomerOrigin}/terms`,
           });
         }
       }

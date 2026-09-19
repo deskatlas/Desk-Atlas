@@ -6,8 +6,10 @@ import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '@/fea
 import { ExtendReservationModal } from './ExtendReservationModal';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/features/auth/components/AuthProvider';
 
 export function ReservationDetail({ id }: { id: string }) {
+  const { user } = useAuth();
   const { reservation, loading, error, refetch } = useReservationDetail(id);
   const { checkIn, checkOut, loading: actionLoading, error: actionError, clearError } = useCheckInActions();
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -24,6 +26,8 @@ export function ReservationDetail({ id }: { id: string }) {
   const [isRelocating, setIsRelocating] = useState<boolean>(false);
   const [isLoadingRelocationSpots, setIsLoadingRelocationSpots] = useState<boolean>(false);
   const [relocateError, setRelocateError] = useState<string | null>(null);
+  const [isDecidingRelocation, setIsDecidingRelocation] = useState<boolean>(false);
+  const [relocationDecisionError, setRelocationDecisionError] = useState<string | null>(null);
 
   const router = useRouter();
 
@@ -84,12 +88,16 @@ export function ReservationDetail({ id }: { id: string }) {
     try {
       const response = await fetch(`/api/operations/reservations/${encodeURIComponent(resId)}/relocate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.id ? { 'x-user-id': user.id } : {}),
+        },
         body: JSON.stringify({
           targetWorkspaceInstanceId: selectedRelocationSpotId,
           reason: relocationReason,
           notes: relocationNotes || undefined,
           actorRole: "STAFF",
+          actorUserId: user?.id || undefined,
         }),
       });
 
@@ -104,6 +112,45 @@ export function ReservationDetail({ id }: { id: string }) {
       setRelocateError(err?.message || "Failed to relocate reservation");
     } finally {
       setIsRelocating(false);
+    }
+  };
+
+  const handleDecideRelocation = async (decision: "APPROVE" | "DECLINE") => {
+    let declineNotes = "";
+    if (decision === "DECLINE") {
+      const inputNotes = window.prompt("Enter optional reason for declining this relocation request:");
+      if (inputNotes === null) return;
+      declineNotes = inputNotes;
+    }
+
+    const resId = reservation?.reservationId || id;
+    setIsDecidingRelocation(true);
+    setRelocationDecisionError(null);
+    try {
+      const res = await fetch(`/api/operations/reservations/${encodeURIComponent(resId)}/relocate/decision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
+        body: JSON.stringify({
+          decision,
+          notes: declineNotes || undefined,
+          actorRole: "STAFF",
+          actorUserId: user?.id || undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to process relocation decision");
+      }
+
+      await refetch();
+    } catch (err: any) {
+      setRelocationDecisionError(err?.message || "Failed to process decision");
+    } finally {
+      setIsDecidingRelocation(false);
     }
   };
 
@@ -164,6 +211,82 @@ export function ReservationDetail({ id }: { id: string }) {
       >
         &larr; Back
       </button>
+
+      {reservation.pendingRelocationRequest && reservation.pendingRelocationRequest.status === 'PENDING' && (
+        <div
+          data-testid="pending-relocation-request-banner"
+          style={{
+            background: '#FEFCE8',
+            border: '1px solid #FEF08A',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ flex: 1, minWidth: '240px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#854D0E' }}>
+                  Pending Customer Relocation Request
+                </h4>
+                <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '9999px', background: '#FEF08A', color: '#713F12' }}>
+                  Awaiting Staff Approval
+                </span>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#713F12' }}>
+                The customer has requested to relocate to <strong>{reservation.pendingRelocationRequest.targetWorkspaceDisplayName}</strong>.
+                {reservation.pendingRelocationRequest.reason && <> Reason: <em>{reservation.pendingRelocationRequest.reason}</em>.</>}
+                {reservation.pendingRelocationRequest.notes && <> Notes: &quot;{reservation.pendingRelocationRequest.notes}&quot;.</>}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                data-testid="approve-relocation-request-button"
+                disabled={isDecidingRelocation}
+                onClick={() => handleDecideRelocation('APPROVE')}
+                style={{
+                  background: '#16A34A',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: isDecidingRelocation ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isDecidingRelocation ? 'Processing...' : 'Approve Relocation'}
+              </button>
+              <button
+                data-testid="decline-relocation-request-button"
+                disabled={isDecidingRelocation}
+                onClick={() => handleDecideRelocation('DECLINE')}
+                style={{
+                  background: '#DC2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: isDecidingRelocation ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isDecidingRelocation ? 'Processing...' : 'Decline Request'}
+              </button>
+            </div>
+          </div>
+          {relocationDecisionError && (
+            <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 600 }}>
+              {relocationDecisionError}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', overflow: 'hidden' }}>
         <div style={{ padding: '24px', borderBottom: '1px solid var(--da-border)', background: 'var(--da-canvas)' }}>
@@ -370,6 +493,45 @@ export function ReservationDetail({ id }: { id: string }) {
                 {relocateError}
               </div>
             )}
+
+            {(() => {
+              if (!reservation) return null;
+              const nowMs = Date.now();
+              const candStartMs = reservation.bookingStartAt ? new Date(reservation.bookingStartAt).getTime() : 0;
+              const candEndMs = reservation.bookingEndAt ? new Date(reservation.bookingEndAt).getTime() : 0;
+              const isInSession = candStartMs > 0 && candEndMs > 0 && nowMs >= candStartMs && nowMs < candEndMs && (reservation.reservationStatus === 'CONFIRMED' || reservation.reservationStatus === 'CHECKED_IN');
+              if (!isInSession) return null;
+
+              const remainingMinutes = Math.max(0, Math.round((candEndMs - nowMs) / 60000));
+              const remainingHours = Math.floor(remainingMinutes / 60);
+              const remMins = remainingMinutes % 60;
+              const remainingTimeText = remainingHours > 0
+                ? `${remainingHours} hour${remainingHours > 1 ? 's' : ''}${remMins > 0 ? ` ${remMins} min${remMins > 1 ? 's' : ''}` : ''}`
+                : `${remMins} min${remMins > 1 ? 's' : ''}`;
+              const endTimeFormatted = reservation.bookingEndAt ? format(new Date(reservation.bookingEndAt), 'h:mm a') : '';
+
+              return (
+                <div
+                  data-testid="in-session-relocation-notice"
+                  style={{
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    color: '#166534',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <span>⚡</span>
+                  <span>Session in progress. Reallocating for remaining time: {remainingTimeText} (until {endTimeFormatted}).</span>
+                </div>
+              );
+            })()}
 
             <div style={{ background: '#F8FAFC', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>

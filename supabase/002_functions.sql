@@ -2669,7 +2669,11 @@ DECLARE
   v_old_inst public.workspace_instances%ROWTYPE;
   v_target_inst public.workspace_instances%ROWTYPE;
   v_now timestamptz := now();
-  v_conflict_count int;
+  v_effective_start timestamptz;
+  v_conflict_count integer;
+  v_actor_user_id uuid := NULL;
+  v_actor_role public.audit_actor_role := 'SYSTEM';
+  v_staff_prof public.staff_profiles%ROWTYPE;
 BEGIN
   IF p_reservation_id IS NULL THEN
     RAISE EXCEPTION 'reservation_id is required';
@@ -2737,9 +2741,14 @@ BEGIN
     RAISE EXCEPTION 'Relocation is only allowed to spots of the exact same workspace template (tier)';
   END IF;
 
-  IF upper(COALESCE(v_target_inst.operational_status::text, v_target_inst.status::text, 'ACTIVE')) IN ('MAINTENANCE', 'INACTIVE') THEN
+  IF upper(COALESCE(v_target_inst.operational_status::text, 'ACTIVE')) IN ('MAINTENANCE', 'INACTIVE') THEN
     RAISE EXCEPTION 'Cannot relocate to a spot that is under maintenance or inactive';
   END IF;
+
+  v_effective_start := CASE
+    WHEN (v_assigned.start_at < v_now AND v_assigned.end_at > v_now) THEN v_now
+    ELSE v_assigned.start_at
+  END;
 
   SELECT count(*) INTO v_conflict_count
   FROM public.reservation_candidates rc
@@ -2748,7 +2757,7 @@ BEGIN
     AND rc.is_assigned = true
     AND rc.reservation_id <> p_reservation_id
     AND r.status IN ('CONFIRMED', 'CHECKED_IN')
-    AND v_assigned.start_at < rc.end_at
+    AND v_effective_start < rc.end_at
     AND v_assigned.end_at > rc.start_at;
 
   IF v_conflict_count > 0 THEN
@@ -2764,6 +2773,56 @@ BEGIN
   SET updated_at = v_now
   WHERE id = p_reservation_id;
 
+  -- Resolve actor for audit log
+  IF p_actor_user_id IS NOT NULL THEN
+    SELECT * INTO v_staff_prof
+    FROM public.staff_profiles
+    WHERE user_id = p_actor_user_id;
+
+    IF FOUND THEN
+      v_actor_user_id := v_staff_prof.user_id;
+      v_actor_role := v_staff_prof.role::text::public.audit_actor_role;
+    END IF;
+  END IF;
+
+  -- If actor was not resolved by p_actor_user_id, find an appropriate active staff profile
+  IF v_actor_user_id IS NULL THEN
+    IF upper(COALESCE(p_actor_role, '')) = 'STAFF' THEN
+      SELECT * INTO v_staff_prof
+      FROM public.staff_profiles
+      WHERE role = 'STAFF' AND is_active = true
+      ORDER BY created_at ASC
+      LIMIT 1;
+    ELSIF upper(COALESCE(p_actor_role, '')) IN ('ADMIN', 'SUPERADMIN', 'SUPER_ADMIN') THEN
+      SELECT * INTO v_staff_prof
+      FROM public.staff_profiles
+      WHERE role = 'ADMIN' AND is_active = true
+      ORDER BY created_at ASC
+      LIMIT 1;
+    END IF;
+
+    IF FOUND THEN
+      v_actor_user_id := v_staff_prof.user_id;
+      v_actor_role := v_staff_prof.role::text::public.audit_actor_role;
+    ELSE
+      -- Fallback to any active staff profile if available
+      SELECT * INTO v_staff_prof
+      FROM public.staff_profiles
+      WHERE is_active = true
+      ORDER BY created_at ASC
+      LIMIT 1;
+
+      IF FOUND THEN
+        v_actor_user_id := v_staff_prof.user_id;
+        v_actor_role := v_staff_prof.role::text::public.audit_actor_role;
+      ELSE
+        -- Fallback to SYSTEM if no staff profile exists in database
+        v_actor_user_id := NULL;
+        v_actor_role := 'SYSTEM'::public.audit_actor_role;
+      END IF;
+    END IF;
+  END IF;
+
   INSERT INTO public.audit_logs (
     id,
     actor_user_id,
@@ -2776,8 +2835,8 @@ BEGIN
   )
   VALUES (
     gen_random_uuid(),
-    p_actor_user_id,
-    'ADMIN',
+    v_actor_user_id,
+    v_actor_role,
     'reservation_relocated',
     'reservation',
     p_reservation_id,
@@ -2789,7 +2848,10 @@ BEGIN
       'reason', p_reason,
       'notes', p_notes,
       'relocated_at', v_now,
-      'reference_code', v_res.reference_code
+      'reference_code', v_res.reference_code,
+      'in_session', (v_assigned.start_at < v_now AND v_assigned.end_at > v_now),
+      'remaining_minutes', CASE WHEN (v_assigned.start_at < v_now AND v_assigned.end_at > v_now) THEN ROUND(EXTRACT(EPOCH FROM (v_assigned.end_at - v_now)) / 60) ELSE NULL END,
+      'actor_role', COALESCE(p_actor_role, 'ADMIN')
     ),
     v_now
   );
@@ -2803,6 +2865,6 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.relocate_reservation(uuid, uuid, text, text, uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.relocate_reservation(uuid, uuid, text, text, uuid, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.relocate_reservation(uuid, uuid, text, text, uuid, text) TO anon, authenticated, service_role;
 
 COMMIT;

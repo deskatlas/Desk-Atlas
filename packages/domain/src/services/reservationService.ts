@@ -131,6 +131,7 @@ export class ReservationService {
           token: draftSession.token,
           expiresAt: draftSession.expiresAt,
           paymentUrl: draftSession.paymentUrl,
+          expiryMinutes: draftSession.expiryMinutes,
         },
       };
     }

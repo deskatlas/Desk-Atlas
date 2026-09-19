@@ -3,6 +3,7 @@ import {
   AdminReservationDetail,
   AdminReservationFilter,
   AdminReservationSummary,
+  CustomerRelocationRequest,
   CandidateRank,
   ReservationCandidate,
   ReservationResponseDTO,
@@ -17,6 +18,8 @@ import {
   RelocateReservationInput,
   AvailableRelocationSpot,
   ListAvailableRelocationSpotsInput,
+  RequestCustomerRelocationInput,
+  DecideCustomerRelocationInput,
   ExtendReservationInput,
   CheckExtendAvailabilityInput,
   ExtendAvailabilityResult,
@@ -502,6 +505,86 @@ export class AdminReservationService {
       previousSpotName,
       newSpotName,
     };
+  }
+
+  async requestCustomerRelocation(input: RequestCustomerRelocationInput): Promise<CustomerRelocationRequest> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (!input.targetWorkspaceInstanceId || input.targetWorkspaceInstanceId.trim() === "") {
+      throw new AdminReservationError("Target workspace instance ID is required.");
+    }
+    if (!input.reason || input.reason.trim() === "") {
+      throw new AdminReservationError("Relocation reason is required.");
+    }
+    if (!this.repository.requestCustomerRelocation) {
+      throw new AdminReservationError("Requesting relocation is not supported by the repository.");
+    }
+    return this.repository.requestCustomerRelocation({
+      reservationId: input.reservationId.trim(),
+      targetWorkspaceInstanceId: input.targetWorkspaceInstanceId.trim(),
+      reason: input.reason.trim(),
+      notes: input.notes?.trim(),
+    });
+  }
+
+  async decideCustomerRelocation(input: DecideCustomerRelocationInput): Promise<{
+    success: boolean;
+    decision: "APPROVE" | "DECLINE";
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (!this.repository.decideCustomerRelocation) {
+      throw new AdminReservationError("Deciding relocation is not supported by the repository.");
+    }
+
+    const result = await this.repository.decideCustomerRelocation({
+      reservationId: input.reservationId.trim(),
+      decision: input.decision,
+      notes: input.notes?.trim(),
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole,
+    });
+
+    if (result.decision === "APPROVE" && result.reservation && result.reservation.customerEmail) {
+      try {
+        const trackingUrl = buildReservationTrackingUrl(
+          process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
+          result.reservation.referenceCode
+        );
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        const duration =
+          (result.reservation as any).duration ||
+          (assigned?.startAt && assigned?.endAt
+            ? formatDurationFromDates(assigned.startAt, assigned.endAt)
+            : undefined);
+
+        await this.emailService.sendReservationRelocatedEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          schedule: result.reservation.schedule,
+          duration,
+          oldWorkspaceDisplayName: "Previous Spot",
+          newWorkspaceDisplayName: assigned?.workspaceDisplayName || "New Spot",
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          floorName: assigned?.floorName || undefined,
+          relocationReason: "Relocation Request Approved",
+          relocationNotes: input.notes?.trim(),
+          bookingAccessUrl: result.reservation.bookingAccessUrl || undefined,
+          bookingToken: result.reservation.bookingToken || undefined,
+          trackingUrl,
+        });
+      } catch (emailErr: any) {
+        console.warn("[AdminReservationService] Failed to send relocated email on approval:", emailErr?.message);
+      }
+    }
+
+    return result;
   }
 
   async checkExtendAvailability(

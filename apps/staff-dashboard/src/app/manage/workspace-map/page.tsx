@@ -103,6 +103,25 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
     );
   }
 
+  if (norm.includes('window')) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-label="Window">
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="rgba(56, 189, 248, 0.2)" stroke="#0284C7" />
+        <line x1="12" y1="3" x2="12" y2="21" stroke="#0284C7" />
+        <line x1="3" y1="12" x2="21" y2="12" stroke="#0284C7" />
+      </svg>
+    );
+  }
+
+  if (norm.includes('stair')) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-label="Stairs">
+        <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" fill="#E2E8F0" stroke="#64748B" />
+        <polyline points="7 9 11 9 11 13 15 13 15 17 19 17" stroke="#475569" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+
   return null;
 }
 
@@ -544,6 +563,8 @@ export default function WorkspaceMapPage() {
                 {elements.map((el) => {
                   const isWorkspace = el.elementRole === 'WORKSPACE' || Boolean(el.workspace);
                   const isWall = !isWorkspace && (el.elementType?.toLowerCase().includes('wall') || el.elementType?.toLowerCase().includes('thin_wall') || el.elementType?.toLowerCase().includes('glass') || el.elementType?.toLowerCase().includes('separator'));
+                  const isWindow = !isWorkspace && (el.elementType === 'window' || el.elementType?.toLowerCase().includes('window') || el.label?.toLowerCase() === 'window');
+                  const isStairs = !isWorkspace && (el.elementType === 'stairs' || el.elementType?.toLowerCase().includes('stairs') || el.elementType?.toLowerCase().includes('staircase') || el.label?.toLowerCase() === 'stairs');
                   const isSelected = selectedObjId === el.id;
 
                   const isRestroom = el.elementType?.toLowerCase().includes('restroom') || el.label?.toLowerCase().includes('restroom');
@@ -562,15 +583,24 @@ export default function WorkspaceMapPage() {
                   else if (isPantry) defaultAmenityColor = '#FEF3C7';
                   else if (isEmergencyExit) defaultAmenityColor = '#DCFCE7';
 
+                  const defaultStructureColor = isWindow ? 'rgba(56, 189, 248, 0.25)' : (isStairs ? '#E2E8F0' : (isWall ? '#334155' : '#F3F7F4'));
                   const displayName = el.workspace?.displayName || el.label || (isKioskMarker ? '📍 You Are Here' : (el.workspace?.templateName || formatStructureLabel(el.elementType)));
-                  const itemColor = el.style?.color || (el.style as any)?.fillColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : (isWall ? '#334155' : '#F3F7F4'))));
+                  const itemColor = el.style?.color || (el.style as any)?.fillColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : defaultStructureColor)));
 
                   const occupancy = isWorkspace && el.workspace?.workspaceInstanceId ? occupancyByInstanceId.get(el.workspace.workspaceInstanceId) : null;
                   const isOccupied = Boolean(occupancy);
 
                   let bg = isKioskMarker ? '#DC2626' : String(itemColor);
                   let textColor = isKioskMarker ? '#ffffff' : getContrastColor(bg);
-                  let border = isSelected ? '3px solid var(--da-brand-dark)' : (isKioskMarker ? '2px solid #ffffff' : '1px solid rgba(0, 0, 0, 0.15)');
+                  let border = isSelected
+                    ? '3px solid var(--da-brand-dark)'
+                    : (isKioskMarker
+                        ? '2px solid #ffffff'
+                        : (isWindow
+                            ? '1.5px solid #38BDF8'
+                            : (isStairs
+                                ? '1.5px solid #94A3B8'
+                                : '1px solid rgba(0, 0, 0, 0.15)')));
 
                   const borderStyle = (el as any).properties?.borderStyle || el.style?.borderStyle || (el.style as any)?.borderStyle;
 
@@ -594,6 +624,10 @@ export default function WorkspaceMapPage() {
                       bg = statusColors.available;
                       textColor = getContrastColor(bg);
                     }
+                  } else if (isWindow) {
+                    border = isSelected ? '3px solid var(--da-brand-dark)' : '1.5px solid #38BDF8';
+                  } else if (isStairs) {
+                    border = isSelected ? '3px solid var(--da-brand-dark)' : '1.5px solid #94A3B8';
                   } else if (borderStyle === 'dashed') {
                     border = isSelected ? '3px solid var(--da-brand-dark)' : '1.5px dashed var(--da-border, #CBD5E1)';
                   } else if (borderStyle === 'none') {
@@ -634,7 +668,7 @@ export default function WorkspaceMapPage() {
                           lineHeight: 1.2,
                           background: bg,
                           border: border,
-                          borderRadius: isKioskMarker ? '14px' : (isWall ? '2px' : '8px'),
+                          borderRadius: isKioskMarker ? '14px' : ((isWall || isWindow) ? '2px' : '8px'),
                           color: textColor,
                           opacity: isInactive ? (isSelected ? 0.6 : 0.25) : 1,
                           position: 'relative',
@@ -664,6 +698,54 @@ export default function WorkspaceMapPage() {
                             <span style={{ fontSize: '10px', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
                               {displayName}
                             </span>
+                          </div>
+                        ) : isWindow ? (
+                          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                            <div style={{ position: 'absolute', inset: '1px', border: '1px solid rgba(56, 189, 248, 0.4)', borderRadius: '1px', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: 'rgba(56, 189, 248, 0.7)', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '33.3%', width: '1px', background: 'rgba(56, 189, 248, 0.6)', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '66.6%', width: '1px', background: 'rgba(56, 189, 248, 0.6)', pointerEvents: 'none' }} />
+                            <span
+                              style={{
+                                position: 'relative',
+                                zIndex: 1,
+                                fontSize: '9px',
+                                fontWeight: 800,
+                                color: '#0284C7',
+                                letterSpacing: '0.05em',
+                                textTransform: 'uppercase',
+                                pointerEvents: 'none',
+                                padding: '0 4px',
+                                lineHeight: 1,
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {displayName}
+                            </span>
+                          </div>
+                        ) : isStairs ? (
+                          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '4px' }}>
+                            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', opacity: 0.75 }} xmlns="http://www.w3.org/2000/svg">
+                              <defs>
+                                <pattern id={`stairs-pattern-staff-${el.id}`} width="100%" height="16" patternUnits="userSpaceOnUse">
+                                  <line x1="0" y1="16" x2="100%" y2="16" stroke="#94A3B8" strokeWidth="1.5" />
+                                </pattern>
+                              </defs>
+                              <rect width="100%" height="100%" fill={`url(#stairs-pattern-staff-${el.id})`} />
+                              <line x1="50%" y1="85%" x2="50%" y2="20%" stroke="#64748B" strokeWidth="2" strokeLinecap="round" />
+                              <polyline points="calc(50% - 6px),30% 50%,18% calc(50% + 6px),30%" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <div style={{ position: 'relative', zIndex: 1, background: 'rgba(255, 255, 255, 0.9)', padding: '2px 6px', borderRadius: '4px', border: '1px solid #CBD5E1', display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '90%' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" />
+                              </svg>
+                              <span style={{ fontSize: '10px', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {displayName}
+                              </span>
+                            </div>
                           </div>
                         ) : isAmenity ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>

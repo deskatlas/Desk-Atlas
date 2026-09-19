@@ -48,6 +48,17 @@ export async function createAdminFloor(name: string): Promise<WorkspaceCatalog['
   return body;
 }
 
+export async function deleteAdminFloor(
+  floorId: string
+): Promise<{ deleted: boolean; deactivated?: boolean; removedInstancesCount?: number }> {
+  const response = await fetch(`/api/admin/workspaces/floors/${encodeURIComponent(floorId)}`, {
+    method: 'DELETE',
+  });
+  const body = await parseJson(response);
+  return body;
+}
+
+
 export async function createAdminWorkspaceTemplate(
   input: CreateWorkspaceTemplateInput
 ): Promise<WorkspaceTemplate> {

@@ -16,6 +16,7 @@ import {
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
 import { handleNumericKeyDown } from '@deskatlas/ui';
+import { CancellationPolicyUploader } from './CancellationPolicyUploader';
 
 const DAY_NAMES = [
   'Sunday',
@@ -86,6 +87,7 @@ export function canSaveBusinessProfile(params: {
   phoneDigits?: string | null;
   contactPhone?: string | null;
   bookingIntervalMinutes?: number | string | null;
+  kioskAllowanceMinutes?: number | string | null;
 }): { canSave: boolean; reason?: string } {
   if (!params.businessName || !params.businessName.trim()) {
     return { canSave: false, reason: 'Business name is required' };
@@ -117,6 +119,13 @@ export function canSaveBusinessProfile(params: {
     const intervalNum = Number(params.bookingIntervalMinutes);
     if (isNaN(intervalNum) || intervalNum <= 5) {
       return { canSave: false, reason: 'Booking slot interval must be greater than 5 minutes' };
+    }
+  }
+
+  if (params.kioskAllowanceMinutes !== undefined && params.kioskAllowanceMinutes !== null) {
+    const allowanceNum = Number(params.kioskAllowanceMinutes);
+    if (isNaN(allowanceNum) || allowanceNum < 0 || allowanceNum > 60) {
+      return { canSave: false, reason: 'Kiosk booking allowance must be between 0 and 60 minutes' };
     }
   }
 
@@ -250,6 +259,7 @@ export function Settings() {
     bookingIntervalMinutes: 30,
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
+    kioskAllowanceMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     landingPreviewPhotos: [],
@@ -765,6 +775,9 @@ export function Settings() {
       const normalizedTimeout = !businessSettings.kioskTimeoutMinutes || Number(businessSettings.kioskTimeoutMinutes) < 1
         ? 5
         : Number(businessSettings.kioskTimeoutMinutes);
+      const normalizedAllowance = businessSettings.kioskAllowanceMinutes === undefined || businessSettings.kioskAllowanceMinutes === null || Number(businessSettings.kioskAllowanceMinutes) < 0
+        ? 5
+        : Math.min(60, Math.max(0, Number(businessSettings.kioskAllowanceMinutes)));
       const normalizedSessionTimeout = !businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1
         ? 20
         : Math.min(180, Math.max(1, Number(businessSettings.customerSessionTimeoutMinutes)));
@@ -779,6 +792,7 @@ export function Settings() {
         contactPhone: phoneDigits ? `+63${phoneDigits}` : null,
         paymentExpiryMinutes: normalizedExpiry,
         kioskTimeoutMinutes: normalizedTimeout,
+        kioskAllowanceMinutes: normalizedAllowance,
         customerSessionTimeoutMinutes: normalizedSessionTimeout,
         customerRescheduleCutoffHours: normalizedRescheduleCutoff,
       };
@@ -1727,6 +1741,23 @@ export function Settings() {
                   })}
                 </div>
               </div>
+
+              {/* Cancellation & Rescheduling Policy Upload Card */}
+              <CancellationPolicyUploader
+                policyPdfUrl={businessSettings.cancellationPolicyPdfUrl}
+                policyPdfFilename={businessSettings.cancellationPolicyPdfFilename}
+                policyUpdatedAt={businessSettings.cancellationPolicyUpdatedAt}
+                onPolicyUpdated={(data) => {
+                  setBusinessSettings((prev) => ({
+                    ...prev,
+                    cancellationPolicyPdfUrl: data.cancellationPolicyPdfUrl,
+                    cancellationPolicyPdfFilename: data.cancellationPolicyPdfFilename,
+                    cancellationPolicyUpdatedAt: data.cancellationPolicyUpdatedAt,
+                  }));
+                }}
+                showSuccess={showSuccess}
+                showError={(msg) => setErrorMsg(msg)}
+              />
 
               {(() => {
                 const check = canSaveBusinessProfile({
@@ -3199,6 +3230,37 @@ export function Settings() {
                 />
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                   The kiosk resets automatically to the welcome screen if the user is inactive for this duration.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Kiosk Booking Allowance (Minutes)
+                </label>
+                <input 
+                  type="number" 
+                  min={0}
+                  max={60}
+                  value={businessSettings.kioskAllowanceMinutes === '' as any ? '' : (businessSettings.kioskAllowanceMinutes ?? 5)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      kioskAllowanceMinutes: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (businessSettings.kioskAllowanceMinutes === undefined || businessSettings.kioskAllowanceMinutes === null || businessSettings.kioskAllowanceMinutes === '' as any || Number(businessSettings.kioskAllowanceMinutes) < 0) {
+                      setBusinessSettings({ ...businessSettings, kioskAllowanceMinutes: 5 });
+                    } else if (Number(businessSettings.kioskAllowanceMinutes) > 60) {
+                      setBusinessSettings({ ...businessSettings, kioskAllowanceMinutes: 60 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                />
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                  Default is 5 minutes. Added to the current time when starting a walk-in booking session on the Kiosk.
                 </div>
               </div>
 

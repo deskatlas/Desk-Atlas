@@ -11,6 +11,7 @@ import {
 } from '@deskatlas/domain';
 import { ProofImageViewer } from '../../payments/components/ProofImageViewer';
 import { ExtendReservationModal } from './ExtendReservationModal';
+import { useAuth } from '../../auth/components/AuthProvider';
 
 export function canViewBookingQr(detail: AdminReservationDetailType | null): boolean {
   if (!detail) return false;
@@ -109,6 +110,7 @@ const DURATION_OPTIONS = [
 
 export function ReservationDetail({ id }: { id: string }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [detail, setDetail] = useState<AdminReservationDetailType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +133,10 @@ export function ReservationDetail({ id }: { id: string }) {
   const [isRelocating, setIsRelocating] = useState<boolean>(false);
   const [isLoadingRelocationSpots, setIsLoadingRelocationSpots] = useState<boolean>(false);
   const [relocateError, setRelocateError] = useState<string | null>(null);
+
+  // Pending relocation decision states
+  const [isDecidingRelocation, setIsDecidingRelocation] = useState<boolean>(false);
+  const [relocationDecisionError, setRelocationDecisionError] = useState<string | null>(null);
 
   // Reschedule modal states
   const [showRescheduleModal, setShowRescheduleModal] = useState<boolean>(false);
@@ -412,13 +418,19 @@ export function ReservationDetail({ id }: { id: string }) {
     setIsRelocating(true);
     setRelocateError(null);
     try {
+      const actorRole = user?.isSuperAdmin ? "SUPERADMIN" : "ADMIN";
       const response = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/relocate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
           targetWorkspaceInstanceId: selectedRelocationSpotId,
           reason: relocationReason,
           notes: relocationNotes || undefined,
+          actorRole,
+          actorUserId: user?.id || undefined,
         }),
       });
 
@@ -439,6 +451,54 @@ export function ReservationDetail({ id }: { id: string }) {
       setRelocateError(err?.message || "Failed to relocate reservation");
     } finally {
       setIsRelocating(false);
+    }
+  };
+
+  const handleDecideRelocation = async (decision: "APPROVE" | "DECLINE") => {
+    let declineNotes = "";
+    if (decision === "DECLINE") {
+      const inputNotes = window.prompt("Enter optional reason for declining this relocation request:");
+      if (inputNotes === null) return;
+      declineNotes = inputNotes;
+    }
+
+    setIsDecidingRelocation(true);
+    setRelocationDecisionError(null);
+    try {
+      const actorRole = user?.isSuperAdmin ? "SUPERADMIN" : "ADMIN";
+      const res = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/relocate/decision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
+        body: JSON.stringify({
+          decision,
+          notes: declineNotes || undefined,
+          actorRole,
+          actorUserId: user?.id || undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to process relocation decision");
+      }
+
+      if (data.reservation) {
+        setDetail(data.reservation);
+      } else {
+        await fetchDetail();
+      }
+
+      setToastMessage({
+        text: decision === "APPROVE" ? "Customer relocation request approved successfully." : "Customer relocation request declined.",
+        type: "success",
+      });
+    } catch (err: any) {
+      setRelocationDecisionError(err?.message || "Failed to process decision");
+    } finally {
+      setIsDecidingRelocation(false);
     }
   };
 
@@ -698,6 +758,86 @@ export function ReservationDetail({ id }: { id: string }) {
           <span aria-hidden="true" style={{ fontSize: '10px', lineHeight: 1 }}>{detail.mark}</span>{detail.status}
         </span>
       </div>
+
+      {detail.pendingRelocationRequest && detail.pendingRelocationRequest.status === 'PENDING' && (
+        <div
+          data-testid="pending-relocation-request-banner"
+          style={{
+            background: '#FEFCE8',
+            border: '1px solid #FEF08A',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ flex: 1, minWidth: '240px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#854D0E' }}>
+                  Pending Customer Relocation Request
+                </h4>
+                <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '9999px', background: '#FEF08A', color: '#713F12' }}>
+                  Awaiting Operator Approval
+                </span>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#713F12' }}>
+                The customer has requested to relocate to <strong>{detail.pendingRelocationRequest.targetWorkspaceDisplayName}</strong>.
+                {detail.pendingRelocationRequest.reason && <> Reason: <em>{detail.pendingRelocationRequest.reason}</em>.</>}
+                {detail.pendingRelocationRequest.notes && <> Notes: &quot;{detail.pendingRelocationRequest.notes}&quot;.</>}
+              </p>
+              <div style={{ fontSize: '11px', color: '#A16207', marginTop: '4px' }}>
+                Requested at: {formatTimelineDate(detail.pendingRelocationRequest.requestedAt)}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                data-testid="approve-relocation-request-button"
+                disabled={isDecidingRelocation}
+                onClick={() => handleDecideRelocation('APPROVE')}
+                style={{
+                  background: '#16A34A',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: isDecidingRelocation ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isDecidingRelocation ? 'Processing...' : 'Approve Relocation'}
+              </button>
+              <button
+                data-testid="decline-relocation-request-button"
+                disabled={isDecidingRelocation}
+                onClick={() => handleDecideRelocation('DECLINE')}
+                style={{
+                  background: '#DC2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: isDecidingRelocation ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isDecidingRelocation ? 'Processing...' : 'Decline Request'}
+              </button>
+            </div>
+          </div>
+          {relocationDecisionError && (
+            <div style={{ color: '#DC2626', fontSize: '12px', fontWeight: 600 }}>
+              {relocationDecisionError}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1.3, minWidth: '320px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', padding: '20px' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-text-primary)', margin: '0 0 12px' }}>Reservation Information</h3>
@@ -870,6 +1010,57 @@ export function ReservationDetail({ id }: { id: string }) {
                 {relocateError}
               </div>
             )}
+
+            {(() => {
+              const nowMs = Date.now();
+              const candStartMs = detail.assignedCandidate?.startAt ? new Date(detail.assignedCandidate.startAt).getTime() : detail.startAt ? new Date(detail.startAt).getTime() : 0;
+              const candEndMs = detail.assignedCandidate?.endAt ? new Date(detail.assignedCandidate.endAt).getTime() : detail.endAt ? new Date(detail.endAt).getTime() : 0;
+              const isInSession = candStartMs > 0 && candEndMs > 0 && nowMs >= candStartMs && nowMs < candEndMs && (detail.reservationStatus === 'CONFIRMED' || detail.reservationStatus === 'CHECKED_IN');
+              if (!isInSession) return null;
+
+              const remainingMinutes = Math.max(0, Math.round((candEndMs - nowMs) / 60000));
+              const remainingHours = Math.floor(remainingMinutes / 60);
+              const remMins = remainingMinutes % 60;
+              const remainingTimeText = remainingHours > 0
+                ? `${remainingHours} hour${remainingHours > 1 ? 's' : ''}${remMins > 0 ? ` ${remMins} min${remMins > 1 ? 's' : ''}` : ''}`
+                : `${remMins} min${remMins > 1 ? 's' : ''}`;
+              const endAtIso = detail.assignedCandidate?.endAt || detail.endAt;
+              let endTimeFormatted = '';
+              if (endAtIso) {
+                try {
+                  endTimeFormatted = new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'Asia/Manila',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                  }).format(new Date(endAtIso));
+                } catch {
+                  endTimeFormatted = endAtIso;
+                }
+              }
+
+              return (
+                <div
+                  data-testid="in-session-relocation-notice"
+                  style={{
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    color: '#166534',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <span>⚡</span>
+                  <span>Session in progress. Reallocating for remaining time: {remainingTimeText} (until {endTimeFormatted}).</span>
+                </div>
+              );
+            })()}
 
             <div style={{ background: '#F8FAFC', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>

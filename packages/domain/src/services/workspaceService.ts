@@ -37,6 +37,7 @@ export class WorkspaceValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'WorkspaceValidationError';
+    Object.setPrototypeOf(this, WorkspaceValidationError.prototype);
   }
 }
 
@@ -44,6 +45,7 @@ export class WorkspaceConflictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'WorkspaceConflictError';
+    Object.setPrototypeOf(this, WorkspaceConflictError.prototype);
   }
 }
 
@@ -296,6 +298,28 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
     },
     async createFloor(input: CreateFloorInput) {
       return repository.createFloor(normalizeCreateFloorInput(input));
+    },
+    async deleteFloor(
+      id: string,
+      actor: Pick<WorkspaceAuditLogEntry, 'actorRole' | 'actorUserId'> = DEFAULT_AUDIT_ACTOR
+    ) {
+      const floorId = requireNonBlank(id, 'Floor id');
+      const catalog = await repository.listCatalog();
+      const floor = catalog.floors.find((f) => f.id === floorId);
+      const result = await repository.deleteFloor(floorId);
+      await repository.appendAuditLog({
+        actorRole: actor.actorRole,
+        actorUserId: actor.actorUserId,
+        action: 'FLOOR_DELETED',
+        entityType: 'floor',
+        entityId: floorId,
+        metadata: {
+          floorId,
+          floorName: floor?.name ?? 'Floor',
+          removedInstancesCount: result.removedInstancesCount ?? 0,
+        },
+      });
+      return result;
     },
     async createTemplate(input: CreateWorkspaceTemplateInput) {
       return repository.createTemplate(normalizeCreateTemplateInput(input));

@@ -8,6 +8,9 @@ import {
   SupabaseAvailabilityRepository,
   createAvailabilityService,
   zonedDateTimeToUtc,
+  SupabaseSettingsRepository,
+  InMemorySettingsRepository,
+  createAdminSettingsService,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -124,7 +127,20 @@ export async function POST(request: NextRequest) {
         candidates: body.candidates,
       };
     } else {
-      const now = new Date(Date.now() + 5 * 60 * 1000);
+      let allowanceMinutes = 5;
+      try {
+        const settingsRepo = supabaseUrl && supabaseKey
+          ? new SupabaseSettingsRepository({ supabaseUrl, serviceRoleKey: supabaseKey })
+          : new InMemorySettingsRepository();
+        const settingsService = createAdminSettingsService(settingsRepo);
+        const pubSettings = await settingsService.getPublicBusinessSettings();
+        if (pubSettings?.kioskAllowanceMinutes !== undefined && pubSettings.kioskAllowanceMinutes !== null) {
+          allowanceMinutes = Number(pubSettings.kioskAllowanceMinutes);
+        }
+      } catch {
+        allowanceMinutes = 5;
+      }
+      const now = new Date(Date.now() + allowanceMinutes * 60 * 1000);
       const durationMin = Number(body.durationMinutes) || (Number(body.durationHours) * 60) || 120;
       let startAt: string;
       if (body.startAt) {

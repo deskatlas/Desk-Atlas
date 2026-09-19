@@ -50,6 +50,7 @@
     "date-fns": "3.6.0",
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
+    "jsqr": "^1.4.0",
     "lucide-react": "0.487.0",
     "motion": "12.23.24",
     "next": "^16.3.2",

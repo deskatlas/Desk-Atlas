@@ -241,6 +241,44 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
     );
   }
 
+  if (norm.includes("window")) {
+    return (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={iconColor}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-label="Window"
+      >
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="12" y1="3" x2="12" y2="21" />
+      </svg>
+    );
+  }
+
+  if (norm.includes("stair")) {
+    return (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={iconColor}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-label="Stairs"
+      >
+        <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" />
+      </svg>
+    );
+  }
+
   return null;
 }
 
@@ -1453,6 +1491,16 @@ export function ReservationPage() {
                                 el.label?.toLowerCase().includes("wall") ||
                                 el.label?.toLowerCase().includes("separator"));
 
+                            const isWindow =
+                              !isWorkspace &&
+                              (el.elementType?.toLowerCase().includes("window") ||
+                                el.label?.toLowerCase().includes("window"));
+                            const isStairs =
+                              !isWorkspace &&
+                              (el.elementType?.toLowerCase().includes("stairs") ||
+                                el.elementType?.toLowerCase().includes("stair") ||
+                                el.label?.toLowerCase().includes("stairs"));
+
                             const isRestroom =
                               el.elementType?.toLowerCase().includes("restroom") ||
                               el.label?.toLowerCase().includes("restroom");
@@ -1536,10 +1584,14 @@ export function ReservationPage() {
                                   ? defaultAmenityColor
                                   : isWall
                                     ? "#334155"
-                                    : "#F3F7F4");
+                                    : isWindow
+                                      ? "rgba(56, 189, 248, 0.25)"
+                                      : isStairs
+                                        ? "#E2E8F0"
+                                        : "#F3F7F4");
 
                             let bg = String(itemColor);
-                            let textColor = getContrastColor(bg);
+                            let textColor = isWindow ? "#0284C7" : isStairs ? "#334155" : getContrastColor(bg);
 
                             if (isWorkspace) {
                               const isSelected =
@@ -1688,6 +1740,104 @@ export function ReservationPage() {
                                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px", maxWidth: "100%", maxHeight: "100%", textAlign: "center" }}>
                                     <AmenityIcon type={el.elementType} name={displayName} color={textColor} />
                                     <span style={{ fontSize: "10px", fontWeight: 700, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.9, textAlign: "center" }}>
+                                      {displayName}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            if (isWindow) {
+                              return (
+                                <div
+                                  key={el.id}
+                                  style={{
+                                    position: "absolute",
+                                    left: el.x,
+                                    top: el.y,
+                                    width: el.width,
+                                    height: el.height,
+                                    transform: `rotate(${el.rotation || 0}deg)`,
+                                    zIndex: el.zIndex || 1,
+                                    backgroundColor: bg,
+                                    borderRadius: "2px",
+                                    border: "1.5px solid #38BDF8",
+                                    pointerEvents: "none",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    overflow: "hidden",
+                                    boxSizing: "border-box",
+                                  }}
+                                >
+                                  <div style={{ position: "absolute", inset: "1px", border: "1px solid rgba(56, 189, 248, 0.4)", borderRadius: "1px", pointerEvents: "none" }} />
+                                  <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: "1px", background: "rgba(56, 189, 248, 0.7)", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                                  <div style={{ position: "absolute", top: 0, bottom: 0, left: "33.3%", width: "1px", background: "rgba(56, 189, 248, 0.6)", pointerEvents: "none" }} />
+                                  <div style={{ position: "absolute", top: 0, bottom: 0, left: "66.6%", width: "1px", background: "rgba(56, 189, 248, 0.6)", pointerEvents: "none" }} />
+                                  <span
+                                    style={{
+                                      position: "relative",
+                                      zIndex: 1,
+                                      fontSize: "9px",
+                                      fontWeight: 800,
+                                      color: "#0284C7",
+                                      letterSpacing: "0.05em",
+                                      textTransform: "uppercase",
+                                      pointerEvents: "none",
+                                      padding: "0 4px",
+                                      lineHeight: 1,
+                                      maxWidth: "100%",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {displayName}
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            if (isStairs) {
+                              return (
+                                <div
+                                  key={el.id}
+                                  style={{
+                                    position: "absolute",
+                                    left: el.x,
+                                    top: el.y,
+                                    width: el.width,
+                                    height: el.height,
+                                    transform: `rotate(${el.rotation || 0}deg)`,
+                                    zIndex: el.zIndex || 1,
+                                    backgroundColor: bg,
+                                    borderRadius: "4px",
+                                    border: "1.5px solid #94A3B8",
+                                    pointerEvents: "none",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    overflow: "hidden",
+                                    padding: "4px",
+                                    boxSizing: "border-box",
+                                  }}
+                                >
+                                  <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", opacity: 0.75 }} xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                      <pattern id={`stairs-pattern-cust-${el.id}`} width="100%" height="16" patternUnits="userSpaceOnUse">
+                                        <line x1="0" y1="16" x2="100%" y2="16" stroke="#94A3B8" strokeWidth="1.5" />
+                                      </pattern>
+                                    </defs>
+                                    <rect width="100%" height="100%" fill={`url(#stairs-pattern-cust-${el.id})`} />
+                                    <line x1="50%" y1="85%" x2="50%" y2="20%" stroke="#64748B" strokeWidth="2" strokeLinecap="round" />
+                                    <polyline points="calc(50% - 6px),30% 50%,18% calc(50% + 6px),30%" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                  </svg>
+                                  <div style={{ position: "relative", zIndex: 1, background: "rgba(255, 255, 255, 0.9)", padding: "2px 6px", borderRadius: "4px", border: "1px solid #CBD5E1", display: "flex", alignItems: "center", gap: "4px", maxWidth: "90%" }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" />
+                                    </svg>
+                                    <span style={{ fontSize: "10px", fontWeight: 800, color: "#334155", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                       {displayName}
                                     </span>
                                   </div>

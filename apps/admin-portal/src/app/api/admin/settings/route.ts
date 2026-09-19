@@ -35,12 +35,23 @@ export async function PATCH(request: NextRequest) {
           body.kioskTimeoutMinutes !== undefined && body.kioskTimeoutMinutes !== null
             ? Number(body.kioskTimeoutMinutes)
             : null,
+        kioskAllowanceMinutes:
+          body.kioskAllowanceMinutes !== undefined && body.kioskAllowanceMinutes !== null
+            ? Number(body.kioskAllowanceMinutes)
+            : 5,
         customerSessionTimeoutMinutes:
           body.customerSessionTimeoutMinutes !== undefined && body.customerSessionTimeoutMinutes !== null
             ? Number(body.customerSessionTimeoutMinutes)
             : 20,
+        customerRescheduleCutoffHours:
+          body.customerRescheduleCutoffHours !== undefined && body.customerRescheduleCutoffHours !== null
+            ? Number(body.customerRescheduleCutoffHours)
+            : 12,
         landingPreviewPhotos: body.landingPreviewPhotos,
         statusColors: body.statusColors,
+        cancellationPolicyPdfUrl: body.cancellationPolicyPdfUrl,
+        cancellationPolicyPdfFilename: body.cancellationPolicyPdfFilename,
+        cancellationPolicyUpdatedAt: body.cancellationPolicyUpdatedAt,
       },
       actorUserId ? { id: actorUserId, name: "Admin", role: "admin" } : null
     );

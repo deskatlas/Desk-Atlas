@@ -25,6 +25,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   const [reservationsCount, setReservationsCount] = useState<number>(0);
   const [paymentsCount, setPaymentsCount] = useState<number>(0);
+  const [kioskCount, setKioskCount] = useState<number>(0);
 
   useEffect(() => {
     if (!user) return;
@@ -33,9 +34,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
     async function fetchBadgeCounts() {
       try {
-        const [resRes, payRes] = await Promise.allSettled([
+        const [resRes, payRes, kioskRes] = await Promise.allSettled([
           fetch('/api/admin/reservations?filter=awaiting_proof', { cache: 'no-store' }),
           fetch('/api/admin/payments/reviews', { cache: 'no-store' }),
+          fetch('/api/admin/reservations?filter=counter_queue', { cache: 'no-store' }),
         ]);
 
         if (resRes.status === 'fulfilled' && resRes.value.ok) {
@@ -51,6 +53,14 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           if (!isCancelled) {
             const count = Array.isArray(payData.queue) ? payData.queue.length : 0;
             setPaymentsCount(count);
+          }
+        }
+
+        if (kioskRes.status === 'fulfilled' && kioskRes.value.ok) {
+          const kioskData = await kioskRes.value.json();
+          if (!isCancelled) {
+            const count = typeof kioskData.total === 'number' ? kioskData.total : (Array.isArray(kioskData.reservations) ? kioskData.reservations.length : 0);
+            setKioskCount(count);
           }
         }
       } catch {
@@ -83,6 +93,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     { id: '/manage/reservations', label: 'Reservations', iconType: 'reservations', badge: reservationsCount > 0 ? reservationsCount : undefined },
     { id: '/manage/workspace-map', label: 'Workspace Map', iconType: 'map' },
     { id: '/manage/payments', label: 'Payments', iconType: 'payments', badge: paymentsCount > 0 ? paymentsCount : undefined },
+    { id: '/manage/scan', label: 'QR Scanner', iconType: 'scan' },
+    { id: '/manage/kiosk-confirm', label: 'Kiosk Queue', iconType: 'kiosk', badge: kioskCount > 0 ? kioskCount : undefined },
     { id: '/manage/workspaces', label: 'Workspaces', iconType: 'workspaces' },
     { id: '/manage/map', label: 'Map Builder', iconType: 'map' },
     { id: '/manage/staff', label: 'Staff', iconType: 'staff' },
@@ -111,6 +123,18 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         );
       case 'payments':
         return <div style={{ width: '15px', height: '15px', border: `2.5px solid ${color}`, borderRadius: '50%', flexShrink: 0 }}></div>;
+      case 'scan':
+        return (
+          <div style={{ width: '15px', height: '15px', border: `2px solid ${color}`, borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: '5px', height: '5px', background: color }}></div>
+          </div>
+        );
+      case 'kiosk':
+        return (
+          <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: '11px', height: '11px', border: `2.5px solid ${color}`, borderRadius: '2px' }}></div>
+          </div>
+        );
       case 'workspaces':
         return (
           <div style={{ width: '15px', height: '15px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '2px', flexShrink: 0 }}>
@@ -189,9 +213,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             
             return (
               <React.Fragment key={item.id}>
-                {sidebarOpen && (idx === 1 || idx === 4 || idx === 6) && (
+                {sidebarOpen && (idx === 1 || idx === 6 || idx === 8) && (
                   <div style={{ fontSize: '10px', fontWeight: 800, color: 'rgba(255,255,255,.55)', letterSpacing: '.09em', padding: '16px 12px 6px', fontFamily: 'var(--da-font-family)', whiteSpace: 'nowrap' }}>
-                    {idx === 1 ? 'OPERATIONS' : idx === 4 ? 'SPACE' : 'ORGANIZATION'}
+                    {idx === 1 ? 'OPERATIONS' : idx === 6 ? 'SPACE' : 'ORGANIZATION'}
                   </div>
                 )}
                 <div 

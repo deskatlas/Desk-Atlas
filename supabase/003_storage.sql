@@ -37,6 +37,21 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('payment-proofs', 'payment-proofs', false)
 ON CONFLICT (id) DO UPDATE SET public = false;
 
+-- Business policies (Public - strictly PDF - 10MB limit)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'business-policies',
+  'business-policies',
+  true,
+  10485760,
+  ARRAY['application/pdf']
+)
+ON CONFLICT (id) DO UPDATE
+SET
+  public = true,
+  file_size_limit = 10485760,
+  allowed_mime_types = ARRAY['application/pdf'];
+
 -- ----------------------------------------------------------------------------
 -- 2. Storage Objects Access Policies
 -- ----------------------------------------------------------------------------
@@ -55,20 +70,20 @@ CREATE POLICY p_storage_workspace_images_upload
   ON storage.objects FOR INSERT
   WITH CHECK (bucket_id = 'workspace-images');
 
--- Public read for templates and payment QR codes
+-- Public read for templates, payment QR codes, and business policies
 DROP POLICY IF EXISTS p_storage_templates_public_read ON storage.objects;
 CREATE POLICY p_storage_templates_public_read
   ON storage.objects FOR SELECT
   TO public
-  USING (bucket_id IN ('workspace-templates', 'payment-qr-codes'));
+  USING (bucket_id IN ('workspace-templates', 'payment-qr-codes', 'business-policies'));
 
--- Admin write for templates and payment QR codes
+-- Admin write for templates, payment QR codes, and business policies
 DROP POLICY IF EXISTS p_storage_templates_admin_write ON storage.objects;
 CREATE POLICY p_storage_templates_admin_write
   ON storage.objects FOR ALL
   TO authenticated
-  USING (bucket_id IN ('workspace-templates', 'payment-qr-codes') AND public.is_admin())
-  WITH CHECK (bucket_id IN ('workspace-templates', 'payment-qr-codes') AND public.is_admin());
+  USING (bucket_id IN ('workspace-templates', 'payment-qr-codes', 'business-policies') AND public.is_admin())
+  WITH CHECK (bucket_id IN ('workspace-templates', 'payment-qr-codes', 'business-policies') AND public.is_admin());
 
 -- Guest insert for payment proofs
 DROP POLICY IF EXISTS p_storage_proofs_guest_insert ON storage.objects;

@@ -1,4 +1,4 @@
-import { AdminReservationDetail, AdminReservationSummary } from "../models/reservation";
+import { AdminReservationDetail, AdminReservationSummary, CustomerRelocationRequest } from "../models/reservation";
 
 export interface CancelReservationInput {
   reservationId: string;
@@ -51,6 +51,7 @@ export interface RelocateReservationInput {
   notes?: string;
   actorUserId?: string;
   actorRole?: string;
+  evaluationTime?: string | Date;
 }
 
 export interface AvailableRelocationSpot {
@@ -67,6 +68,7 @@ export interface AvailableRelocationSpot {
 
 export interface ListAvailableRelocationSpotsInput {
   reservationId: string;
+  evaluationTime?: string | Date;
 }
 
 export interface AdminReservationRepository {
@@ -93,8 +95,30 @@ export interface AdminReservationRepository {
     newSpotName?: string;
   }>;
   listAvailableRelocationSpots?(input: ListAvailableRelocationSpotsInput): Promise<AvailableRelocationSpot[]>;
+  requestCustomerRelocation?(input: RequestCustomerRelocationInput): Promise<CustomerRelocationRequest>;
+  decideCustomerRelocation?(input: DecideCustomerRelocationInput): Promise<{
+    success: boolean;
+    decision: "APPROVE" | "DECLINE";
+    reservation: AdminReservationDetail;
+    message?: string;
+  }>;
   extendReservation?(input: ExtendReservationInput): Promise<ExtendReservationResult>;
   checkExtendAvailability?(input: CheckExtendAvailabilityInput): Promise<ExtendAvailabilityResult>;
+}
+
+export interface RequestCustomerRelocationInput {
+  reservationId: string;
+  targetWorkspaceInstanceId: string;
+  reason: string;
+  notes?: string | null;
+}
+
+export interface DecideCustomerRelocationInput {
+  reservationId: string;
+  decision: "APPROVE" | "DECLINE";
+  notes?: string | null;
+  actorUserId?: string | null;
+  actorRole: "STAFF" | "ADMIN" | "SUPERADMIN";
 }
 
 export interface ExtendReservationInput {

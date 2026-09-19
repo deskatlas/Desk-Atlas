@@ -14,6 +14,7 @@ INSERT INTO public.business_settings (
   booking_interval_minutes,
   payment_expiry_minutes,
   kiosk_timeout_minutes,
+  kiosk_allowance_minutes,
   landing_preview_photos
 ) VALUES (
   1,
@@ -22,6 +23,7 @@ INSERT INTO public.business_settings (
   30,
   60,
   5,
+  5,
   '[]'::jsonb
 ) ON CONFLICT (id) DO UPDATE
 SET
@@ -29,4 +31,5 @@ SET
   timezone = EXCLUDED.timezone,
   booking_interval_minutes = EXCLUDED.booking_interval_minutes,
   payment_expiry_minutes = EXCLUDED.payment_expiry_minutes,
-  kiosk_timeout_minutes = EXCLUDED.kiosk_timeout_minutes;
+  kiosk_timeout_minutes = EXCLUDED.kiosk_timeout_minutes,
+  kiosk_allowance_minutes = EXCLUDED.kiosk_allowance_minutes;

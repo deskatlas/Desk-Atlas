@@ -79,6 +79,23 @@ export class GuestReservationTrackingService {
       }
     }
 
+    const bookingStartMs = record.finalAssignment?.bookingStartAt
+      ? new Date(record.finalAssignment.bookingStartAt).getTime()
+      : 0;
+    const bookingEndMs = record.finalAssignment?.bookingEndAt
+      ? new Date(record.finalAssignment.bookingEndAt).getTime()
+      : 0;
+
+    const isInSession =
+      (record.reservationStatus === "CONFIRMED" || record.reservationStatus === "CHECKED_IN") &&
+      bookingStartMs > 0 &&
+      bookingEndMs > 0 &&
+      nowMs >= bookingStartMs &&
+      nowMs < bookingEndMs;
+
+    const remainingMinutes = isInSession ? Math.max(0, Math.round((bookingEndMs - nowMs) / 60000)) : 0;
+    const canRelocate = isInSession;
+
     return {
       reservationId: record.reservationId,
       referenceCode: record.referenceCode,
@@ -93,6 +110,10 @@ export class GuestReservationTrackingService {
       rescheduleCount,
       canReschedule,
       rescheduleCutoffHours: cutoffHours,
+      isInSession,
+      canRelocate,
+      remainingMinutes,
+      pendingRelocationRequest: record.pendingRelocationRequest ?? null,
     };
   }
 }

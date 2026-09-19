@@ -26,4 +26,5 @@ export interface StaffOperationsRepository {
   extendReservation?(input: any): Promise<any>;
   listAvailableRelocationSpots?(input: { reservationId: string }): Promise<any[]>;
   relocateReservation?(input: any): Promise<any>;
+  decideCustomerRelocation?(input: any): Promise<any>;
 }

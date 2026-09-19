@@ -118,10 +118,14 @@ CREATE TABLE "business_settings" (
   "booking_interval_minutes" integer NOT NULL,
   "payment_expiry_minutes" integer NOT NULL DEFAULT 60,
   "kiosk_timeout_minutes" integer,
+  "kiosk_allowance_minutes" integer NOT NULL DEFAULT 5,
   "customer_session_timeout_minutes" integer NOT NULL DEFAULT 20,
   "customer_reschedule_cutoff_hours" integer NOT NULL DEFAULT 12,
   "landing_preview_photos" jsonb NOT NULL DEFAULT '[]'::jsonb,
   "status_colors" jsonb NOT NULL DEFAULT '{"available": "#10B981", "occupied": "#EF4444", "maintenance": "#F59E0B", "unavailable": "#6B7280"}'::jsonb,
+  "cancellation_policy_pdf_url" text,
+  "cancellation_policy_pdf_filename" text,
+  "cancellation_policy_updated_at" timestamptz,
   "updated_by_user_id" uuid,
   "updated_at" timestamptz NOT NULL DEFAULT (now())
 );

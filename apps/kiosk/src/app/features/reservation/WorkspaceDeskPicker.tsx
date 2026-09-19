@@ -11,11 +11,12 @@ interface WorkspaceDeskPickerProps {
   onBack: () => void;
   kioskMarker?: any;
   floor?: any;
+  allowanceMinutes?: number;
 }
 
-function getNowManilaTime(): { date: string; time: string; nowIso: string } {
+function getNowManilaTime(allowanceMinutes: number = 5): { date: string; time: string; nowIso: string } {
   const now = new Date();
-  const leewayDate = new Date(now.getTime() + 5 * 60 * 1000);
+  const leewayDate = new Date(now.getTime() + allowanceMinutes * 60 * 1000);
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila",
     year: "numeric",
@@ -45,13 +46,14 @@ export function WorkspaceDeskPicker({
   onBack,
   kioskMarker,
   floor,
+  allowanceMinutes = 5,
 }: WorkspaceDeskPickerProps) {
   const [availabilityList, setAvailabilityList] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    const { date, time, nowIso } = getNowManilaTime();
+    const { date, time, nowIso } = getNowManilaTime(allowanceMinutes);
 
     fetchTemplateAvailability({
       templateId: template.id,
@@ -75,7 +77,7 @@ export function WorkspaceDeskPicker({
     return () => {
       cancelled = true;
     };
-  }, [template.id, durationHours]);
+  }, [template.id, durationHours, allowanceMinutes]);
 
   // Combine workspace data with real-time availability if available
   const displayDesks = workspaces.map((ws) => {

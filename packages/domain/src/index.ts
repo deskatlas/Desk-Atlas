@@ -189,4 +189,5 @@ export * from './services/staffReservationFilters';
 export * from './services/proofImageViewerService';
 export * from './services/workspaceStatusColorService';
 export * from './services/reservationSort';
+export * from './services/reservationPagination';
 

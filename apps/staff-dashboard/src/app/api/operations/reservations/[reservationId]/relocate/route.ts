@@ -27,7 +27,10 @@ export async function POST(
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
     const notes = typeof body.notes === "string" ? body.notes.trim() : undefined;
     const actorRole = typeof body.actorRole === "string" ? body.actorRole.trim() : "STAFF";
-    const actorUserId = typeof body.actorUserId === "string" ? body.actorUserId.trim() : undefined;
+    const actorUserId =
+      typeof body.actorUserId === "string" && body.actorUserId.trim()
+        ? body.actorUserId.trim()
+        : request.headers.get("x-user-id") ?? undefined;
 
     if (!targetWorkspaceInstanceId) {
       return NextResponse.json(

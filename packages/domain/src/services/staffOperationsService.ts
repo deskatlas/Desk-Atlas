@@ -261,6 +261,66 @@ export class StaffOperationsService {
       newSpotName,
     };
   }
+
+  async decideCustomerRelocation(input: {
+    reservationId: string;
+    decision: "APPROVE" | "DECLINE";
+    notes?: string;
+    actorUserId?: string;
+    actorRole?: "STAFF" | "ADMIN" | "SUPERADMIN";
+  }): Promise<any> {
+    if (!input.reservationId || input.reservationId.trim() === "") {
+      throw new StaffOperationsError("Reservation ID is required.");
+    }
+    if (!this.staffOperationsRepository.decideCustomerRelocation) {
+      throw new StaffOperationsError("Deciding relocation is not supported by repository.");
+    }
+
+    const result = await this.staffOperationsRepository.decideCustomerRelocation({
+      reservationId: input.reservationId.trim(),
+      decision: input.decision,
+      notes: input.notes?.trim(),
+      actorUserId: input.actorUserId,
+      actorRole: input.actorRole ?? "STAFF",
+    });
+
+    if (result.decision === "APPROVE" && result.reservation && result.reservation.customerEmail) {
+      try {
+        const trackingUrl = buildReservationTrackingUrl(
+          process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
+          result.reservation.referenceCode
+        );
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        const duration =
+          (result.reservation as any).duration ||
+          (assigned?.startAt && assigned?.endAt
+            ? formatDurationFromDates(assigned.startAt, assigned.endAt)
+            : undefined);
+
+        await this.emailService.sendReservationRelocatedEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          schedule: result.reservation.schedule,
+          duration,
+          oldWorkspaceDisplayName: "Previous Spot",
+          newWorkspaceDisplayName: assigned?.workspaceDisplayName || "New Spot",
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          floorName: assigned?.floorName || undefined,
+          relocationReason: "Relocation Request Approved",
+          relocationNotes: input.notes?.trim(),
+          bookingAccessUrl: result.reservation.bookingAccessUrl || undefined,
+          bookingToken: result.reservation.bookingToken || undefined,
+          trackingUrl,
+        });
+      } catch (emailErr: any) {
+        console.warn("[StaffOperationsService] Failed to send relocated email on approval:", emailErr?.message);
+      }
+    }
+
+    return result;
+  }
 }
 
 

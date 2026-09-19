@@ -10,6 +10,8 @@ import {
   generateReservationsCsv,
   generateReservationsCsvFilename,
   sortAdminReservationsBySchedule,
+  paginateList,
+  getPaginationPageNumbers,
   type AdminReservationFilter,
   type AdminReservationSummary,
   type AdminReservationAdvancedFilters,
@@ -29,6 +31,7 @@ export function ReservationList() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState<boolean>(false);
   const [advancedFilters, setAdvancedFilters] = useState<AdminReservationAdvancedFilters>({});
   const [exporting, setExporting] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const { searchQuery } = useSearch();
 
   const activeFilterCount = countActiveFilters(advancedFilters);
@@ -38,6 +41,14 @@ export function ReservationList() {
   const displayedReservations = scheduleSort !== 'none'
     ? sortAdminReservationsBySchedule(filtered, scheduleSort)
     : filtered;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter, searchQuery, advancedFilters, scheduleSort]);
+
+  const pagination = paginateList(displayedReservations, currentPage, 15);
+  const paginatedReservations = pagination.items;
+  const pageNumbers = getPaginationPageNumbers(pagination.page, pagination.totalPages);
 
 
   // Extract unique available template names from loaded reservations
@@ -117,10 +128,6 @@ export function ReservationList() {
     { label: 'Counter Queue', filter: 'counter_queue' },
     { label: 'Expired', filter: 'expired' },
     { label: 'Rejected', filter: 'rejected' },
-  ];
-
-  const pages = [
-    { label: '1', style: { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' } },
   ];
 
   return (
@@ -247,7 +254,7 @@ export function ReservationList() {
             No reservations match your filters.
           </div>
         ) : (
-          displayedReservations.map((r, i) => {
+          paginatedReservations.map((r, i) => {
             const isCheckedInOrActive =
               Boolean(
                 r.reservationStatus === 'CHECKED_IN' ||
@@ -288,12 +295,95 @@ export function ReservationList() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-            Showing {displayedReservations.length > 0 ? 1 : 0} to {displayedReservations.length} of {displayedReservations.length} entries
+            Showing {pagination.startIndex} to {pagination.endIndex} of {pagination.totalItems} entries
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {pages.map((pg, i) => (
-              <button key={i} style={{ width: pg.label === 'Next' ? 'auto' : '36px', height: '36px', padding: pg.label === 'Next' ? '0 12px' : 0, borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...pg.style }}>{pg.label}</button>
-            ))}
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.page <= 1}
+              style={{
+                height: '36px',
+                padding: '0 12px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: pagination.page <= 1 ? 'not-allowed' : 'pointer',
+                opacity: pagination.page <= 1 ? 0.5 : 1,
+                whiteSpace: 'nowrap',
+                fontFamily: 'var(--da-font-family)',
+                background: 'transparent',
+                color: 'var(--da-text-secondary)',
+                border: '1px solid var(--da-border)',
+              }}
+            >
+              Prev
+            </button>
+            {pageNumbers.map((pg, i) => {
+              if (typeof pg === 'string') {
+                return (
+                  <span
+                    key={`ellipsis-${i}`}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '13px',
+                      color: 'var(--da-text-secondary)',
+                    }}
+                  >
+                    …
+                  </span>
+                );
+              }
+              const isActive = pg === pagination.page;
+              return (
+                <button
+                  key={pg}
+                  type="button"
+                  onClick={() => setCurrentPage(pg)}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    padding: 0,
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'var(--da-font-family)',
+                    background: isActive ? 'var(--da-brand-dark)' : 'transparent',
+                    color: isActive ? '#fff' : 'var(--da-text-secondary)',
+                    border: isActive ? 'none' : '1px solid var(--da-border)',
+                  }}
+                >
+                  {pg}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))}
+              disabled={pagination.page >= pagination.totalPages}
+              style={{
+                height: '36px',
+                padding: '0 12px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: pagination.page >= pagination.totalPages ? 'not-allowed' : 'pointer',
+                opacity: pagination.page >= pagination.totalPages ? 0.5 : 1,
+                whiteSpace: 'nowrap',
+                fontFamily: 'var(--da-font-family)',
+                background: 'transparent',
+                color: 'var(--da-text-secondary)',
+                border: '1px solid var(--da-border)',
+              }}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>

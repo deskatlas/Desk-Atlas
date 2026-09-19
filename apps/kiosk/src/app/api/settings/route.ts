@@ -29,6 +29,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json({
       statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
+      kioskAllowanceMinutes: 5,
     });
   }
 }

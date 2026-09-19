@@ -445,4 +445,82 @@ describe('MF-52: Rotated Element Map Boundary Overflow', () => {
       assert.equal(published.elements[0].rotation, 90);
     });
   });
+
+  describe('Rotated Width-Only Structure Resize & Boundary Constraints', () => {
+    it('resizing wall rotated 90° downward keeps visual left static and visual top static', () => {
+      // Wall of 160x20 at x=200, y=100. Rotated 90°.
+      // Visual bounds:
+      // Center: cx = 200 + 80 = 280, cy = 100 + 10 = 110.
+      // Rotated: visual width = 20, visual height = 160.
+      // Visual left: 280 - 10 = 270. Visual right: 280 + 10 = 290.
+      // Visual top: 110 - 80 = 30. Visual bottom: 110 + 80 = 190.
+      const startObjW = 160;
+      const startObjH = 20;
+      const startObjX = 200;
+      const startObjY = 100;
+      const rot = 90;
+
+      // User drags downward by 40px
+      const dy = 40;
+      const newW = startObjW + dy; // 200
+      const dw = newW - startObjW; // 40
+      const newX = startObjX - dw / 2; // 180
+      const newY = startObjY + dw / 2; // 120
+
+      // New center:
+      // cx = 180 + 100 = 280 (unchanged!)
+      // cy = 120 + 10 = 130
+      // Rotated visual bounds:
+      // Visual left: 280 - 10 = 270 (unchanged!)
+      // Visual right: 280 + 10 = 290 (unchanged!)
+      // Visual top: 130 - 100 = 30 (unchanged!)
+      // Visual bottom: 130 + 100 = 230 (extended downward by exactly 40px!)
+      const aabb = computeRotatedAABB(newX, newY, newW, startObjH, rot);
+      assert.equal(aabb.minX, 270);
+      assert.equal(aabb.maxX, 290);
+      assert.equal(aabb.minY, 30);
+      assert.equal(aabb.maxY, 230);
+      assert.equal(aabb.width, 20);
+      assert.equal(aabb.height, 200);
+
+      // Must remain within bounds
+      assert(isRotatedElementWithinBounds({ x: newX, y: newY, width: newW, height: startObjH, rotation: rot }, CANVAS_WIDTH, CANVAS_HEIGHT));
+    });
+
+    it('clamps newW so that 90° rotated element never produces negative x or exceeds canvas width', () => {
+      const canvasW = 800;
+      const canvasH = 600;
+      const startObjW = 100;
+      const thickness = 20;
+      const rot = 90;
+
+      // Element close to left boundary: startObjX = 20
+      const startObjX = 20;
+      const startObjY = 100;
+
+      // Without clamping, dy = 100 would make newX = 20 - 50 = -30 (< 0, out of bounds)
+      const maxW_left = startObjW + 2 * startObjX; // 100 + 40 = 140
+      const maxW_right = startObjW + 2 * (canvasW - startObjW - startObjX);
+      const visualTop = startObjY + (thickness - startObjW) / 2;
+      const maxW_bottom = canvasH - visualTop;
+      const maxW = Math.min(maxW_bottom, Math.max(20, maxW_left), Math.max(20, maxW_right));
+
+      assert.equal(maxW, 140);
+
+      // Clamp newW to maxW
+      const clampedW = Math.min(100 + 100, maxW);
+      assert.equal(clampedW, 140);
+
+      const dw = clampedW - startObjW;
+      const newX = startObjX - dw / 2;
+      const newY = startObjY + dw / 2;
+
+      assert.equal(newX, 0, 'newX is clamped to >= 0');
+      assert(newX >= 0);
+      assert(newX + clampedW <= canvasW);
+
+      assert(isRotatedElementWithinBounds({ x: newX, y: newY, width: clampedW, height: thickness, rotation: rot }, canvasW, canvasH));
+    });
+  });
 });
+

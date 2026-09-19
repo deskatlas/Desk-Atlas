@@ -19,6 +19,7 @@ import {
   ReservationCandidate,
   ReservationResponseDTO,
   StaffOperationalReservation,
+  CustomerRelocationRequest,
 } from "../models/reservation";
 import {
   AdminReservationRepository,
@@ -32,6 +33,8 @@ import {
   AvailableRelocationSpot,
   ListAvailableRelocationSpotsInput,
   RelocateReservationInput,
+  RequestCustomerRelocationInput,
+  DecideCustomerRelocationInput,
 } from "./adminReservationRepository";
 import {
   formatAmountWithCurrency,
@@ -1596,6 +1599,35 @@ export class ReservationSupabaseRepository
       )
     )?.[0];
 
+    const auditLogs = await this.request<any[]>(
+      `/audit_logs?entity_type=eq.reservation&entity_id=eq.${encodeURIComponent(reservation.id)}&order=created_at.desc&limit=10`
+    ).catch(() => []);
+
+    let pendingRelocationRequest: CustomerRelocationRequest | null = null;
+    const reqEvents = (auditLogs ?? []).filter((a) => a.action === "reservation_relocation_requested");
+    if (reqEvents.length > 0) {
+      const latestReq = reqEvents[0];
+      const reqTime = latestReq.created_at;
+      const subsequentDecisions = (auditLogs ?? []).filter(
+        (a) =>
+          (a.action === "reservation_relocation_approved" ||
+            a.action === "reservation_relocation_declined" ||
+            a.action === "reservation_relocated") &&
+          (a.created_at || "") > reqTime
+      );
+      if (subsequentDecisions.length === 0) {
+        pendingRelocationRequest = {
+          requestId: latestReq.id || latestReq.metadata?.request_id || "req",
+          targetWorkspaceInstanceId: latestReq.metadata?.target_workspace_instance_id,
+          targetWorkspaceDisplayName: latestReq.metadata?.target_workspace_name || "Target Spot",
+          reason: latestReq.metadata?.reason || "Spot Issue",
+          notes: latestReq.metadata?.notes ?? null,
+          requestedAt: latestReq.created_at,
+          status: "PENDING",
+        };
+      }
+    }
+
     return {
       reservationId: reservation.id,
       referenceCode: reservation.reference_code,
@@ -1623,6 +1655,7 @@ export class ReservationSupabaseRepository
       paymentStatus: paymentAttempt?.status ?? null,
       rejectionReason: paymentAttempt?.rejection_reason ?? null,
       rescheduleCount: reservation.reschedule_count ?? 0,
+      pendingRelocationRequest,
     };
   }
 
@@ -1945,6 +1978,39 @@ export class ReservationSupabaseRepository
       )?.[0]
       : null;
 
+    let pendingRelocationRequest: CustomerRelocationRequest | null = null;
+    try {
+      const auditLogs = await this.request<any[]>(
+        `/audit_logs?select=*&entity_type=eq.reservation&entity_id=eq.${encodeURIComponent(reservation.id)}&order=created_at.desc&limit=10`
+      );
+      const reqEvents = (auditLogs ?? []).filter((a) => a.action === "reservation_relocation_requested");
+      if (reqEvents.length > 0) {
+        const latestReq = reqEvents[0];
+        const reqTime = latestReq.created_at;
+        const subsequentDecisions = (auditLogs ?? []).filter(
+          (a) =>
+            (a.action === "reservation_relocation_approved" ||
+              a.action === "reservation_relocation_declined" ||
+              a.action === "reservation_relocated" ||
+              a.action === "RESERVATION_RELOCATED") &&
+            (a.created_at || "") > reqTime
+        );
+        if (subsequentDecisions.length === 0) {
+          pendingRelocationRequest = {
+            requestId: latestReq.id || latestReq.metadata?.request_id || "req",
+            targetWorkspaceInstanceId: latestReq.metadata?.target_workspace_instance_id,
+            targetWorkspaceDisplayName: latestReq.metadata?.target_workspace_name || "Target Spot",
+            reason: latestReq.metadata?.reason || "Spot Issue",
+            notes: latestReq.metadata?.notes ?? null,
+            requestedAt: latestReq.created_at,
+            status: "PENDING",
+          };
+        }
+      }
+    } catch {
+      // non-blocking fallback
+    }
+
     return {
       reservationId: reservation.id,
       referenceCode: reservation.reference_code,
@@ -1966,6 +2032,7 @@ export class ReservationSupabaseRepository
       checkedInAt: reservation.checked_in_at,
       checkedOutAt: reservation.checked_out_at,
       qrIssuedAt: reservation.qr_issued_at,
+      pendingRelocationRequest,
     };
   }
 
@@ -2322,8 +2389,75 @@ export class ReservationSupabaseRepository
       const newName = rel.metadata?.new_workspace_name || "new spot";
       const reason = rel.metadata?.reason || "Maintenance";
       const notesStr = rel.metadata?.notes ? ` (${rel.metadata.notes})` : "";
+      const actorRole = rel.metadata?.actor_role || rel.actor_role || "ADMIN";
+      const actorLabel =
+        actorRole === "STAFF"
+          ? "Staff"
+          : actorRole === "CUSTOMER"
+          ? "Customer"
+          : actorRole === "SUPERADMIN" || actorRole === "SUPER_ADMIN"
+          ? "Super Admin"
+          : "Admin";
+      const inSession = Boolean(rel.metadata?.in_session);
+      const remainingMinutes = rel.metadata?.remaining_minutes;
+
+      if (inSession && remainingMinutes) {
+        const remainingHours = Math.floor(remainingMinutes / 60);
+        const remMins = remainingMinutes % 60;
+        const remText =
+          remainingHours > 0
+            ? `${remainingHours}h${remMins > 0 ? ` ${remMins}m` : ""}`
+            : `${remMins}m`;
+
+        timeline.push(
+          `${formatTimelineDate(rel.created_at)} - In-session spot relocated from ${oldName} to ${newName} by ${actorLabel} for remaining time (${remText} remaining). Reason: ${reason}${notesStr}`
+        );
+      } else {
+        timeline.push(
+          `${formatTimelineDate(rel.created_at)} - Relocated by ${actorLabel} from ${oldName} to ${newName} due to: ${reason}${notesStr}`
+        );
+      }
+    }
+
+    let pendingRelocationRequest: CustomerRelocationRequest | null = null;
+    const reqEvents = (auditRows ?? [])
+      .filter((a) => a.action === "reservation_relocation_requested")
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    if (reqEvents.length > 0) {
+      const latestReq = reqEvents[0];
+      const reqTime = latestReq.created_at;
+      const subsequentDecisions = (auditRows ?? []).filter(
+        (a) =>
+          (a.action === "reservation_relocation_approved" ||
+            a.action === "reservation_relocation_declined" ||
+            a.action === "reservation_relocated" ||
+            a.action === "RESERVATION_RELOCATED") &&
+          (a.created_at || "") > reqTime
+      );
+      if (subsequentDecisions.length === 0) {
+        pendingRelocationRequest = {
+          requestId: latestReq.id || latestReq.metadata?.request_id || "req",
+          targetWorkspaceInstanceId: latestReq.metadata?.target_workspace_instance_id,
+          targetWorkspaceDisplayName: latestReq.metadata?.target_workspace_name || "Target Spot",
+          reason: latestReq.metadata?.reason || "Spot Issue",
+          notes: latestReq.metadata?.notes ?? null,
+          requestedAt: latestReq.created_at,
+          status: "PENDING",
+        };
+      }
+    }
+
+    if (pendingRelocationRequest) {
       timeline.push(
-        `${formatTimelineDate(rel.created_at)} - Relocated by Admin from ${oldName} to ${newName} due to: ${reason}${notesStr}`
+        `${formatTimelineDate(pendingRelocationRequest.requestedAt)} - Customer requested spot relocation to ${pendingRelocationRequest.targetWorkspaceDisplayName}. Reason: ${pendingRelocationRequest.reason}${pendingRelocationRequest.notes ? ` (${pendingRelocationRequest.notes})` : ""}`
+      );
+    }
+
+    const declinedRelocEvents = (auditRows ?? []).filter((a) => a.action === "reservation_relocation_declined");
+    for (const dec of declinedRelocEvents) {
+      const decActor = dec.actor_role === "STAFF" ? "Staff" : dec.actor_role === "SUPERADMIN" ? "Super Admin" : "Admin";
+      timeline.push(
+        `${formatTimelineDate(dec.created_at)} - Customer spot relocation request declined by ${decActor}. Reason: ${dec.metadata?.notes || "Unavailable"}`
       );
     }
 
@@ -2384,6 +2518,7 @@ export class ReservationSupabaseRepository
       cancelledAt: r.cancelled_at ?? null,
       rescheduleCount: r.reschedule_count ?? 0,
       paymentAttempts: paymentAttemptsSummary,
+      pendingRelocationRequest,
     };
   }
 
@@ -3105,7 +3240,7 @@ export class ReservationSupabaseRepository
 
     const [siblingInstances, templates, floors] = await Promise.all([
       this.request<any[]>(
-        `/workspace_instances?template_id=eq.${encodeURIComponent(currentInst.template_id)}&id=neq.${encodeURIComponent(currentInst.id)}&select=id,display_name,instance_code,template_id,floor_id,operational_status,status`
+        `/workspace_instances?template_id=eq.${encodeURIComponent(currentInst.template_id)}&id=neq.${encodeURIComponent(currentInst.id)}&select=id,display_name,instance_code,template_id,floor_id,operational_status`
       ).catch(() => []),
       this.request<any[]>("/workspace_templates?select=id,name").catch(() => []),
       this.request<any[]>("/floors?select=id,name").catch(() => []),
@@ -3114,8 +3249,15 @@ export class ReservationSupabaseRepository
     const templateMap = new Map((templates ?? []).map((t: any) => [t.id, t]));
     const floorMap = new Map((floors ?? []).map((f: any) => [f.id, f]));
 
+    const nowMs = input.evaluationTime ? new Date(input.evaluationTime).getTime() : Date.now();
     const startMs = new Date(assigned.start_at).getTime();
     const endMs = new Date(assigned.end_at).getTime();
+
+    const isInSession =
+      (r.status === "CONFIRMED" || r.status === "CHECKED_IN") &&
+      nowMs >= startMs &&
+      nowMs < endMs;
+    const effectiveStartMs = isInSession ? Math.max(nowMs, startMs) : startMs;
 
     const spots: AvailableRelocationSpot[] = [];
 
@@ -3125,7 +3267,7 @@ export class ReservationSupabaseRepository
       let isAvailable = true;
       let reason: string | undefined;
 
-      const opStatus = (inst.operational_status || inst.status || "ACTIVE").toUpperCase();
+      const opStatus = (inst.operational_status || "ACTIVE").toUpperCase();
       if (opStatus === "MAINTENANCE") {
         isAvailable = false;
         reason = "Under Maintenance";
@@ -3147,7 +3289,7 @@ export class ReservationSupabaseRepository
           }
           const candStartMs = new Date(cand.start_at).getTime();
           const candEndMs = new Date(cand.end_at).getTime();
-          if (startMs < candEndMs && endMs > candStartMs) {
+          if (effectiveStartMs < candEndMs && endMs > candStartMs) {
             isAvailable = false;
             reason = "Already booked for this time window";
             break;
@@ -3199,18 +3341,30 @@ export class ReservationSupabaseRepository
     let rpcRes: any = null;
     const fullReason = input.notes ? `${input.reason} - ${input.notes}` : input.reason;
 
+    let resolvedActorUserId = input.actorUserId ?? null;
+    let resolvedActorRole = input.actorRole ?? "ADMIN";
+
+    if (!resolvedActorUserId) {
+      const targetRole = input.actorRole === "STAFF" ? "STAFF" : "ADMIN";
+      const matching = await this.request<any[]>(
+        `/staff_profiles?select=user_id,role&role=eq.${targetRole}&is_active=eq.true&order=created_at.asc&limit=1`
+      ).catch(() => []);
+      if (matching && matching.length > 0) {
+        resolvedActorUserId = matching[0].user_id;
+        resolvedActorRole = matching[0].role;
+      }
+    }
+
     try {
       const res = await this.request<any>("/rpc/relocate_reservation", {
         method: "POST",
         body: JSON.stringify({
           p_reservation_id: r.id,
-          p_target_instance_id: input.targetWorkspaceInstanceId,
           p_target_workspace_instance_id: input.targetWorkspaceInstanceId,
-          p_reason: input.reason,
-          p_relocation_reason: fullReason,
+          p_reason: fullReason,
           p_notes: input.notes ?? null,
-          p_actor_user_id: input.actorUserId ?? null,
-          p_actor_role: input.actorRole ?? "ADMIN",
+          p_actor_user_id: resolvedActorUserId,
+          p_actor_role: resolvedActorRole,
         }),
       });
       rpcRes = Array.isArray(res) ? res[0] : res;
@@ -3229,7 +3383,7 @@ export class ReservationSupabaseRepository
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
-      throw new Error("Failed to retrieve updated reservation detail");
+      throw new Error(`Failed to reload reservation detail for ${r.id}`);
     }
 
     const oldWorkspaceDisplayName = rpcRes?.old_workspace_name || rpcRes?.previous_spot_name;
@@ -3244,6 +3398,243 @@ export class ReservationSupabaseRepository
       newSpotName: newWorkspaceDisplayName,
       message: "Reservation relocated successfully",
     };
+  }
+
+  async requestCustomerRelocation(input: RequestCustomerRelocationInput): Promise<CustomerRelocationRequest> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const reservationRows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`);
+    const r = reservationRows?.[0];
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    if (r.status !== "CONFIRMED" && r.status !== "CHECKED_IN") {
+      throw new Error(`Only confirmed or checked-in reservations can request relocation (current status: ${r.status})`);
+    }
+
+    const targetRows = await this.request<any[]>(
+      `/workspace_instances?select=id,template_id,instance_code,display_name,operational_status&id=eq.${encodeURIComponent(
+        input.targetWorkspaceInstanceId
+      )}&limit=1`
+    );
+    const targetInst = targetRows?.[0];
+    if (!targetInst) {
+      throw new Error(`Target spot not found: ${input.targetWorkspaceInstanceId}`);
+    }
+
+    const existingAuditLogs = await this.request<any[]>(
+      `/audit_logs?select=*&entity_type=eq.reservation&entity_id=eq.${encodeURIComponent(r.id)}&order=created_at.desc`
+    ).catch(() => []);
+
+    const pendingReqs = (existingAuditLogs ?? []).filter((a) => a.action === "reservation_relocation_requested");
+    if (pendingReqs.length > 0) {
+      const latestReq = pendingReqs[0];
+      const reqTime = latestReq.created_at;
+      const subsequentDecisions = (existingAuditLogs ?? []).filter(
+        (a) =>
+          (a.action === "reservation_relocation_approved" ||
+            a.action === "reservation_relocation_declined" ||
+            a.action === "reservation_relocated" ||
+            a.action === "RESERVATION_RELOCATED") &&
+          (a.created_at || "") > reqTime
+      );
+      if (subsequentDecisions.length === 0) {
+        throw new Error("A relocation request is already pending approval for this reservation");
+      }
+    }
+
+    const assignedCandidate = (r.reservation_candidates || []).find((c: any) => c.is_assigned);
+    const now = new Date();
+    const isSessionActive =
+      assignedCandidate &&
+      new Date(assignedCandidate.start_at) <= now &&
+      now < new Date(assignedCandidate.end_at);
+    const remainingMinutes = isSessionActive
+      ? Math.max(0, Math.round((new Date(assignedCandidate.end_at).getTime() - now.getTime()) / 60000))
+      : undefined;
+
+    const requestId = crypto.randomUUID();
+    const pendingRequest: CustomerRelocationRequest = {
+      requestId,
+      targetWorkspaceInstanceId: targetInst.id,
+      targetWorkspaceDisplayName: targetInst.display_name || targetInst.instance_code || "Selected Workspace",
+      reason: input.reason,
+      notes: input.notes,
+      requestedAt: now.toISOString(),
+      status: "PENDING",
+    };
+
+    await this.request("/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        entity_type: "reservation",
+        entity_id: r.id,
+        action: "reservation_relocation_requested",
+        actor_role: "SYSTEM",
+        actor_user_id: null,
+        metadata: {
+          request_id: requestId,
+          target_workspace_instance_id: targetInst.id,
+          target_workspace_name: targetInst.display_name || targetInst.instance_code || "Selected Workspace",
+          reason: input.reason,
+          notes: input.notes ?? null,
+          requested_at: now.toISOString(),
+          in_session: Boolean(isSessionActive),
+          remaining_minutes: remainingMinutes ?? null,
+        },
+      }),
+    });
+
+    return pendingRequest;
+  }
+
+  async decideCustomerRelocation(input: DecideCustomerRelocationInput): Promise<{
+    success: boolean;
+    decision: "APPROVE" | "DECLINE";
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const reservationRows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`);
+    const r = reservationRows?.[0];
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const auditLogs = await this.request<any[]>(
+      `/audit_logs?select=*&entity_type=eq.reservation&entity_id=eq.${encodeURIComponent(r.id)}&order=created_at.desc`
+    ).catch(() => []);
+
+    const reqEvents = (auditLogs ?? []).filter((a) => a.action === "reservation_relocation_requested");
+    if (reqEvents.length === 0) {
+      throw new Error("No relocation request found for this reservation");
+    }
+    const latestReq = reqEvents[0];
+    const reqTime = latestReq.created_at;
+    const subsequentDecisions = (auditLogs ?? []).filter(
+      (a) =>
+        (a.action === "reservation_relocation_approved" ||
+          a.action === "reservation_relocation_declined" ||
+          a.action === "reservation_relocated" ||
+          a.action === "RESERVATION_RELOCATED") &&
+        (a.created_at || "") > reqTime
+    );
+    if (subsequentDecisions.length > 0) {
+      throw new Error("The relocation request has already been decided");
+    }
+
+    const targetInstanceId = latestReq.metadata?.target_workspace_instance_id;
+    if (!targetInstanceId) {
+      throw new Error("Invalid pending relocation request: missing target spot");
+    }
+
+    let resolvedActorUserId: string | null = null;
+    let resolvedAuditActorRole: "ADMIN" | "STAFF" | "SYSTEM" = "SYSTEM";
+
+    const rawActorUserId = input.actorUserId || null;
+    if (rawActorUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawActorUserId)) {
+      const profs = await this.request<any[]>(
+        `/staff_profiles?select=user_id,role&user_id=eq.${encodeURIComponent(rawActorUserId)}&limit=1`
+      ).catch(() => []);
+      if (profs && profs.length > 0) {
+        resolvedActorUserId = profs[0].user_id;
+        resolvedAuditActorRole = profs[0].role;
+      }
+    }
+
+    if (!resolvedActorUserId) {
+      const targetRole = input.actorRole === "STAFF" ? "STAFF" : "ADMIN";
+      const matching = await this.request<any[]>(
+        `/staff_profiles?select=user_id,role&role=eq.${targetRole}&is_active=eq.true&order=created_at.asc&limit=1`
+      ).catch(() => []);
+      if (matching && matching.length > 0) {
+        resolvedActorUserId = matching[0].user_id;
+        resolvedAuditActorRole = matching[0].role;
+      } else {
+        const anyActive = await this.request<any[]>(
+          `/staff_profiles?select=user_id,role&is_active=eq.true&order=created_at.asc&limit=1`
+        ).catch(() => []);
+        if (anyActive && anyActive.length > 0) {
+          resolvedActorUserId = anyActive[0].user_id;
+          resolvedAuditActorRole = anyActive[0].role;
+        } else {
+          resolvedActorUserId = null;
+          resolvedAuditActorRole = "SYSTEM";
+        }
+      }
+    }
+
+    if (input.decision === "APPROVE") {
+      const relocRes = await this.relocateReservation({
+        reservationId: r.id,
+        targetWorkspaceInstanceId: targetInstanceId,
+        reason: latestReq.metadata?.reason || "Customer Relocation Request",
+        notes: input.notes ? `Approved: ${input.notes}` : "Approved by operator",
+        actorUserId: resolvedActorUserId ?? undefined,
+        actorRole: input.actorRole,
+      });
+
+      await this.request("/audit_logs", {
+        method: "POST",
+        body: JSON.stringify({
+          entity_type: "reservation",
+          entity_id: r.id,
+          action: "reservation_relocation_approved",
+          actor_role: resolvedAuditActorRole,
+          actor_user_id: resolvedActorUserId,
+          metadata: {
+            request_id: latestReq.metadata?.request_id || latestReq.id,
+            target_workspace_instance_id: targetInstanceId,
+            target_workspace_name: latestReq.metadata?.target_workspace_name,
+            notes: input.notes ?? null,
+            decision_role: input.actorRole,
+          },
+        }),
+      }).catch((e) => console.warn("Failed to log approval audit:", e));
+
+      return {
+        success: true,
+        decision: "APPROVE",
+        reservation: relocRes.reservation,
+        message: "Customer relocation request approved and executed successfully",
+      };
+    } else {
+      await this.request("/audit_logs", {
+        method: "POST",
+        body: JSON.stringify({
+          entity_type: "reservation",
+          entity_id: r.id,
+          action: "reservation_relocation_declined",
+          actor_role: resolvedAuditActorRole,
+          actor_user_id: resolvedActorUserId,
+          metadata: {
+            request_id: latestReq.metadata?.request_id || latestReq.id,
+            target_workspace_instance_id: targetInstanceId,
+            notes: input.notes ?? "Declined by operator",
+            decision_role: input.actorRole,
+          },
+        }),
+      }).catch((e) => console.warn("Failed to log decline audit:", e));
+
+      const detail = await this.getAdminReservationDetail(r.id);
+      if (!detail) {
+        throw new Error("Failed to reload reservation detail");
+      }
+      return {
+        success: true,
+        decision: "DECLINE",
+        reservation: detail,
+        message: "Customer relocation request was declined",
+      };
+    }
   }
 }
 

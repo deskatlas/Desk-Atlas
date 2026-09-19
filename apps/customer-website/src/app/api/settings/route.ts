@@ -15,9 +15,14 @@ export async function GET() {
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json({
         customerSessionTimeoutMinutes: 20,
+        customerRescheduleCutoffHours: 12,
         bookingIntervalMinutes: 30,
         paymentExpiryMinutes: 60,
+        kioskAllowanceMinutes: 5,
         statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
+        cancellationPolicyPdfUrl: null,
+        cancellationPolicyPdfFilename: null,
+        cancellationPolicyUpdatedAt: null,
       });
     }
 
@@ -37,9 +42,14 @@ export async function GET() {
     console.error('Error fetching public business settings:', error);
     return NextResponse.json({
       customerSessionTimeoutMinutes: 20,
+      customerRescheduleCutoffHours: 12,
       bookingIntervalMinutes: 30,
       paymentExpiryMinutes: 60,
+      kioskAllowanceMinutes: 5,
       statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
+      cancellationPolicyPdfUrl: null,
+      cancellationPolicyPdfFilename: null,
+      cancellationPolicyUpdatedAt: null,
     });
   }
 }

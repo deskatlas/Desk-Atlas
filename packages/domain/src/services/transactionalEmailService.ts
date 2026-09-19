@@ -188,6 +188,42 @@ export function formatEmailSchedule(value?: string | null, timezone: string = DE
   });
 }
 
+/**
+ * MF-141: Formats session expiry duration in minutes into a human-readable label and session title.
+ * Examples:
+ *   60 -> { label: '1 hour', sessionTitle: '1-Hour Session' }
+ *   120 -> { label: '2 hours', sessionTitle: '2-Hour Session' }
+ *   20 -> { label: '20 minutes', sessionTitle: '20-Minute Session' }
+ *   30 -> { label: '30 minutes', sessionTitle: '30-Minute Session' }
+ *   45 -> { label: '45 minutes', sessionTitle: '45-Minute Session' }
+ *   90 -> { label: '1 hour 30 minutes', sessionTitle: '90-Minute Session' }
+ */
+export function formatSessionExpiryDuration(minutes?: number | null): { label: string; sessionTitle: string } {
+  const safeMinutes = typeof minutes === 'number' && !isNaN(minutes) && minutes > 0 ? Math.round(minutes) : 60;
+
+  let label: string;
+  if (safeMinutes < 60) {
+    label = `${safeMinutes} minute${safeMinutes === 1 ? '' : 's'}`;
+  } else if (safeMinutes % 60 === 0) {
+    const hours = Math.floor(safeMinutes / 60);
+    label = `${hours} hour${hours === 1 ? '' : 's'}`;
+  } else {
+    const hours = Math.floor(safeMinutes / 60);
+    const remMinutes = safeMinutes % 60;
+    label = `${hours} hour${hours === 1 ? '' : 's'} ${remMinutes} minute${remMinutes === 1 ? '' : 's'}`;
+  }
+
+  let sessionTitle: string;
+  if (safeMinutes % 60 === 0) {
+    const hours = Math.floor(safeMinutes / 60);
+    sessionTitle = `${hours}-Hour Session`;
+  } else {
+    sessionTitle = `${safeMinutes}-Minute Session`;
+  }
+
+  return { label, sessionTitle };
+}
+
 export interface PaymentLinkEmailInput {
   to: string;
   customerFirstName?: string;
@@ -197,13 +233,17 @@ export interface PaymentLinkEmailInput {
   currency: string;
   paymentUrl: string;
   expiresAt: string;
+  expiryMinutes?: number;
   trackingUrl?: string;
   workspaceTemplateName?: string;
   bookingDate?: string;
 }
 
+// MF-141 alias for PaymentLinkEmailInput
+export type PaymentProofRequestEmailInput = PaymentLinkEmailInput;
+
 export interface BookingConfirmationEmailInput {
-  to: string;
+  to?: string;
   customerFirstName?: string;
   customerLastName?: string;
   referenceCode: string;
@@ -212,10 +252,12 @@ export interface BookingConfirmationEmailInput {
   floorName: string;
   bookingStartAt: string;
   bookingEndAt: string;
-  bookingAccessUrl: string;
-  bookingToken: string;
-  qrIssuedAt: string;
+  bookingAccessUrl?: string;
+  bookingToken?: string;
+  qrIssuedAt?: string;
   trackingUrl?: string;
+  digitalPassUrl?: string;
+  termsUrl?: string;
   qrImageUrl?: string;
 }
 
@@ -387,6 +429,27 @@ export interface RawEmailInput {
   text?: string;
 }
 
+export interface TeamMemberJoinedEmailInput {
+  to: string;
+  memberName: string;
+  memberEmail: string;
+  role: 'ADMIN' | 'STAFF' | string;
+  joinedAt?: string;
+  invitedBy?: string;
+  rosterUrl?: string;
+}
+
+export interface AccountStatusChangedEmailInput {
+  to: string;
+  memberName: string;
+  role: 'ADMIN' | 'STAFF' | string;
+  effectiveAt?: string;
+  changedBy?: string;
+  contactNumber?: string;
+  supportEmail?: string;
+  loginUrl?: string;
+}
+
 export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `DeskAtlas Reservation Payment - Ref #${input.referenceCode}`;
@@ -397,6 +460,19 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
     timeStyle: 'short',
     hour12: true,
   }) + ' UTC';
+
+  let expiryMinutes = input.expiryMinutes;
+  if (expiryMinutes === undefined && input.expiresAt) {
+    const expiresMs = new Date(input.expiresAt).getTime();
+    if (!isNaN(expiresMs)) {
+      const diffMs = expiresMs - Date.now();
+      const diffMinutes = Math.round(diffMs / 60000);
+      if (diffMinutes > 0 && diffMinutes <= 10080) {
+        expiryMinutes = diffMinutes;
+      }
+    }
+  }
+  const expiryInfo = formatSessionExpiryDuration(expiryMinutes);
 
   const html = `
 <!DOCTYPE html>
@@ -446,7 +522,7 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
         <p style="margin: 0;">3. Upload a screenshot or photo of your payment receipt before the session expires.</p>
       </div>
 
-      <p class="warning">⚠️ <strong>1-Hour Session:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong>. DeskAtlas No-Hold Policy: Submitting a reservation does not reserve physical inventory until payment proof is verified and approved by admin.</p>
+      <p class="warning">⚠️ <strong>${escapeHtml(expiryInfo.sessionTitle)}:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong> (${escapeHtml(expiryInfo.label)}). DeskAtlas No-Hold Policy: Submitting a reservation does not reserve physical inventory until payment proof is verified and approved by admin.</p>
 
       <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
         If the button above does not work, copy and paste this link into your browser:<br>
@@ -471,7 +547,7 @@ Your workspace reservation request has been created. Please complete your paymen
 Amount Due: ${formattedAmount}
 Payment URL: ${input.paymentUrl}
 
-Session Expiry: ${expiresFormatted} (1 hour)
+Session Expiry: ${expiresFormatted} (${expiryInfo.label})
 
 Payment Instructions:
 1. Open your GCash app or mobile banking to transfer the exact amount (${formattedAmount}).
@@ -485,15 +561,49 @@ DeskAtlas Workspace Reservation System
   return { subject, html, text };
 }
 
+// MF-141 alias for renderPaymentLinkEmail
+export const renderPaymentProofRequestEmail = renderPaymentLinkEmail;
+
 export function renderBookingConfirmationEmail(input: BookingConfirmationEmailInput): { subject: string; html: string; text: string } {
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}`;
   const trackingUrl = normalizeCustomerTrackingUrl(input.trackingUrl);
+
+  let customerOrigin = 'http://localhost:3001';
+  if (trackingUrl) {
+    try {
+      customerOrigin = new URL(trackingUrl).origin;
+    } catch {
+      // fallback
+    }
+  } else if (input.bookingAccessUrl) {
+    try {
+      const url = new URL(input.bookingAccessUrl);
+      if (url.port === '3000' || url.port === '3002' || url.port === '3003') {
+        url.port = '3001';
+      }
+      customerOrigin = url.origin;
+    } catch {
+      // fallback
+    }
+  }
+
+  const digitalPassUrl =
+    input.digitalPassUrl ||
+    (input.bookingToken
+      ? `${customerOrigin}/pass/${input.bookingToken}`
+      : input.bookingAccessUrl || `${customerOrigin}/pass`);
+  const termsUrl = input.termsUrl || `${customerOrigin}/terms`;
+
   const qrImageUrl =
     input.qrImageUrl ||
     `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-      input.bookingAccessUrl || input.bookingToken
+      input.bookingAccessUrl || input.bookingToken || input.referenceCode
     )}`;
+
+  const assignedSpotText = input.workspaceTemplateName
+    ? `${input.workspaceDisplayName} (${input.workspaceTemplateName})`
+    : input.workspaceDisplayName;
 
   const html = `
 <!DOCTYPE html>
@@ -507,16 +617,21 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
     .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
     .confirmed-badge { display: inline-block; background-color: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 700; }
     .content { font-size: 15px; line-height: 1.6; color: #334155; }
-    .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+    .section-title { font-size: 13px; font-weight: 700; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 8px 0; }
+    .details-table { width: 100%; border-collapse: collapse; margin: 16px 0 24px 0; font-size: 14px; }
     .details-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
     .details-table td:first-child { color: #64748b; font-weight: 500; width: 35%; }
     .details-table td:last-child { color: #0f172a; font-weight: 600; }
-    .qr-card { text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1; }
+    .qr-card { text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 24px 20px; border-radius: 12px; border: 1px dashed #cbd5e1; }
     .qr-label { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
-    .qr-code-text { font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 10px; margin-bottom: 4px; }
-    .btn { display: inline-block; background-color: #15803d; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 16px 0; text-align: center; }
-    .guidelines-box { background-color: #f8fafc; border-radius: 8px; padding: 16px; margin: 24px 0 16px 0; border: 1px solid #e2e8f0; }
+    .qr-code-text { font-family: monospace; font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 12px; margin-bottom: 6px; }
+    .qr-guide { font-size: 13px; color: #475569; margin: 8px 0 16px 0; line-height: 1.4; }
+    .btn { display: inline-block; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 4px; text-align: center; }
+    .btn-primary { background-color: #15803d; color: #ffffff !important; }
+    .btn-secondary { background-color: #f1f5f9; color: #0f172a !important; border: 1px solid #cbd5e1; }
+    .guidelines-box { background-color: #f8fafc; border-radius: 10px; padding: 18px 20px; margin: 24px 0 16px 0; border: 1px solid #e2e8f0; }
     .guidelines-title { font-weight: 700; color: #0f172a; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .guideline-p { font-size: 13px; color: #334155; margin: 8px 0; line-height: 1.5; }
     .guideline-item { font-size: 13px; color: #475569; margin: 6px 0; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
   </style>
@@ -529,8 +644,9 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
     </div>
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
-      <p>Your workspace reservation has been approved and confirmed. Here are your booking details:</p>
+      <p>Your workspace reservation is confirmed. Here are your booking details:</p>
       
+      <div class="section-title">Booking Details</div>
       <table class="details-table">
         <tr>
           <td>Reference Code</td>
@@ -538,7 +654,7 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         </tr>
         <tr>
           <td>Assigned Spot</td>
-          <td>${escapeHtml(input.workspaceDisplayName)} (${escapeHtml(input.workspaceTemplateName)})</td>
+          <td>${escapeHtml(assignedSpotText)}</td>
         </tr>
         <tr>
           <td>Floor</td>
@@ -558,11 +674,23 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         <div class="qr-label">Digital Access QR Pass</div>
         <img src="${escapeHtml(qrImageUrl)}" alt="Digital Pass QR Code" width="200" height="200" style="display: block; margin: 0 auto; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; padding: 6px;" />
         <div class="qr-code-text">${escapeHtml(input.referenceCode)}</div>
-        <p style="font-size: 12px; color: #64748b; margin: 0;">Present this QR code upon arrival at the workspace reception desk or kiosk.</p>
+        <p class="qr-guide">Please present this QR code upon arrival at the workspace reception desk or kiosk.</p>
+        <div style="margin-top: 16px;">
+          <a href="${escapeHtml(digitalPassUrl)}" class="btn btn-primary">View Digital Pass</a>
+          ${trackingUrl ? `<a href="${escapeHtml(trackingUrl)}" class="btn btn-secondary">Track Reservation</a>` : ''}
+        </div>
       </div>
 
       <div class="guidelines-box">
-        <div class="guidelines-title">Facility Guidelines &amp; Amenities</div>
+        <div class="guidelines-title">Before Your Booking</div>
+        <p class="guideline-p">Please use only your assigned workspace and observe the applicable booking rules during your stay.</p>
+        <p class="guideline-p">If you need to relocate to another workspace, extend your booking time, or require assistance, please approach a Staff member. Relocation and extension requests are subject to workspace availability and existing reservations.</p>
+        <div style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+          <a href="${escapeHtml(termsUrl)}" style="font-size: 13px; font-weight: 600; color: #15803d; text-decoration: underline;">View Terms &amp; Conditions</a>
+        </div>
+
+        <div style="margin: 16px 0 10px 0; border-top: 1px solid #e2e8f0;"></div>
+        <div style="font-weight: 700; color: #0f172a; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Facility Guidelines &amp; Amenities</div>
         <div class="guideline-item">📶 <strong>High-Speed WiFi:</strong> Network connection credentials are provided upon check-in.</div>
         <div class="guideline-item">🏷️ <strong>Facility Access:</strong> Present your booking QR code at the reception desk for initial check-in and subsequent re-entry during your session.</div>
         <div class="guideline-item">🤫 <strong>Quiet &amp; Focus Zones:</strong> Please keep voices down in open workspaces and use dedicated phone booths for phone and video calls.</div>
@@ -587,15 +715,28 @@ Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}
 
 Hello ${customerName},
 
-Your workspace reservation has been confirmed.
+Your workspace reservation is confirmed. Here are your booking details:
 
-Assigned Spot: ${input.workspaceDisplayName} (${input.workspaceTemplateName})
+Booking Details
+Reference Code: ${input.referenceCode}
+Assigned Spot: ${assignedSpotText}
 Floor: ${input.floorName}
 Start Time: ${formatEmailTime(input.bookingStartAt)}
 End Time: ${formatEmailTime(input.bookingEndAt)}
 
+Digital Access Pass
 QR Code Image: ${qrImageUrl}
+Please present this QR code upon arrival at the workspace reception desk or kiosk.
+
+View Digital Pass: ${digitalPassUrl}
 ${trackingUrl ? `Track Reservation: ${trackingUrl}\n` : ''}
+Before Your Booking
+Please use only your assigned workspace and observe the applicable booking rules during your stay.
+
+If you need to relocate to another workspace, extend your booking time, or require assistance, please approach a Staff member. Relocation and extension requests are subject to workspace availability and existing reservations.
+
+View Terms & Conditions: ${termsUrl}
+
 Facility Guidelines:
 - High-Speed WiFi credentials available at reception.
 - Present your QR pass at reception or kiosk for check-in and re-entry.
@@ -1197,6 +1338,10 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendPaymentProofRequestEmail(input: PaymentProofRequestEmailInput): Promise<EmailSendResult> {
+    return this.sendPaymentLinkEmail(input);
+  }
+
   async sendBookingConfirmationEmail(input: BookingConfirmationEmailInput): Promise<EmailSendResult> {
     const rendered = renderBookingConfirmationEmail(input);
 
@@ -1218,7 +1363,7 @@ export class TransactionalEmailService {
     }
 
     return this.sendEmail({
-      to: input.to,
+      to: input.to || '',
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
@@ -1356,6 +1501,36 @@ export class TransactionalEmailService {
     const rendered = renderBookingEndedSurveyEmail(input);
     return this.sendEmail({
       to: input.to || '',
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): Promise<EmailSendResult> {
+    const rendered = renderTeamMemberJoinedEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendAccountDeactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
+    const rendered = renderAccountDeactivatedEmail(input);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendAccountReactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
+    const rendered = renderAccountReactivatedEmail(input);
+    return this.sendEmail({
+      to: input.to,
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
@@ -2072,6 +2247,278 @@ Your existing QR pass remains active and valid through your new extended time ($
 QR Pass: ${qrImageUrl}
 
 ${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): { subject: string; html: string; text: string } {
+  const isRoleAdmin = input.role.toUpperCase() === 'ADMIN';
+  const roleLabel = isRoleAdmin ? 'Admin' : 'Staff';
+  const subject = `[DeskAtlas] New Team Member Joined: ${input.memberName} (${roleLabel})`;
+  const rosterUrl = input.rosterUrl || 'http://localhost:3000/manage/staff';
+  const joinedFormatted = input.joinedAt
+    ? formatEmailTime(input.joinedAt)
+    : new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      }).format(new Date());
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; }
+    .info-row { margin: 6px 0; }
+    .info-label { color: #64748b; font-weight: 600; display: inline-block; width: 130px; }
+    .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">DeskAtlas</div>
+      <span class="badge">Team Notification</span>
+    </div>
+    <div class="content">
+      <div class="title">New Team Member Joined</div>
+      <p>Hello Administrator,</p>
+      <p>A new team member has joined DeskAtlas:</p>
+      
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Full Name:</span> <strong>${escapeHtml(input.memberName)}</strong></div>
+        <div class="info-row"><span class="info-label">Email Address:</span> <strong>${escapeHtml(input.memberEmail)}</strong></div>
+        <div class="info-row"><span class="info-label">Assigned Role:</span> <strong>${escapeHtml(roleLabel)}</strong></div>
+        <div class="info-row"><span class="info-label">Joined:</span> ${escapeHtml(joinedFormatted)}</div>
+        ${input.invitedBy ? `<div class="info-row"><span class="info-label">Invited By:</span> ${escapeHtml(input.invitedBy)}</div>` : ''}
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(rosterUrl)}" class="btn">View Team Roster</a>
+      </div>
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Team Management Alert
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+DeskAtlas Notification: New Team Member Joined
+
+A new team member has joined DeskAtlas:
+
+Full Name: ${input.memberName}
+Email Address: ${input.memberEmail}
+Assigned Role: ${roleLabel}
+Joined: ${joinedFormatted}
+${input.invitedBy ? `Invited By: ${input.invitedBy}\n` : ''}
+View Team Roster: ${rosterUrl}
+
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderAccountDeactivatedEmail(input: AccountStatusChangedEmailInput): { subject: string; html: string; text: string } {
+  const isRoleAdmin = input.role.toUpperCase() === 'ADMIN';
+  const roleLabel = isRoleAdmin ? 'Admin' : 'Staff';
+  const subject = `[DeskAtlas] Notice: Your Account Has Been Deactivated`;
+  const firstName = input.memberName.trim().split(' ')[0] || input.memberName;
+  const effectiveFormatted = input.effectiveAt
+    ? formatEmailTime(input.effectiveAt)
+    : new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      }).format(new Date());
+
+  const supportEmail = input.supportEmail || 'support@deskatlas.com';
+  const contactNumber = input.contactNumber || '+63 2 8123 4567';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #dc2626; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; }
+    .info-row { margin: 6px 0; }
+    .info-label { color: #64748b; font-weight: 600; display: inline-block; width: 130px; }
+    .alert-box { background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; color: #991b1b; line-height: 1.5; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">DeskAtlas</div>
+      <span class="badge">Notice</span>
+    </div>
+    <div class="content">
+      <div class="title">Account Deactivated</div>
+      <p>Hello ${escapeHtml(firstName)},</p>
+      <p>Your DeskAtlas ${escapeHtml(roleLabel)} account has been deactivated by an administrator effective immediately.</p>
+      
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Account Name:</span> <strong>${escapeHtml(input.memberName)}</strong></div>
+        <div class="info-row"><span class="info-label">Account Role:</span> <strong>${escapeHtml(roleLabel)}</strong></div>
+        <div class="info-row"><span class="info-label">Effective Date:</span> ${escapeHtml(effectiveFormatted)}</div>
+      </div>
+
+      <div class="alert-box">
+        <strong>Security Notice:</strong> Your active sessions have been terminated and you will no longer be able to access the management portal.
+      </div>
+
+      <p>If you believe this was done in error or need assistance, please contact management support:</p>
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Admin Email:</span> <a href="mailto:${escapeHtml(supportEmail)}" style="color: #0284c7;">${escapeHtml(supportEmail)}</a></div>
+        <div class="info-row"><span class="info-label">Contact Number:</span> <strong>${escapeHtml(contactNumber)}</strong></div>
+      </div>
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Administrative Notification
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Notice: Your DeskAtlas Account Has Been Deactivated
+
+Hello ${firstName},
+
+Your DeskAtlas ${roleLabel} account has been deactivated by an administrator effective immediately.
+
+Account Details:
+- Name: ${input.memberName}
+- Role: ${roleLabel}
+- Effective Date: ${effectiveFormatted}
+
+Security Notice:
+Your active sessions have been terminated and you will no longer be able to access the management portal.
+
+Support Contact Details:
+- Admin Email: ${supportEmail}
+- Contact Number: ${contactNumber}
+
+DeskAtlas Workspace Reservation System
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderAccountReactivatedEmail(input: AccountStatusChangedEmailInput): { subject: string; html: string; text: string } {
+  const isRoleAdmin = input.role.toUpperCase() === 'ADMIN';
+  const roleLabel = isRoleAdmin ? 'Admin' : 'Staff';
+  const subject = `[DeskAtlas] Your Account Has Been Reactivated`;
+  const firstName = input.memberName.trim().split(' ')[0] || input.memberName;
+  const effectiveFormatted = input.effectiveAt
+    ? formatEmailTime(input.effectiveAt)
+    : new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      }).format(new Date());
+
+  const loginUrl = input.loginUrl || 'http://localhost:3000/manage/login';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #064e3b; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; }
+    .info-row { margin: 6px 0; }
+    .info-label { color: #64748b; font-weight: 600; display: inline-block; width: 130px; }
+    .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
+    .guidance-box { background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 14px; color: #0369a1; line-height: 1.5; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">DeskAtlas</div>
+      <span class="badge">Reactivated</span>
+    </div>
+    <div class="content">
+      <div class="title">Account Reactivated</div>
+      <p>Hello ${escapeHtml(firstName)},</p>
+      <p>Your DeskAtlas ${escapeHtml(roleLabel)} account access has been restored.</p>
+      
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Account Name:</span> <strong>${escapeHtml(input.memberName)}</strong></div>
+        <div class="info-row"><span class="info-label">Account Role:</span> <strong>${escapeHtml(roleLabel)}</strong></div>
+        <div class="info-row"><span class="info-label">Effective Date:</span> ${escapeHtml(effectiveFormatted)}</div>
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(loginUrl)}" class="btn">Sign In to DeskAtlas</a>
+      </div>
+
+      <div class="guidance-box">
+        <strong>Forgot your password?</strong> You can use the "Forgot Password" link on the sign-in page to reset your credentials.
+      </div>
+    </div>
+    <div class="footer">
+      DeskAtlas Workspace Reservation System &bull; Administrative Notification
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Your DeskAtlas Account Has Been Reactivated
+
+Hello ${firstName},
+
+Your DeskAtlas ${roleLabel} account access has been restored.
+
+Account Details:
+- Name: ${input.memberName}
+- Role: ${roleLabel}
+- Effective Date: ${effectiveFormatted}
+
+Sign In: ${loginUrl}
+
+Forgot your password? You can use the "Forgot Password" link on the sign-in page to reset your credentials.
+
 DeskAtlas Workspace Reservation System
   `.trim();
 

@@ -1,4 +1,4 @@
-import { GuestReservationAssignmentSummary } from "../models/reservation";
+import { GuestReservationAssignmentSummary, CustomerRelocationRequest } from "../models/reservation";
 
 export interface GuestReservationTrackingRecord {
   reservationId: string;
@@ -13,6 +13,7 @@ export interface GuestReservationTrackingRecord {
   paymentStatus?: string | null;
   rejectionReason?: string | null;
   rescheduleCount?: number;
+  pendingRelocationRequest?: CustomerRelocationRequest | null;
 }
 
 export interface GuestReservationTrackingRepository {

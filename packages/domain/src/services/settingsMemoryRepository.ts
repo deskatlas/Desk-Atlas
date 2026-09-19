@@ -20,10 +20,14 @@ export class InMemorySettingsRepository implements SettingsRepository {
     bookingIntervalMinutes: 30,
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
+    kioskAllowanceMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
+    cancellationPolicyPdfUrl: null,
+    cancellationPolicyPdfFilename: null,
+    cancellationPolicyUpdatedAt: null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -86,6 +90,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
       statusColors: this.businessSettings.statusColors
         ? { ...this.businessSettings.statusColors }
         : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
+      cancellationPolicyPdfUrl: this.businessSettings.cancellationPolicyPdfUrl ?? null,
+      cancellationPolicyPdfFilename: this.businessSettings.cancellationPolicyPdfFilename ?? null,
+      cancellationPolicyUpdatedAt: this.businessSettings.cancellationPolicyUpdatedAt ?? null,
     };
   }
 
@@ -102,6 +109,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
       bookingIntervalMinutes: input.bookingIntervalMinutes,
       paymentExpiryMinutes: input.paymentExpiryMinutes,
       kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
+      kioskAllowanceMinutes: input.kioskAllowanceMinutes ?? 5,
       customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? 12,
       landingPreviewPhotos:
@@ -112,6 +120,18 @@ export class InMemorySettingsRepository implements SettingsRepository {
         input.statusColors !== undefined
           ? normalizeWorkspaceStatusColors(input.statusColors)
           : (this.businessSettings.statusColors || { ...DEFAULT_WORKSPACE_STATUS_COLORS }),
+      cancellationPolicyPdfUrl:
+        input.cancellationPolicyPdfUrl !== undefined
+          ? input.cancellationPolicyPdfUrl
+          : this.businessSettings.cancellationPolicyPdfUrl,
+      cancellationPolicyPdfFilename:
+        input.cancellationPolicyPdfFilename !== undefined
+          ? input.cancellationPolicyPdfFilename
+          : this.businessSettings.cancellationPolicyPdfFilename,
+      cancellationPolicyUpdatedAt:
+        input.cancellationPolicyUpdatedAt !== undefined
+          ? input.cancellationPolicyUpdatedAt
+          : this.businessSettings.cancellationPolicyUpdatedAt,
       updatedAt: new Date().toISOString(),
     };
     return {
