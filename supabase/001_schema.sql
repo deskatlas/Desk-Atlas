@@ -278,6 +278,7 @@ CREATE TABLE public.business_settings (
   payment_expiry_minutes integer NOT NULL DEFAULT 60,
   kiosk_timeout_minutes integer,
   kiosk_allowance_minutes integer NOT NULL DEFAULT 5,
+  booking_end_alert_minutes integer NOT NULL DEFAULT 5,
   customer_session_timeout_minutes integer NOT NULL DEFAULT 20,
   customer_reschedule_cutoff_hours integer NOT NULL DEFAULT 12,
   landing_preview_photos jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -297,6 +298,8 @@ CREATE TABLE public.business_settings (
     CHECK (kiosk_timeout_minutes IS NULL OR kiosk_timeout_minutes > 0),
   CONSTRAINT business_settings_kiosk_allowance_bound
     CHECK (kiosk_allowance_minutes >= 0 AND kiosk_allowance_minutes <= 60),
+  CONSTRAINT business_settings_booking_end_alert_bound
+    CHECK (booking_end_alert_minutes >= 1 AND booking_end_alert_minutes <= 60),
   CONSTRAINT business_settings_customer_session_timeout_bound
     CHECK (customer_session_timeout_minutes >= 1 AND customer_session_timeout_minutes <= 180),
 
@@ -400,6 +403,7 @@ CREATE TABLE public.workspace_instances (
   instance_code text NOT NULL,
   display_name text NOT NULL,
   operational_status public.workspace_status NOT NULL DEFAULT 'ACTIVE',
+  maintenance_note text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -552,8 +556,10 @@ CREATE TABLE public.reservations (
   customer_first_name text NOT NULL,
   customer_last_name text NOT NULL,
   customer_email text NOT NULL,
+  customer_contact_number varchar(30) NULL,
   status public.reservation_status NOT NULL,
   rate_snapshot numeric(10,2) NOT NULL,
+  booked_rate_per_hour numeric(10,2) NULL,
   amount_due numeric(10,2) NOT NULL,
   currency char(3) NOT NULL DEFAULT 'PHP',
   booking_token_hash text,

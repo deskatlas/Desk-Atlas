@@ -87,6 +87,7 @@ export {
   normalizeCreateInstanceFromTemplateInput,
   normalizeCreateTemplateInput,
   normalizeDuplicateInstanceInput,
+  normalizeMaintenanceNote,
   normalizeUpdateInstanceInput,
   normalizeUpdateTemplateInput,
   sortWorkspaceInstances,
@@ -190,4 +191,12 @@ export * from './services/proofImageViewerService';
 export * from './services/workspaceStatusColorService';
 export * from './services/reservationSort';
 export * from './services/reservationPagination';
-
+export * from './services/bookingEndAlertService';
+export * from './services/workspaceUsageService';
+export * from './services/workspaceUsageMemoryRepository';
+export * from './services/workspaceUsageSupabaseRepository';
+export * from './services/activityLogService';
+export * from './services/activityLogMemoryRepository';
+export * from './services/activityLogSupabaseRepository';
+export * from './services/reservationTabSegregation';
+export * from './services/paymentProofValidationService';

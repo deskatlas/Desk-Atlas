@@ -130,6 +130,7 @@ export class ReservationSupabaseRepository
       customerFirstName: data.customer_first_name,
       customerLastName: data.customer_last_name,
       customerEmail: data.customer_email,
+      customerContactNumber: data.customer_contact_number ?? null,
       status: data.status,
       rateSnapshot: Number(data.rate_snapshot),
       amountDue: Number(data.amount_due),
@@ -168,6 +169,7 @@ export class ReservationSupabaseRepository
           p_candidates: request.candidates,
           p_token_hash: paymentSession.tokenHash,
           p_expires_at: paymentSession.expiresAt,
+          p_contact_number: request.customerContactNumber ?? null,
         }),
       });
 
@@ -189,6 +191,7 @@ export class ReservationSupabaseRepository
             p_amount_due: amountDue,
             p_candidates: request.candidates,
             p_payment_method_id: request.paymentMethodId ?? null,
+            p_contact_number: request.customerContactNumber ?? null,
           }),
         }
       );
@@ -210,6 +213,7 @@ export class ReservationSupabaseRepository
           p_rate_snapshot: rateSnapshot,
           p_amount_due: amountDue,
           p_candidates: request.candidates,
+          p_contact_number: request.customerContactNumber ?? null,
         }),
       });
 
@@ -349,6 +353,7 @@ export class ReservationSupabaseRepository
       customerEmail: reservation.customer_email,
       customerFirstName: reservation.customer_first_name,
       customerLastName: reservation.customer_last_name,
+      customerContactNumber: reservation.customer_contact_number ?? null,
       amountDue: Number(reservation.amount_due),
       currency: reservation.currency,
       paymentMethodId: attempt.payment_method_id,
@@ -425,6 +430,7 @@ export class ReservationSupabaseRepository
       customerEmail: reservation.customer_email,
       customerFirstName: reservation.customer_first_name,
       customerLastName: reservation.customer_last_name,
+      customerContactNumber: reservation.customer_contact_number ?? null,
       amountDue: Number(reservation.amount_due),
       currency: reservation.currency,
       paymentMethodId: attempt.payment_method_id,
@@ -643,12 +649,35 @@ export class ReservationSupabaseRepository
     const attempt = attempts[0];
     const reservationId = attempt.reservation_id;
 
-    const candidates = await this.request<any[]>(
-      `/reservation_candidates?reservation_id=eq.${encodeURIComponent(reservationId)}&order=rank.asc`
-    );
+    const [candidates, publishedVersions] = await Promise.all([
+      this.request<any[]>(
+        `/reservation_candidates?reservation_id=eq.${encodeURIComponent(reservationId)}&order=rank.asc`
+      ),
+      this.request<any[]>("/map_versions?status=eq.PUBLISHED&select=id").catch(() => []),
+    ]);
+
+    const publishedVersionIds = (publishedVersions ?? []).map((v: any) => v.id);
+    let mapPlacedIds = new Set<string>();
+    if (publishedVersionIds.length > 0) {
+      const elements = await this.request<any[]>(
+        `/map_elements?map_version_id=in.(${publishedVersionIds.map(encodeURIComponent).join(",")})&workspace_instance_id=not.is.null&select=workspace_instance_id`
+      ).catch(() => []);
+      mapPlacedIds = new Set((elements ?? []).map((e: any) => e.workspace_instance_id).filter(Boolean));
+    }
 
     let assignedCandidate: any = null;
     for (const c of candidates ?? []) {
+      if (publishedVersionIds.length > 0 && !mapPlacedIds.has(c.workspace_instance_id)) {
+        continue;
+      }
+
+      const instRows = await this.request<any[]>(
+        `/workspace_instances?id=eq.${encodeURIComponent(c.workspace_instance_id)}&select=operational_status&limit=1`
+      ).catch(() => []);
+      if (instRows?.[0] && instRows[0].operational_status !== "ACTIVE") {
+        continue;
+      }
+
       const conflicts = await this.request<any[]>(
         `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(c.workspace_instance_id)}&is_assigned=eq.true&reservation_id=neq.${encodeURIComponent(reservationId)}&select=id,start_at,end_at`
       ).catch(() => []);
@@ -2018,6 +2047,7 @@ export class ReservationSupabaseRepository
       customerFirstName: reservation.customer_first_name,
       customerLastName: reservation.customer_last_name,
       customerEmail: reservation.customer_email,
+      customerContactNumber: reservation.customer_contact_number ?? null,
       reservationStatus: reservation.status,
       checkInState: getCheckInState(reservation.checked_in_at, reservation.checked_out_at),
       workspaceInstanceId: candidate?.workspace_instance_id ?? null,
@@ -2033,6 +2063,9 @@ export class ReservationSupabaseRepository
       checkedOutAt: reservation.checked_out_at,
       qrIssuedAt: reservation.qr_issued_at,
       pendingRelocationRequest,
+      rateSnapshot: Number(reservation.rate_snapshot),
+      bookedRatePerHour: Number(reservation.rate_snapshot),
+      amountDue: Number(reservation.amount_due),
     };
   }
 
@@ -2186,6 +2219,7 @@ export class ReservationSupabaseRepository
         customerName,
         customerInitials,
         customerEmail: r.customer_email,
+        customerContactNumber: r.customer_contact_number ?? null,
         workspaceDisplayName,
         workspaceInstanceCode: instance?.instance_code ?? null,
         workspaceTemplateName: template?.name ?? null,
@@ -2202,6 +2236,8 @@ export class ReservationSupabaseRepository
         amountDue,
         amountPaid,
         currency: r.currency,
+        rateSnapshot: Number(r.rate_snapshot),
+        bookedRatePerHour: Number(r.rate_snapshot),
         createdAt: r.created_at,
         confirmedAt: r.confirmed_at,
         checkedInAt: r.checked_in_at,
@@ -2482,6 +2518,7 @@ export class ReservationSupabaseRepository
       customerName,
       customerInitials,
       customerEmail: r.customer_email,
+      customerContactNumber: r.customer_contact_number ?? null,
       reservationStatus: r.status,
       status: pres.label,
       statusStyle: pres.style,
@@ -2495,6 +2532,7 @@ export class ReservationSupabaseRepository
       amountDue,
       currency: r.currency,
       rateSnapshot: Number(r.rate_snapshot),
+      bookedRatePerHour: Number(r.rate_snapshot),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       confirmedAt: r.confirmed_at,
@@ -3238,13 +3276,23 @@ export class ReservationSupabaseRepository
       return [];
     }
 
-    const [siblingInstances, templates, floors] = await Promise.all([
+    const [siblingInstances, templates, floors, publishedVersions] = await Promise.all([
       this.request<any[]>(
         `/workspace_instances?template_id=eq.${encodeURIComponent(currentInst.template_id)}&id=neq.${encodeURIComponent(currentInst.id)}&select=id,display_name,instance_code,template_id,floor_id,operational_status`
       ).catch(() => []),
       this.request<any[]>("/workspace_templates?select=id,name").catch(() => []),
       this.request<any[]>("/floors?select=id,name").catch(() => []),
+      this.request<any[]>("/map_versions?status=eq.PUBLISHED&select=id").catch(() => []),
     ]);
+
+    const publishedVersionIds = (publishedVersions ?? []).map((v: any) => v.id);
+    let mapPlacedIds = new Set<string>();
+    if (publishedVersionIds.length > 0) {
+      const elements = await this.request<any[]>(
+        `/map_elements?map_version_id=in.(${publishedVersionIds.map(encodeURIComponent).join(",")})&workspace_instance_id=not.is.null&select=workspace_instance_id`
+      ).catch(() => []);
+      mapPlacedIds = new Set((elements ?? []).map((e: any) => e.workspace_instance_id).filter(Boolean));
+    }
 
     const templateMap = new Map((templates ?? []).map((t: any) => [t.id, t]));
     const floorMap = new Map((floors ?? []).map((f: any) => [f.id, f]));
@@ -3262,6 +3310,9 @@ export class ReservationSupabaseRepository
     const spots: AvailableRelocationSpot[] = [];
 
     for (const inst of siblingInstances ?? []) {
+      if (publishedVersionIds.length > 0 && !mapPlacedIds.has(inst.id)) {
+        continue;
+      }
       const template = templateMap.get(inst.template_id);
       const floor = floorMap.get(inst.floor_id);
       let isAvailable = true;

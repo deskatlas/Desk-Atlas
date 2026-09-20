@@ -91,7 +91,13 @@ export async function POST(request: NextRequest) {
       process.env.DESKATLAS_PUBLIC_APP_URL ??
       request.nextUrl.origin.replace(/\/$/, '');
 
-    const reservation = await service.createReservation(body, {
+    const payload: CreateReservationRequest = {
+      ...body,
+      customerContactNumber: body.customerContactNumber ?? (body as any).contactNumber ?? null,
+      bookedRatePerHour: body.bookedRatePerHour ?? null,
+    };
+
+    const reservation = await service.createReservation(payload, {
       paymentLinkBaseUrl,
     });
 

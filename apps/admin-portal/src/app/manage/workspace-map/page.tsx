@@ -128,6 +128,7 @@ export default function WorkspaceMapPage() {
   const [occupancyList, setOccupancyList] = useState<any[]>([]);
   const [showExtendModal, setShowExtendModal] = useState<boolean>(false);
   const [extendModalData, setExtendModalData] = useState<any>(null);
+  const [maintenanceNoteInput, setMaintenanceNoteInput] = useState<string>('');
 
   const loadOccupancy = async () => {
     try {
@@ -307,15 +308,20 @@ export default function WorkspaceMapPage() {
   };
 
   // Handle status update for an instance from the inspector
-  const handleUpdateInstanceStatus = async (instanceId: string, newStatus: string) => {
+  const handleUpdateInstanceStatus = async (instanceId: string, newStatus: string, note?: string | null) => {
     try {
       setActionLoading(true);
       setErrorMsg(null);
 
+      const resolvedNote = newStatus === 'MAINTENANCE' ? (note !== undefined ? note : (maintenanceNoteInput.trim() || null)) : null;
+
       const res = await fetch(`/api/admin/workspaces/instances/${instanceId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operationalStatus: newStatus }),
+        body: JSON.stringify({
+          operationalStatus: newStatus,
+          maintenanceNote: resolvedNote,
+        }),
       });
 
       if (!res.ok) {
@@ -325,13 +331,50 @@ export default function WorkspaceMapPage() {
 
       // Update local state
       setInstances(prev =>
-        prev.map(ins => (ins.id === instanceId ? { ...ins, operationalStatus: newStatus } : ins))
+        prev.map(ins => (ins.id === instanceId ? { ...ins, operationalStatus: newStatus, maintenanceNote: resolvedNote } : ins))
       );
+
+      if (newStatus !== 'MAINTENANCE') {
+        setMaintenanceNoteInput('');
+      }
 
       setSuccessMsg(`Status updated to ${newStatus}`);
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to update status');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpdateInstanceNote = async (instanceId: string, noteText: string) => {
+    try {
+      setActionLoading(true);
+      setErrorMsg(null);
+
+      const trimmedNote = noteText.trim() || null;
+      const res = await fetch(`/api/admin/workspaces/instances/${instanceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operationalStatus: 'MAINTENANCE',
+          maintenanceNote: trimmedNote,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save maintenance note');
+      }
+
+      setInstances(prev =>
+        prev.map(ins => (ins.id === instanceId ? { ...ins, maintenanceNote: trimmedNote } : ins))
+      );
+
+      setSuccessMsg('Maintenance note saved');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to save note');
     } finally {
       setActionLoading(false);
     }
@@ -354,6 +397,14 @@ export default function WorkspaceMapPage() {
   const selectedTemplate = selectedInstance
     ? selectedInstance.template || templates.find(t => t.id === selectedInstance.templateId)
     : null;
+
+  useEffect(() => {
+    if (selectedInstance) {
+      setMaintenanceNoteInput(selectedInstance.maintenanceNote ?? '');
+    } else {
+      setMaintenanceNoteInput('');
+    }
+  }, [selectedInstance?.id, selectedInstance?.maintenanceNote]);
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', flex: 1 }}>
@@ -873,6 +924,56 @@ export default function WorkspaceMapPage() {
                     <option value="MAINTENANCE">Maintenance (Blocked)</option>
                     <option value="INACTIVE">Inactive (Hidden)</option>
                   </select>
+
+                  {selectedInstance.operationalStatus === 'MAINTENANCE' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                        Reason / Note (optional)
+                      </label>
+                      <textarea
+                        data-testid="maintenance-note-input"
+                        disabled={actionLoading}
+                        maxLength={300}
+                        value={maintenanceNoteInput}
+                        onChange={(e) => setMaintenanceNoteInput(e.target.value)}
+                        placeholder="e.g. Broken chair, AC leak, Wi-Fi outage"
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          border: '1px solid var(--da-border)',
+                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          fontSize: '12px',
+                          fontFamily: 'var(--da-font-family)',
+                          background: '#fff',
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--da-text-secondary)' }}>
+                          {maintenanceNoteInput.length}/300 chars
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="save-maintenance-note-btn"
+                          disabled={actionLoading}
+                          onClick={() => handleUpdateInstanceNote(selectedInstance.id, maintenanceNoteInput)}
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: 'var(--da-brand-dark)',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: actionLoading ? 'not-allowed' : 'pointer',
+                            padding: '2px 6px',
+                          }}
+                        >
+                          Save Note
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {occupancyByInstanceId.get(selectedInstance.id) && (selectedInstance.operationalStatus === 'MAINTENANCE' || selectedInstance.operationalStatus === 'INACTIVE') && (

@@ -42,6 +42,12 @@ export class ReservationService {
     if (!emailRegex.test(request.customerEmail)) {
       throw new ReservationError("Invalid email format.");
     }
+    if (request.customerContactNumber && request.customerContactNumber.trim() !== "") {
+      const contact = request.customerContactNumber.trim();
+      if (contact.length > 30 || !/^[0-9+\-()\s]+$/.test(contact)) {
+        throw new ReservationError("Invalid contact number format.");
+      }
+    }
     if (request.source !== "WEB" && request.source !== "KIOSK") {
       throw new ReservationError("Invalid reservation source.");
     }
@@ -91,7 +97,7 @@ export class ReservationService {
     const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
     const rateSnapshot = mainTemplate.rateAmount;
-    const amountDue = rateSnapshot * durationHours; // Because pricing_unit is HOURLY
+    const amountDue = Math.round(rateSnapshot * durationHours * 100) / 100; // Because pricing_unit is HOURLY
 
     if (request.source === "WEB") {
       if (!this.paymentRepository) {
@@ -149,6 +155,30 @@ export class ReservationService {
 
     return await this.reservationRepository.createReservation(request, rateSnapshot, amountDue);
   }
+
+  async revalidateWorkspacePrice(templateId: string): Promise<{
+    currentRate: number;
+    rateAmount: number;
+    currency: string;
+    templateId: string;
+    templateName: string;
+  }> {
+    if (!templateId || !templateId.trim()) {
+      throw new ReservationError("Workspace template ID is required.");
+    }
+    const catalog = await this.workspaceRepository.listCatalog();
+    const template = catalog.templates.find((t) => t.id === templateId.trim());
+    if (!template) {
+      throw new ReservationError(`Workspace template with ID '${templateId}' not found.`);
+    }
+    return {
+      currentRate: template.rateAmount,
+      rateAmount: template.rateAmount,
+      currency: "PHP",
+      templateId: template.id,
+      templateName: template.name,
+    };
+  }
 }
 
 export function createReservationService(
@@ -164,3 +194,4 @@ export function createReservationService(
     paymentSessionService ?? (paymentRepository ? createPaymentSessionService(paymentRepository) : undefined)
   );
 }
+

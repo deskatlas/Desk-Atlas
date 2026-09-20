@@ -68,7 +68,8 @@ export async function fetchPublishedMap(floorId?: string): Promise<{
 export async function updateStaffInstanceOperationalStatus(
   instanceId: string,
   operationalStatus: string,
-  actor?: { userId?: string; role?: string }
+  actor?: { userId?: string; role?: string },
+  maintenanceNote?: string | null
 ): Promise<{
   instance: any;
   availability: any;
@@ -88,6 +89,7 @@ export async function updateStaffInstanceOperationalStatus(
     headers,
     body: JSON.stringify({
       operationalStatus,
+      maintenanceNote: maintenanceNote !== undefined ? maintenanceNote : undefined,
       ...(actor?.userId || actor?.role ? { actor } : {}),
       ...(actor?.userId ? { actorUserId: actor.userId } : {}),
       ...(actor?.role ? { actorRole: actor.role.toUpperCase() } : {}),

@@ -117,12 +117,16 @@ export async function POST(request: NextRequest) {
 
     let createRequest: CreateReservationRequest;
 
+    const contactNumber =
+      body.customerContactNumber ?? (body as any).contactNumber ?? body.customer?.contactNumber ?? null;
+
     if (body.candidates && Array.isArray(body.candidates)) {
       createRequest = {
         source: "KIOSK",
         customerFirstName: body.customerFirstName ?? body.customer?.firstName,
         customerLastName: body.customerLastName ?? body.customer?.lastName,
         customerEmail: body.customerEmail ?? body.customer?.email,
+        customerContactNumber: contactNumber,
         paymentMethodId,
         candidates: body.candidates,
       };
@@ -159,6 +163,7 @@ export async function POST(request: NextRequest) {
         customerFirstName: body.customerFirstName ?? body.customer?.firstName,
         customerLastName: body.customerLastName ?? body.customer?.lastName,
         customerEmail: body.customerEmail ?? body.customer?.email,
+        customerContactNumber: contactNumber,
         paymentMethodId,
         candidates: [
           {

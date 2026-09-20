@@ -99,6 +99,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     { id: '/manage/map', label: 'Map Builder', iconType: 'map' },
     { id: '/manage/staff', label: 'Staff', iconType: 'staff' },
     { id: '/manage/reports', label: 'Reports', iconType: 'reports' },
+    { id: '/manage/activity-log', label: 'Activity Log', iconType: 'activity' },
     { id: '/manage/settings', label: 'Settings', iconType: 'settings' },
   ];
 
@@ -163,12 +164,21 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <div style={{ flex: 1, height: '15px', background: color, borderRadius: '2px' }}></div>
           </div>
         );
+      case 'activity':
+        return (
+          <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+          </div>
+        );
       case 'settings':
         return (
           <div style={{ width: '15px', height: '15px', border: `2.5px solid ${color}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: color }}></div>
           </div>
         );
+
       default:
         return null;
     }

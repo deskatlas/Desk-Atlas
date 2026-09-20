@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
 import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
+import { NotificationBell, BookingEndAlertModal } from '@/features/alerts';
 
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -39,6 +40,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
     { id: '/manage/workspace-map', label: 'Workspace Map', iconType: 'map', exact: false },
     { id: '/manage/scan', label: 'QR Scanner', iconType: 'scan', exact: false },
     { id: '/manage/kiosk-confirm', label: 'Kiosk Queue', iconType: 'kiosk', exact: false },
+    { id: '/manage/activity-log', label: 'My Activity', iconType: 'activity', exact: false },
   ];
 
   const getIcon = (type: string, isActive: boolean) => {
@@ -77,10 +79,19 @@ function StaffShell({ children }: { children: React.ReactNode }) {
              <div style={{ width: '11px', height: '11px', border: `2.5px solid ${color}`, borderRadius: '2px' }}></div>
           </div>
         );
+      case 'activity':
+        return (
+          <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+          </div>
+        );
       default:
         return null;
     }
   };
+
 
   if (user === null) {
     return <>{children}</>;
@@ -180,6 +191,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
               <div style={{ width: '12px', height: '12px', border: '2px solid var(--da-text-secondary)', borderRadius: '3px' }}></div>
               {currentTime ? `${currentTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}` : 'Loading...'}
             </div>
+            <NotificationBell />
             <ProfileDropdown user={user} onLogout={logout} />
           </div>
 
@@ -187,6 +199,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
 
         {/* PAGE CONTENT */}
         {children}
+
+        {/* BOOKING END-TIME ALERT MODAL */}
+        <BookingEndAlertModal />
       </div>
     </div>
   );

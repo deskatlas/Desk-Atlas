@@ -3,6 +3,7 @@ import {
   AdminDashboardOccupancyItem,
   AdminDashboardRange,
   AdminDashboardSnapshot,
+  OccupancySummary,
 } from "../models/dashboard";
 import { ReportPaymentAttemptRecord, ReportReservationRecord } from "../models/reports";
 import { OccupancyRecord, OperationalActivityRecord } from "../models/reservation";
@@ -27,6 +28,18 @@ export class AdminDashboardService {
     private readonly nowProvider: () => Date = () => new Date(),
     private readonly timezone: string = DEFAULT_TIMEZONE
   ) {}
+
+  async getCurrentOccupancySummary(): Promise<OccupancySummary> {
+    const now = this.nowProvider();
+    const nowIso = now.toISOString();
+
+    const [catalog, occupancyList] = await Promise.all([
+      this.workspaceRepo.listCatalog(),
+      this.staffOpsRepo.listOccupancy(nowIso),
+    ]);
+
+    return calculateOccupancySummary(catalog, occupancyList);
+  }
 
   async getDashboardSnapshot(range: AdminDashboardRange = "today"): Promise<AdminDashboardSnapshot> {
     const now = this.nowProvider();
@@ -142,6 +155,9 @@ export class AdminDashboardService {
     // Workspace Overview (Occupancy Breakdown)
     const workspaceOverview = buildWorkspaceOverview(catalog, occupancyList, reservations, nowIso);
 
+    // Occupancy Summary (Current Occupied Count & Capacity)
+    const occupancySummary = calculateOccupancySummary(catalog, occupancyList);
+
     return {
       range,
       rangeLabel: rangeBounds.rangeLabel,
@@ -154,6 +170,7 @@ export class AdminDashboardService {
       },
       activity,
       workspaceOverview,
+      occupancySummary,
       generatedAt: nowIso,
     };
   }
@@ -167,6 +184,52 @@ export function createAdminDashboardService(
   timezone?: string
 ) {
   return new AdminDashboardService(reportsRepo, staffOpsRepo, workspaceRepo, nowProvider, timezone);
+}
+
+export function calculateOccupancySummary(
+  catalog: WorkspaceCatalog,
+  occupancyList: OccupancyRecord[]
+): OccupancySummary {
+  const activeInstances = catalog.instances.filter(
+    (inst) =>
+      inst.operationalStatus === "ACTIVE" ||
+      (!inst.operationalStatus &&
+        inst.operationalStatus !== "MAINTENANCE" &&
+        inst.operationalStatus !== "INACTIVE")
+  );
+  const totalActiveInstances = activeInstances.length;
+
+  let checkedInCount = 0;
+  let inWindowCount = 0;
+
+  for (const record of occupancyList) {
+    if (
+      record.reservationStatus === "CHECKED_IN" ||
+      (record as any).checkInState === "CHECKED_IN" ||
+      record.occupancyState === "OCCUPIED"
+    ) {
+      checkedInCount += 1;
+    } else if (
+      record.reservationStatus === "CONFIRMED" ||
+      record.occupancyState === "RESERVED"
+    ) {
+      inWindowCount += 1;
+    }
+  }
+
+  const occupiedCount = checkedInCount + inWindowCount;
+  const occupancyRate =
+    totalActiveInstances > 0
+      ? Math.round((occupiedCount / totalActiveInstances) * 100)
+      : 0;
+
+  return {
+    occupiedCount,
+    totalActiveInstances,
+    occupancyRate,
+    checkedInCount,
+    inWindowCount,
+  };
 }
 
 // Helpers

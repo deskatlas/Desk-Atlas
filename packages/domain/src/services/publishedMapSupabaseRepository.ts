@@ -54,6 +54,7 @@ type WorkspaceInstanceRow = {
   instance_code: string;
   display_name: string;
   operational_status: WorkspaceOperationalStatus;
+  maintenance_note?: string | null;
   template: WorkspaceTemplateRow | null;
 };
 
@@ -131,7 +132,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     }
 
     const elementRows = await this.request<PublishedElementRow[]>(
-      `/map_elements?select=id,element_role,element_type,x,y,width,height,rotation,z_index,label,properties,workspace_instance:workspace_instances(id,template_id,floor_id,instance_code,display_name,operational_status,template:workspace_templates(id,name,description,photo_path,capacity,rate_amount,pricing_unit,default_shape,default_color,default_style,is_active))&map_version_id=eq.${encodeURIComponent(
+      `/map_elements?select=id,element_role,element_type,x,y,width,height,rotation,z_index,label,properties,workspace_instance:workspace_instances(id,template_id,floor_id,instance_code,display_name,operational_status,maintenance_note,template:workspace_templates(id,name,description,photo_path,capacity,rate_amount,pricing_unit,default_shape,default_color,default_style,is_active))&map_version_id=eq.${encodeURIComponent(
         versionRow.id
       )}&order=z_index.asc,id.asc`
     );
@@ -249,6 +250,7 @@ function mapPublishedWorkspace(
     rateAmount: instance.template.rateAmount,
     pricingUnit: instance.template.pricingUnit,
     operationalStatus: instance.operationalStatus,
+    maintenanceNote: instance.maintenanceNote ?? null,
     isBookable: availability.isBookable,
     blockingReason: availability.blockingReason as WorkspaceAvailabilityBlockReason | null,
     tags: tags && tags.length > 0 ? tags : undefined,
@@ -290,6 +292,7 @@ function mapWorkspaceInstanceDetails(row: WorkspaceInstanceRow, floor: FloorRow)
     instanceCode: row.instance_code,
     displayName: row.display_name,
     operationalStatus: row.operational_status,
+    maintenanceNote: row.maintenance_note ?? null,
     template: mapWorkspaceTemplate(row.template!),
     floor: mapFloor(floor),
   };

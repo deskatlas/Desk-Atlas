@@ -241,7 +241,8 @@ CREATE OR REPLACE FUNCTION public.create_reservation(
     p_email text,
     p_rate_snapshot numeric,
     p_amount_due numeric,
-    p_candidates jsonb
+    p_candidates jsonb,
+    p_contact_number text DEFAULT NULL
 )
 RETURNS public.reservations
 LANGUAGE plpgsql
@@ -263,6 +264,7 @@ BEGIN
         customer_first_name,
         customer_last_name,
         customer_email,
+        customer_contact_number,
         status,
         rate_snapshot,
         amount_due
@@ -272,6 +274,7 @@ BEGIN
         p_first_name,
         p_last_name,
         p_email,
+        p_contact_number,
         v_status,
         p_rate_snapshot,
         p_amount_due
@@ -320,7 +323,8 @@ CREATE OR REPLACE FUNCTION public.create_web_reservation_with_payment_session(
   p_amount_due numeric,
   p_candidates jsonb,
   p_token_hash text,
-  p_expires_at timestamptz
+  p_expires_at timestamptz,
+  p_contact_number text DEFAULT NULL
 )
 RETURNS TABLE (
   reservation_id uuid,
@@ -339,6 +343,7 @@ BEGIN
     customer_first_name,
     customer_last_name,
     customer_email,
+    customer_contact_number,
     status,
     rate_snapshot,
     amount_due
@@ -348,6 +353,7 @@ BEGIN
     p_first_name,
     p_last_name,
     p_email,
+    p_contact_number,
     'PENDING_PAYMENT',
     p_rate_snapshot,
     p_amount_due
@@ -608,11 +614,20 @@ BEGIN
     RAISE EXCEPTION 'Payment attempt % is not in an approvable review state', p_payment_attempt_id;
   ELSE
     FOR v_candidate IN
-      SELECT *
+      SELECT rc.*
       FROM public.reservation_candidates rc
+      JOIN public.workspace_instances wi ON wi.id = rc.workspace_instance_id
       WHERE rc.reservation_id = v_reservation.id
+        AND wi.operational_status = 'ACTIVE'
+        AND EXISTS (
+          SELECT 1
+          FROM public.map_elements me
+          JOIN public.map_versions mv ON mv.id = me.map_version_id
+          WHERE mv.status = 'PUBLISHED'
+            AND me.workspace_instance_id = rc.workspace_instance_id
+        )
       ORDER BY rc.rank ASC
-      FOR UPDATE
+      FOR UPDATE OF rc
     LOOP
       BEGIN
         UPDATE public.reservation_candidates
@@ -913,7 +928,8 @@ CREATE OR REPLACE FUNCTION public.create_kiosk_reservation_with_counter_payment(
   p_rate_snapshot numeric,
   p_amount_due numeric,
   p_candidates jsonb,
-  p_payment_method_id uuid DEFAULT NULL
+  p_payment_method_id uuid DEFAULT NULL,
+  p_contact_number text DEFAULT NULL
 )
 RETURNS TABLE (
   reservation_id uuid,
@@ -946,6 +962,7 @@ BEGIN
     customer_first_name,
     customer_last_name,
     customer_email,
+    customer_contact_number,
     status,
     rate_snapshot,
     amount_due
@@ -955,6 +972,7 @@ BEGIN
     p_first_name,
     p_last_name,
     p_email,
+    p_contact_number,
     'PENDING_COUNTER_CONFIRMATION',
     p_rate_snapshot,
     p_amount_due
@@ -1095,11 +1113,20 @@ BEGIN
     RAISE EXCEPTION 'Counter payment attempt % is not in a confirmable state', p_payment_attempt_id;
   ELSE
     FOR v_candidate IN
-      SELECT *
+      SELECT rc.*
       FROM public.reservation_candidates rc
+      JOIN public.workspace_instances wi ON wi.id = rc.workspace_instance_id
       WHERE rc.reservation_id = v_reservation.id
+        AND wi.operational_status = 'ACTIVE'
+        AND EXISTS (
+          SELECT 1
+          FROM public.map_elements me
+          JOIN public.map_versions mv ON mv.id = me.map_version_id
+          WHERE mv.status = 'PUBLISHED'
+            AND me.workspace_instance_id = rc.workspace_instance_id
+        )
       ORDER BY rc.rank ASC
-      FOR UPDATE
+      FOR UPDATE OF rc
     LOOP
       BEGIN
         UPDATE public.reservation_candidates
@@ -2743,6 +2770,16 @@ BEGIN
 
   IF upper(COALESCE(v_target_inst.operational_status::text, 'ACTIVE')) IN ('MAINTENANCE', 'INACTIVE') THEN
     RAISE EXCEPTION 'Cannot relocate to a spot that is under maintenance or inactive';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.map_elements me
+    JOIN public.map_versions mv ON mv.id = me.map_version_id
+    WHERE mv.status = 'PUBLISHED'
+      AND me.workspace_instance_id = p_target_workspace_instance_id
+  ) THEN
+    RAISE EXCEPTION 'Cannot relocate to a workspace spot that is not on the published map';
   END IF;
 
   v_effective_start := CASE

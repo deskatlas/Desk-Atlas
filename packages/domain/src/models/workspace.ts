@@ -38,6 +38,7 @@ export interface WorkspaceInstance {
   instanceCode: string;
   displayName: string;
   operationalStatus: WorkspaceOperationalStatus;
+  maintenanceNote?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -84,17 +85,20 @@ export interface CreateWorkspaceInstanceInput {
   instanceCode: string;
   displayName: string;
   operationalStatus?: WorkspaceOperationalStatus;
+  maintenanceNote?: string | null;
 }
 
 export interface CreateWorkspaceInstanceFromTemplateInput {
   templateId: string;
   floorId: string;
   operationalStatus?: WorkspaceOperationalStatus;
+  maintenanceNote?: string | null;
 }
 
 export interface UpdateWorkspaceInstanceInput {
   displayName?: string;
   operationalStatus?: WorkspaceOperationalStatus;
+  maintenanceNote?: string | null;
 }
 
 export type WorkspaceAvailabilityBlockReason = 'TEMPLATE_INACTIVE' | 'OPERATIONAL_STATUS_BLOCKED';
@@ -181,4 +185,5 @@ export interface WorkspaceRepository {
   ): Promise<WorkspaceStatusImpactReservation[]>;
   appendAuditLog(entry: WorkspaceAuditLogEntry): Promise<void>;
   listAuditLogs?(limit?: number): Promise<WorkspaceAuditLogEntry[]>;
+  getMapPlacedInstanceIds?(): Promise<Set<string>>;
 }

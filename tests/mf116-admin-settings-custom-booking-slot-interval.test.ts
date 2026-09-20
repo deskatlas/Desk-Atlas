@@ -12,19 +12,7 @@ import {
 
 describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", () => {
   describe("UI Helper: canSaveBusinessProfile", () => {
-    it("rejects when bookingIntervalMinutes is <= 5", () => {
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: 5,
-        })
-      ).toEqual({
-        canSave: false,
-        reason: "Booking slot interval must be greater than 5 minutes",
-      });
-
+    it("rejects when bookingIntervalMinutes is < 1", () => {
       expect(
         canSaveBusinessProfile({
           businessName: "DeskAtlas Manila",
@@ -34,7 +22,7 @@ describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", ()
         })
       ).toEqual({
         canSave: false,
-        reason: "Booking slot interval must be greater than 5 minutes",
+        reason: "Booking slot interval must be a positive integer in minutes",
       });
 
       expect(
@@ -46,77 +34,23 @@ describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", ()
         })
       ).toEqual({
         canSave: false,
-        reason: "Booking slot interval must be greater than 5 minutes",
-      });
-
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: "5",
-        })
-      ).toEqual({
-        canSave: false,
-        reason: "Booking slot interval must be greater than 5 minutes",
+        reason: "Booking slot interval must be a positive integer in minutes",
       });
     });
 
-    it("allows saving when bookingIntervalMinutes is strictly greater than 5", () => {
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: 6,
-        })
-      ).toEqual({
-        canSave: true,
-      });
-
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: 10,
-        })
-      ).toEqual({
-        canSave: true,
-      });
-
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: 20,
-        })
-      ).toEqual({
-        canSave: true,
-      });
-
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: 45,
-        })
-      ).toEqual({
-        canSave: true,
-      });
-
-      expect(
-        canSaveBusinessProfile({
-          businessName: "DeskAtlas Manila",
-          contactEmail: "admin@deskatlas.ph",
-          phoneDigits: "9171234567",
-          bookingIntervalMinutes: "60",
-        })
-      ).toEqual({
-        canSave: true,
-      });
+    it("allows saving when bookingIntervalMinutes is >= 1", () => {
+      for (const val of [1, 2, 5, 6, 10, 20, 45, 60, "60"]) {
+        expect(
+          canSaveBusinessProfile({
+            businessName: "DeskAtlas Manila",
+            contactEmail: "admin@deskatlas.ph",
+            phoneDigits: "9171234567",
+            bookingIntervalMinutes: val,
+          })
+        ).toEqual({
+          canSave: true,
+        });
+      }
     });
 
     it("preserves compatibility when bookingIntervalMinutes is undefined or omitted", () => {
@@ -141,17 +75,7 @@ describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", ()
       service = createAdminSettingsService(settingsRepo);
     });
 
-    it("rejects booking interval values <= 5 or invalid integers with SettingsValidationError", async () => {
-      await expect(
-        service.updateBusinessSettings({
-          businessName: "DeskAtlas HQ",
-          timezone: "Asia/Manila",
-          contactEmail: "admin@deskatlas.ph",
-          bookingIntervalMinutes: 5,
-          paymentExpiryMinutes: 60,
-        })
-      ).rejects.toThrow("Booking slot interval must be greater than 5 minutes");
-
+    it("rejects booking interval values < 1 or invalid integers with SettingsValidationError", async () => {
       await expect(
         service.updateBusinessSettings({
           businessName: "DeskAtlas HQ",
@@ -160,7 +84,7 @@ describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", ()
           bookingIntervalMinutes: 0,
           paymentExpiryMinutes: 60,
         })
-      ).rejects.toThrow("Booking slot interval must be greater than 5 minutes");
+      ).rejects.toThrow("Booking slot interval must be a positive integer in minutes");
 
       await expect(
         service.updateBusinessSettings({
@@ -170,7 +94,7 @@ describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", ()
           bookingIntervalMinutes: -10,
           paymentExpiryMinutes: 60,
         })
-      ).rejects.toThrow("Booking slot interval must be greater than 5 minutes");
+      ).rejects.toThrow("Booking slot interval must be a positive integer in minutes");
 
       await expect(
         service.updateBusinessSettings({
@@ -180,11 +104,11 @@ describe("MF-116: Admin Settings Custom Numeric Booking Slot Interval Input", ()
           bookingIntervalMinutes: 10.5,
           paymentExpiryMinutes: 60,
         })
-      ).rejects.toThrow("Booking slot interval must be greater than 5 minutes");
+      ).rejects.toThrow("Booking slot interval must be a positive integer in minutes");
     });
 
-    it("successfully updates custom booking intervals greater than 5 minutes", async () => {
-      for (const interval of [6, 10, 15, 20, 30, 45, 60, 120]) {
+    it("successfully updates custom booking intervals greater than or equal to 1 minute", async () => {
+      for (const interval of [1, 2, 5, 6, 10, 15, 20, 30, 45, 60, 120]) {
         const updated = await service.updateBusinessSettings({
           businessName: "DeskAtlas Manila HQ",
           timezone: "Asia/Manila",

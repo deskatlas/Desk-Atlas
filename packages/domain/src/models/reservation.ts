@@ -18,8 +18,10 @@ export interface Reservation {
   customerFirstName: string;
   customerLastName: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
   status: ReservationStatus;
   rateSnapshot: number;
+  bookedRatePerHour?: number | null;
   amountDue: number;
   currency: string;
   createdAt: string;
@@ -65,8 +67,10 @@ export interface CreateReservationRequest {
   customerFirstName: string;
   customerLastName: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
   candidates: CandidateSubmissionDTO[];
   paymentMethodId?: string;
+  bookedRatePerHour?: number | null;
 }
 
 export type PaymentChannel = "WEB" | "KIOSK";
@@ -114,6 +118,7 @@ export interface PaymentSessionRecord {
   customerEmail: string;
   customerFirstName: string;
   customerLastName: string;
+  customerContactNumber?: string | null;
   amountDue: number;
   currency: string;
   expiresAt: string;
@@ -131,6 +136,7 @@ export interface PaymentSessionView {
   customerEmail: string;
   customerFirstName: string;
   customerLastName: string;
+  customerContactNumber?: string | null;
   amountDue: number;
   currency: string;
   expiresAt: string;
@@ -149,6 +155,7 @@ export interface CounterPaymentRecord {
   customerEmail: string;
   customerFirstName: string;
   customerLastName: string;
+  customerContactNumber?: string | null;
   amountDue: number;
   currency: string;
   paymentMethodId: string;
@@ -183,6 +190,7 @@ export interface PaymentReviewQueueItem {
   customerFirstName: string;
   customerLastName: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
   amountDue: number;
   currency: string;
   paymentMethodId: string | null;
@@ -274,6 +282,7 @@ export interface StaffOperationalReservation {
   customerFirstName: string;
   customerLastName: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
   reservationStatus: ReservationStatus;
   checkInState: BookingCheckInState;
   workspaceInstanceId: string | null;
@@ -291,6 +300,9 @@ export interface StaffOperationalReservation {
   paymentMethodType?: PaymentMethodType | null;
   paymentMethodDisplayName?: string | null;
   pendingRelocationRequest?: CustomerRelocationRequest | null;
+  rateSnapshot?: number;
+  bookedRatePerHour?: number | null;
+  amountDue?: number;
 }
 
 export type OccupancyState = "RESERVED" | "OCCUPIED";
@@ -392,6 +404,7 @@ export interface AdminReservationSummary {
   customerName: string;
   customerInitials: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
   workspaceDisplayName: string;
   workspaceInstanceCode?: string | null;
   workspaceTemplateName?: string | null;
@@ -418,6 +431,8 @@ export interface AdminReservationSummary {
   customerPhone?: string | null;
   paymentAttemptStatus?: string | null;
   amountPaid?: number | null;
+  rateSnapshot?: number;
+  bookedRatePerHour?: number | null;
 }
 
 export interface AdminReservationCandidateSummary {
@@ -461,6 +476,7 @@ export interface AdminReservationDetail {
   customerName: string;
   customerInitials: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
   reservationStatus: ReservationStatus;
   status: string;
   statusStyle: { background: string; color: string };
@@ -474,6 +490,7 @@ export interface AdminReservationDetail {
   amountDue: number;
   currency: string;
   rateSnapshot: number;
+  bookedRatePerHour?: number | null;
   createdAt: string;
   updatedAt: string;
   confirmedAt?: string | null;

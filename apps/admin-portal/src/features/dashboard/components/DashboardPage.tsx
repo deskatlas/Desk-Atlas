@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import type { AdminDashboardRange, AdminDashboardSnapshot } from "@deskatlas/domain";
+import type { AdminDashboardRange, AdminDashboardSnapshot, OccupancySummary } from "@deskatlas/domain";
+import { WorkspaceOverview } from "./WorkspaceOverview";
+import { MaintenanceOverview } from "./MaintenanceOverview";
 
 export function DashboardPage() {
   const [range, setRange] = useState<AdminDashboardRange>("today");
   const [data, setData] = useState<AdminDashboardSnapshot | null>(null);
+  const [occupancySummary, setOccupancySummary] = useState<OccupancySummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +28,9 @@ export function DashboardPage() {
       .then((snapshot: AdminDashboardSnapshot) => {
         if (!isCancelled) {
           setData(snapshot);
+          if (snapshot.occupancySummary) {
+            setOccupancySummary(snapshot.occupancySummary);
+          }
           setLoading(false);
         }
       })
@@ -39,6 +45,32 @@ export function DashboardPage() {
       isCancelled = true;
     };
   }, [range]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchOccupancy = async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard/occupancy");
+        if (res.ok) {
+          const json: OccupancySummary = await res.json();
+          if (!isCancelled) {
+            setOccupancySummary(json);
+          }
+        }
+      } catch {
+        // silent fail on poll
+      }
+    };
+
+    fetchOccupancy();
+    const interval = setInterval(fetchOccupancy, 60000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const rangeTabs: Array<{ id: AdminDashboardRange; label: string }> = [
     { id: "today", label: "Today" },
@@ -104,6 +136,44 @@ export function DashboardPage() {
   };
 
   const floorLabel = data?.workspaceOverview.floorLabel ?? "Ground Floor · 0 workspaces";
+
+  const currentOccupancy: OccupancySummary = occupancySummary ?? data?.occupancySummary ?? {
+    occupiedCount: 0,
+    totalActiveInstances: 0,
+    occupancyRate: 0,
+    checkedInCount: 0,
+    inWindowCount: 0,
+  };
+
+  const getOccupancyIndicatorStyles = (rate: number) => {
+    if (rate >= 90) {
+      return {
+        bg: "#FEF2F2",
+        border: "#FECDD3",
+        text: "#991B1B",
+        dot: "#EF4444",
+        badgeBg: "#FEE2E2",
+      };
+    }
+    if (rate >= 70) {
+      return {
+        bg: "#FFFBEB",
+        border: "#FDE68A",
+        text: "#92400E",
+        dot: "#F59E0B",
+        badgeBg: "#FEF3C7",
+      };
+    }
+    return {
+      bg: "#F0FDF4",
+      border: "#BBF7D0",
+      text: "#166534",
+      dot: "#10B981",
+      badgeBg: "#DCFCE7",
+    };
+  };
+
+  const indicatorStyle = getOccupancyIndicatorStyles(currentOccupancy.occupancyRate);
 
   return (
     <main data-screen-label="Dashboard" style={{ padding: "26px 28px 40px" }}>
@@ -305,28 +375,16 @@ export function DashboardPage() {
           )}
         </div>
 
-        <div style={{ flex: 1, minWidth: "260px", background: "#fff", border: "1px solid var(--da-border)", borderRadius: "14px", padding: "20px", boxShadow: "var(--da-shadow-sm)" }}>
-          <h3 style={{ fontSize: "15px", fontWeight: 800, color: "var(--da-text-primary)", margin: "0 0 4px" }}>Workspace Overview</h3>
-          <div style={{ fontSize: "11px", color: "var(--da-text-secondary)", fontFamily: "var(--da-font-family)", marginBottom: "16px" }}>
-            {floorLabel}
-          </div>
-          <div style={{ display: "flex", height: "8px", borderRadius: "9999px", whiteSpace: "nowrap", overflow: "hidden", marginBottom: "18px" }}>
-            <div style={{ width: `${occupancyBar.availablePct}%`, background: "var(--da-brand-accent)" }}></div>
-            <div style={{ width: `${occupancyBar.inUsePct}%`, background: "var(--da-text-secondary)" }}></div>
-            <div style={{ width: `${occupancyBar.reservedPct}%`, background: "var(--da-soft)" }}></div>
-            <div style={{ width: `${occupancyBar.maintenancePct}%`, background: "var(--da-brand-dark)" }}></div>
-          </div>
-          {occupancy.map((o, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: i === 0 ? "none" : "1px solid var(--da-border-light)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
-                <div style={{ width: "9px", height: "9px", borderRadius: "3px", ...o.swatch }}></div>
-                <span style={{ fontSize: "13px", color: "var(--da-text-primary)", fontFamily: "var(--da-font-family)" }}>{o.label}</span>
-              </div>
-              <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--da-text-primary)" }}>{o.value}</span>
-            </div>
-          ))}
-        </div>
+        <MaintenanceOverview />
       </div>
+
+      <WorkspaceOverview
+        range={range}
+        floorLabel={floorLabel}
+        occupancyBar={occupancyBar}
+        occupancy={occupancy}
+        occupancySummary={occupancySummary ?? data?.occupancySummary}
+      />
     </main>
   );
 }

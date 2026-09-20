@@ -297,6 +297,7 @@ export function ReservationDetail({ id }: { id: string }) {
               </h1>
               <div style={{ color: 'var(--da-text-secondary)', fontSize: '14px', fontFamily: "'Inter', sans-serif" }}>
                 {reservation.referenceCode} • {reservation.customerEmail}
+                {reservation.customerContactNumber ? ` • ${reservation.customerContactNumber}` : ''}
               </div>
             </div>
             <div style={{ padding: '6px 12px', background: reservation.reservationStatus === 'PENDING_COUNTER_CONFIRMATION' ? 'var(--da-soft)' : 'var(--da-primary)', color: reservation.reservationStatus === 'PENDING_COUNTER_CONFIRMATION' ? 'var(--da-brand-dark)' : '#fff', borderRadius: '6px', fontSize: '12px', fontWeight: 700 }}>
@@ -319,6 +320,12 @@ export function ReservationDetail({ id }: { id: string }) {
               {reservation.bookingStartAt ? format(new Date(reservation.bookingStartAt), 'MMM d, h:mm a') : '-'}
               {' to '}
               {reservation.bookingEndAt ? format(new Date(reservation.bookingEndAt), 'h:mm a') : '-'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '8px' }}>BOOKED RATE (AT TIME OF BOOKING)</div>
+            <div style={{ fontSize: '15px', color: 'var(--da-text-primary)', fontWeight: 600 }}>
+              ₱{(reservation.rateSnapshot ?? 0).toFixed(2)}/hr
             </div>
           </div>
         </div>
@@ -423,7 +430,7 @@ export function ReservationDetail({ id }: { id: string }) {
             : undefined
         }
         currentEndAt={reservation.bookingEndAt || undefined}
-        hourlyRate={150}
+        hourlyRate={reservation.rateSnapshot || 150}
         apiPrefix="/api/operations/reservations"
         actorRole="STAFF"
       />

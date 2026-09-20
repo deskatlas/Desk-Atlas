@@ -88,6 +88,7 @@ export function canSaveBusinessProfile(params: {
   contactPhone?: string | null;
   bookingIntervalMinutes?: number | string | null;
   kioskAllowanceMinutes?: number | string | null;
+  bookingEndAlertMinutes?: number | string | null;
 }): { canSave: boolean; reason?: string } {
   if (!params.businessName || !params.businessName.trim()) {
     return { canSave: false, reason: 'Business name is required' };
@@ -117,8 +118,8 @@ export function canSaveBusinessProfile(params: {
 
   if (params.bookingIntervalMinutes !== undefined && params.bookingIntervalMinutes !== null) {
     const intervalNum = Number(params.bookingIntervalMinutes);
-    if (isNaN(intervalNum) || intervalNum <= 5) {
-      return { canSave: false, reason: 'Booking slot interval must be greater than 5 minutes' };
+    if (isNaN(intervalNum) || intervalNum < 1) {
+      return { canSave: false, reason: 'Booking slot interval must be a positive integer in minutes' };
     }
   }
 
@@ -126,6 +127,13 @@ export function canSaveBusinessProfile(params: {
     const allowanceNum = Number(params.kioskAllowanceMinutes);
     if (isNaN(allowanceNum) || allowanceNum < 0 || allowanceNum > 60) {
       return { canSave: false, reason: 'Kiosk booking allowance must be between 0 and 60 minutes' };
+    }
+  }
+
+  if (params.bookingEndAlertMinutes !== undefined && params.bookingEndAlertMinutes !== null && params.bookingEndAlertMinutes !== '' as any) {
+    const alertNum = Number(params.bookingEndAlertMinutes);
+    if (isNaN(alertNum) || alertNum < 1 || alertNum > 60) {
+      return { canSave: false, reason: 'Booking end-time alert threshold must be between 1 and 60 minutes' };
     }
   }
 
@@ -260,6 +268,7 @@ export function Settings() {
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
     kioskAllowanceMinutes: 5,
+    bookingEndAlertMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     landingPreviewPhotos: [],
@@ -741,6 +750,7 @@ export function Settings() {
       contactEmail: businessSettings.contactEmail,
       phoneDigits,
       bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
+      bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
     });
 
     if (!check.canSave) {
@@ -778,6 +788,9 @@ export function Settings() {
       const normalizedAllowance = businessSettings.kioskAllowanceMinutes === undefined || businessSettings.kioskAllowanceMinutes === null || Number(businessSettings.kioskAllowanceMinutes) < 0
         ? 5
         : Math.min(60, Math.max(0, Number(businessSettings.kioskAllowanceMinutes)));
+      const normalizedEndAlert = businessSettings.bookingEndAlertMinutes === undefined || businessSettings.bookingEndAlertMinutes === null || Number(businessSettings.bookingEndAlertMinutes) < 1
+        ? 5
+        : Math.min(60, Math.max(1, Number(businessSettings.bookingEndAlertMinutes)));
       const normalizedSessionTimeout = !businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1
         ? 20
         : Math.min(180, Math.max(1, Number(businessSettings.customerSessionTimeoutMinutes)));
@@ -793,6 +806,7 @@ export function Settings() {
         paymentExpiryMinutes: normalizedExpiry,
         kioskTimeoutMinutes: normalizedTimeout,
         kioskAllowanceMinutes: normalizedAllowance,
+        bookingEndAlertMinutes: normalizedEndAlert,
         customerSessionTimeoutMinutes: normalizedSessionTimeout,
         customerRescheduleCutoffHours: normalizedRescheduleCutoff,
       };
@@ -1486,7 +1500,7 @@ export function Settings() {
                   </label>
                   <input 
                     type="number" 
-                    min={6} 
+                    min={1} 
                     max={240} 
                     value={businessSettings.bookingIntervalMinutes === '' as any ? '' : (businessSettings.bookingIntervalMinutes ?? '')}
                     onChange={(e) => {
@@ -1498,27 +1512,27 @@ export function Settings() {
                     }}
                     onBlur={() => {
                       const val = Number(businessSettings.bookingIntervalMinutes);
-                      if (!val || val <= 5) {
+                      if (!val || val < 1) {
                         setBusinessSettings({ ...businessSettings, bookingIntervalMinutes: 15 });
                       }
                     }}
                     onKeyDown={(e) => handleNumericKeyDown(e)}
                     style={{ 
                       width: '100%', 
-                      border: businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) <= 5 ? '1px solid #ef4444' : '1px solid var(--da-border)', 
+                      border: businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) < 1 ? '1px solid #ef4444' : '1px solid var(--da-border)', 
                       borderRadius: '8px', 
                       padding: '10px 14px', 
                       fontSize: '13px', 
                       fontFamily: 'var(--da-font-family)' 
                     }} 
                   />
-                  {businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) <= 5 && (
+                  {businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) < 1 && (
                     <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Interval must be greater than 5 minutes.
+                      Interval must be at least 1 minute.
                     </div>
                   )}
                   <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                    Must be greater than 5 minutes (e.g. 15, 20, 30, 45, 60 minutes). Determines time slot increments on customer and kiosk calendars.
+                    Minimum 1 minute. Determines time slot increments on customer and kiosk calendars.
                   </div>
                 </div>
               </div>
@@ -1605,6 +1619,37 @@ export function Settings() {
                 />
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                   Default is 12 hours. Minimum notice in hours before original start time required for customer self-service rescheduling on Track Reservation.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Booking End-Time Alert (Minutes Before)
+                </label>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={60} 
+                  value={businessSettings.bookingEndAlertMinutes === '' as any ? '' : (businessSettings.bookingEndAlertMinutes ?? 5)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      bookingEndAlertMinutes: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (businessSettings.bookingEndAlertMinutes === undefined || businessSettings.bookingEndAlertMinutes === null || businessSettings.bookingEndAlertMinutes === '' as any || Number(businessSettings.bookingEndAlertMinutes) < 1) {
+                      setBusinessSettings({ ...businessSettings, bookingEndAlertMinutes: 5 });
+                    } else if (Number(businessSettings.bookingEndAlertMinutes) > 60) {
+                      setBusinessSettings({ ...businessSettings, bookingEndAlertMinutes: 60 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                />
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                  Staff will be alerted this many minutes before a checked-in booking's end time.
                 </div>
               </div>
 
@@ -1765,6 +1810,7 @@ export function Settings() {
                   contactEmail: businessSettings.contactEmail,
                   phoneDigits,
                   bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
+                  bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
                 });
                 const isDisabled = saving || !check.canSave;
                 return (

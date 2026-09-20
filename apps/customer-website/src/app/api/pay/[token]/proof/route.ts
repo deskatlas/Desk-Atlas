@@ -6,6 +6,7 @@ import {
   createTransactionalEmailService,
   PaymentSessionError,
   ReservationSupabaseRepository,
+  validatePaymentProofFile,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -51,18 +52,23 @@ export async function POST(
 
     const maxSizeBytes = 10 * 1024 * 1024; // 10MB
     if (proofFile.size > maxSizeBytes) {
-      return NextResponse.json({ error: "Payment proof file must be under 10MB." }, { status: 400 });
+      return NextResponse.json({ error: "File too large. Maximum allowed size is 10 MB." }, { status: 400 });
     }
 
-    const isImage = proofFile.type.startsWith("image/");
-    const isPdf = proofFile.type === "application/pdf";
-    const hasValidExt = /\.(jpg|jpeg|png|webp|gif|pdf|heic|heif)$/i.test(proofFile.name);
+    const validation = validatePaymentProofFile({
+      name: proofFile.name,
+      size: proofFile.size,
+      type: proofFile.type,
+    });
 
-    if (!isImage && !isPdf && !hasValidExt) {
-      return NextResponse.json(
-        { error: "Invalid file type. Supported formats are JPG, PNG, WEBP, and PDF." },
-        { status: 400 }
-      );
+    if (!validation.valid) {
+      const errorMsg =
+        validation.error === "File size must not exceed 10 MB."
+          ? "File too large. Maximum allowed size is 10 MB."
+          : validation.error === "Only PNG, JPG, and WebP images are accepted."
+            ? "Invalid file type. Only PNG, JPG, and WebP are accepted."
+            : validation.error ?? "Invalid payment proof file.";
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
     }
 
     const repository = new ReservationSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
