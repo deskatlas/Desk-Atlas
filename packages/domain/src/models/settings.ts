@@ -39,6 +39,7 @@ export interface BusinessSettings {
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes: number | null;
   kioskAllowanceMinutes?: number | null;
+  bookingEndAlertMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
@@ -88,6 +89,7 @@ export interface UpdateBusinessSettingsInput {
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes?: number | null;
   kioskAllowanceMinutes?: number | null;
+  bookingEndAlertMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];

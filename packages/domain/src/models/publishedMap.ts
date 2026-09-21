@@ -23,6 +23,7 @@ export interface PublishedWorkspaceSummary {
   rateAmount: number;
   pricingUnit: PricingUnit;
   operationalStatus: WorkspaceOperationalStatus;
+  maintenanceNote?: string | null;
   isBookable: boolean;
   blockingReason: WorkspaceAvailabilityBlockReason | null;
   tags?: string[];

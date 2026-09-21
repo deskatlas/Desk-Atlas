@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import {
   usePublishedMap,
   mapPublishedFloorToWorkspaceCards,
@@ -330,6 +330,7 @@ export function ReservationPage() {
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerContactNumber, setCustomerContactNumber] = useState("");
   const [formErrors, setFormErrors] = useState<{
     firstName?: string;
     lastName?: string;
@@ -343,6 +344,15 @@ export function ReservationPage() {
   } | null>(null);
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const [candidateImageErrors, setCandidateImageErrors] = useState<Record<string, boolean>>({});
+
+  // MF-155: Pre-confirmation price revalidation state
+  const [priceChangeInfo, setPriceChangeInfo] = useState<{
+    templateName: string;
+    oldRate: number;
+    newRate: number;
+    durationHours: number;
+  } | null>(null);
+  const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState<boolean>(false);
 
   // MF-70 / MF-115: Configurable client-side session timeout state (default 20 mins / 1200 seconds)
   const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
@@ -420,6 +430,7 @@ export function ReservationPage() {
         setCustomerFirstName("");
         setCustomerLastName("");
         setCustomerEmail("");
+        setCustomerContactNumber("");
         setFormErrors({});
       } else {
         setSessionSecondsLeft(remaining);
@@ -906,8 +917,59 @@ export function ReservationPage() {
     });
   };
 
+  // MF-155: Pre-confirmation price check
+  const checkPriceRevalidation = useCallback(async (): Promise<{
+    hasChanged: boolean;
+    oldRate: number;
+    newRate: number;
+    templateName: string;
+    durationHours: number;
+  } | null> => {
+    if (!mainCandidate) return null;
+    const templateId = mainCandidate.workspace.templateId;
+    if (!templateId) return null;
+
+    try {
+      const res = await fetch(`/api/workspaces/${encodeURIComponent(templateId)}/price`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const currentLiveRate = Number(data.ratePerHour ?? data.rateAmount);
+      const displayedRate = mainCandidate.workspace.rateAmount;
+
+      if (!isNaN(currentLiveRate) && Math.abs(currentLiveRate - displayedRate) > 0.001) {
+        return {
+          hasChanged: true,
+          oldRate: displayedRate,
+          newRate: currentLiveRate,
+          templateName: mainCandidate.workspace.templateName || data.templateName || "Workspace",
+          durationHours: mainCandidate.durationHours,
+        };
+      }
+    } catch {
+      // non-blocking on fetch failure
+    }
+    return null;
+  }, [mainCandidate]);
+
+  // Revalidate price whenever stepping into summary
+  useEffect(() => {
+    if (step === "summary" && mainCandidate) {
+      checkPriceRevalidation().then((info) => {
+        if (info && info.hasChanged) {
+          setPriceChangeInfo({
+            templateName: info.templateName,
+            oldRate: info.oldRate,
+            newRate: info.newRate,
+            durationHours: info.durationHours,
+          });
+          setIsPriceChangeModalOpen(true);
+        }
+      });
+    }
+  }, [step, mainCandidate, checkPriceRevalidation]);
+
   // Submit reservation
-  const handleSubmitReservation = (e?: React.FormEvent) => {
+  const handleSubmitReservation = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     const errors: { firstName?: string; lastName?: string; email?: string } = {};
@@ -933,6 +995,20 @@ export function ReservationPage() {
 
     setFormErrors({});
     setSubmitErrorMessage(null);
+
+    // MF-155: Revalidate price immediately before confirmation modal
+    const changeInfo = await checkPriceRevalidation();
+    if (changeInfo && changeInfo.hasChanged) {
+      setPriceChangeInfo({
+        templateName: changeInfo.templateName,
+        oldRate: changeInfo.oldRate,
+        newRate: changeInfo.newRate,
+        durationHours: changeInfo.durationHours,
+      });
+      setIsPriceChangeModalOpen(true);
+      return;
+    }
+
     setIsEmailConfirmOpen(true);
   };
 
@@ -960,6 +1036,8 @@ export function ReservationPage() {
           customerFirstName: customerFirstName.trim(),
           customerLastName: customerLastName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
+          customerContactNumber: customerContactNumber.trim() || undefined,
+          bookedRatePerHour: mainCandidate?.workspace.rateAmount,
           candidates: candidatesPayload,
         }),
       });
@@ -3156,6 +3234,21 @@ export function ReservationPage() {
                     )}
                   </div>
 
+                  <div>
+                    <label htmlFor="customer-contact-number" className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1">
+                      Contact Number <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    <input
+                      id="customer-contact-number"
+                      type="tel"
+                      value={customerContactNumber}
+                      onChange={(e) => setCustomerContactNumber(e.target.value)}
+                      placeholder="e.g. 09171234567"
+                      disabled={isSubmitting}
+                      className="da-input w-full text-sm font-medium"
+                    />
+                  </div>
+
                   <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[11px] leading-relaxed text-slate-600">
                     <span className="font-bold text-slate-800">Please Note:</span> Submitting creates a pending reservation and opens a 1-hour online payment session. The selected workspace is not guaranteed until payment proof is approved and the reservation is confirmed.
                   </div>
@@ -3226,6 +3319,91 @@ export function ReservationPage() {
           onConfirm={handleConfirmSubmit}
         />
       ) : null}
+
+      {/* MF-155: Workspace Rate Updated Modal */}
+      {isPriceChangeModalOpen && priceChangeInfo && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="price-change-title"
+          data-testid="price-change-modal"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+        >
+          <div className="relative w-full max-w-md rounded-[28px] border border-[var(--da-border)] bg-white p-6 sm:p-8 text-center shadow-[var(--da-shadow-lg)] flex flex-col items-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 border-2 border-amber-300 text-3xl shadow-sm">
+              🏷️
+            </div>
+
+            <h2 id="price-change-title" className="text-xl sm:text-2xl font-extrabold text-[var(--da-brand-dark)]">
+              Workspace Rate Updated
+            </h2>
+
+            <p className="mt-2 text-xs sm:text-sm text-[var(--da-text-secondary)] max-w-sm">
+              The rate for <strong className="text-[var(--da-brand-dark)]">{priceChangeInfo.templateName}</strong> has changed since you started your reservation.
+            </p>
+
+            <div className="mt-4 w-full rounded-2xl bg-slate-50 border border-slate-200 p-4 text-xs space-y-2.5 text-left">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Previous Rate:</span>
+                <span className="font-semibold line-through text-slate-400">
+                  ₱{priceChangeInfo.oldRate.toFixed(2)}/hr
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-[var(--da-brand-dark)]">
+                <span className="font-bold">New Rate:</span>
+                <span className="font-extrabold text-sm text-[var(--da-primary)]">
+                  ₱{priceChangeInfo.newRate.toFixed(2)}/hr
+                </span>
+              </div>
+              <div className="border-t border-slate-200 pt-2 flex justify-between items-center font-extrabold text-sm text-[var(--da-brand-dark)]">
+                <span>Updated Total:</span>
+                <span className="text-base text-[var(--da-primary)]">
+                  ₱{(priceChangeInfo.newRate * priceChangeInfo.durationHours).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col sm:flex-row items-center gap-3 w-full">
+              <button
+                type="button"
+                data-testid="cancel-price-change-button"
+                onClick={() => {
+                  setIsPriceChangeModalOpen(false);
+                  if (discoveryMode === "category") {
+                    setStep("category-instances");
+                  } else {
+                    setStep("map");
+                  }
+                }}
+                className="da-secondary-button w-full text-xs font-bold py-2.5"
+              >
+                Cancel & Change Spot
+              </button>
+
+              <button
+                type="button"
+                data-testid="proceed-price-change-button"
+                onClick={() => {
+                  const newRate = priceChangeInfo.newRate;
+                  setCandidates((prev) =>
+                    prev.map((c) => ({
+                      ...c,
+                      workspace: {
+                        ...c.workspace,
+                        rateAmount: newRate,
+                      },
+                    }))
+                  );
+                  setIsPriceChangeModalOpen(false);
+                }}
+                className="da-primary-button w-full text-xs font-extrabold py-2.5 shadow-sm"
+              >
+                Proceed with New Rate →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MF-70: Session Expired Modal */}
       {isSessionTimedOut && (

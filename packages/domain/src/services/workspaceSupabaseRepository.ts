@@ -47,6 +47,7 @@ type InstanceRow = {
   instance_code: string;
   display_name: string;
   operational_status: WorkspaceOperationalStatus;
+  maintenance_note?: string | null;
   created_at?: string;
   updated_at?: string;
   template?: TemplateRow;
@@ -363,6 +364,29 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     }));
   }
 
+  async getMapPlacedInstanceIds(): Promise<Set<string>> {
+    const publishedVersions = await this.request<Array<{ id: string }>>(
+      "/map_versions?status=eq.PUBLISHED&select=id"
+    ).catch(() => []);
+
+    if (!publishedVersions || publishedVersions.length === 0) {
+      return new Set<string>();
+    }
+
+    const versionIds = publishedVersions.map((v) => v.id);
+    const elements = await this.request<Array<{ workspace_instance_id: string | null }>>(
+      `/map_elements?map_version_id=in.(${versionIds.map(encodeURIComponent).join(",")})&workspace_instance_id=not.is.null&select=workspace_instance_id`
+    ).catch(() => []);
+
+    const ids = new Set<string>();
+    for (const el of elements ?? []) {
+      if (el.workspace_instance_id) {
+        ids.add(el.workspace_instance_id);
+      }
+    }
+    return ids;
+  }
+
   private async assertUniqueInstanceCode(instanceCode: string) {
     const rows = await this.request<Array<{ id: string }>>(
       `/workspace_instances?select=id&instance_code=ilike.${encodeURIComponent(instanceCode)}&limit=1`
@@ -416,12 +440,14 @@ function templatePayload(input: CreateWorkspaceTemplateInput | UpdateWorkspaceTe
 }
 
 function instancePayload(input: CreateWorkspaceInstanceInput) {
+  const operationalStatus = input.operationalStatus ?? "ACTIVE";
   return {
     template_id: input.templateId,
     floor_id: input.floorId,
     instance_code: input.instanceCode,
     display_name: input.displayName,
-    operational_status: input.operationalStatus ?? "ACTIVE",
+    operational_status: operationalStatus,
+    maintenance_note: operationalStatus === "MAINTENANCE" ? (input.maintenanceNote ?? null) : null,
   };
 }
 
@@ -429,6 +455,10 @@ function instanceUpdatePayload(input: UpdateWorkspaceInstanceInput) {
   const payload: Record<string, unknown> = {};
   if (input.displayName !== undefined) payload.display_name = input.displayName;
   if (input.operationalStatus !== undefined) payload.operational_status = input.operationalStatus;
+  if (input.maintenanceNote !== undefined) payload.maintenance_note = input.maintenanceNote;
+  else if (input.operationalStatus !== undefined && input.operationalStatus !== 'MAINTENANCE') {
+    payload.maintenance_note = null;
+  }
   return payload;
 }
 
@@ -472,6 +502,7 @@ function mapInstanceDetails(row: InstanceRow): WorkspaceInstanceDetails {
     instanceCode: row.instance_code,
     displayName: row.display_name,
     operationalStatus: row.operational_status,
+    maintenanceNote: row.maintenance_note ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     template: mapTemplate(row.template),

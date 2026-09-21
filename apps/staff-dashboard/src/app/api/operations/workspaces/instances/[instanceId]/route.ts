@@ -104,10 +104,13 @@ export async function PATCH(
     }
 
     const service = createWorkspaceService(new SupabaseWorkspaceRepository());
-    // Strictly mutate only operationalStatus and record audit
+    // Strictly mutate operationalStatus, optional maintenanceNote, and record audit
     const result = await service.updateManagedInstance(
       instanceId,
-      { operationalStatus: body.operationalStatus },
+      {
+        operationalStatus: body.operationalStatus,
+        maintenanceNote: body.maintenanceNote,
+      },
       { actorRole: resolvedRole, actorUserId: hasValidUuid ? actorUserId : null }
     );
 

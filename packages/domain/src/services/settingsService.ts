@@ -53,6 +53,7 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
       kioskAllowanceMinutes: number;
+      bookingEndAlertMinutes: number;
       statusColors: WorkspaceStatusColors;
       cancellationPolicyPdfUrl?: string | null;
       cancellationPolicyPdfFilename?: string | null;
@@ -67,6 +68,7 @@ export function createAdminSettingsService(repository: SettingsRepository) {
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
         kioskAllowanceMinutes: getKioskAllowanceMinutes(businessSettings.kioskAllowanceMinutes),
+        bookingEndAlertMinutes: getBookingEndAlertMinutes(businessSettings.bookingEndAlertMinutes),
         statusColors: normalizeWorkspaceStatusColors(businessSettings.statusColors),
         cancellationPolicyPdfUrl: businessSettings.cancellationPolicyPdfUrl ?? null,
         cancellationPolicyPdfFilename: businessSettings.cancellationPolicyPdfFilename ?? null,
@@ -441,6 +443,20 @@ export function getKioskAllowanceMinutes(configuredMinutes?: number | null): num
   return configuredMinutes;
 }
 
+export function getBookingEndAlertMinutes(configuredMinutes?: number | null): number {
+  if (
+    configuredMinutes === undefined ||
+    configuredMinutes === null ||
+    isNaN(configuredMinutes) ||
+    !Number.isInteger(configuredMinutes) ||
+    configuredMinutes < 1 ||
+    configuredMinutes > 60
+  ) {
+    return 5;
+  }
+  return configuredMinutes;
+}
+
 function normalizeBusinessSettingsInput(
   input: UpdateBusinessSettingsInput
 ): UpdateBusinessSettingsInput {
@@ -480,11 +496,11 @@ function normalizeBusinessSettingsInput(
 
   if (
     !Number.isInteger(input.bookingIntervalMinutes) ||
-    input.bookingIntervalMinutes <= 5 ||
+    input.bookingIntervalMinutes < 1 ||
     input.bookingIntervalMinutes > 1440
   ) {
     throw new SettingsValidationError(
-      'Booking slot interval must be greater than 5 minutes'
+      'Booking slot interval must be a positive integer in minutes (maximum 1440 minutes)'
     );
   }
 
@@ -515,6 +531,18 @@ function normalizeBusinessSettingsInput(
   ) {
     throw new SettingsValidationError(
       'Kiosk booking allowance must be an integer between 0 and 60 minutes'
+    );
+  }
+
+  if (
+    input.bookingEndAlertMinutes !== undefined &&
+    input.bookingEndAlertMinutes !== null &&
+    (!Number.isInteger(input.bookingEndAlertMinutes) ||
+      input.bookingEndAlertMinutes < 1 ||
+      input.bookingEndAlertMinutes > 60)
+  ) {
+    throw new SettingsValidationError(
+      'Booking end-time alert threshold must be an integer between 1 and 60 minutes'
     );
   }
 
@@ -605,6 +633,10 @@ function normalizeBusinessSettingsInput(
     kioskAllowanceMinutes:
       input.kioskAllowanceMinutes !== undefined && input.kioskAllowanceMinutes !== null
         ? input.kioskAllowanceMinutes
+        : 5,
+    bookingEndAlertMinutes:
+      input.bookingEndAlertMinutes !== undefined && input.bookingEndAlertMinutes !== null
+        ? input.bookingEndAlertMinutes
         : 5,
     customerSessionTimeoutMinutes:
       input.customerSessionTimeoutMinutes !== undefined && input.customerSessionTimeoutMinutes !== null

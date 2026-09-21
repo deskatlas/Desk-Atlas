@@ -366,6 +366,7 @@ export default function KioskReservePage() {
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerContactNumber, setCustomerContactNumber] = useState("");
   const [formErrors, setFormErrors] = useState<{
     firstName?: string;
     lastName?: string;
@@ -675,6 +676,7 @@ export default function KioskReservePage() {
     setCustomerFirstName("");
     setCustomerLastName("");
     setCustomerEmail("");
+    setCustomerContactNumber("");
     setFormErrors({});
     setIsSubmitting(false);
     setSubmitError(null);
@@ -726,6 +728,7 @@ export default function KioskReservePage() {
           customerFirstName: customerFirstName.trim(),
           customerLastName: customerLastName.trim(),
           customerEmail: emailVal.toLowerCase(),
+          customerContactNumber: customerContactNumber.trim() || undefined,
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
           durationHours,
           durationMinutes: durationHours * 60,
@@ -2149,6 +2152,21 @@ export default function KioskReservePage() {
                         Your booking QR pass will be sent directly to this email upon payment confirmation.
                       </p>
                     )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="kiosk-contact-number" className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1">
+                      Contact Number <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    <input
+                      id="kiosk-contact-number"
+                      type="tel"
+                      value={customerContactNumber}
+                      onChange={(e) => setCustomerContactNumber(e.target.value)}
+                      placeholder="e.g. 09171234567"
+                      disabled={isSubmitting}
+                      className="da-input text-sm font-medium"
+                    />
                   </div>
 
                   {/* Payment Method Selection */}

@@ -195,35 +195,46 @@ export function PaymentSessionPage({ token }: { token: string }) {
     const maxSizeBytes = 10 * 1024 * 1024; // 10MB
     if (file.size === 0) {
       setSubmitError("Selected file is empty.");
-      return;
-    }
-
-    if (file.size > maxSizeBytes) {
-      setSubmitError("File size exceeds 10MB limit. Please upload a smaller image or document.");
-      return;
-    }
-
-    const isImage = file.type.startsWith("image/");
-    const isPdf = file.type === "application/pdf";
-    const hasValidExt = /\.(jpg|jpeg|png|webp|gif|pdf|heic|heif)$/i.test(file.name);
-
-    if (!isImage && !isPdf && !hasValidExt) {
-      setSubmitError("Unsupported file type. Please upload a JPG, PNG, WEBP image or PDF receipt.");
-      return;
-    }
-
-    setProof(file);
-    if (isImage) {
-      if (proofPreviewUrl) {
-        URL.revokeObjectURL(proofPreviewUrl);
-      }
-      setProofPreviewUrl(URL.createObjectURL(file));
-    } else {
+      setProof(null);
       if (proofPreviewUrl) {
         URL.revokeObjectURL(proofPreviewUrl);
         setProofPreviewUrl(null);
       }
+      return;
     }
+
+    if (file.size > maxSizeBytes) {
+      setSubmitError("File size must not exceed 10 MB.");
+      setProof(null);
+      if (proofPreviewUrl) {
+        URL.revokeObjectURL(proofPreviewUrl);
+        setProofPreviewUrl(null);
+      }
+      return;
+    }
+
+    const isImage =
+      file.type === "image/png" ||
+      file.type === "image/jpeg" ||
+      file.type === "image/jpg" ||
+      file.type === "image/webp";
+    const hasValidExt = /\.(png|jpe?g|webp)$/i.test(file.name);
+
+    if (!isImage && !hasValidExt) {
+      setSubmitError("Only PNG, JPG, and WebP images are accepted.");
+      setProof(null);
+      if (proofPreviewUrl) {
+        URL.revokeObjectURL(proofPreviewUrl);
+        setProofPreviewUrl(null);
+      }
+      return;
+    }
+
+    setProof(file);
+    if (proofPreviewUrl) {
+      URL.revokeObjectURL(proofPreviewUrl);
+    }
+    setProofPreviewUrl(URL.createObjectURL(file));
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -695,8 +706,11 @@ export function PaymentSessionPage({ token }: { token: string }) {
                         >
                           <input
                             type="file"
-                            accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,application/pdf"
-                            onChange={(event) => handleFileSelect(event.target.files?.[0] ?? null)}
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={(event) => {
+                              handleFileSelect(event.target.files?.[0] ?? null);
+                              event.target.value = "";
+                            }}
                             className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                           />
 
@@ -738,7 +752,7 @@ export function PaymentSessionPage({ token }: { token: string }) {
                                   {isDragging ? "Drop your payment receipt here" : "Click to upload or drag & drop"}
                                 </p>
                                 <p className="mt-1 text-xs text-[var(--da-text-secondary)]">
-                                  JPG, PNG, WEBP, or PDF (Max 10MB)
+                                  Accepted formats: PNG, JPG, WebP. Maximum size: 10 MB.
                                 </p>
                               </div>
                             </div>

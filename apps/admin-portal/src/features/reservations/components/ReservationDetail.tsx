@@ -591,8 +591,10 @@ export function ReservationDetail({ id }: { id: string }) {
     ? [
         { label: 'Customer Name', value: detail.customerName },
         { label: 'Email', value: detail.customerEmail },
+        { label: 'Contact Number', value: detail.customerContactNumber || '—' },
         { label: 'Schedule', value: detail.schedule },
         { label: 'Duration', value: detail.duration },
+        { label: 'Booked Rate (at time of booking)', value: `₱${(detail.rateSnapshot ?? 0).toFixed(2)}/hr` },
         { label: 'Payment Status', value: detail.paymentStatus },
         ...(detail.reservationStatus === 'CANCELLED'
           ? [
@@ -631,6 +633,7 @@ export function ReservationDetail({ id }: { id: string }) {
     : [
         { label: 'Customer Name', value: '...' },
         { label: 'Email', value: '...' },
+        { label: 'Contact Number', value: '...' },
         { label: 'Schedule', value: '...' },
         { label: 'Duration', value: '...' },
         { label: 'Payment Status', value: '...' },

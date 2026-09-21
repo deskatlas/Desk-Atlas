@@ -44,6 +44,14 @@ export interface AdminDashboardOccupancyItem {
   };
 }
 
+export interface OccupancySummary {
+  occupiedCount: number;
+  totalActiveInstances: number;
+  occupancyRate: number;
+  checkedInCount: number;
+  inWindowCount: number;
+}
+
 export interface AdminDashboardSnapshot {
   range: AdminDashboardRange;
   rangeLabel: string;
@@ -66,6 +74,7 @@ export interface AdminDashboardSnapshot {
     };
     breakdown: AdminDashboardOccupancyItem[];
   };
+  occupancySummary?: OccupancySummary;
   generatedAt: string;
 }
 

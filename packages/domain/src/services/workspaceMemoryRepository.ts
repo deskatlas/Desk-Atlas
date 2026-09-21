@@ -22,9 +22,13 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
   private instances = new Map<string, WorkspaceInstanceDetails>();
   private reservationImpacts = new Map<string, WorkspaceStatusImpactReservation[]>();
   private auditLogs: WorkspaceAuditLogEntry[] = [];
+  private mapPlacedInstanceIds: Set<string> | null = null;
   private sequence = 1;
 
-  constructor() {
+  constructor(input?: { mapPlacedInstanceIds?: string[] | Set<string> }) {
+    if (input?.mapPlacedInstanceIds) {
+      this.mapPlacedInstanceIds = new Set(input.mapPlacedInstanceIds);
+    }
     this.floors.set('floor-default', {
       id: 'floor-default',
       name: 'Main Floor',
@@ -158,13 +162,15 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     this.requireUniqueCode(input.instanceCode);
     const template = this.requireTemplate(input.templateId);
     const floor = this.requireFloor(input.floorId);
+    const operationalStatus = input.operationalStatus ?? 'ACTIVE';
     const instance: WorkspaceInstanceDetails = {
       id: `instance-${this.sequence++}`,
       templateId: template.id,
       floorId: floor.id,
       instanceCode: input.instanceCode,
       displayName: input.displayName,
-      operationalStatus: input.operationalStatus ?? 'ACTIVE',
+      operationalStatus,
+      maintenanceNote: operationalStatus === 'MAINTENANCE' ? (input.maintenanceNote ?? null) : null,
       template,
       floor,
     };
@@ -174,10 +180,21 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
   async updateInstance(id: string, input: UpdateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     const existing = this.requireInstance(id);
+    const newStatus = input.operationalStatus ?? existing.operationalStatus;
+    let newNote = existing.maintenanceNote ?? null;
+    if (newStatus === 'MAINTENANCE') {
+      if (input.maintenanceNote !== undefined) {
+        newNote = input.maintenanceNote;
+      }
+    } else {
+      newNote = null;
+    }
+
     const updated: WorkspaceInstanceDetails = {
       ...existing,
       displayName: input.displayName ?? existing.displayName,
-      operationalStatus: input.operationalStatus ?? existing.operationalStatus,
+      operationalStatus: newStatus,
+      maintenanceNote: newNote,
     };
     this.instances.set(id, updated);
     return updated;
@@ -245,6 +262,38 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
       return timeB - timeA;
     });
     return typeof limit === 'number' ? sorted.slice(0, limit) : sorted;
+  }
+
+  setMapPlacedInstanceIds(ids: string[] | Set<string> | null): void {
+    if (ids === null) {
+      this.mapPlacedInstanceIds = null;
+    } else {
+      this.mapPlacedInstanceIds = new Set(ids);
+    }
+  }
+
+  addMapPlacedInstanceId(id: string): void {
+    if (this.mapPlacedInstanceIds === null) {
+      this.mapPlacedInstanceIds = new Set();
+    }
+    this.mapPlacedInstanceIds.add(id);
+  }
+
+  removeMapPlacedInstanceId(id: string): void {
+    if (this.mapPlacedInstanceIds !== null) {
+      this.mapPlacedInstanceIds.delete(id);
+    }
+  }
+
+  async getMapPlacedInstanceIds(): Promise<Set<string>> {
+    if (this.mapPlacedInstanceIds !== null) {
+      return new Set(this.mapPlacedInstanceIds);
+    }
+    return new Set(
+      Array.from(this.instances.values())
+        .filter((i) => i.operationalStatus === 'ACTIVE')
+        .map((i) => i.id)
+    );
   }
 
   private refreshInstanceTemplate(templateId: string) {

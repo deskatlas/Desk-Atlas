@@ -46,12 +46,18 @@ export class AdminReservationError extends Error {
 
 export class AdminReservationService {
   private readonly emailService: TransactionalEmailService;
+  private readonly nowProvider: () => Date;
 
   constructor(
     private readonly repository: AdminReservationRepository,
-    private readonly nowProvider: () => Date = () => new Date(),
+    nowProvider?: () => Date,
     emailService?: TransactionalEmailService
   ) {
+    this.nowProvider =
+      nowProvider ??
+      (typeof (repository as any)?.nowProvider === "function"
+        ? () => (repository as any).nowProvider()
+        : () => new Date());
     this.emailService = emailService ?? createTransactionalEmailService();
   }
 

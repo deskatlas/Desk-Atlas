@@ -214,8 +214,10 @@ export class ReservationMemoryRepository
       customerFirstName: request.customerFirstName,
       customerLastName: request.customerLastName,
       customerEmail: request.customerEmail,
+      customerContactNumber: request.customerContactNumber ?? null,
       status: request.source === "WEB" ? "PENDING_PAYMENT" : "PENDING_COUNTER_CONFIRMATION",
       rateSnapshot,
+      bookedRatePerHour: rateSnapshot,
       amountDue,
       currency: "PHP",
       createdAt: now,
@@ -327,6 +329,7 @@ export class ReservationMemoryRepository
       customerEmail: reservation.customerEmail,
       customerFirstName: reservation.customerFirstName,
       customerLastName: reservation.customerLastName,
+      customerContactNumber: reservation.customerContactNumber ?? null,
       amountDue: reservation.amountDue,
       currency: reservation.currency,
       expiresAt: attempt.expiresAt,
@@ -358,6 +361,7 @@ export class ReservationMemoryRepository
       customerEmail: reservation.customerEmail,
       customerFirstName: reservation.customerFirstName,
       customerLastName: reservation.customerLastName,
+      customerContactNumber: reservation.customerContactNumber ?? null,
       amountDue: reservation.amountDue,
       currency: reservation.currency,
       paymentMethodId: attempt.paymentMethodId,
@@ -409,6 +413,7 @@ export class ReservationMemoryRepository
       customerEmail: matchedReservation.customerEmail,
       customerFirstName: matchedReservation.customerFirstName,
       customerLastName: matchedReservation.customerLastName,
+      customerContactNumber: matchedReservation.customerContactNumber ?? null,
       amountDue: matchedReservation.amountDue,
       currency: matchedReservation.currency,
       paymentMethodId: attempt.paymentMethodId,
@@ -544,8 +549,24 @@ export class ReservationMemoryRepository
         const reservation = this.requireReservation(attempt.reservationId);
         const candidates = [...(reservation.candidates ?? [])].sort((a, b) => a.rank - b.rank);
         let assignedCandidate: ReservationCandidate | null = null;
+        const mapPlacedIds = this.workspaceRepository?.getMapPlacedInstanceIds
+          ? await this.workspaceRepository.getMapPlacedInstanceIds()
+          : null;
 
         for (const candidate of candidates) {
+          if (mapPlacedIds && !mapPlacedIds.has(candidate.workspaceInstanceId)) {
+            continue;
+          }
+          if (this.workspaceRepository) {
+            try {
+              const inst = await this.workspaceRepository.getInstance(candidate.workspaceInstanceId);
+              if (inst.operationalStatus !== "ACTIVE" || !inst.template.isActive) {
+                continue;
+              }
+            } catch {
+              // ignore if instance not found in repository
+            }
+          }
           if (!this.hasBlockingAssignment(candidate, reservation.id)) {
             candidate.isAssigned = true;
             assignedCandidate = candidate;
@@ -667,8 +688,24 @@ export class ReservationMemoryRepository
 
         const candidates = [...(reservation.candidates ?? [])].sort((a, b) => a.rank - b.rank);
         let assignedCandidate: ReservationCandidate | null = null;
+        const mapPlacedIds = this.workspaceRepository?.getMapPlacedInstanceIds
+          ? await this.workspaceRepository.getMapPlacedInstanceIds()
+          : null;
 
         for (const candidate of candidates) {
+          if (mapPlacedIds && !mapPlacedIds.has(candidate.workspaceInstanceId)) {
+            continue;
+          }
+          if (this.workspaceRepository) {
+            try {
+              const inst = await this.workspaceRepository.getInstance(candidate.workspaceInstanceId);
+              if (inst.operationalStatus !== "ACTIVE" || !inst.template.isActive) {
+                continue;
+              }
+            } catch {
+              // ignore if instance not found in repository
+            }
+          }
           if (!this.hasBlockingAssignment(candidate, reservation.id)) {
             candidate.isAssigned = true;
             assignedCandidate = candidate;
@@ -1304,6 +1341,7 @@ export class ReservationMemoryRepository
       customerFirstName: reservation.customerFirstName,
       customerLastName: reservation.customerLastName,
       customerEmail: reservation.customerEmail,
+      customerContactNumber: reservation.customerContactNumber ?? null,
       reservationStatus: reservation.status,
       checkInState: getCheckInState(reservation.checkedInAt ?? null, reservation.checkedOutAt ?? null),
       workspaceInstanceId: candidate?.workspaceInstanceId ?? null,
@@ -1321,6 +1359,9 @@ export class ReservationMemoryRepository
       paymentMethodType: method?.methodType ?? null,
       paymentMethodDisplayName: method?.displayName ?? null,
       pendingRelocationRequest: (reservation as any).pendingRelocationRequest ?? null,
+      rateSnapshot: reservation.rateSnapshot,
+      bookedRatePerHour: reservation.rateSnapshot,
+      amountDue: reservation.amountDue,
     };
   }
 
@@ -1394,6 +1435,7 @@ export class ReservationMemoryRepository
         customerName,
         customerInitials,
         customerEmail: r.customerEmail,
+        customerContactNumber: r.customerContactNumber ?? null,
         workspaceDisplayName,
         workspaceInstanceCode: targetCandidate?.workspaceInstanceId ?? null,
         workspaceTemplateName: null,
@@ -1409,6 +1451,8 @@ export class ReservationMemoryRepository
         mark: pres.mark,
         amountDue: r.amountDue,
         currency: r.currency,
+        rateSnapshot: r.rateSnapshot,
+        bookedRatePerHour: r.rateSnapshot,
         createdAt: r.createdAt,
         confirmedAt: r.confirmedAt,
         checkedInAt: r.checkedInAt,
@@ -1657,6 +1701,7 @@ export class ReservationMemoryRepository
       customerName,
       customerInitials,
       customerEmail: r.customerEmail,
+      customerContactNumber: r.customerContactNumber ?? null,
       reservationStatus: r.status,
       status: pres.label,
       statusStyle: pres.style,
@@ -1670,6 +1715,7 @@ export class ReservationMemoryRepository
       amountDue: r.amountDue,
       currency: r.currency,
       rateSnapshot: r.rateSnapshot,
+      bookedRatePerHour: r.rateSnapshot,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       confirmedAt: r.confirmedAt,
@@ -2540,8 +2586,16 @@ export class ReservationMemoryRepository
 
     const targetTemplateId = currentInstance.templateId;
     const template = catalog.templates.find((t) => t.id === targetTemplateId);
+    const mapPlacedIds = this.workspaceRepository?.getMapPlacedInstanceIds
+      ? await this.workspaceRepository.getMapPlacedInstanceIds()
+      : null;
+
     const siblingInstances = catalog.instances.filter(
-      (i) => i.templateId === targetTemplateId && i.id !== currentInstance.id && !(i as any).isArchived
+      (i) =>
+        i.templateId === targetTemplateId &&
+        i.id !== currentInstance.id &&
+        !(i as any).isArchived &&
+        (mapPlacedIds ? mapPlacedIds.has(i.id) : true)
     );
 
     const spots: AvailableRelocationSpot[] = [];
@@ -2664,6 +2718,13 @@ export class ReservationMemoryRepository
       const opStatus = (targetInst.operationalStatus || (targetInst as any).status || "ACTIVE").toUpperCase();
       if (opStatus === "MAINTENANCE" || opStatus === "INACTIVE") {
         throw new Error(`Cannot relocate to a spot that is ${opStatus.toLowerCase()}`);
+      }
+
+      if (this.workspaceRepository.getMapPlacedInstanceIds) {
+        const mapPlacedIds = await this.workspaceRepository.getMapPlacedInstanceIds();
+        if (mapPlacedIds && !mapPlacedIds.has(targetInst.id)) {
+          throw new Error("Cannot relocate to a workspace spot that is not on the published map");
+        }
       }
     }
 

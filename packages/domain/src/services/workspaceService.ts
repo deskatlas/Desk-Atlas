@@ -110,22 +110,26 @@ export function normalizeUpdateTemplateInput(
 export function normalizeCreateInstanceInput(
   input: CreateWorkspaceInstanceInput
 ): CreateWorkspaceInstanceInput {
+  const operationalStatus = normalizeOperationalStatus(input.operationalStatus ?? 'ACTIVE');
   return {
     templateId: requireNonBlank(input.templateId, 'Template id'),
     floorId: requireNonBlank(input.floorId, 'Floor id'),
     instanceCode: normalizeInstanceCode(input.instanceCode),
     displayName: requireNonBlank(input.displayName, 'Instance display name'),
-    operationalStatus: normalizeOperationalStatus(input.operationalStatus ?? 'ACTIVE'),
+    operationalStatus,
+    maintenanceNote: operationalStatus === 'MAINTENANCE' ? normalizeMaintenanceNote(input.maintenanceNote) : null,
   };
 }
 
 export function normalizeCreateInstanceFromTemplateInput(
   input: CreateWorkspaceInstanceFromTemplateInput
 ): CreateWorkspaceInstanceFromTemplateInput {
+  const operationalStatus = input.operationalStatus ? normalizeOperationalStatus(input.operationalStatus) : undefined;
   return {
     templateId: requireNonBlank(input.templateId, 'Template id'),
     floorId: requireNonBlank(input.floorId, 'Floor id'),
-    operationalStatus: input.operationalStatus ? normalizeOperationalStatus(input.operationalStatus) : undefined,
+    operationalStatus,
+    maintenanceNote: operationalStatus === 'MAINTENANCE' ? normalizeMaintenanceNote(input.maintenanceNote) : (operationalStatus !== undefined ? null : undefined),
   };
 }
 
@@ -140,8 +144,21 @@ export function normalizeUpdateInstanceInput(
   if (input.operationalStatus !== undefined) {
     normalized.operationalStatus = normalizeOperationalStatus(input.operationalStatus);
   }
+  if (input.operationalStatus === 'MAINTENANCE') {
+    normalized.maintenanceNote = normalizeMaintenanceNote(input.maintenanceNote);
+  } else if (input.operationalStatus !== undefined) {
+    normalized.maintenanceNote = null;
+  } else if (input.maintenanceNote !== undefined) {
+    normalized.maintenanceNote = normalizeMaintenanceNote(input.maintenanceNote);
+  }
 
   return normalized;
+}
+
+export function normalizeMaintenanceNote(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 300) : null;
 }
 
 export function normalizeDuplicateInstanceInput(
@@ -408,6 +425,17 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
         normalizeDuplicateInstanceInput(input)
       );
     },
+    async getMapPlacedInstanceIds(): Promise<Set<string>> {
+      if (repository.getMapPlacedInstanceIds) {
+        return repository.getMapPlacedInstanceIds();
+      }
+      const catalog = await repository.listCatalog();
+      return new Set(
+        catalog.instances
+          .filter((i) => i.operationalStatus === 'ACTIVE')
+          .map((i) => i.id)
+      );
+    },
   };
 }
 
@@ -440,6 +468,8 @@ function buildWorkspaceAuditMetadata(
     newDisplayName: updated.displayName,
     previousOperationalStatus: existing.operationalStatus,
     newOperationalStatus: updated.operationalStatus,
+    previousMaintenanceNote: existing.maintenanceNote ?? null,
+    newMaintenanceNote: updated.maintenanceNote ?? null,
     availability: getWorkspaceAvailabilityStatus(updated),
     affectedFutureReservationCount: affectedFutureReservations.length,
     affectedFutureReservations,

@@ -47,6 +47,7 @@ type InstanceRow = {
   instance_code: string;
   display_name: string;
   operational_status: WorkspaceOperationalStatus;
+  maintenance_note?: string | null;
   created_at?: string;
   updated_at?: string;
   template?: TemplateRow;
@@ -406,12 +407,14 @@ function templatePayload(input: CreateWorkspaceTemplateInput | UpdateWorkspaceTe
 }
 
 function instancePayload(input: CreateWorkspaceInstanceInput) {
+  const operationalStatus = input.operationalStatus ?? 'ACTIVE';
   return {
     template_id: input.templateId,
     floor_id: input.floorId,
     instance_code: input.instanceCode,
     display_name: input.displayName,
-    operational_status: input.operationalStatus ?? 'ACTIVE',
+    operational_status: operationalStatus,
+    maintenance_note: operationalStatus === 'MAINTENANCE' ? (input.maintenanceNote ?? null) : null,
   };
 }
 
@@ -419,6 +422,10 @@ function instanceUpdatePayload(input: UpdateWorkspaceInstanceInput) {
   const payload: Record<string, unknown> = {};
   if (input.displayName !== undefined) payload.display_name = input.displayName;
   if (input.operationalStatus !== undefined) payload.operational_status = input.operationalStatus;
+  if (input.maintenanceNote !== undefined) payload.maintenance_note = input.maintenanceNote;
+  else if (input.operationalStatus !== undefined && input.operationalStatus !== 'MAINTENANCE') {
+    payload.maintenance_note = null;
+  }
   return payload;
 }
 
@@ -462,6 +469,7 @@ function mapInstanceDetails(row: InstanceRow): WorkspaceInstanceDetails {
     instanceCode: row.instance_code,
     displayName: row.display_name,
     operationalStatus: row.operational_status,
+    maintenanceNote: row.maintenance_note ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     template: mapTemplate(row.template),

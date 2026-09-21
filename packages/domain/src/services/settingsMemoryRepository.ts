@@ -21,6 +21,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
     kioskAllowanceMinutes: 5,
+    bookingEndAlertMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     landingPreviewPhotos: [],
@@ -110,6 +111,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
       paymentExpiryMinutes: input.paymentExpiryMinutes,
       kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
       kioskAllowanceMinutes: input.kioskAllowanceMinutes ?? 5,
+      bookingEndAlertMinutes: input.bookingEndAlertMinutes ?? 5,
       customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? 12,
       landingPreviewPhotos:

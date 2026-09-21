@@ -151,6 +151,7 @@ export default function WorkspaceMapPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState<boolean>(false);
   const [extendModalData, setExtendModalData] = useState<any>(null);
+  const [maintenanceNoteInput, setMaintenanceNoteInput] = useState<string>('');
 
   const loadOccupancy = async () => {
     try {
@@ -338,14 +339,21 @@ export default function WorkspaceMapPage() {
   };
 
   // Staff action: Update instance operational status
-  const handleUpdateInstanceStatus = async (instanceId: string, newStatus: string) => {
+  const handleUpdateInstanceStatus = async (instanceId: string, newStatus: string, note?: string | null) => {
     try {
       setActionLoading(true);
       setErrorMsg(null);
-      await updateStaffInstanceOperationalStatus(instanceId, newStatus, {
-        userId: user?.id,
-        role: user?.role ? (String(user.role).toUpperCase() === 'SUPERADMIN' ? 'SUPERADMIN' : String(user.role).toUpperCase() === 'ADMIN' ? 'ADMIN' : 'STAFF') : undefined,
-      });
+      const resolvedNote = newStatus === 'MAINTENANCE' ? (note !== undefined ? note : (maintenanceNoteInput.trim() || null)) : null;
+
+      await updateStaffInstanceOperationalStatus(
+        instanceId,
+        newStatus,
+        {
+          userId: user?.id,
+          role: user?.role ? (String(user.role).toUpperCase() === 'SUPERADMIN' ? 'SUPERADMIN' : String(user.role).toUpperCase() === 'ADMIN' ? 'ADMIN' : 'STAFF') : undefined,
+        },
+        resolvedNote
+      );
 
       // Update local state
       setPublishedMap((prev) => {
@@ -361,6 +369,7 @@ export default function WorkspaceMapPage() {
                 workspace: {
                   ...el.workspace,
                   operationalStatus: newStatus as any,
+                  maintenanceNote: resolvedNote,
                   isBookable,
                   blockingReason,
                 },
@@ -371,6 +380,10 @@ export default function WorkspaceMapPage() {
         };
       });
 
+      if (newStatus !== 'MAINTENANCE') {
+        setMaintenanceNoteInput('');
+      }
+
       setSuccessMsg(`Status updated to ${newStatus}`);
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
@@ -380,8 +393,60 @@ export default function WorkspaceMapPage() {
     }
   };
 
+  const handleUpdateInstanceNote = async (instanceId: string, noteText: string) => {
+    try {
+      setActionLoading(true);
+      setErrorMsg(null);
+      const trimmedNote = noteText.trim() || null;
+
+      await updateStaffInstanceOperationalStatus(
+        instanceId,
+        'MAINTENANCE',
+        {
+          userId: user?.id,
+          role: user?.role ? (String(user.role).toUpperCase() === 'SUPERADMIN' ? 'SUPERADMIN' : String(user.role).toUpperCase() === 'ADMIN' ? 'ADMIN' : 'STAFF') : undefined,
+        },
+        trimmedNote
+      );
+
+      setPublishedMap((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          elements: prev.elements.map((el) => {
+            if (el.workspace?.workspaceInstanceId === instanceId) {
+              return {
+                ...el,
+                workspace: {
+                  ...el.workspace,
+                  maintenanceNote: trimmedNote,
+                },
+              };
+            }
+            return el;
+          }),
+        };
+      });
+
+      setSuccessMsg('Maintenance note saved');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to save note');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const elements = publishedMap?.elements || [];
   const selectedElement = elements.find((e) => e.id === selectedObjId) || null;
+
+  useEffect(() => {
+    if (selectedElement?.workspace) {
+      setMaintenanceNoteInput(selectedElement.workspace.maintenanceNote ?? '');
+    } else {
+      setMaintenanceNoteInput('');
+    }
+  }, [selectedElement?.id, selectedElement?.workspace?.maintenanceNote]);
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', flex: 1 }}>
@@ -1026,6 +1091,56 @@ export default function WorkspaceMapPage() {
                     <option value="MAINTENANCE">Maintenance (Blocked)</option>
                     <option value="INACTIVE">Inactive (Hidden)</option>
                   </select>
+
+                  {selectedElement.workspace.operationalStatus === 'MAINTENANCE' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                        Reason / Note (optional)
+                      </label>
+                      <textarea
+                        data-testid="maintenance-note-input"
+                        disabled={actionLoading}
+                        maxLength={300}
+                        value={maintenanceNoteInput}
+                        onChange={(e) => setMaintenanceNoteInput(e.target.value)}
+                        placeholder="e.g. Broken chair, AC leak, Wi-Fi outage"
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          border: '1px solid var(--da-border)',
+                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          fontSize: '12px',
+                          fontFamily: 'var(--da-font-family)',
+                          background: '#fff',
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--da-text-secondary)' }}>
+                          {maintenanceNoteInput.length}/300 chars
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="save-maintenance-note-btn"
+                          disabled={actionLoading}
+                          onClick={() => handleUpdateInstanceNote(selectedElement.workspace!.workspaceInstanceId, maintenanceNoteInput)}
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            color: 'var(--da-brand-dark)',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: actionLoading ? 'not-allowed' : 'pointer',
+                            padding: '2px 6px',
+                          }}
+                        >
+                          Save Note
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (

@@ -21,6 +21,7 @@ type BusinessSettingsRow = {
   payment_expiry_minutes: number;
   kiosk_timeout_minutes: number | null;
   kiosk_allowance_minutes?: number | null;
+  booking_end_alert_minutes?: number | null;
   customer_session_timeout_minutes?: number | null;
   customer_reschedule_cutoff_hours?: number | null;
   landing_preview_photos?: any;
@@ -89,11 +90,11 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   async getBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
-      // Fallback if kiosk_allowance_minutes or cancellation policy or status_colors columns are not yet present on remote
+      // Fallback if booking_end_alert_minutes or kiosk_allowance_minutes or cancellation policy or status_colors columns are not yet present on remote
       return this.request<BusinessSettingsRow[]>(
-        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
       ).catch(async () => {
         // Fallback if cancellation policy or status_colors columns are not yet present on remote
         return this.request<BusinessSettingsRow[]>(
@@ -123,6 +124,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         paymentExpiryMinutes: 60,
         kioskTimeoutMinutes: 5,
         kioskAllowanceMinutes: 5,
+        bookingEndAlertMinutes: 5,
         customerSessionTimeoutMinutes: 20,
         customerRescheduleCutoffHours: 12,
         landingPreviewPhotos: [],
@@ -143,6 +145,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
       kioskAllowanceMinutes: row.kiosk_allowance_minutes ?? 5,
+      bookingEndAlertMinutes: row.booking_end_alert_minutes ?? 5,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? 20,
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? 12,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
@@ -167,6 +170,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       payment_expiry_minutes: input.paymentExpiryMinutes,
       kiosk_timeout_minutes: input.kioskTimeoutMinutes,
       kiosk_allowance_minutes: input.kioskAllowanceMinutes ?? 5,
+      booking_end_alert_minutes: input.bookingEndAlertMinutes ?? 5,
       customer_session_timeout_minutes: input.customerSessionTimeoutMinutes ?? 20,
       customer_reschedule_cutoff_hours: input.customerRescheduleCutoffHours ?? 12,
       updated_at: new Date().toISOString(),
@@ -206,11 +210,12 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         body: JSON.stringify(payload),
       });
     } catch {
-      // If status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes columns don't exist yet in Supabase, retry without them
+      // If status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes columns don't exist yet in Supabase, retry without them
       const fallbackPayload = { ...payload };
       delete fallbackPayload.status_colors;
       delete fallbackPayload.customer_session_timeout_minutes;
       delete fallbackPayload.kiosk_allowance_minutes;
+      delete fallbackPayload.booking_end_alert_minutes;
       delete fallbackPayload.cancellation_policy_pdf_url;
       delete fallbackPayload.cancellation_policy_pdf_filename;
       delete fallbackPayload.cancellation_policy_updated_at;
@@ -240,6 +245,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         delete (fallbackInsert as any).status_colors;
         delete (fallbackInsert as any).customer_session_timeout_minutes;
         delete (fallbackInsert as any).kiosk_allowance_minutes;
+        delete (fallbackInsert as any).booking_end_alert_minutes;
         delete (fallbackInsert as any).cancellation_policy_pdf_url;
         delete (fallbackInsert as any).cancellation_policy_pdf_filename;
         delete (fallbackInsert as any).cancellation_policy_updated_at;
@@ -268,6 +274,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
       kioskAllowanceMinutes: row.kiosk_allowance_minutes ?? input.kioskAllowanceMinutes ?? 5,
+      bookingEndAlertMinutes: row.booking_end_alert_minutes ?? input.bookingEndAlertMinutes ?? 5,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? input.customerRescheduleCutoffHours ?? 12,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
