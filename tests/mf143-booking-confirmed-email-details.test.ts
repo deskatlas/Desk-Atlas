@@ -73,17 +73,17 @@ describe('MF-143: Booking Confirmed Email Details, Arrival Expectations, House R
       );
     });
 
-    it('renders both [View Digital Pass] and [Track Reservation] buttons in HTML and links in plaintext', () => {
+    it('renders [Track Reservation] button in HTML and plaintext without [View Digital Pass]', () => {
       const email = renderBookingConfirmationEmail(sampleInput);
 
       // HTML buttons
-      assert.ok(email.html.includes('href="http://localhost:3001/pass/token-xyz-123"'));
-      assert.ok(email.html.includes('View Digital Pass'));
+      assert.ok(!email.html.includes('View Digital Pass'));
+      assert.ok(!email.html.includes('href="http://localhost:3001/pass/token-xyz-123"'));
       assert.ok(email.html.includes('href="http://localhost:3001/track?code=DA-20260919-X89"'));
       assert.ok(email.html.includes('Track Reservation'));
 
       // Plaintext links
-      assert.ok(email.text.includes('View Digital Pass: http://localhost:3001/pass/token-xyz-123'));
+      assert.ok(!email.text.includes('View Digital Pass'));
       assert.ok(email.text.includes('Track Reservation: http://localhost:3001/track?code=DA-20260919-X89'));
     });
   });
@@ -131,7 +131,7 @@ describe('MF-143: Booking Confirmed Email Details, Arrival Expectations, House R
   });
 
   describe('4. Defaults and Fallback Inference', () => {
-    it('infers digitalPassUrl and termsUrl when not explicitly provided', () => {
+    it('infers termsUrl when not explicitly provided and omits digital pass link', () => {
       const fallbackInput: BookingConfirmationEmailInput = {
         referenceCode: 'BK-FALLBACK-1',
         customerFirstName: 'Alex',
@@ -146,10 +146,9 @@ describe('MF-143: Booking Confirmed Email Details, Arrival Expectations, House R
 
       const email = renderBookingConfirmationEmail(fallbackInput);
 
-      // Inferred pass URL uses customer origin from trackingUrl
-      assert.ok(email.html.includes('href="https://deskatlas.app/pass/tok-fb-456"'));
       assert.ok(email.html.includes('href="https://deskatlas.app/terms"'));
-      assert.ok(email.text.includes('View Digital Pass: https://deskatlas.app/pass/tok-fb-456'));
+      assert.ok(!email.html.includes('View Digital Pass'));
+      assert.ok(!email.text.includes('View Digital Pass'));
       assert.ok(email.text.includes('View Terms & Conditions: https://deskatlas.app/terms'));
     });
 

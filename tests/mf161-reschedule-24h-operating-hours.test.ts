@@ -206,9 +206,13 @@ describe('MF-161: Rescheduling Available Time Constrained by Operating Hours and
   });
 
   describe('2. 24-Hour Operation Configuration Support', () => {
-    it('allows slots from 00:00 through 23:59 minus duration on a 24-hour configured day', async () => {
+    it('allows all 24-hour slots through 23:30 for overnight stay on a 24-hour configured day', async () => {
       // 2026-09-17 is Thursday (dayOfWeek = 4)
       repo.seedOperatingHours(4, [
+        { opensAt: '00:00:00', closesAt: '24:00:00', isActive: true },
+      ]);
+      // 2026-09-18 is Friday (dayOfWeek = 5)
+      repo.seedOperatingHours(5, [
         { opensAt: '00:00:00', closesAt: '24:00:00', isActive: true },
       ]);
 
@@ -216,13 +220,13 @@ describe('MF-161: Rescheduling Available Time Constrained by Operating Hours and
         refCodeSuffix: '24H1',
         startDate: '2026-09-16',
         startHour: 10,
-        duration: 2,
+        duration: 4, // 4-hour booking
       });
 
       const availability = await repo.checkRescheduleAvailability({
         reservationId: detail!.id,
         date: '2026-09-17',
-        durationHours: 2,
+        durationHours: 4,
       });
 
       expect(availability.isClosed).toBe(false);
@@ -233,12 +237,107 @@ describe('MF-161: Rescheduling Available Time Constrained by Operating Hours and
 
       const startTimes = availability.slots!.map((s) => s.startTime);
       expect(startTimes[0]).toBe('00:00');
-      expect(startTimes).toContain('00:30');
-      expect(startTimes).toContain('01:00');
-      expect(startTimes).toContain('08:00');
-      expect(startTimes).toContain('12:00');
       expect(startTimes).toContain('20:00');
+      expect(startTimes).toContain('21:00');
       expect(startTimes).toContain('22:00');
+      expect(startTimes).toContain('23:00');
+      expect(startTimes).toContain('23:30');
+      expect(startTimes[startTimes.length - 1]).toBe('23:30');
+    });
+
+    it('accepts overnight reschedule e.g. 23:00 to 03:00 (Next Day) when 24-hour open', async () => {
+      // Thursday and Friday are 24-hour
+      repo.seedOperatingHours(4, [
+        { opensAt: '00:00:00', closesAt: '24:00:00', isActive: true },
+      ]);
+      repo.seedOperatingHours(5, [
+        { opensAt: '00:00:00', closesAt: '24:00:00', isActive: true },
+      ]);
+
+      const detail = await createConfirmedReservation({
+        refCodeSuffix: '24H-ON',
+        startDate: '2026-09-16',
+        startHour: 10,
+        duration: 4,
+      });
+
+      const startUtc = zonedDateTimeToUtc('2026-09-17', '23:00:00', 'Asia/Manila');
+      const endUtc = zonedDateTimeToUtc('2026-09-18', '03:00:00', 'Asia/Manila');
+
+      const check = await repo.checkRescheduleAvailability({
+        reservationId: detail!.id,
+        startAt: startUtc.toISOString(),
+        endAt: endUtc.toISOString(),
+        date: '2026-09-17',
+        durationHours: 4,
+      });
+
+      expect(check.available).toBe(true);
+      expect(check.reason).toBeUndefined();
+
+      const adminService = createAdminReservationService(repo, nowProvider, mockEmailService);
+      const res = await adminService.rescheduleReservation({
+        reservationId: detail!.id,
+        startAt: startUtc.toISOString(),
+        endAt: endUtc.toISOString(),
+        actorRole: 'CUSTOMER',
+        cutoffHours: 12,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.reservation.schedule).toContain('11:00 PM');
+      expect(res.reservation.schedule).toContain('3:00 AM');
+    });
+
+    it('rejects overnight reschedule if the next day is closed during overnight hours', async () => {
+      // Thursday 2026-09-17 is 24-hour, but Friday 2026-09-18 has holiday block
+      repo.seedOperatingHours(4, [
+        { opensAt: '00:00:00', closesAt: '24:00:00', isActive: true },
+      ]);
+      repo.seedOperatingHours(5, [
+        { opensAt: '00:00:00', closesAt: '24:00:00', isActive: true },
+      ]);
+      repo.seedBusinessScheduleBlocks([
+        {
+          startAt: '2026-09-18T00:00:00+08:00',
+          endAt: '2026-09-18T23:59:59+08:00',
+          blockType: 'HOLIDAY',
+          scope: 'BUSINESS',
+          reason: 'Holiday Closure',
+        },
+      ]);
+
+      const detail = await createConfirmedReservation({
+        refCodeSuffix: '24H-ON-CLS',
+        startDate: '2026-09-16',
+        startHour: 10,
+        duration: 4,
+      });
+
+      const startUtc = zonedDateTimeToUtc('2026-09-17', '23:00:00', 'Asia/Manila');
+      const endUtc = zonedDateTimeToUtc('2026-09-18', '03:00:00', 'Asia/Manila');
+
+      const check = await repo.checkRescheduleAvailability({
+        reservationId: detail!.id,
+        startAt: startUtc.toISOString(),
+        endAt: endUtc.toISOString(),
+        date: '2026-09-17',
+        durationHours: 4,
+      });
+
+      expect(check.available).toBe(false);
+      expect(check.reason).toContain('closed during overnight hours');
+
+      const adminService = createAdminReservationService(repo, nowProvider, mockEmailService);
+      await expect(
+        adminService.rescheduleReservation({
+          reservationId: detail!.id,
+          startAt: startUtc.toISOString(),
+          endAt: endUtc.toISOString(),
+          actorRole: 'CUSTOMER',
+          cutoffHours: 12,
+        })
+      ).rejects.toThrow('facility is closed during overnight hours');
     });
 
     it('accepts start time 00:30 on a 24-hour configured day in availability check and execution', async () => {

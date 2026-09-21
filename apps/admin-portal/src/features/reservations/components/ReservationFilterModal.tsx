@@ -42,6 +42,7 @@ export function ReservationFilterModal({
   const [paymentStatus, setPaymentStatus] = useState<string>(
     filters.paymentStatus || "all"
   );
+  const [status, setStatus] = useState<string>(filters.status || "all");
   const [source, setSource] = useState<string>(filters.source || "all");
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export function ReservationFilterModal({
       setWorkspaceTemplate(filters.workspaceTemplate || "all");
       setPaymentMethod(filters.paymentMethod || "all");
       setPaymentStatus(filters.paymentStatus || "all");
+      setStatus(filters.status || "all");
       setSource(filters.source || "all");
     }
   }, [isOpen, filters]);
@@ -66,6 +68,7 @@ export function ReservationFilterModal({
       workspaceTemplate: workspaceTemplate !== "all" ? workspaceTemplate : undefined,
       paymentMethod: paymentMethod !== "all" ? paymentMethod : undefined,
       paymentStatus: paymentStatus !== "all" ? paymentStatus : undefined,
+      status: status !== "all" ? status : undefined,
       source: source !== "all" ? source : undefined,
     });
     onClose();
@@ -78,6 +81,7 @@ export function ReservationFilterModal({
     setWorkspaceTemplate("all");
     setPaymentMethod("all");
     setPaymentStatus("all");
+    setStatus("all");
     setSource("all");
     onReset();
     onClose();
@@ -406,6 +410,46 @@ export function ReservationFilterModal({
               <option value="pending">Pending Payment</option>
               <option value="expired">Expired</option>
               <option value="rejected">Rejected</option>
+            </select>
+          </div>
+
+          {/* Reservation Status */}
+          <div>
+            <label
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "var(--da-brand-dark)",
+                display: "block",
+                marginBottom: "6px",
+              }}
+            >
+              Reservation Status
+            </label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              aria-label="Reservation Status"
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--da-border)",
+                fontSize: "13px",
+                color: "var(--da-text-primary)",
+                background: "#fff",
+                boxSizing: "border-box",
+              }}
+            >
+              <option value="all">All Reservation Statuses</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="CONFIRMED">Confirmed</option>
+              <option value="CHECKED_IN">Checked In</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="EXPIRED">Expired</option>
+              <option value="PAYMENT_UNDER_REVIEW">Payment Review</option>
+              <option value="PENDING_PAYMENT">Awaiting Proof / Pending</option>
+              <option value="PENDING_COUNTER_CONFIRMATION">Counter Queue</option>
             </select>
           </div>
 

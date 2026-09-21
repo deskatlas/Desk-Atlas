@@ -9,7 +9,8 @@ export type ReservationStatus =
   | "CHECKED_IN"
   | "COMPLETED"
   | "CANCELLED"
-  | "EXPIRED";
+  | "EXPIRED"
+  | "REJECTED";
 
 export interface Reservation {
   id: string;
@@ -313,6 +314,24 @@ export interface StaffOperationalReservation {
   rateSnapshot?: number;
   bookedRatePerHour?: number | null;
   amountDue?: number;
+  cancellationReason?: string | null;
+  cancelledAt?: string | null;
+  cancelledByUserId?: string | null;
+  status?: string;
+  paymentStatus?: string;
+  paymentAttemptStatus?: string | null;
+  paymentExpiresAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  paymentAttempts?: Array<{
+    id?: string;
+    channel?: string;
+    status?: string;
+    proofSubmittedAt?: string | null;
+    proofStoragePath?: string | null;
+    expiresAt?: string | null;
+    rejectionReason?: string | null;
+  }>;
 }
 
 export type OccupancyState = "RESERVED" | "OCCUPIED";
@@ -403,7 +422,7 @@ export interface GuestReservationTrackingResult {
   pendingRelocationRequest?: CustomerRelocationRequest | null;
 }
 
-export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue";
+export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue" | "cancelled";
 
 export interface AdminReservationSummary {
   id: string;
@@ -443,6 +462,9 @@ export interface AdminReservationSummary {
   amountPaid?: number | null;
   rateSnapshot?: number;
   bookedRatePerHour?: number | null;
+  cancellationReason?: string | null;
+  cancelledAt?: string | null;
+  cancelledByUserId?: string | null;
 }
 
 export interface AdminReservationCandidateSummary {

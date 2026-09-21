@@ -81,11 +81,22 @@ export function validateContactEmail(email: string | null | undefined): { isVali
   return { isValid: true };
 }
 
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  const trimmed = url.trim();
+  if (!trimmed) return true;
+  return /^https?:\/\//i.test(trimmed);
+}
+
 export function canSaveBusinessProfile(params: {
   businessName?: string | null;
   contactEmail?: string | null;
   phoneDigits?: string | null;
   contactPhone?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  twitterUrl?: string | null;
+  websiteUrl?: string | null;
   bookingIntervalMinutes?: number | string | null;
   kioskAllowanceMinutes?: number | string | null;
   bookingEndAlertMinutes?: number | string | null;
@@ -114,6 +125,22 @@ export function canSaveBusinessProfile(params: {
     if (cleanDigits.length !== 10) {
       return { canSave: false, reason: 'Contact number must be exactly 10 digits (e.g., 9171234567)' };
     }
+  }
+
+  if (params.facebookUrl && !isValidUrl(params.facebookUrl)) {
+    return { canSave: false, reason: 'Facebook URL must start with http:// or https://' };
+  }
+
+  if (params.instagramUrl && !isValidUrl(params.instagramUrl)) {
+    return { canSave: false, reason: 'Instagram URL must start with http:// or https://' };
+  }
+
+  if (params.twitterUrl && !isValidUrl(params.twitterUrl)) {
+    return { canSave: false, reason: 'Twitter/X URL must start with http:// or https://' };
+  }
+
+  if (params.websiteUrl && !isValidUrl(params.websiteUrl)) {
+    return { canSave: false, reason: 'Website URL must start with http:// or https://' };
   }
 
   if (params.bookingIntervalMinutes !== undefined && params.bookingIntervalMinutes !== null) {
@@ -264,6 +291,10 @@ export function Settings() {
     timezone: 'Asia/Manila',
     contactEmail: null,
     contactPhone: null,
+    facebookUrl: null,
+    instagramUrl: null,
+    twitterUrl: null,
+    websiteUrl: null,
     bookingIntervalMinutes: 30,
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
@@ -749,6 +780,10 @@ export function Settings() {
       businessName: businessSettings.businessName,
       contactEmail: businessSettings.contactEmail,
       phoneDigits,
+      facebookUrl: businessSettings.facebookUrl,
+      instagramUrl: businessSettings.instagramUrl,
+      twitterUrl: businessSettings.twitterUrl,
+      websiteUrl: businessSettings.websiteUrl,
       bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
       bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
     });
@@ -800,6 +835,10 @@ export function Settings() {
 
       const payload = {
         ...businessSettings,
+        facebookUrl: businessSettings.facebookUrl?.trim() || null,
+        instagramUrl: businessSettings.instagramUrl?.trim() || null,
+        twitterUrl: businessSettings.twitterUrl?.trim() || null,
+        websiteUrl: businessSettings.websiteUrl?.trim() || null,
         statusColors: normalizeWorkspaceStatusColors(statusColors),
         contactEmail: businessSettings.contactEmail?.trim() || null,
         contactPhone: phoneDigits ? `+63${phoneDigits}` : null,
@@ -1480,6 +1519,72 @@ export function Settings() {
                   * At least one contact method (contact email or contact number) is required.
                 </div>
               )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Facebook Page URL (Optional)</label>
+                  <input 
+                    type="url" 
+                    value={businessSettings.facebookUrl || ''}
+                    onChange={(e) => setBusinessSettings({ ...businessSettings, facebookUrl: e.target.value || null })}
+                    placeholder="https://facebook.com/yourbusiness"
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                  />
+                  {businessSettings.facebookUrl && !isValidUrl(businessSettings.facebookUrl) && (
+                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                      Please enter a valid URL starting with http:// or https://
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Instagram URL (Optional)</label>
+                  <input 
+                    type="url" 
+                    value={businessSettings.instagramUrl || ''}
+                    onChange={(e) => setBusinessSettings({ ...businessSettings, instagramUrl: e.target.value || null })}
+                    placeholder="https://instagram.com/yourbusiness"
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                  />
+                  {businessSettings.instagramUrl && !isValidUrl(businessSettings.instagramUrl) && (
+                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                      Please enter a valid URL starting with http:// or https://
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Twitter / X URL (Optional)</label>
+                  <input 
+                    type="url" 
+                    value={businessSettings.twitterUrl || ''}
+                    onChange={(e) => setBusinessSettings({ ...businessSettings, twitterUrl: e.target.value || null })}
+                    placeholder="https://x.com/yourbusiness"
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                  />
+                  {businessSettings.twitterUrl && !isValidUrl(businessSettings.twitterUrl) && (
+                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                      Please enter a valid URL starting with http:// or https://
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Website URL (Optional)</label>
+                  <input 
+                    type="url" 
+                    value={businessSettings.websiteUrl || ''}
+                    onChange={(e) => setBusinessSettings({ ...businessSettings, websiteUrl: e.target.value || null })}
+                    placeholder="https://yourbusiness.com"
+                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                  />
+                  {businessSettings.websiteUrl && !isValidUrl(businessSettings.websiteUrl) && (
+                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                      Please enter a valid URL starting with http:// or https://
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>

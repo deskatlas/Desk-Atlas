@@ -10,7 +10,8 @@ export type AdminReservationsSubFilter =
   | "all"
   | "upcoming"
   | "awaiting_proof"
-  | "counter_queue";
+  | "counter_queue"
+  | "cancelled";
 
 export type AdminOperationsSubFilter =
   | "all"
@@ -31,7 +32,8 @@ export type StaffReservationsSubFilter =
   | "all"
   | "upcoming"
   | "confirmed"
-  | "counter_queue";
+  | "counter_queue"
+  | "cancelled";
 
 export type StaffOperationsSubFilter =
   | "all"
@@ -44,7 +46,8 @@ export type StaffCompletedSubFilter =
 
 export type StaffExpiredSubFilter =
   | "all"
-  | "expired";
+  | "expired"
+  | "cancelled";
 
 export interface ReservationTabFilterOption<T extends string = string> {
   label: string;
@@ -56,6 +59,7 @@ export const ADMIN_RESERVATIONS_TAB_FILTERS: ReservationTabFilterOption<AdminRes
   { label: "Upcoming", filter: "upcoming" },
   { label: "Awaiting Proof", filter: "awaiting_proof" },
   { label: "Counter Queue", filter: "counter_queue" },
+  { label: "Cancelled", filter: "cancelled" },
 ];
 
 export const ADMIN_OPERATIONS_TAB_FILTERS: ReservationTabFilterOption<AdminOperationsSubFilter>[] = [
@@ -79,8 +83,8 @@ export const ADMIN_EXPIRED_TAB_FILTERS: ReservationTabFilterOption<AdminExpiredS
 export const STAFF_RESERVATIONS_TAB_FILTERS: ReservationTabFilterOption<StaffReservationsSubFilter>[] = [
   { label: "All", filter: "all" },
   { label: "Upcoming", filter: "upcoming" },
-  { label: "Confirmed", filter: "confirmed" },
   { label: "Counter Queue", filter: "counter_queue" },
+  { label: "Cancelled", filter: "cancelled" },
 ];
 
 export const STAFF_OPERATIONS_TAB_FILTERS: ReservationTabFilterOption<StaffOperationsSubFilter>[] = [
@@ -97,6 +101,7 @@ export const STAFF_COMPLETED_TAB_FILTERS: ReservationTabFilterOption<StaffComple
 export const STAFF_EXPIRED_TAB_FILTERS: ReservationTabFilterOption<StaffExpiredSubFilter>[] = [
   { label: "All", filter: "all" },
   { label: "Expired", filter: "expired" },
+  { label: "Cancelled", filter: "cancelled" },
 ];
 
 function isTimeWithinWindow(
@@ -287,6 +292,13 @@ export function filterAdminReservationsByTab(
             r.status.toLowerCase() !== "rejected"
         );
 
+      case "cancelled":
+        return reservations.filter(
+          (r) =>
+            r.reservationStatus === "CANCELLED" ||
+            r.status.toLowerCase().includes("cancelled")
+        );
+
       default:
         return base;
     }
@@ -368,7 +380,14 @@ export function isStaffExpiredReservation(
 ): boolean {
   const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
 
-  if (res.reservationStatus === "EXPIRED" || res.reservationStatus === "CANCELLED") {
+  if (
+    res.reservationStatus === "EXPIRED" ||
+    res.reservationStatus === "REJECTED" ||
+    res.reservationStatus === "CANCELLED" ||
+    (res.status && res.status.toLowerCase() === "rejected") ||
+    (res.paymentStatus && res.paymentStatus.toLowerCase().includes("rejected")) ||
+    (res.paymentAttemptStatus && res.paymentAttemptStatus.toLowerCase() === "rejected")
+  ) {
     return true;
   }
 
@@ -490,19 +509,21 @@ export function filterStaffReservationsByTab(
         return base;
 
       case "upcoming":
+      case "confirmed":
         return base.filter((r) => {
-          if (r.reservationStatus === "CONFIRMED" && r.bookingStartAt) {
+          if (r.reservationStatus === "CONFIRMED") {
+            if (!r.bookingStartAt) return true;
             const startMs = new Date(r.bookingStartAt).getTime();
-            return !isNaN(startMs) && startMs > nowMs;
+            return isNaN(startMs) || startMs > nowMs;
           }
           return false;
         });
 
-      case "confirmed":
-        return base.filter((r) => r.reservationStatus === "CONFIRMED");
-
       case "counter_queue":
         return base.filter((r) => r.reservationStatus === "PENDING_COUNTER_CONFIRMATION");
+
+      case "cancelled":
+        return reservations.filter((r) => r.reservationStatus === "CANCELLED");
 
       default:
         return base;
@@ -551,7 +572,21 @@ export function filterStaffReservationsByTab(
         return base;
 
       case "expired":
-        return base.filter((r) => r.reservationStatus === "EXPIRED" || (r.bookingEndAt && !r.checkedInAt && new Date(r.bookingEndAt).getTime() <= nowMs));
+        return base.filter(
+          (r) =>
+            r.reservationStatus === "EXPIRED" ||
+            r.reservationStatus === "REJECTED" ||
+            (r.status && r.status.toLowerCase() === "rejected") ||
+            (r.paymentStatus && r.paymentStatus.toLowerCase().includes("rejected")) ||
+            (r.paymentAttemptStatus && r.paymentAttemptStatus.toLowerCase() === "rejected") ||
+            (r.bookingEndAt &&
+              !r.checkedInAt &&
+              new Date(r.bookingEndAt).getTime() <= nowMs &&
+              r.reservationStatus !== "CANCELLED")
+        );
+
+      case "cancelled":
+        return base.filter((r) => r.reservationStatus === "CANCELLED");
 
       default:
         return base;
@@ -657,7 +692,12 @@ export function getStaffReservationTabCounts(
     const isPendingOrQueue =
       ["PENDING_COUNTER_CONFIRMATION", "PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "NEEDS_MANUAL_RESOLUTION"].includes(
         r.reservationStatus
-      );
+      ) &&
+      r.reservationStatus !== "EXPIRED" &&
+      r.reservationStatus !== "REJECTED" &&
+      !(r.status && r.status.toLowerCase() === "rejected") &&
+      !(r.paymentStatus && r.paymentStatus.toLowerCase().includes("rejected")) &&
+      !(r.paymentAttemptStatus && r.paymentAttemptStatus.toLowerCase() === "rejected");
 
     const isUpcomingConfirmed =
       r.reservationStatus === "CONFIRMED" &&

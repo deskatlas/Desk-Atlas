@@ -19,6 +19,7 @@ import type {
   WorkspaceRepository,
   WorkspaceTemplate,
 } from '../models/workspace';
+import { normalizeAmenityTag } from '../models/amenities';
 
 const VALID_OPERATIONAL_STATUSES: WorkspaceOperationalStatus[] = [
   'ACTIVE',
@@ -358,21 +359,41 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
         throw new WorkspaceConflictError(`Template not found: ${normalizedInput.templateId}`);
       }
 
-      const baseName = deriveTemplatePlacementBaseName(template.name);
+      const templateName = template.name.trim();
+      const baseName = deriveTemplatePlacementBaseName(templateName);
       let highestSequence = 0;
 
-      for (const instance of catalog.instances.filter((entry) => entry.templateId === template.id)) {
-        const match = new RegExp(`^${escapeForRegExp(baseName)}\\s+(\\d+)$`, 'i').exec(instance.displayName);
+      const templateInstances = catalog.instances.filter((entry) => entry.templateId === template.id);
+      for (const instance of templateInstances) {
+        const match = new RegExp(`^(?:${escapeForRegExp(templateName)}|${escapeForRegExp(baseName)})\\s+(\\d+)$`, 'i').exec(instance.displayName);
         if (!match) continue;
         highestSequence = Math.max(highestSequence, Number.parseInt(match[1], 10));
       }
 
-      const newName = `${baseName} ${highestSequence + 1}`;
+      const usesBaseNameOnly =
+        templateInstances.length > 0 &&
+        templateInstances.every((inst) =>
+          new RegExp(`^${escapeForRegExp(baseName)}\\s+\\d+$`, 'i').test(inst.displayName)
+        ) &&
+        !templateInstances.some((inst) =>
+          new RegExp(`^${escapeForRegExp(templateName)}\\s+\\d+$`, 'i').test(inst.displayName)
+        );
+      const prefix = usesBaseNameOnly && baseName !== templateName ? baseName : templateName;
+
+      let nextNum = highestSequence + 1;
+      let newName = `${prefix} ${nextNum}`;
+      const existingNames = new Set(
+        templateInstances.map((entry) => entry.displayName.trim().toLowerCase())
+      );
+      while (existingNames.has(newName.toLowerCase())) {
+        nextNum += 1;
+        newName = `${prefix} ${nextNum}`;
+      }
       
       return repository.createInstance({
         templateId: template.id,
         floorId: normalizedInput.floorId,
-        instanceCode: `V-${(highestSequence + 1).toString().padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`,
+        instanceCode: `V-${nextNum.toString().padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`,
         displayName: newName,
         operationalStatus: normalizedInput.operationalStatus ?? 'ACTIVE',
       });
@@ -480,7 +501,9 @@ function extractRecommendationTags(defaultStyle: Record<string, unknown> | null 
   if (!defaultStyle) return undefined;
   const tags = defaultStyle.recommendationTags ?? defaultStyle.recommendations ?? defaultStyle.tags;
   if (Array.isArray(tags)) {
-    const list = tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+    const list = tags
+      .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+      .map((tag) => normalizeAmenityTag(tag));
     return list.length > 0 ? list : undefined;
   }
   return undefined;

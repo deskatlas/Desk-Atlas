@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, ReactNode } from "react";
+import { ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useKioskInactivityTimer } from "../../../hooks/useKioskInactivityTimer";
+import { InactivityWarningModal } from "../../../components/InactivityWarningModal";
 
 interface SessionManagerProps {
   children: ReactNode;
   timeoutMs?: number;
+  warningTimeoutMs?: number;
   onTimeoutWarning?: () => void;
   onReset: () => void;
 }
@@ -13,46 +16,37 @@ interface SessionManagerProps {
 export function SessionManager({ 
   children, 
   timeoutMs = 60000, // 1 minute for kiosk inactivity
+  warningTimeoutMs = 15000, // 15 seconds warning threshold
   onTimeoutWarning,
   onReset
 }: SessionManagerProps) {
   const router = useRouter();
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const resetTimer = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    timerRef.current = setTimeout(() => {
-      if (onTimeoutWarning) {
-        onTimeoutWarning();
-      }
-      onReset();
-      router.push("/kiosk");
-    }, timeoutMs);
+  const handleReset = () => {
+    onReset();
+    router.push("/kiosk");
   };
 
-  useEffect(() => {
-    resetTimer();
-    const events = ["mousedown", "touchstart", "keydown", "scroll"];
-    const handleActivity = () => resetTimer();
-    
-    events.forEach(evt => window.addEventListener(evt, handleActivity));
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      events.forEach(evt => window.removeEventListener(evt, handleActivity));
-    };
-  }, []);
+  const { isWarningActive, remainingSeconds, resetTimer } = useKioskInactivityTimer({
+    totalTimeoutMs: timeoutMs,
+    warningTimeoutMs,
+    onWarning: onTimeoutWarning,
+    onReset: handleReset,
+    enabled: true,
+  });
 
   return (
     <>
       {children}
+      <InactivityWarningModal
+        isOpen={isWarningActive}
+        remainingSeconds={remainingSeconds}
+        onStay={resetTimer}
+      />
       {/* Staff manual reset control (hidden in corner) */}
       <button
-        onClick={() => {
-          onReset();
-          router.push("/kiosk");
-        }}
+        type="button"
+        onClick={handleReset}
         style={{
           position: "fixed",
           bottom: "20px",
@@ -63,7 +57,8 @@ export function SessionManager({
           background: "red",
           borderRadius: "50%",
           border: "none",
-          cursor: "pointer"
+          cursor: "pointer",
+          zIndex: 9999,
         }}
         title="Staff Reset"
       />

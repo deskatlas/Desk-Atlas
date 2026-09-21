@@ -119,7 +119,7 @@ describe("MF-110: Staff Dashboard Reservations Status Filter Tags Parity", () =>
     },
   ];
 
-  it("exports the required 6 status filter options in expected order", () => {
+  it("exports the required status filter options in expected order", () => {
     expect(STAFF_RESERVATION_FILTERS).toEqual([
       { label: "Active", filter: "active" },
       { label: "All", filter: "all" },
@@ -127,6 +127,7 @@ describe("MF-110: Staff Dashboard Reservations Status Filter Tags Parity", () =>
       { label: "Upcoming", filter: "upcoming" },
       { label: "Confirmed", filter: "confirmed" },
       { label: "Counter Queue", filter: "counter_queue" },
+      { label: "Cancelled", filter: "cancelled" },
     ]);
   });
 

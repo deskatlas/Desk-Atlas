@@ -83,8 +83,9 @@ export class ReservationSupabaseRepository
   BookingSurveyRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
+  private readonly fetcher: typeof fetch;
 
-  constructor(options?: { supabaseUrl?: string; serviceRoleKey?: string }) {
+  constructor(options?: { supabaseUrl?: string; serviceRoleKey?: string; fetcher?: typeof fetch }) {
     const supabaseUrl =
       options?.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = options?.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -99,6 +100,7 @@ export class ReservationSupabaseRepository
 
     this.restUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
     this.serviceRoleKey = serviceRoleKey;
+    this.fetcher = options?.fetcher ?? fetch;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -107,7 +109,7 @@ export class ReservationSupabaseRepository
     headers.set('Authorization', `Bearer ${this.serviceRoleKey}`);
     headers.set('Content-Type', 'application/json');
 
-    const response = await fetch(`${this.restUrl}${path}`, {
+    const response = await this.fetcher(`${this.restUrl}${path}`, {
       ...options,
       headers,
       cache: 'no-store',
@@ -1346,7 +1348,7 @@ export class ReservationSupabaseRepository
 
   async listOperationalReservations(_nowIso: string): Promise<StaffOperationalReservation[]> {
     const reservations = await this.request<any[]>(
-      "/reservations?select=*&status=in.(CONFIRMED,CHECKED_IN,COMPLETED,PENDING_COUNTER_CONFIRMATION)&order=created_at.desc&limit=200"
+      "/reservations?select=*&order=created_at.desc&limit=200"
     );
 
     const summaries = await Promise.all(
@@ -1975,7 +1977,7 @@ export class ReservationSupabaseRepository
       )?.[0];
     }
 
-    if (!reservation || !["CONFIRMED", "CHECKED_IN", "COMPLETED", "PENDING_COUNTER_CONFIRMATION"].includes(reservation.status)) {
+    if (!reservation) {
       return null;
     }
 
@@ -2041,6 +2043,20 @@ export class ReservationSupabaseRepository
       // non-blocking fallback
     }
 
+    let paymentAttempts: any[] = [];
+    try {
+      paymentAttempts = (await this.request<any[]>(
+        `/payment_attempts?select=*&reservation_id=eq.${encodeURIComponent(reservation.id)}&order=created_at.desc`
+      )) ?? [];
+    } catch {
+      // non-blocking fallback
+    }
+    const latestAttempt = paymentAttempts[0] ?? null;
+    const isPaymentRejected =
+      latestAttempt?.status === "REJECTED" ||
+      (reservation.status === "CANCELLED" && paymentAttempts.some((a) => a.status === "REJECTED"));
+    const pres = mapStatusPresentation(reservation.status, isPaymentRejected ? "REJECTED" : latestAttempt?.status);
+
     return {
       reservationId: reservation.id,
       referenceCode: reservation.reference_code,
@@ -2049,7 +2065,22 @@ export class ReservationSupabaseRepository
       customerLastName: reservation.customer_last_name,
       customerEmail: reservation.customer_email,
       customerContactNumber: reservation.customer_contact_number ?? null,
-      reservationStatus: reservation.status,
+      reservationStatus: isPaymentRejected ? "REJECTED" : reservation.status,
+      status: pres.label,
+      paymentStatus: pres.payment,
+      paymentAttemptStatus: latestAttempt?.status ?? null,
+      paymentExpiresAt: latestAttempt?.expires_at ?? null,
+      createdAt: reservation.created_at,
+      updatedAt: reservation.updated_at,
+      paymentAttempts: paymentAttempts.map((a) => ({
+        id: a.id,
+        channel: a.channel,
+        status: a.status,
+        proofSubmittedAt: a.proof_submitted_at,
+        proofStoragePath: a.proof_storage_path,
+        expiresAt: a.expires_at,
+        rejectionReason: a.rejection_reason,
+      })),
       checkInState: getCheckInState(reservation.checked_in_at, reservation.checked_out_at),
       workspaceInstanceId: candidate?.workspace_instance_id ?? null,
       workspaceDisplayName:
@@ -2067,6 +2098,9 @@ export class ReservationSupabaseRepository
       rateSnapshot: Number(reservation.rate_snapshot),
       bookedRatePerHour: Number(reservation.rate_snapshot),
       amountDue: Number(reservation.amount_due),
+      cancellationReason: reservation.cancellation_reason ?? null,
+      cancelledAt: reservation.cancelled_at ?? null,
+      cancelledByUserId: reservation.cancelled_by_user_id ?? null,
     };
   }
 
@@ -2248,6 +2282,9 @@ export class ReservationSupabaseRepository
         paymentMethodId: latestAttempt?.payment_method_id ?? null,
         paymentMethodType: paymentMethod?.method_type ?? null,
         paymentMethodDisplayName: paymentMethod?.display_name ?? null,
+        cancellationReason: r.cancellation_reason ?? null,
+        cancelledAt: r.cancelled_at ?? null,
+        cancelledByUserId: r.cancelled_by_user_id ?? null,
       };
     });
   }
@@ -2755,6 +2792,41 @@ export class ReservationSupabaseRepository
       if (startMin < openMin || endMin > closeMin || startMin >= closeMin) {
         throw new Error(`Cannot reschedule outside business operating hours (${openTime} - ${closeTime}).`);
       }
+    } else if (is24Hours) {
+      const targetDayEndMs = new Date(`${targetDateStr}T23:59:59.999+08:00`).getTime();
+      if (newEndMs > targetDayEndMs) {
+        let nextDateStr = "";
+        try {
+          nextDateStr = new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date(input.endAt));
+        } catch {
+          nextDateStr = input.endAt.split("T")[0];
+        }
+
+        const [ny, nm, nd] = nextDateStr.split("-").map(Number);
+        const nextDayOfWeek = new Date(Date.UTC(ny, nm - 1, nd)).getUTCDay();
+
+        const [nextOperatingHours, nextScheduleBlocks] = await Promise.all([
+          this.request<any[]>(
+            `/operating_hours?day_of_week=eq.${nextDayOfWeek}&is_active=eq.true&order=opens_at.asc`
+          ).catch(() => []),
+          this.request<any[]>(
+            `/schedule_blocks?scope=eq.BUSINESS&start_at=lt.${encodeURIComponent(input.endAt)}&end_at=gt.${encodeURIComponent(nextDateStr + "T00:00:00+08:00")}`
+          ).catch(() => []),
+        ]);
+
+        const nextDayClosed =
+          (nextScheduleBlocks && nextScheduleBlocks.length > 0) ||
+          (!nextOperatingHours || nextOperatingHours.length === 0);
+
+        if (nextDayClosed) {
+          throw new Error("Cannot reschedule overnight: the facility is closed during overnight hours on the following date.");
+        }
+      }
     }
 
     for (const cand of conflictingCandidates ?? []) {
@@ -2785,13 +2857,30 @@ export class ReservationSupabaseRepository
       });
     }
 
-    await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        updated_at: nowIso,
-        reschedule_count: currentRescheduleCount + 1,
-      }),
-    });
+    try {
+      await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          updated_at: nowIso,
+          reschedule_count: currentRescheduleCount + 1,
+        }),
+      });
+    } catch (patchErr: any) {
+      if (
+        patchErr?.message?.includes("reschedule_count") ||
+        patchErr?.message?.includes("PGRST204") ||
+        patchErr?.message?.includes("42703")
+      ) {
+        await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            updated_at: nowIso,
+          }),
+        });
+      } else {
+        throw patchErr;
+      }
+    }
 
     await this.request("/audit_logs", {
       method: "POST",
@@ -2960,6 +3049,42 @@ export class ReservationSupabaseRepository
             available = false;
             reason = `Selected time is outside operating hours (${openTime} - ${closeTime})`;
           }
+        } else if (is24Hours) {
+          const targetDayEndMs = new Date(`${targetDate}T23:59:59.999+08:00`).getTime();
+          if (newEndMs > targetDayEndMs) {
+            let nextDateStr = "";
+            try {
+              nextDateStr = new Intl.DateTimeFormat("en-CA", {
+                timeZone: timezone,
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).format(new Date(input.endAt));
+            } catch {
+              nextDateStr = input.endAt.split("T")[0];
+            }
+
+            const [ny, nm, nd] = nextDateStr.split("-").map(Number);
+            const nextDayOfWeek = new Date(Date.UTC(ny, nm - 1, nd)).getUTCDay();
+
+            const [nextOperatingHours, nextScheduleBlocks] = await Promise.all([
+              this.request<any[]>(
+                `/operating_hours?day_of_week=eq.${nextDayOfWeek}&is_active=eq.true&order=opens_at.asc`
+              ).catch(() => []),
+              this.request<any[]>(
+                `/schedule_blocks?scope=eq.BUSINESS&start_at=lt.${encodeURIComponent(input.endAt)}&end_at=gt.${encodeURIComponent(nextDateStr + "T00:00:00+08:00")}`
+              ).catch(() => []),
+            ]);
+
+            const nextDayClosed =
+              (nextScheduleBlocks && nextScheduleBlocks.length > 0) ||
+              (!nextOperatingHours || nextOperatingHours.length === 0);
+
+            if (nextDayClosed) {
+              available = false;
+              reason = "The facility is closed during overnight hours on the following date.";
+            }
+          }
         }
 
         if (available) {
@@ -2989,8 +3114,9 @@ export class ReservationSupabaseRepository
       if (isClosed) {
         slots = [];
       } else {
+        const intervalMinutes = 30;
         let startMinute = 0;
-        let maxStartMinute = 1440 - durationMin;
+        let maxStartMinute = 1440 - intervalMinutes;
 
         if (!is24Hours && operatingHours && operatingHours.length > 0) {
           const [oH, oM] = openTime.split(":").map(Number);
@@ -3001,7 +3127,6 @@ export class ReservationSupabaseRepository
           maxStartMinute = closeMin - durationMin;
         }
 
-        const intervalMinutes = 30;
         const generatedSlots: RescheduleSlotAvailability[] = [];
 
         for (let m = startMinute; m <= maxStartMinute; m += intervalMinutes) {

@@ -394,6 +394,7 @@ describe("MF-156: 4-Way Tab Separation (Reservations, Active Operations, Complet
         { label: "Upcoming", filter: "upcoming" },
         { label: "Awaiting Proof", filter: "awaiting_proof" },
         { label: "Counter Queue", filter: "counter_queue" },
+        { label: "Cancelled", filter: "cancelled" },
       ]);
 
       expect(ADMIN_OPERATIONS_TAB_FILTERS).toEqual([
@@ -419,8 +420,8 @@ describe("MF-156: 4-Way Tab Separation (Reservations, Active Operations, Complet
       expect(STAFF_RESERVATIONS_TAB_FILTERS).toEqual([
         { label: "All", filter: "all" },
         { label: "Upcoming", filter: "upcoming" },
-        { label: "Confirmed", filter: "confirmed" },
         { label: "Counter Queue", filter: "counter_queue" },
+        { label: "Cancelled", filter: "cancelled" },
       ]);
 
       expect(STAFF_OPERATIONS_TAB_FILTERS).toEqual([
@@ -437,6 +438,7 @@ describe("MF-156: 4-Way Tab Separation (Reservations, Active Operations, Complet
       expect(STAFF_EXPIRED_TAB_FILTERS).toEqual([
         { label: "All", filter: "all" },
         { label: "Expired", filter: "expired" },
+        { label: "Cancelled", filter: "cancelled" },
       ]);
     });
   });

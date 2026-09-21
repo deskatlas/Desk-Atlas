@@ -15,6 +15,7 @@ export interface AdminReservationAdvancedFilters {
   workspaceTemplate?: string | null; // template name or "all"
   paymentMethod?: string | null; // "all", "gcash", "bank_transfer", "cash"
   paymentStatus?: string | null; // "all", "paid", "under_review", "pending", "expired", "rejected"
+  status?: string | null; // "all", "CANCELLED", "CONFIRMED", etc. or comma-separated
   source?: string | null; // "all", "online" / "web", "kiosk"
 }
 
@@ -56,6 +57,14 @@ export function countActiveFilters(
     filters.paymentStatus &&
     filters.paymentStatus.trim() !== "" &&
     filters.paymentStatus.toLowerCase() !== "all"
+  ) {
+    count += 1;
+  }
+
+  if (
+    filters.status &&
+    filters.status.trim() !== "" &&
+    filters.status.toLowerCase() !== "all"
   ) {
     count += 1;
   }
@@ -265,7 +274,34 @@ export function matchesReservationFilters(
     if (!matchesPayment) return false;
   }
 
-  // 5. Source / Channel Filtering
+  // 5. Reservation Status Filtering
+  if (
+    filters.status &&
+    filters.status.trim() !== "" &&
+    filters.status.toLowerCase() !== "all"
+  ) {
+    const rawStatuses = filters.status.split(",").map((s) => s.trim().toUpperCase());
+    const resStatus = (item.reservationStatus ?? "").toUpperCase();
+    const itemStatus = (item.status ?? "").toUpperCase();
+
+    const matchesStatus = rawStatuses.some((target) => {
+      if (target === resStatus) return true;
+      if (itemStatus.includes(target)) return true;
+      if (target === "CANCELLED" && (resStatus === "CANCELLED" || itemStatus.includes("CANCELLED"))) return true;
+      if (target === "EXPIRED" && (resStatus === "EXPIRED" || itemStatus.includes("EXPIRED"))) return true;
+      if (target === "CONFIRMED" && (resStatus === "CONFIRMED" || itemStatus.includes("CONFIRMED"))) return true;
+      if (target === "CHECKED_IN" && (resStatus === "CHECKED_IN" || itemStatus.includes("CHECKED IN") || itemStatus.includes("CHECKED_IN"))) return true;
+      if (target === "COMPLETED" && (resStatus === "COMPLETED" || itemStatus.includes("COMPLETED"))) return true;
+      if (target === "PENDING_PAYMENT" && (resStatus === "PENDING_PAYMENT" || itemStatus.includes("AWAITING PROOF") || itemStatus.includes("PENDING"))) return true;
+      if (target === "PAYMENT_UNDER_REVIEW" && (resStatus === "PAYMENT_UNDER_REVIEW" || itemStatus.includes("REVIEW"))) return true;
+      if (target === "PENDING_COUNTER_CONFIRMATION" && (resStatus === "PENDING_COUNTER_CONFIRMATION" || itemStatus.includes("COUNTER"))) return true;
+      return false;
+    });
+
+    if (!matchesStatus) return false;
+  }
+
+  // 6. Source / Channel Filtering
   if (
     filters.source &&
     filters.source.trim() !== "" &&

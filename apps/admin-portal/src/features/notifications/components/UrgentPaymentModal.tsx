@@ -20,6 +20,7 @@ import type {
 import {
   makeUrgentAlertDismissKey,
   isUrgentAlertDismissed,
+  formatCountdown,
 } from "@deskatlas/domain";
 
 const STORAGE_KEY_DISMISSED = "deskatlas_urgent_payments_dismissed";
@@ -93,6 +94,14 @@ export function UrgentPaymentModal() {
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(getStoredDismissedKeys);
   const [snoozedMap, setSnoozedMap] = useState<Record<string, number>>(getStoredSnoozes);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchUrgentAlerts = useCallback(async () => {
     try {
@@ -163,6 +172,11 @@ export function UrgentPaymentModal() {
   const safeIndex = Math.min(currentIndex, activeAlerts.length - 1);
   const alert = activeAlerts[safeIndex];
   if (!alert) return null;
+
+  const startMs = alert.startAt ? new Date(alert.startAt).getTime() : NaN;
+  const remainingMs = !Number.isNaN(startMs)
+    ? Math.max(0, startMs - nowMs)
+    : Math.max(0, Math.round((alert.timeRemainingMinutes || 0) * 60 * 1000));
 
   const handleDismiss = () => {
     const key = makeUrgentAlertDismissKey(
@@ -402,34 +416,10 @@ export function UrgentPaymentModal() {
                     color: "#92400E",
                   }}
                 >
-                  {alert.thresholdLabel}
-                </span>
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: "#B45309",
-                    marginLeft: "6px",
-                    fontWeight: 600,
-                  }}
-                >
-                  ({Math.max(1, Math.round(alert.timeRemainingMinutes))}m remaining)
+                  {formatCountdown(remainingMs)} remaining
                 </span>
               </div>
             </div>
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                background: "#F59E0B",
-                color: "#ffffff",
-                padding: "3px 8px",
-                borderRadius: "9999px",
-              }}
-            >
-              Threshold: {alert.thresholdLevel}
-            </span>
           </div>
 
           {/* Reservation Details Grid */}

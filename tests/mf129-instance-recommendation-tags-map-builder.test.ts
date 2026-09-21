@@ -33,7 +33,7 @@ describe('MF-129: Instance-Level Recommendation Tags in Map Builder (Airbnb-Styl
 
       expect(noise.name).toBe('Noise & Activity');
       expect(noise.description).toBe('May change depending on the time and number of people present.');
-      expect(noise.tags).toEqual(['Quiet', 'Moderate', 'Busy', 'Crowded', 'Low Traffic', 'High Traffic']);
+      expect(noise.tags).toEqual(['Quiet', 'Moderate Noise', 'Busy', 'Crowded', 'Low Traffic', 'High Traffic']);
 
       expect(lighting.name).toBe('Lighting & View');
       expect(lighting.description).toBe(

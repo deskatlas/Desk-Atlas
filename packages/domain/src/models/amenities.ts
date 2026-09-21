@@ -16,7 +16,7 @@ export const WORKSPACE_AMENITY_CATEGORIES: AmenityCategory[] = [
     id: 'noise_activity',
     name: 'Noise & Activity',
     description: 'May change depending on the time and number of people present.',
-    tags: ['Quiet', 'Moderate', 'Busy', 'Crowded', 'Low Traffic', 'High Traffic'],
+    tags: ['Quiet', 'Moderate Noise', 'Busy', 'Crowded', 'Low Traffic', 'High Traffic'],
   },
   {
     id: 'lighting_view',
@@ -42,8 +42,16 @@ export const ALL_WORKSPACE_RECOMMENDATION_TAGS: string[] = WORKSPACE_AMENITY_CAT
   (category) => category.tags
 );
 
+export function normalizeAmenityTag(tag: string): string {
+  const trimmed = tag.trim();
+  if (trimmed.toLowerCase() === 'moderate') {
+    return 'Moderate Noise';
+  }
+  return trimmed;
+}
+
 export function getAmenityCategoryForTag(tag: string): AmenityCategory | undefined {
-  const normalized = tag.trim().toLowerCase();
+  const normalized = normalizeAmenityTag(tag).toLowerCase();
   return WORKSPACE_AMENITY_CATEGORIES.find((cat) =>
     cat.tags.some((t) => t.toLowerCase() === normalized)
   );
@@ -54,10 +62,14 @@ export function groupTagsByCategory(
 ): Array<{ category: AmenityCategory; tags: string[] }> {
   if (!Array.isArray(tags) || tags.length === 0) return [];
 
+  const normalizedInputTags = tags
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .map((t) => normalizeAmenityTag(t));
+
   const grouped: Array<{ category: AmenityCategory; tags: string[] }> = [];
 
   for (const category of WORKSPACE_AMENITY_CATEGORIES) {
-    const matchingTags = tags.filter((tag) =>
+    const matchingTags = normalizedInputTags.filter((tag) =>
       category.tags.some((t) => t.toLowerCase() === tag.trim().toLowerCase())
     );
     if (matchingTags.length > 0) {
@@ -70,7 +82,7 @@ export function groupTagsByCategory(
 
   // Also collect any legacy or custom tags not in standard taxonomy
   const standardTagsLower = new Set(ALL_WORKSPACE_RECOMMENDATION_TAGS.map((t) => t.toLowerCase()));
-  const extraTags = tags.filter((t) => !standardTagsLower.has(t.trim().toLowerCase()));
+  const extraTags = normalizedInputTags.filter((t) => !standardTagsLower.has(t.trim().toLowerCase()));
   if (extraTags.length > 0) {
     grouped.push({
       category: {
@@ -85,3 +97,4 @@ export function groupTagsByCategory(
 
   return grouped;
 }
+

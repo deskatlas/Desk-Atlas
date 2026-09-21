@@ -37,3 +37,11 @@ WHERE booked_rate_per_hour IS NULL AND rate_snapshot IS NOT NULL;
 -- MF-158: Note — storage bucket size limit configured via Supabase dashboard or storage policy
 -- No SQL migration required for bucket size limit. Update via Supabase Storage bucket settings.
 
+-- MF-165: Add social media links and website to business_settings
+ALTER TABLE public.business_settings
+  ADD COLUMN IF NOT EXISTS facebook_url TEXT,
+  ADD COLUMN IF NOT EXISTS instagram_url TEXT,
+  ADD COLUMN IF NOT EXISTS twitter_url TEXT,
+  ADD COLUMN IF NOT EXISTS website_url TEXT;
+
+

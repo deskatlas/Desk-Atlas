@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { WelcomeScreen } from "../features/welcome/WelcomeScreen";
 import { KioskScanner } from "../features/qr-scanner/KioskScanner";
 import { KioskReferenceEntry } from "../features/qr-scanner/KioskReferenceEntry";
+import { SessionManager } from "../features/session/SessionManager";
 
 export default function KioskStartPage() {
   const router = useRouter();
@@ -12,19 +13,23 @@ export default function KioskStartPage() {
 
   if (activeView === "SCANNER") {
     return (
-      <KioskScanner
-        onCancel={() => setActiveView("WELCOME")}
-        onSwitchToReference={() => setActiveView("REFERENCE")}
-      />
+      <SessionManager onReset={() => setActiveView("WELCOME")}>
+        <KioskScanner
+          onCancel={() => setActiveView("WELCOME")}
+          onSwitchToReference={() => setActiveView("REFERENCE")}
+        />
+      </SessionManager>
     );
   }
 
   if (activeView === "REFERENCE") {
     return (
-      <KioskReferenceEntry
-        onCancel={() => setActiveView("WELCOME")}
-        onSwitchToScanner={() => setActiveView("SCANNER")}
-      />
+      <SessionManager onReset={() => setActiveView("WELCOME")}>
+        <KioskReferenceEntry
+          onCancel={() => setActiveView("WELCOME")}
+          onSwitchToScanner={() => setActiveView("SCANNER")}
+        />
+      </SessionManager>
     );
   }
 

@@ -195,6 +195,12 @@ export class AdminReservationService {
           r.reservationStatus === "PENDING_COUNTER_CONFIRMATION" &&
           r.status.toLowerCase() !== "rejected"
       );
+    } else if (filter === "cancelled") {
+      filtered = filtered.filter(
+        (r) =>
+          r.reservationStatus === "CANCELLED" ||
+          r.status.toLowerCase().includes("cancelled")
+      );
     }
     // "all": retains all items in mappedList (both active and expired)
 

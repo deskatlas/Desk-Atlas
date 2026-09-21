@@ -452,10 +452,50 @@ export function applyStaffOperationalDerivation(
   res: StaffOperationalReservation,
   nowMs: number
 ): StaffOperationalReservation {
+  const isPaymentRejected =
+    res.paymentAttemptStatus === "REJECTED" ||
+    res.status === "Rejected" ||
+    res.reservationStatus === "REJECTED" ||
+    (res.paymentStatus && res.paymentStatus.toLowerCase().includes("rejected")) ||
+    (res.paymentAttempts && res.paymentAttempts.some((a) => a.status === "REJECTED")) ||
+    (res.reservationStatus === "CANCELLED" && res.paymentAttemptStatus === "REJECTED");
+
+  if (isPaymentRejected) {
+    return {
+      ...res,
+      reservationStatus: "REJECTED",
+      status: "Rejected",
+    };
+  }
+
+  // Check if awaiting proof payment window expired (1 hour window)
+  let isAwaitingProofExpired = false;
+  if (res.reservationStatus === "PENDING_PAYMENT") {
+    if (res.paymentExpiresAt) {
+      const expMs = new Date(res.paymentExpiresAt).getTime();
+      if (!isNaN(expMs) && expMs <= nowMs) {
+        isAwaitingProofExpired = true;
+      }
+    } else if (res.createdAt) {
+      const createdMs = new Date(res.createdAt).getTime();
+      if (!isNaN(createdMs) && createdMs + 60 * 60 * 1000 <= nowMs) {
+        isAwaitingProofExpired = true;
+      }
+    }
+  }
+
+  if (isAwaitingProofExpired) {
+    return {
+      ...res,
+      reservationStatus: "EXPIRED",
+      status: "Expired",
+    };
+  }
+
   const endMs = res.bookingEndAt ? new Date(res.bookingEndAt).getTime() : NaN;
   const isTimeEnded = !isNaN(endMs) && endMs <= nowMs;
 
-  if (isTimeEnded && res.reservationStatus !== "CANCELLED") {
+  if (isTimeEnded && res.reservationStatus !== "CANCELLED" && res.reservationStatus !== "REJECTED") {
     if (res.checkedInAt) {
       return {
         ...res,
@@ -464,13 +504,16 @@ export function applyStaffOperationalDerivation(
         checkedOutAt: res.checkedOutAt ?? res.bookingEndAt ?? new Date(nowMs).toISOString(),
       };
     }
-    if (res.reservationStatus === "CONFIRMED") {
+    // Any reservation whose booking end time elapsed without check-in is expired (CONFIRMED, NEEDS_MANUAL_RESOLUTION, PENDING_PAYMENT, PAYMENT_UNDER_REVIEW, PENDING_COUNTER_CONFIRMATION)
+    if (res.reservationStatus !== "COMPLETED") {
       return {
         ...res,
         reservationStatus: "EXPIRED",
+        status: "Expired",
       };
     }
   }
+
   return res;
 }
 

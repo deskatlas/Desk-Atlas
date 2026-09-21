@@ -29,6 +29,10 @@ export async function PATCH(request: NextRequest) {
         timezone: body.timezone,
         contactEmail: body.contactEmail,
         contactPhone: body.contactPhone,
+        facebookUrl: body.facebookUrl,
+        instagramUrl: body.instagramUrl,
+        twitterUrl: body.twitterUrl,
+        websiteUrl: body.websiteUrl,
         bookingIntervalMinutes: Number(body.bookingIntervalMinutes),
         paymentExpiryMinutes: Number(body.paymentExpiryMinutes),
         kioskTimeoutMinutes:

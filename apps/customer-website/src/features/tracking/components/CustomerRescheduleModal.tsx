@@ -91,16 +91,28 @@ export function CustomerRescheduleModal({
   })();
 
   const endIso = (() => {
-    if (!rescheduleDate || !calculatedEndTime) return "";
-    const [endH, endM] = calculatedEndTime.split(":").map(Number);
-    if (endH >= 24) {
-      // Over midnight
-      const nextDate = new Date(`${rescheduleDate}T00:00:00+08:00`);
-      nextDate.setDate(nextDate.getDate() + 1);
-      const nextDateStr = nextDate.toISOString().split("T")[0];
-      return `${nextDateStr}T${String(endH % 24).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00+08:00`;
-    }
-    return `${rescheduleDate}T${calculatedEndTime}:00+08:00`;
+    if (!startIso) return "";
+    const startMs = new Date(startIso).getTime();
+    if (isNaN(startMs)) return "";
+    const durationMs = Math.round(originalDurationHours * 60 * 60 * 1000);
+    const endMs = startMs + durationMs;
+    const endDate = new Date(endMs);
+
+    const nextDateStr = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(endDate);
+
+    const timeParts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(endDate);
+
+    return `${nextDateStr}T${timeParts}:00+08:00`;
   })();
 
   useEffect(() => {
@@ -372,11 +384,7 @@ function generateRescheduleTimeOptions(
 
   if (is24Hours) {
     const slots: string[] = [];
-    const maxStartMinute = 1440 - durationMinutes;
     for (let m = 0; m < 1440; m += intervalMinutes) {
-      if (m > maxStartMinute && maxStartMinute >= 0) {
-        continue;
-      }
       const h = Math.floor(m / 60);
       const min = m % 60;
       slots.push(`${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
@@ -408,12 +416,15 @@ function generateRescheduleTimeOptions(
 function format12HourTime(timeStr: string) {
   if (!timeStr) return "";
   const [hStr, mStr] = timeStr.split(":");
-  const h = parseInt(hStr, 10);
+  const rawH = parseInt(hStr, 10);
   const m = parseInt(mStr || "0", 10);
-  if (isNaN(h)) return timeStr;
+  if (isNaN(rawH)) return timeStr;
+  const isNextDay = rawH >= 24;
+  const h = rawH % 24;
   const period = h >= 12 && h < 24 ? "PM" : "AM";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+  const formatted = `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+  return isNextDay ? `${formatted} (Next Day)` : formatted;
 }
 
 function formatScheduleTime(startIso: string, endIso?: string | null, timezone = "Asia/Manila") {

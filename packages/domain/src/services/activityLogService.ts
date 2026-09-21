@@ -295,6 +295,13 @@ export function formatMetadataKey(key: string): string {
     templateName: "Workspace Type",
     floor_name: "Floor",
     floorName: "Floor",
+    is_bookable: "Availability Status",
+    isBookable: "Availability Status",
+    blocking_reason: "Blocking Reason",
+    blockingReason: "Blocking Reason",
+    template_is_active: "Template Status",
+    templateIsActive: "Template Status",
+    availability: "Availability",
     previous_status: "Previous Status",
     previousStatus: "Previous Status",
     new_status: "New Status",
@@ -354,15 +361,127 @@ export function formatMetadataKey(key: string): string {
     .join(" ");
 }
 
+export interface AvailabilityInfo {
+  isBookable?: boolean;
+  blockingReason?: string | null;
+  operationalStatus?: string;
+  templateIsActive?: boolean;
+  [key: string]: unknown;
+}
+
+export interface DisplayAvailability {
+  status: string;
+  blockingReason?: string | null;
+  operationalStatus?: string;
+  templateIsActive?: string | null;
+}
+
+export function formatOperationalStatus(status?: string | null): string {
+  if (!status) return "";
+  const map: Record<string, string> = {
+    ACTIVE: "Active",
+    INACTIVE: "Inactive",
+    UNDER_MAINTENANCE: "Under Maintenance",
+    MAINTENANCE: "Under Maintenance",
+    BROKEN: "Broken",
+    DECOMMISSIONED: "Decommissioned",
+  };
+  return (
+    map[status] ??
+    status
+      .replace(/[_-]/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ")
+  );
+}
+
+export function formatBlockingReason(reason?: string | null): string {
+  if (!reason) return "";
+  const map: Record<string, string> = {
+    CLOSED: "Closed",
+    MAINTENANCE: "Under Maintenance",
+    HOLIDAY: "Holiday",
+    OPERATIONAL_STATUS_BLOCKED: "Workspace Status Blocked",
+    BUSINESS_CLOSED: "Business Closed",
+    OUTSIDE_OPERATING_HOURS: "Outside Operating Hours",
+    PAST_TIME: "Past Time",
+    RESERVATION_CONFLICT: "Reserved / Occupied",
+    SCHEDULE_BLOCKED: "Schedule Blocked",
+    IMMEDIATE_WALK_IN_ONLY: "Immediate Walk-in Only",
+    TEMPLATE_INACTIVE: "Template Inactive",
+  };
+  return (
+    map[reason] ??
+    reason
+      .replace(/[_-]/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ")
+  );
+}
+
+export function formatAvailability(availability: AvailabilityInfo): DisplayAvailability {
+  let friendlyStatus = availability.isBookable ? "Available" : "Not Available";
+
+  if (!availability.isBookable) {
+    if (
+      availability.operationalStatus &&
+      availability.operationalStatus.toUpperCase() !== "ACTIVE"
+    ) {
+      friendlyStatus = `Unavailable (${formatOperationalStatus(availability.operationalStatus)})`;
+    } else if (
+      availability.templateIsActive === false ||
+      availability.blockingReason?.toUpperCase() === "TEMPLATE_INACTIVE"
+    ) {
+      friendlyStatus = "Unavailable (Template Inactive)";
+    } else if (
+      availability.blockingReason &&
+      availability.blockingReason.toUpperCase() !== "OPERATIONAL_STATUS_BLOCKED"
+    ) {
+      friendlyStatus = `Unavailable (${formatBlockingReason(availability.blockingReason)})`;
+    } else {
+      friendlyStatus = "Not Available";
+    }
+  }
+
+  return {
+    status: availability.isBookable ? "Available" : friendlyStatus,
+    blockingReason:
+      availability.blockingReason &&
+      availability.blockingReason.toUpperCase() !== "OPERATIONAL_STATUS_BLOCKED"
+        ? formatBlockingReason(availability.blockingReason)
+        : null,
+    operationalStatus: availability.operationalStatus
+      ? formatOperationalStatus(availability.operationalStatus)
+      : undefined,
+    templateIsActive:
+      typeof availability.templateIsActive === "boolean"
+        ? availability.templateIsActive
+          ? "Active Template"
+          : "Template Inactive"
+        : null,
+  };
+}
+
 export function formatMetadataValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return "N/A";
 
+  const keyLower = key.toLowerCase();
+
   if (typeof value === "boolean") {
+    if (keyLower.includes("bookable")) {
+      return value ? "Available" : "Not Available";
+    }
+    if (keyLower.includes("template_is_active") || keyLower.includes("templateisactive")) {
+      return value ? "Active Template" : "Template Inactive";
+    }
     return value ? "Yes" : "No";
   }
 
   if (typeof value === "number") {
-    const keyLower = key.toLowerCase();
     if (
       keyLower.includes("amount") ||
       keyLower.includes("fee") ||
@@ -378,6 +497,13 @@ export function formatMetadataValue(key: string, value: unknown): string {
   }
 
   if (typeof value === "string") {
+    if (keyLower === "operational_status" || keyLower === "operationalstatus") {
+      return formatOperationalStatus(value);
+    }
+    if (keyLower === "blocking_reason" || keyLower === "blockingreason") {
+      return formatBlockingReason(value);
+    }
+
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
       try {
         const d = new Date(value);
@@ -407,16 +533,53 @@ export function formatMetadataValue(key: string, value: unknown): string {
   }
 
   if (typeof value === "object") {
+    if (
+      keyLower.includes("availability") ||
+      "isBookable" in (value as Record<string, unknown>) ||
+      "is_bookable" in (value as Record<string, unknown>)
+    ) {
+      const availObj = value as Record<string, unknown>;
+      const isBookable =
+        typeof availObj.isBookable === "boolean"
+          ? availObj.isBookable
+          : typeof availObj.is_bookable === "boolean"
+          ? availObj.is_bookable
+          : undefined;
+      const blockingReason = (availObj.blockingReason ?? availObj.blocking_reason) as
+        | string
+        | null
+        | undefined;
+      const opStatus = (availObj.operationalStatus ?? availObj.operational_status) as
+        | string
+        | undefined;
+      const templateActive = (availObj.templateIsActive ?? availObj.template_is_active) as
+        | boolean
+        | undefined;
+
+      const avail = formatAvailability({
+        isBookable,
+        blockingReason,
+        operationalStatus: opStatus,
+        templateIsActive: templateActive,
+      });
+
+      return avail.status;
+    }
+
     const validEntries = Object.entries(value as Record<string, unknown>).filter(
-      ([subK, subV]) => !isRawId(subK, subV)
+      ([subK, subV]) => !isRawId(subK, subV) && subV !== null && subV !== undefined
     );
     if (validEntries.length === 0) return "None";
     return validEntries
       .map(
         ([k, v]) =>
-          `${formatMetadataKey(k)}: ${typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)}`
+          `${formatMetadataKey(k)}: ${
+            typeof v === "object" && v !== null
+              ? JSON.stringify(v)
+              : formatMetadataValue(k, v)
+          }`
       )
-      .join("; ");
+      .join(", ");
   }
 
   return String(value);

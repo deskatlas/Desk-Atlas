@@ -17,6 +17,10 @@ export class InMemorySettingsRepository implements SettingsRepository {
     timezone: 'Asia/Manila',
     contactEmail: 'contact@deskatlas.com',
     contactPhone: '+63 917 123 4567',
+    facebookUrl: null,
+    instagramUrl: null,
+    twitterUrl: null,
+    websiteUrl: null,
     bookingIntervalMinutes: 30,
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
@@ -85,6 +89,10 @@ export class InMemorySettingsRepository implements SettingsRepository {
   async getBusinessSettings(): Promise<BusinessSettings> {
     return {
       ...this.businessSettings,
+      facebookUrl: this.businessSettings.facebookUrl ?? null,
+      instagramUrl: this.businessSettings.instagramUrl ?? null,
+      twitterUrl: this.businessSettings.twitterUrl ?? null,
+      websiteUrl: this.businessSettings.websiteUrl ?? null,
       landingPreviewPhotos: this.businessSettings.landingPreviewPhotos
         ? [...this.businessSettings.landingPreviewPhotos]
         : [],
@@ -107,6 +115,10 @@ export class InMemorySettingsRepository implements SettingsRepository {
       timezone: input.timezone,
       contactEmail: input.contactEmail ?? null,
       contactPhone: input.contactPhone ?? null,
+      facebookUrl: input.facebookUrl !== undefined ? input.facebookUrl : this.businessSettings.facebookUrl,
+      instagramUrl: input.instagramUrl !== undefined ? input.instagramUrl : this.businessSettings.instagramUrl,
+      twitterUrl: input.twitterUrl !== undefined ? input.twitterUrl : this.businessSettings.twitterUrl,
+      websiteUrl: input.websiteUrl !== undefined ? input.websiteUrl : this.businessSettings.websiteUrl,
       bookingIntervalMinutes: input.bookingIntervalMinutes,
       paymentExpiryMinutes: input.paymentExpiryMinutes,
       kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
@@ -138,6 +150,10 @@ export class InMemorySettingsRepository implements SettingsRepository {
     };
     return {
       ...this.businessSettings,
+      facebookUrl: this.businessSettings.facebookUrl ?? null,
+      instagramUrl: this.businessSettings.instagramUrl ?? null,
+      twitterUrl: this.businessSettings.twitterUrl ?? null,
+      websiteUrl: this.businessSettings.websiteUrl ?? null,
       landingPreviewPhotos: this.businessSettings.landingPreviewPhotos
         ? [...this.businessSettings.landingPreviewPhotos]
         : [],

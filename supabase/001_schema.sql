@@ -274,6 +274,10 @@ CREATE TABLE public.business_settings (
   timezone text NOT NULL DEFAULT 'Asia/Manila',
   contact_email text,
   contact_phone text,
+  facebook_url text,
+  instagram_url text,
+  twitter_url text,
+  website_url text,
   booking_interval_minutes integer NOT NULL,
   payment_expiry_minutes integer NOT NULL DEFAULT 60,
   kiosk_timeout_minutes integer,
@@ -420,7 +424,8 @@ CREATE TABLE public.workspace_instances (
     ON DELETE RESTRICT,
 
   CONSTRAINT workspace_instances_code_nonblank CHECK (btrim(instance_code) <> ''),
-  CONSTRAINT workspace_instances_display_name_nonblank CHECK (btrim(display_name) <> '')
+  CONSTRAINT workspace_instances_display_name_nonblank CHECK (btrim(display_name) <> ''),
+  CONSTRAINT workspace_instances_template_display_name_unique UNIQUE (template_id, display_name)
 );
 
 CREATE TABLE public.schedule_blocks (

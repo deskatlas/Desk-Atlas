@@ -200,3 +200,4 @@ export * from './services/activityLogMemoryRepository';
 export * from './services/activityLogSupabaseRepository';
 export * from './services/reservationTabSegregation';
 export * from './services/paymentProofValidationService';
+export * from './services/kioskInactivityService';

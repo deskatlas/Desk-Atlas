@@ -906,7 +906,6 @@ export class ReservationMemoryRepository
 
   async listOperationalReservations(_nowIso: string): Promise<StaffOperationalReservation[]> {
     return this.reservations
-      .filter((reservation) => ["CONFIRMED", "CHECKED_IN", "COMPLETED", "PENDING_COUNTER_CONFIRMATION"].includes(reservation.status))
       .map((reservation) => this.buildOperationalReservation(reservation))
       .sort(compareOperationalReservations);
   }
@@ -1362,6 +1361,9 @@ export class ReservationMemoryRepository
       rateSnapshot: reservation.rateSnapshot,
       bookedRatePerHour: reservation.rateSnapshot,
       amountDue: reservation.amountDue,
+      cancellationReason: (reservation as any).cancellationReason ?? (reservation as any).cancellation_reason ?? null,
+      cancelledAt: (reservation as any).cancelledAt ?? (reservation as any).cancelled_at ?? null,
+      cancelledByUserId: (reservation as any).cancelledByUserId ?? (reservation as any).cancelled_by_user_id ?? null,
     };
   }
 
@@ -1462,6 +1464,9 @@ export class ReservationMemoryRepository
         paymentMethodId: latestAttempt?.paymentMethodId ?? null,
         paymentMethodType: method?.methodType ?? null,
         paymentMethodDisplayName: method?.displayName ?? null,
+        cancellationReason: (r as any).cancellationReason ?? (r as any).cancellation_reason ?? null,
+        cancelledAt: (r as any).cancelledAt ?? (r as any).cancelled_at ?? null,
+        cancelledByUserId: (r as any).cancelledByUserId ?? (r as any).cancelled_by_user_id ?? null,
       };
     });
   }
@@ -1928,6 +1933,39 @@ export class ReservationMemoryRepository
       if (startMin < openMin || endMin > closeMin || startMin >= closeMin) {
         throw new Error(`Cannot reschedule outside business operating hours (${openTime} - ${closeTime}).`);
       }
+    } else if (is24Hours && newEndMs > targetDayEndMs) {
+      // Overnight check on the following date
+      let nextDateStr = "";
+      try {
+        nextDateStr = new Intl.DateTimeFormat("en-CA", {
+          timeZone: timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(input.endAt));
+      } catch {
+        nextDateStr = input.endAt.split("T")[0];
+      }
+
+      const [ny, nm, nd] = nextDateStr.split("-").map(Number);
+      const nextDayOfWeek = new Date(Date.UTC(ny, nm - 1, nd)).getUTCDay();
+
+      const nextDayIntervals = (this.operatingHoursMap.get(nextDayOfWeek) ?? [])
+        .filter((i) => i.isActive !== false);
+
+      const nextDayStartMs = new Date(`${nextDateStr}T00:00:00+08:00`).getTime();
+      const nextDayEndMs = new Date(`${nextDateStr}T23:59:59.999+08:00`).getTime();
+
+      const nextDayBlocked = this.businessScheduleBlocks.some((b) => {
+        const bStartMs = new Date(b.startAt).getTime();
+        const bEndMs = new Date(b.endAt).getTime();
+        return bStartMs < nextDayEndMs && bEndMs > nextDayStartMs && bStartMs < newEndMs;
+      });
+
+      const nextDayClosed = nextDayBlocked || (hasConfiguredOperatingHours && nextDayIntervals.length === 0);
+      if (nextDayClosed) {
+        throw new Error("Cannot reschedule overnight: the facility is closed during overnight hours on the following date.");
+      }
     }
 
     // Check conflict with other reservations
@@ -2101,6 +2139,39 @@ export class ReservationMemoryRepository
             available = false;
             reason = `Selected time is outside operating hours (${openTime} - ${closeTime})`;
           }
+        } else if (is24Hours && newEndMs > targetDayEndMs) {
+          let nextDateStr = "";
+          try {
+            nextDateStr = new Intl.DateTimeFormat("en-CA", {
+              timeZone: timezone,
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(new Date(input.endAt));
+          } catch {
+            nextDateStr = input.endAt.split("T")[0];
+          }
+
+          const [ny, nm, nd] = nextDateStr.split("-").map(Number);
+          const nextDayOfWeek = new Date(Date.UTC(ny, nm - 1, nd)).getUTCDay();
+
+          const nextDayIntervals = (this.operatingHoursMap.get(nextDayOfWeek) ?? [])
+            .filter((i) => i.isActive !== false);
+
+          const nextDayStartMs = new Date(`${nextDateStr}T00:00:00+08:00`).getTime();
+          const nextDayEndMs = new Date(`${nextDateStr}T23:59:59.999+08:00`).getTime();
+
+          const nextDayBlocked = this.businessScheduleBlocks.some((b) => {
+            const bStartMs = new Date(b.startAt).getTime();
+            const bEndMs = new Date(b.endAt).getTime();
+            return bStartMs < nextDayEndMs && bEndMs > nextDayStartMs && bStartMs < newEndMs;
+          });
+
+          const nextDayClosed = nextDayBlocked || (hasConfiguredOperatingHours && nextDayIntervals.length === 0);
+          if (nextDayClosed) {
+            available = false;
+            reason = "The facility is closed during overnight hours on the following date.";
+          }
         }
 
         if (available) {
@@ -2135,8 +2206,9 @@ export class ReservationMemoryRepository
       if (isClosed) {
         slots = [];
       } else {
+        const intervalMinutes = 30;
         let startMinute = 0;
-        let maxStartMinute = 1440 - durationMin;
+        let maxStartMinute = 1440 - intervalMinutes;
 
         if (!is24Hours && dayIntervals.length > 0) {
           const [oH, oM] = openTime.split(":").map(Number);
@@ -2147,7 +2219,6 @@ export class ReservationMemoryRepository
           maxStartMinute = closeMin - durationMin;
         }
 
-        const intervalMinutes = 30;
         const generatedSlots: RescheduleSlotAvailability[] = [];
 
         for (let m = startMinute; m <= maxStartMinute; m += intervalMinutes) {

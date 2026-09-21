@@ -256,6 +256,7 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
 
   async createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     await this.assertUniqueInstanceCode(input.instanceCode);
+    await this.assertUniqueDisplayName(input.templateId, input.displayName);
     const [row] = await this.request<InstanceRow[]>(
       "/workspace_instances?select=*,template:workspace_templates(*),floor:floors(*)",
       {
@@ -271,6 +272,12 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     id: string,
     input: UpdateWorkspaceInstanceInput
   ): Promise<WorkspaceInstanceDetails> {
+    if (input.displayName !== undefined) {
+      const existing = await this.getInstance(id);
+      if (input.displayName.trim().toLowerCase() !== existing.displayName.trim().toLowerCase()) {
+        await this.assertUniqueDisplayName(existing.templateId, input.displayName, id);
+      }
+    }
     const [row] = await this.request<InstanceRow[]>(
       `/workspace_instances?id=eq.${encodeURIComponent(id)}&select=*,template:workspace_templates(*),floor:floors(*)`,
       {
@@ -393,6 +400,18 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     );
     if (rows.length > 0) {
       throw new WorkspaceConflictError(`Instance code already exists: ${instanceCode}`);
+    }
+  }
+
+  private async assertUniqueDisplayName(templateId: string, displayName: string, excludeId?: string) {
+    let query = `/workspace_instances?select=id&template_id=eq.${encodeURIComponent(templateId)}&display_name=ilike.${encodeURIComponent(displayName)}`;
+    if (excludeId) {
+      query += `&id=neq.${encodeURIComponent(excludeId)}`;
+    }
+    query += '&limit=1';
+    const rows = await this.request<Array<{ id: string }>>(query);
+    if (rows.length > 0) {
+      throw new WorkspaceConflictError(`Instance name '${displayName}' already exists for this template`);
     }
   }
 

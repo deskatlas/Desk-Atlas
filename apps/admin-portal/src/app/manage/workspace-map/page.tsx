@@ -553,9 +553,11 @@ export default function WorkspaceMapPage() {
                   const isAmenity = el.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit;
                   const isKioskMarker =
                     el.elementType === 'KIOSK_YOU_ARE_HERE' ||
+                    el.elementType === 'kiosk' ||
                     el.elementRole === 'INFORMATION' ||
                     el.properties?.markerType === 'KIOSK_YOU_ARE_HERE' ||
-                    el.label?.toLowerCase() === 'you are here';
+                    el.label?.toLowerCase() === 'you are here' ||
+                    el.label?.toLowerCase() === 'kiosk';
 
                   let defaultAmenityColor = '#F3F7F4';
                   if (isRestroom) defaultAmenityColor = '#E0F2FE';
@@ -563,7 +565,7 @@ export default function WorkspaceMapPage() {
                   else if (isEmergencyExit) defaultAmenityColor = '#DCFCE7';
 
                   const defaultStructureColor = isWindow ? 'rgba(56, 189, 248, 0.25)' : (isStairs ? '#E2E8F0' : (isWall ? '#334155' : '#F3F7F4'));
-                  const displayName = inst?.displayName || el.label || (isKioskMarker ? 'You Are Here' : (tmpl?.name || formatStructureLabel(el.elementType)));
+                  const displayName = inst?.displayName || el.label || (isKioskMarker ? 'Kiosk' : (tmpl?.name || formatStructureLabel(el.elementType)));
                   const itemColor = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : defaultStructureColor)));
 
                   const occupancy = isWorkspace && el.workspaceInstanceId ? occupancyByInstanceId.get(el.workspaceInstanceId) : null;
@@ -669,7 +671,7 @@ export default function WorkspaceMapPage() {
                           </div>
                         ) : isKioskMarker ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Kiosk">
                               <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" fill="#ffffff" stroke="#DC2626" strokeWidth="1.5" />
                               <circle cx="12" cy="10" r="3" fill="#DC2626" />
                             </svg>

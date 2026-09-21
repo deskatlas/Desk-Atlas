@@ -48,6 +48,12 @@ export function createAdminSettingsService(repository: SettingsRepository) {
     async getPublicBusinessSettings(): Promise<{
       businessName: string;
       timezone: string;
+      contactEmail?: string | null;
+      contactPhone?: string | null;
+      facebookUrl?: string | null;
+      instagramUrl?: string | null;
+      twitterUrl?: string | null;
+      websiteUrl?: string | null;
       customerSessionTimeoutMinutes: number;
       customerRescheduleCutoffHours: number;
       bookingIntervalMinutes: number;
@@ -63,6 +69,12 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       return {
         businessName: businessSettings.businessName,
         timezone: businessSettings.timezone,
+        contactEmail: businessSettings.contactEmail ?? null,
+        contactPhone: businessSettings.contactPhone ?? null,
+        facebookUrl: businessSettings.facebookUrl ?? null,
+        instagramUrl: businessSettings.instagramUrl ?? null,
+        twitterUrl: businessSettings.twitterUrl ?? null,
+        websiteUrl: businessSettings.websiteUrl ?? null,
         customerSessionTimeoutMinutes: businessSettings.customerSessionTimeoutMinutes ?? 20,
         customerRescheduleCutoffHours: businessSettings.customerRescheduleCutoffHours ?? 12,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
@@ -622,11 +634,20 @@ function normalizeBusinessSettingsInput(
     normalizedStatusColors = normalizeWorkspaceStatusColors(input.statusColors);
   }
 
+  const facebookUrl = validateOptionalUrl(input.facebookUrl, 'Facebook URL');
+  const instagramUrl = validateOptionalUrl(input.instagramUrl, 'Instagram URL');
+  const twitterUrl = validateOptionalUrl(input.twitterUrl, 'Twitter URL');
+  const websiteUrl = validateOptionalUrl(input.websiteUrl, 'Website URL');
+
   return {
     businessName: input.businessName.trim(),
     timezone: input.timezone.trim(),
     contactEmail: input.contactEmail?.trim() || null,
     contactPhone: input.contactPhone?.trim() || null,
+    facebookUrl,
+    instagramUrl,
+    twitterUrl,
+    websiteUrl,
     bookingIntervalMinutes: input.bookingIntervalMinutes,
     paymentExpiryMinutes: input.paymentExpiryMinutes,
     kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
@@ -655,6 +676,19 @@ function normalizeBusinessSettingsInput(
     cancellationPolicyUpdatedAt:
       input.cancellationPolicyUpdatedAt !== undefined ? input.cancellationPolicyUpdatedAt : undefined,
   };
+}
+
+function validateOptionalUrl(url: string | null | undefined, fieldName: string): string | null {
+  if (url === undefined || url === null) return null;
+  if (typeof url !== 'string') {
+    throw new SettingsValidationError(`${fieldName} must be a string`);
+  }
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    throw new SettingsValidationError(`${fieldName} must be a valid URL starting with http:// or https://`);
+  }
+  return trimmed;
 }
 
 function normalizeOperatingHoursInput(

@@ -11,8 +11,9 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const filterParam = (searchParams.get("filter") ?? "active") as AdminReservationFilter;
+    let filterParam = (searchParams.get("filter") ?? "active") as AdminReservationFilter;
     const searchParam = searchParams.get("search") ?? undefined;
+    const statusParam = searchParams.get("status") ?? searchParams.get("reservationStatus") ?? undefined;
 
     const datePreset = (searchParams.get("datePreset") ?? undefined) as DateRangePreset | undefined;
     const startDate = searchParams.get("startDate") ?? searchParams.get("from") ?? undefined;
@@ -20,7 +21,12 @@ export async function GET(request: NextRequest) {
     const workspaceTemplate = searchParams.get("workspaceTemplate") ?? searchParams.get("template") ?? undefined;
     const paymentMethod = searchParams.get("paymentMethod") ?? undefined;
     const paymentStatus = searchParams.get("paymentStatus") ?? undefined;
+    const status = statusParam;
     const source = searchParams.get("source") ?? undefined;
+
+    if (statusParam && statusParam.trim().toUpperCase() === "CANCELLED" && filterParam === "active") {
+      filterParam = "cancelled";
+    }
 
     const hasAdvanced =
       Boolean(datePreset) ||
@@ -29,6 +35,7 @@ export async function GET(request: NextRequest) {
       Boolean(workspaceTemplate) ||
       Boolean(paymentMethod) ||
       Boolean(paymentStatus) ||
+      Boolean(status) ||
       Boolean(source);
 
     const advancedFilters: AdminReservationAdvancedFilters | undefined = hasAdvanced
@@ -39,6 +46,7 @@ export async function GET(request: NextRequest) {
           workspaceTemplate,
           paymentMethod,
           paymentStatus,
+          status,
           source,
         }
       : undefined;

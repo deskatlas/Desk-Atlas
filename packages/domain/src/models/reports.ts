@@ -1,3 +1,5 @@
+import type { ReservationStatus } from "./reservation";
+
 export type AdminReportCategoryId =
   | "workspace"
   | "reservations"
@@ -22,16 +24,7 @@ export interface ReportReservationRecord {
   customerFirstName: string;
   customerLastName: string;
   customerEmail: string;
-  reservationStatus:
-    | "PENDING_PAYMENT"
-    | "PAYMENT_UNDER_REVIEW"
-    | "PENDING_COUNTER_CONFIRMATION"
-    | "CONFIRMED"
-    | "NEEDS_MANUAL_RESOLUTION"
-    | "CHECKED_IN"
-    | "COMPLETED"
-    | "CANCELLED"
-    | "EXPIRED";
+  reservationStatus: ReservationStatus;
   amountDue: number;
   currency: string;
   createdAt: string;

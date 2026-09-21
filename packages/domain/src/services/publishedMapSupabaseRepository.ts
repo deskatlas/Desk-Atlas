@@ -13,6 +13,7 @@ import type {
   PublishedMapVersion,
   PublishedWorkspaceSummary,
 } from '../models/publishedMap';
+import { normalizeAmenityTag } from '../models/amenities';
 import { getWorkspaceAvailabilityStatus } from './workspaceService';
 
 type FloorRow = {
@@ -272,13 +273,16 @@ function extractRecommendationTags(props: Record<string, unknown> | null | undef
   if (!props) return undefined;
   const tagsCandidate = props.recommendationTags ?? props.recommendations ?? props.tags;
   if (Array.isArray(tagsCandidate)) {
-    const list = tagsCandidate.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+    const list = tagsCandidate
+      .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+      .map((tag) => normalizeAmenityTag(tag));
     return list.length > 0 ? list : undefined;
   }
   if (typeof tagsCandidate === 'object' && tagsCandidate !== null) {
     const flattened = Object.values(tagsCandidate)
       .flat()
-      .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+      .filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+      .map((tag) => normalizeAmenityTag(tag));
     return flattened.length > 0 ? flattened : undefined;
   }
   return undefined;

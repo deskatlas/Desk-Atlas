@@ -17,6 +17,10 @@ type BusinessSettingsRow = {
   timezone: string;
   contact_email: string | null;
   contact_phone: string | null;
+  facebook_url?: string | null;
+  instagram_url?: string | null;
+  twitter_url?: string | null;
+  website_url?: string | null;
   booking_interval_minutes: number;
   payment_expiry_minutes: number;
   kiosk_timeout_minutes: number | null;
@@ -90,11 +94,11 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   async getBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
-      // Fallback if booking_end_alert_minutes or kiosk_allowance_minutes or cancellation policy or status_colors columns are not yet present on remote
+      // Fallback if social links columns are not yet present on remote
       return this.request<BusinessSettingsRow[]>(
-        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
       ).catch(async () => {
         // Fallback if cancellation policy or status_colors columns are not yet present on remote
         return this.request<BusinessSettingsRow[]>(
@@ -120,6 +124,10 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         timezone: 'Asia/Manila',
         contactEmail: null,
         contactPhone: null,
+        facebookUrl: null,
+        instagramUrl: null,
+        twitterUrl: null,
+        websiteUrl: null,
         bookingIntervalMinutes: 30,
         paymentExpiryMinutes: 60,
         kioskTimeoutMinutes: 5,
@@ -141,6 +149,10 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       timezone: row.timezone,
       contactEmail: row.contact_email,
       contactPhone: row.contact_phone,
+      facebookUrl: row.facebook_url ?? null,
+      instagramUrl: row.instagram_url ?? null,
+      twitterUrl: row.twitter_url ?? null,
+      websiteUrl: row.website_url ?? null,
       bookingIntervalMinutes: row.booking_interval_minutes,
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
@@ -166,6 +178,10 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       timezone: input.timezone,
       contact_email: input.contactEmail,
       contact_phone: input.contactPhone,
+      facebook_url: input.facebookUrl !== undefined ? input.facebookUrl : null,
+      instagram_url: input.instagramUrl !== undefined ? input.instagramUrl : null,
+      twitter_url: input.twitterUrl !== undefined ? input.twitterUrl : null,
+      website_url: input.websiteUrl !== undefined ? input.websiteUrl : null,
       booking_interval_minutes: input.bookingIntervalMinutes,
       payment_expiry_minutes: input.paymentExpiryMinutes,
       kiosk_timeout_minutes: input.kioskTimeoutMinutes,
@@ -210,15 +226,20 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         body: JSON.stringify(payload),
       });
     } catch {
-      // If status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes columns don't exist yet in Supabase, retry without them
+      // If status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes or social links columns don't exist yet in Supabase, retry without them
       const fallbackPayload = { ...payload };
       delete fallbackPayload.status_colors;
       delete fallbackPayload.customer_session_timeout_minutes;
+      delete fallbackPayload.customer_reschedule_cutoff_hours;
       delete fallbackPayload.kiosk_allowance_minutes;
       delete fallbackPayload.booking_end_alert_minutes;
       delete fallbackPayload.cancellation_policy_pdf_url;
       delete fallbackPayload.cancellation_policy_pdf_filename;
       delete fallbackPayload.cancellation_policy_updated_at;
+      delete fallbackPayload.facebook_url;
+      delete fallbackPayload.instagram_url;
+      delete fallbackPayload.twitter_url;
+      delete fallbackPayload.website_url;
       rows = await this.request<BusinessSettingsRow[]>('/business_settings?id=eq.1', {
         method: 'PATCH',
         headers: {
@@ -244,11 +265,16 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         const fallbackInsert = { id: 1, ...payload };
         delete (fallbackInsert as any).status_colors;
         delete (fallbackInsert as any).customer_session_timeout_minutes;
+        delete (fallbackInsert as any).customer_reschedule_cutoff_hours;
         delete (fallbackInsert as any).kiosk_allowance_minutes;
         delete (fallbackInsert as any).booking_end_alert_minutes;
         delete (fallbackInsert as any).cancellation_policy_pdf_url;
         delete (fallbackInsert as any).cancellation_policy_pdf_filename;
         delete (fallbackInsert as any).cancellation_policy_updated_at;
+        delete (fallbackInsert as any).facebook_url;
+        delete (fallbackInsert as any).instagram_url;
+        delete (fallbackInsert as any).twitter_url;
+        delete (fallbackInsert as any).website_url;
         const insertRows = await this.request<BusinessSettingsRow[]>('/business_settings', {
           method: 'POST',
           headers: {
@@ -270,6 +296,10 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       timezone: row.timezone,
       contactEmail: row.contact_email,
       contactPhone: row.contact_phone,
+      facebookUrl: row.facebook_url !== undefined ? row.facebook_url : (input.facebookUrl ?? null),
+      instagramUrl: row.instagram_url !== undefined ? row.instagram_url : (input.instagramUrl ?? null),
+      twitterUrl: row.twitter_url !== undefined ? row.twitter_url : (input.twitterUrl ?? null),
+      websiteUrl: row.website_url !== undefined ? row.website_url : (input.websiteUrl ?? null),
       bookingIntervalMinutes: row.booking_interval_minutes,
       paymentExpiryMinutes: row.payment_expiry_minutes,
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,

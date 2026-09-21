@@ -1,18 +1,9 @@
-import { BookingAccessState } from "../models/reservation";
+import { BookingAccessState, ReservationStatus } from "../models/reservation";
 
 export interface BookingAccessRecord {
   reservationId: string;
   referenceCode: string;
-  reservationStatus:
-    | "PENDING_PAYMENT"
-    | "PAYMENT_UNDER_REVIEW"
-    | "PENDING_COUNTER_CONFIRMATION"
-    | "CONFIRMED"
-    | "NEEDS_MANUAL_RESOLUTION"
-    | "CHECKED_IN"
-    | "COMPLETED"
-    | "CANCELLED"
-    | "EXPIRED";
+  reservationStatus: ReservationStatus;
   customerFirstName: string;
   customerLastName: string;
   customerEmail?: string;

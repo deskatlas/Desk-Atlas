@@ -35,6 +35,10 @@ export interface BusinessSettings {
   timezone: string;
   contactEmail: string | null;
   contactPhone: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  twitterUrl?: string | null;
+  websiteUrl?: string | null;
   bookingIntervalMinutes: number;
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes: number | null;
@@ -85,6 +89,10 @@ export interface UpdateBusinessSettingsInput {
   timezone: string;
   contactEmail?: string | null;
   contactPhone?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  twitterUrl?: string | null;
+  websiteUrl?: string | null;
   bookingIntervalMinutes: number;
   paymentExpiryMinutes: number;
   kioskTimeoutMinutes?: number | null;

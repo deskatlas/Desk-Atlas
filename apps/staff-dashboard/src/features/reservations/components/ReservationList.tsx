@@ -11,7 +11,6 @@ import {
   getStaffReservationTabCounts,
   STAFF_RESERVATIONS_TAB_FILTERS,
   STAFF_OPERATIONS_TAB_FILTERS,
-  STAFF_COMPLETED_TAB_FILTERS,
   STAFF_EXPIRED_TAB_FILTERS,
   sortStaffReservationsBySchedule,
   paginateList,
@@ -22,7 +21,6 @@ import {
   type ReservationTabType,
   type StaffReservationsSubFilter,
   type StaffOperationsSubFilter,
-  type StaffCompletedSubFilter,
   type StaffExpiredSubFilter,
 } from '@deskatlas/domain';
 
@@ -38,6 +36,8 @@ function getStatusDisplay(status: ReservationStatus) {
       return { label: 'Counter Queue', color: 'var(--da-brand-dark)', bg: 'var(--da-soft)' };
     case 'EXPIRED':
       return { label: 'Expired', color: 'var(--da-text-secondary)', bg: 'var(--da-canvas)' };
+    case 'REJECTED':
+      return { label: 'Rejected', color: 'var(--da-danger)', bg: '#FEE2E2' };
     case 'CANCELLED':
       return { label: 'Cancelled', color: 'var(--da-danger)', bg: '#FEE2E2' };
     default:
@@ -66,7 +66,6 @@ export function ReservationList() {
   const [activeTab, setActiveTab] = useState<ReservationTabType>(initialTab);
   const [reservationsSubFilter, setReservationsSubFilter] = useState<StaffReservationsSubFilter>('all');
   const [operationsSubFilter, setOperationsSubFilter] = useState<StaffOperationsSubFilter>('all');
-  const [completedSubFilter, setCompletedSubFilter] = useState<StaffCompletedSubFilter>('all');
   const [expiredSubFilter, setExpiredSubFilter] = useState<StaffExpiredSubFilter>('all');
   const [timeSort, setTimeSort] = useState<ReservationSortDirection | 'none'>('none');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -107,7 +106,7 @@ export function ReservationList() {
       : activeTab === 'operations'
       ? operationsSubFilter
       : activeTab === 'completed'
-      ? completedSubFilter
+      ? 'all'
       : expiredSubFilter;
 
   const tabFiltered = filterStaffReservationsByTab(reservations, activeTab, currentSubFilter, currentTick);
@@ -116,11 +115,11 @@ export function ReservationList() {
     ? sortStaffReservationsBySchedule(searchFiltered, timeSort)
     : searchFiltered;
   const totalCount = reservations.length;
-  const isFiltered = currentSubFilter !== 'all' || Boolean(searchQuery.trim()) || timeSort !== 'none';
+  const isFiltered = (activeTab !== 'completed' && currentSubFilter !== 'all') || Boolean(searchQuery.trim()) || timeSort !== 'none';
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, reservationsSubFilter, operationsSubFilter, completedSubFilter, expiredSubFilter, searchQuery, timeSort]);
+  }, [activeTab, reservationsSubFilter, operationsSubFilter, expiredSubFilter, searchQuery, timeSort]);
 
   const pagination = paginateList(displayedReservations, currentPage, 15);
   const paginatedReservations = pagination.items;
@@ -141,9 +140,8 @@ export function ReservationList() {
     if (activeTab === 'reservations') {
       switch (reservationsSubFilter) {
         case 'upcoming':
-          return 'No upcoming reservations scheduled.';
         case 'confirmed':
-          return 'No confirmed reservations found.';
+          return 'No upcoming reservations scheduled.';
         case 'counter_queue':
           return 'No counter queue reservations found.';
         case 'all':
@@ -418,31 +416,7 @@ export function ReservationList() {
                   );
                 })
               : activeTab === 'completed'
-              ? STAFF_COMPLETED_TAB_FILTERS.map((f, i) => {
-                  const isActive = completedSubFilter === f.filter;
-                  const filterStyle = isActive
-                    ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
-                    : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setCompletedSubFilter(f.filter)}
-                      style={{
-                        padding: '7px 14px',
-                        borderRadius: '9999px',
-                        whiteSpace: 'nowrap',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
-                        ...filterStyle,
-                      }}
-                    >
-                      {f.label}
-                    </button>
-                  );
-                })
+              ? null
               : STAFF_EXPIRED_TAB_FILTERS.map((f, i) => {
                   const isActive = expiredSubFilter === f.filter;
                   const filterStyle = isActive

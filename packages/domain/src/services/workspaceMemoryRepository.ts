@@ -161,6 +161,7 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
   async createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     this.requireUniqueCode(input.instanceCode);
     const template = this.requireTemplate(input.templateId);
+    this.requireUniqueDisplayName(template.id, input.displayName);
     const floor = this.requireFloor(input.floorId);
     const operationalStatus = input.operationalStatus ?? 'ACTIVE';
     const instance: WorkspaceInstanceDetails = {
@@ -180,6 +181,9 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
   async updateInstance(id: string, input: UpdateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     const existing = this.requireInstance(id);
+    if (input.displayName !== undefined && input.displayName.trim().toLowerCase() !== existing.displayName.trim().toLowerCase()) {
+      this.requireUniqueDisplayName(existing.templateId, input.displayName, existing.id);
+    }
     const newStatus = input.operationalStatus ?? existing.operationalStatus;
     let newNote = existing.maintenanceNote ?? null;
     if (newStatus === 'MAINTENANCE') {
@@ -322,6 +326,18 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     const floor = this.floors.get(id);
     if (!floor) throw new WorkspaceValidationError(`Floor not found: ${id}`);
     return floor;
+  }
+
+  private requireUniqueDisplayName(templateId: string, displayName: string, excludeId?: string) {
+    const exists = Array.from(this.instances.values()).some(
+      (instance) =>
+        instance.templateId === templateId &&
+        instance.id !== excludeId &&
+        instance.displayName.trim().toLowerCase() === displayName.trim().toLowerCase()
+    );
+    if (exists) {
+      throw new WorkspaceConflictError(`Instance name '${displayName}' already exists for this template`);
+    }
   }
 
   private requireInstance(id: string): WorkspaceInstanceDetails {

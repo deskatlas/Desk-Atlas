@@ -20,6 +20,7 @@ import {
   AUTOSAVE_DEBOUNCE_MS,
   NAVIGATION_WARNING_MESSAGE,
   WORKSPACE_AMENITY_CATEGORIES,
+  normalizeAmenityTag,
   type CustomStructureTemplate,
 } from '@deskatlas/domain';
 import { useNavigationGuard } from '../hooks/useNavigationGuard';
@@ -118,6 +119,15 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
 function getStructureIcon(name: string, color?: string) {
   const norm = (name || '').toLowerCase();
   const iconColor = color || 'var(--da-text-secondary, #64748B)';
+
+  if (norm.includes('kiosk') || norm.includes('you are here')) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Kiosk">
+        <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" stroke="#DC2626" strokeWidth="1.5" fill="none" />
+        <circle cx="12" cy="10" r="3" fill="#DC2626" />
+      </svg>
+    );
+  }
 
   if (norm.includes('window')) {
     return (
@@ -441,9 +451,11 @@ export function MapEditor() {
           !isWorkspace &&
           (el.elementType === 'KIOSK_YOU_ARE_HERE' ||
             el.elementType === 'kiosk_marker' ||
+            el.elementType?.toLowerCase() === 'kiosk' ||
             el.elementRole === 'INFORMATION' ||
             el.properties?.markerType === 'KIOSK_YOU_ARE_HERE' ||
-            el.label?.toLowerCase() === 'you are here');
+            el.label?.toLowerCase() === 'you are here' ||
+            el.label?.toLowerCase() === 'kiosk');
 
         let defaultAmenityColor = '#F3F7F4';
         if (isRestroom) defaultAmenityColor = '#E0F2FE';
@@ -458,7 +470,7 @@ export function MapEditor() {
 
         const defaultStructureColor = isWindow ? 'rgba(56, 189, 248, 0.25)' : (isStairs ? '#E2E8F0' : '#F3F7F4');
         const color = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : defaultStructureColor)));
-        const displayName = el.label || (isKioskMarker ? 'You Are Here' : (inst?.displayName || tmpl?.name || el.elementType));
+        const displayName = el.label || (isKioskMarker ? 'Kiosk' : (inst?.displayName || tmpl?.name || el.elementType));
 
         const isRect = isWorkspace
           ? (el.elementType?.toLowerCase() === 'rectangle' || el.elementType?.toLowerCase() === 'rect' || tmpl?.defaultShape?.toLowerCase() === 'rectangle' || tmpl?.defaultShape?.toLowerCase() === 'rect')
@@ -482,13 +494,16 @@ export function MapEditor() {
           else normType = 'generic';
         }
 
-        const recommendationTags = Array.isArray(el.properties?.recommendationTags)
+        const rawRecommendationTags = Array.isArray(el.properties?.recommendationTags)
           ? el.properties.recommendationTags
           : Array.isArray(el.properties?.tags)
             ? el.properties.tags
             : Array.isArray(el.properties?.recommendations)
               ? el.properties.recommendations
               : [];
+        const recommendationTags = rawRecommendationTags.map((tag: string) =>
+          typeof tag === 'string' ? normalizeAmenityTag(tag) : String(tag)
+        );
 
         return {
           id: el.id,
@@ -654,10 +669,35 @@ export function MapEditor() {
 
     try {
       setActionLoading(true);
-      const floor = floors.find(f => f.id === selectedFloorId);
+      const templateName = tpl.name.trim();
+      let maxSequence = 0;
+      const existingForTemplate = [
+        ...instances.filter((i: any) => i.templateId === tpl.id),
+        ...builderObjects.filter((o: any) => o.template === tpl.name),
+      ];
+
+      const escapedTplName = templateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      for (const item of existingForTemplate) {
+        const name = (item.displayName || item.name || '').trim();
+        const match = new RegExp(`^${escapedTplName}\\s+(\\d+)$`, 'i').exec(name);
+        if (match) {
+          maxSequence = Math.max(maxSequence, parseInt(match[1], 10));
+        }
+      }
+
+      let nextNum = maxSequence + 1;
+      let displayName = `${templateName} ${nextNum}`;
+      const usedNames = new Set(
+        existingForTemplate.map((item: any) => (item.displayName || item.name || '').trim().toLowerCase())
+      );
+      while (usedNames.has(displayName.toLowerCase())) {
+        nextNum += 1;
+        displayName = `${templateName} ${nextNum}`;
+      }
+
+      const codePrefix = templateName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'WS';
       const codeSuffix = String(Math.floor(1000 + Math.random() * 9000));
-      const instanceCode = `${tpl.name.substring(0, 3).toUpperCase()}-${codeSuffix}`;
-      const displayName = `${tpl.name} ${builderObjects.filter(o => o.template === tpl.name).length + 1}`;
+      const instanceCode = `${codePrefix}-${codeSuffix}`;
 
       // Create instance in DB
       const res = await fetch('/api/admin/workspaces/instances', {
@@ -675,7 +715,14 @@ export function MapEditor() {
       let instanceId: string | null = null;
       if (res.ok) {
         const instData = await res.json();
-        instanceId = instData.instance?.id || instData.id;
+        const createdInstance = instData.instance || instData;
+        instanceId = createdInstance?.id;
+        if (createdInstance) {
+          setInstances(prev => [...prev.filter(i => i.id !== createdInstance.id), createdInstance]);
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create workspace instance');
       }
 
       const shape = tpl.defaultShape || 'desk';
@@ -722,6 +769,11 @@ export function MapEditor() {
   const handleAddStructure = (type: string) => {
     if (!selectedFloorId) {
       setShowFloorModal(true);
+      return;
+    }
+
+    if (type.toLowerCase() === 'kiosk' || type.toLowerCase().includes('kiosk') || type.toLowerCase().includes('you are here')) {
+      handleAddKioskMarker();
       return;
     }
 
@@ -980,7 +1032,7 @@ export function MapEditor() {
     }
   };
 
-  // Add Kiosk "You Are Here" Marker (enforce at most 1 per floor)
+  // Add Kiosk Marker (enforce at most 1 per floor)
   const handleAddKioskMarker = () => {
     if (!selectedFloorId) {
       setShowFloorModal(true);
@@ -988,7 +1040,12 @@ export function MapEditor() {
     }
 
     const existingIndex = builderObjects.findIndex(
-      (o) => o.elementType === 'KIOSK_YOU_ARE_HERE' || o.elementRole === 'INFORMATION'
+      (o) =>
+        o.elementType === 'KIOSK_YOU_ARE_HERE' ||
+        o.elementType === 'kiosk' ||
+        o.elementRole === 'INFORMATION' ||
+        o.name?.toLowerCase() === 'kiosk' ||
+        o.name?.toLowerCase() === 'you are here'
     );
 
     if (existingIndex >= 0) {
@@ -1002,7 +1059,7 @@ export function MapEditor() {
 
     const newObj = {
       id: 'kiosk-marker-' + Date.now(),
-      name: 'You Are Here',
+      name: 'Kiosk',
       x: 100,
       y: 100,
       w: 80,
@@ -1344,8 +1401,10 @@ export function MapEditor() {
         const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
         const isKioskMarker = !isWorkspace && (
           obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
+          obj.elementType === 'kiosk' ||
           obj.elementRole === 'INFORMATION' ||
-          obj.name?.toLowerCase() === 'you are here'
+          obj.name?.toLowerCase() === 'you are here' ||
+          obj.name?.toLowerCase() === 'kiosk'
         );
         const fixedThickness = isThinWall ? 10 : 20;
 
@@ -1384,7 +1443,7 @@ export function MapEditor() {
                 : (isWall ? fixedThickness : Math.max(20, Math.round(obj.h))))),
           rotation: (obj.rotation || 0) as 0 | 90 | 180 | 270,
           zIndex: index + 1,
-          label: obj.name || (isKioskMarker ? 'You Are Here' : null),
+          label: obj.name || (isKioskMarker ? 'Kiosk' : null),
           properties: {
             ...(obj.properties || {}),
             color: obj.color,
@@ -1649,6 +1708,7 @@ export function MapEditor() {
     'Restroom',
     'Pantry',
     'Emergency Exit',
+    'Kiosk',
   ];
 
   const publishChecks = [
@@ -1975,19 +2035,6 @@ export function MapEditor() {
               + Add Custom Structure
             </button>
           </div>
-
-          <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--da-text-secondary)', letterSpacing: '.05em', margin: '16px 0 8px', fontFamily: 'var(--da-font-family)' }}>KIOSK ORIENTATION</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderTop: '1px solid var(--da-border-light)' }}>
-            <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>📍</span> You Are Here
-            </span>
-            <button
-              onClick={handleAddKioskMarker}
-              style={{ border: '1px solid var(--da-border)', background: 'var(--da-canvas)', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-            >
-              {builderObjects.some(o => o.elementType === 'KIOSK_YOU_ARE_HERE' || o.elementRole === 'INFORMATION') ? 'Select' : '+ Add'}
-            </button>
-          </div>
         </aside>
 
         {/* Canvas Area */}
@@ -2064,8 +2111,10 @@ export function MapEditor() {
                 const isKioskMarker =
                   !isWorkspace &&
                   (obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
+                    obj.elementType === 'kiosk' ||
                     obj.elementRole === 'INFORMATION' ||
-                    obj.name?.toLowerCase() === 'you are here');
+                    obj.name?.toLowerCase() === 'you are here' ||
+                    obj.name?.toLowerCase() === 'kiosk');
                 const isWall = !isWorkspace && (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall'));
                 const isWindow = !isWorkspace && (obj.elementType === 'window' || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase() === 'window');
                 const isStairs = !isWorkspace && (obj.elementType === 'stairs' || obj.elementType?.toLowerCase().includes('stairs') || obj.elementType?.toLowerCase().includes('staircase') || obj.name?.toLowerCase() === 'stairs');
@@ -2153,12 +2202,12 @@ export function MapEditor() {
                         </span>
                       ) : isKioskMarker ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="You Are Here">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Kiosk">
                             <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" fill="#ffffff" stroke="#DC2626" strokeWidth="1.5" />
                             <circle cx="12" cy="10" r="3" fill="#DC2626" />
                           </svg>
                           <span style={{ fontSize: '10px', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
-                            {obj.name || 'You Are Here'}
+                            {obj.name || 'Kiosk'}
                           </span>
                         </div>
                       ) : isWindow ? (

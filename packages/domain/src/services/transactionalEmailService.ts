@@ -7,19 +7,193 @@
  * - Payment proof received / under review notification
  * - Payment proof rejected notification
  * - Reservation tracking link dispatch
+ * - Lifecycle survey dispatch
+ * - Staff invitations and account status alerts
+ * - Reservation cancellation, rescheduling, relocation, and extension notifications
  */
+
+export interface BusinessEmailProfile {
+  businessName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  twitterUrl?: string;
+}
+
+export interface BaseEmailBusinessFields {
+  businessSettings?: BusinessEmailProfile;
+  businessName?: string;
+  businessEmail?: string;
+  businessPhone?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contactNumber?: string;
+  supportEmail?: string;
+  websiteUrl?: string;
+  facebookUrl?: string;
+  instagramUrl?: string;
+  twitterUrl?: string;
+}
 
 export interface ResendEmailConfig {
   apiKey?: string;
   fromEmail?: string;
   webhookUrl?: string;
   fetcher?: typeof fetch;
+  businessSettings?: BusinessEmailProfile;
 }
 
 export interface EmailSendResult {
   success: boolean;
   id?: string;
   error?: string;
+}
+
+export function escapeHtml(str: string): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+export function resolveBusinessProfile(
+  input?: BaseEmailBusinessFields,
+  defaultSettings?: BusinessEmailProfile
+): BusinessEmailProfile {
+  const merged: BusinessEmailProfile = {
+    businessName:
+      input?.businessName ||
+      input?.businessSettings?.businessName ||
+      defaultSettings?.businessName ||
+      'DeskAtlas',
+    contactEmail:
+      input?.contactEmail ||
+      input?.businessEmail ||
+      input?.supportEmail ||
+      input?.businessSettings?.contactEmail ||
+      defaultSettings?.contactEmail,
+    contactPhone:
+      input?.contactPhone ||
+      input?.businessPhone ||
+      input?.contactNumber ||
+      input?.businessSettings?.contactPhone ||
+      defaultSettings?.contactPhone,
+    websiteUrl:
+      input?.websiteUrl ||
+      input?.businessSettings?.websiteUrl ||
+      defaultSettings?.websiteUrl,
+    facebookUrl:
+      input?.facebookUrl ||
+      input?.businessSettings?.facebookUrl ||
+      defaultSettings?.facebookUrl,
+    instagramUrl:
+      input?.instagramUrl ||
+      input?.businessSettings?.instagramUrl ||
+      defaultSettings?.instagramUrl,
+    twitterUrl:
+      input?.twitterUrl ||
+      input?.businessSettings?.twitterUrl ||
+      defaultSettings?.twitterUrl,
+  };
+  return merged;
+}
+
+export function renderBusinessFooter(
+  profile?: BusinessEmailProfile,
+  customSuffix?: string
+): string {
+  const name = profile?.businessName?.trim() || 'DeskAtlas';
+  const email = profile?.contactEmail?.trim();
+  const phone = profile?.contactPhone?.trim();
+  const website = profile?.websiteUrl?.trim();
+  const facebook = profile?.facebookUrl?.trim();
+  const instagram = profile?.instagramUrl?.trim();
+  const twitter = profile?.twitterUrl?.trim();
+
+  const contactItems: string[] = [];
+  if (email) {
+    contactItems.push(
+      `<a href="mailto:${escapeHtml(email)}" style="color: #64748b; text-decoration: underline;">${escapeHtml(email)}</a>`
+    );
+  }
+  if (phone) {
+    contactItems.push(`<span>${escapeHtml(phone)}</span>`);
+  }
+  if (website) {
+    contactItems.push(
+      `<a href="${escapeHtml(website)}" style="color: #64748b; text-decoration: underline;" target="_blank" rel="noopener noreferrer">${escapeHtml(website.replace(/^https?:\/\//i, ''))}</a>`
+    );
+  }
+
+  const socialLinks: string[] = [];
+  if (facebook) {
+    socialLinks.push(
+      `<a href="${escapeHtml(facebook)}" style="color: #0284c7; text-decoration: none; font-weight: 600; margin-right: 12px;" target="_blank" rel="noopener noreferrer">Facebook</a>`
+    );
+  }
+  if (instagram) {
+    socialLinks.push(
+      `<a href="${escapeHtml(instagram)}" style="color: #0284c7; text-decoration: none; font-weight: 600; margin-right: 12px;" target="_blank" rel="noopener noreferrer">Instagram</a>`
+    );
+  }
+  if (twitter) {
+    socialLinks.push(
+      `<a href="${escapeHtml(twitter)}" style="color: #0284c7; text-decoration: none; font-weight: 600; margin-right: 12px;" target="_blank" rel="noopener noreferrer">Twitter / X</a>`
+    );
+  }
+
+  const suffixText = customSuffix
+    ? escapeHtml(customSuffix)
+    : `${escapeHtml(name)} Workspace Reservation System &bull; This is an automated transactional message.`;
+
+  return `
+    <div class="footer" style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-align: center; line-height: 1.6;">
+      <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px; font-size: 13px;">${escapeHtml(name)}</div>
+      ${contactItems.length > 0 ? `<div style="margin-bottom: 6px; color: #64748b;">${contactItems.join(' &bull; ')}</div>` : ''}
+      ${socialLinks.length > 0 ? `<div style="margin-bottom: 8px;">${socialLinks.join('')}</div>` : ''}
+      <div style="color: #94a3b8; font-size: 11px;">${suffixText}</div>
+    </div>
+  `.trim();
+}
+
+export function renderBusinessFooterText(
+  profile?: BusinessEmailProfile,
+  customSuffix?: string
+): string {
+  const name = profile?.businessName?.trim() || 'DeskAtlas';
+  const email = profile?.contactEmail?.trim();
+  const phone = profile?.contactPhone?.trim();
+  const website = profile?.websiteUrl?.trim();
+  const facebook = profile?.facebookUrl?.trim();
+  const instagram = profile?.instagramUrl?.trim();
+  const twitter = profile?.twitterUrl?.trim();
+
+  const lines: string[] = ['---', name];
+
+  const contactParts: string[] = [];
+  if (email) contactParts.push(`Email: ${email}`);
+  if (phone) contactParts.push(`Phone: ${phone}`);
+  if (website) contactParts.push(`Website: ${website}`);
+  if (contactParts.length > 0) {
+    lines.push(contactParts.join(' | '));
+  }
+
+  const socialParts: string[] = [];
+  if (facebook) socialParts.push(`Facebook: ${facebook}`);
+  if (instagram) socialParts.push(`Instagram: ${instagram}`);
+  if (twitter) socialParts.push(`Twitter/X: ${twitter}`);
+  if (socialParts.length > 0) {
+    lines.push(socialParts.join(' | '));
+  }
+
+  const suffix = customSuffix || `${name} Workspace Reservation System`;
+  lines.push(suffix);
+
+  return lines.join('\n');
 }
 
 export function normalizeCustomerTrackingUrl(trackingUrl?: string): string | undefined {
@@ -64,10 +238,6 @@ function convert24HourTo12Hour(hour: number, minute: string): string {
 
 /**
  * Formats a date/time or time string for transactional emails in 12-hour AM/PM format.
- * - If already formatted with AM/PM (e.g. "Sep 12, 10:00 AM", "10:00 AM"), it is preserved.
- * - If simple military time (e.g. "14:00", "14:00:00", "09:00"), converted to "2:00 PM", "9:00 AM".
- * - If date with military time (e.g. "Sep 12, 14:00"), converted to "Sep 12, 2:00 PM".
- * - If ISO timestamp (e.g. "2026-09-12T02:00:00.000Z"), formatted in timezone with date & 12-hour AM/PM time.
  */
 export function formatEmailTime(value?: string | null, timezone: string = DEFAULT_TIMEZONE): string {
   if (!value) return '';
@@ -190,13 +360,6 @@ export function formatEmailSchedule(value?: string | null, timezone: string = DE
 
 /**
  * MF-141: Formats session expiry duration in minutes into a human-readable label and session title.
- * Examples:
- *   60 -> { label: '1 hour', sessionTitle: '1-Hour Session' }
- *   120 -> { label: '2 hours', sessionTitle: '2-Hour Session' }
- *   20 -> { label: '20 minutes', sessionTitle: '20-Minute Session' }
- *   30 -> { label: '30 minutes', sessionTitle: '30-Minute Session' }
- *   45 -> { label: '45 minutes', sessionTitle: '45-Minute Session' }
- *   90 -> { label: '1 hour 30 minutes', sessionTitle: '90-Minute Session' }
  */
 export function formatSessionExpiryDuration(minutes?: number | null): { label: string; sessionTitle: string } {
   const safeMinutes = typeof minutes === 'number' && !isNaN(minutes) && minutes > 0 ? Math.round(minutes) : 60;
@@ -224,7 +387,7 @@ export function formatSessionExpiryDuration(minutes?: number | null): { label: s
   return { label, sessionTitle };
 }
 
-export interface PaymentLinkEmailInput {
+export interface PaymentLinkEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -242,7 +405,7 @@ export interface PaymentLinkEmailInput {
 // MF-141 alias for PaymentLinkEmailInput
 export type PaymentProofRequestEmailInput = PaymentLinkEmailInput;
 
-export interface BookingConfirmationEmailInput {
+export interface BookingConfirmationEmailInput extends BaseEmailBusinessFields {
   to?: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -261,18 +424,7 @@ export interface BookingConfirmationEmailInput {
   qrImageUrl?: string;
 }
 
-export interface ManualResolutionEmailInput {
-  to: string;
-  customerFirstName?: string;
-  customerLastName?: string;
-  referenceCode: string;
-  businessName?: string;
-  businessEmail?: string;
-  businessPhone?: string;
-  trackingUrl?: string;
-}
-
-export interface PaymentProofReceivedEmailInput {
+export interface ManualResolutionEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -280,7 +432,15 @@ export interface PaymentProofReceivedEmailInput {
   trackingUrl?: string;
 }
 
-export interface PaymentProofRejectedEmailInput {
+export interface PaymentProofReceivedEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  trackingUrl?: string;
+}
+
+export interface PaymentProofRejectedEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -288,9 +448,6 @@ export interface PaymentProofRejectedEmailInput {
   rejectionReason?: string;
   paymentUrl?: string;
   trackingUrl?: string;
-  businessName?: string;
-  businessEmail?: string;
-  businessPhone?: string;
 }
 
 export interface ReservationTrackingCandidate {
@@ -302,7 +459,7 @@ export interface ReservationTrackingCandidate {
   endAt?: string;
 }
 
-export interface ReservationTrackingEmailInput {
+export interface ReservationTrackingEmailInput extends BaseEmailBusinessFields {
   to?: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -310,10 +467,9 @@ export interface ReservationTrackingEmailInput {
   trackingUrl: string;
   status?: string;
   candidates?: ReservationTrackingCandidate[];
-  supportEmail?: string;
 }
 
-export interface BookingEndedSurveyEmailInput {
+export interface BookingEndedSurveyEmailInput extends BaseEmailBusinessFields {
   to?: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -328,7 +484,7 @@ export interface BookingEndedSurveyEmailInput {
   trackingUrl?: string;
 }
 
-export interface StaffInvitationEmailInput {
+export interface StaffInvitationEmailInput extends BaseEmailBusinessFields {
   to: string;
   displayName: string;
   role: string;
@@ -337,7 +493,7 @@ export interface StaffInvitationEmailInput {
   expiresAt: string;
 }
 
-export interface SuperAdminInvitationAcceptedEmailInput {
+export interface SuperAdminInvitationAcceptedEmailInput extends BaseEmailBusinessFields {
   to: string;
   adminName: string;
   adminEmail: string;
@@ -346,14 +502,14 @@ export interface SuperAdminInvitationAcceptedEmailInput {
   dashboardUrl?: string;
 }
 
-export interface AdminPasswordResetEmailInput {
+export interface AdminPasswordResetEmailInput extends BaseEmailBusinessFields {
   to: string;
   displayName?: string;
   resetUrl: string;
   expiresAt: string;
 }
 
-export interface ReservationCancelledEmailInput {
+export interface ReservationCancelledEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -365,7 +521,7 @@ export interface ReservationCancelledEmailInput {
   trackingUrl?: string;
 }
 
-export interface ReservationRescheduledEmailInput {
+export interface ReservationRescheduledEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -382,7 +538,7 @@ export interface ReservationRescheduledEmailInput {
   actorRole?: string;
 }
 
-export interface ReservationRelocatedEmailInput {
+export interface ReservationRelocatedEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -401,7 +557,7 @@ export interface ReservationRelocatedEmailInput {
   qrImageUrl?: string;
 }
 
-export interface ReservationExtendedEmailInput {
+export interface ReservationExtendedEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -429,7 +585,7 @@ export interface RawEmailInput {
   text?: string;
 }
 
-export interface TeamMemberJoinedEmailInput {
+export interface TeamMemberJoinedEmailInput extends BaseEmailBusinessFields {
   to: string;
   memberName: string;
   memberEmail: string;
@@ -439,7 +595,7 @@ export interface TeamMemberJoinedEmailInput {
   rosterUrl?: string;
 }
 
-export interface AccountStatusChangedEmailInput {
+export interface AccountStatusChangedEmailInput extends BaseEmailBusinessFields {
   to: string;
   memberName: string;
   role: 'ADMIN' | 'STAFF' | string;
@@ -451,8 +607,9 @@ export interface AccountStatusChangedEmailInput {
 }
 
 export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `DeskAtlas Reservation Payment - Ref #${input.referenceCode}`;
+  const subject = `${profile.businessName || 'DeskAtlas'} Reservation Payment - Ref #${input.referenceCode}`;
   const formattedAmount = `${input.currency.toUpperCase()} ${Number(input.amountDue).toFixed(2)}`;
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
     timeZone: 'UTC',
@@ -499,7 +656,7 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">DeskAtlas Reservation Payment</div>
+      <div class="title">${escapeHtml(profile.businessName || 'DeskAtlas')} Reservation Payment</div>
       <div>Reference: <span class="reference-badge">${escapeHtml(input.referenceCode)}</span></div>
     </div>
     <div class="content">
@@ -517,28 +674,26 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
 
       <div class="instruction-box">
         <div class="instruction-title">Payment Instructions (GCash &amp; Bank Transfer)</div>
-        <p style="margin: 0 0 6px 0;">1. Click the button above to view the official DeskAtlas payment QR code and account details.</p>
+        <p style="margin: 0 0 6px 0;">1. Click the button above to view official payment QR code and account details.</p>
         <p style="margin: 0 0 6px 0;">2. Open your GCash app or mobile banking to transfer the exact amount of <strong>${escapeHtml(formattedAmount)}</strong>.</p>
         <p style="margin: 0;">3. Upload a screenshot or photo of your payment receipt before the session expires.</p>
       </div>
 
-      <p class="warning">⚠️ <strong>${escapeHtml(expiryInfo.sessionTitle)}:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong> (${escapeHtml(expiryInfo.label)}). DeskAtlas No-Hold Policy: Submitting a reservation does not reserve physical inventory until payment proof is verified and approved by admin.</p>
+      <p class="warning">⚠️ <strong>${escapeHtml(expiryInfo.sessionTitle)}:</strong> Payment link expires at <strong>${escapeHtml(expiresFormatted)}</strong> (${escapeHtml(expiryInfo.label)}). ${escapeHtml(profile.businessName || 'DeskAtlas')} No-Hold Policy: Submitting a reservation does not reserve physical inventory until payment proof is verified and approved by admin.</p>
 
       <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
         If the button above does not work, copy and paste this link into your browser:<br>
         <a href="${escapeHtml(input.paymentUrl)}" style="color: #0284c7; word-break: break-all;">${escapeHtml(input.paymentUrl)}</a>
       </p>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Reservation Payment - Ref #${input.referenceCode}
+${profile.businessName || 'DeskAtlas'} Reservation Payment - Ref #${input.referenceCode}
 
 Hello ${customerName},
 
@@ -555,7 +710,7 @@ Payment Instructions:
 
 Note: Selecting a spot or submitting a request does not hold inventory. Spot allocation is finalized only after payment proof approval.
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
@@ -565,8 +720,9 @@ DeskAtlas Workspace Reservation System
 export const renderPaymentProofRequestEmail = renderPaymentLinkEmail;
 
 export function renderBookingConfirmationEmail(input: BookingConfirmationEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}`;
+  const subject = `Booking Confirmed! - ${profile.businessName || 'DeskAtlas'} Ref #${input.referenceCode}`;
   const trackingUrl = normalizeCustomerTrackingUrl(input.trackingUrl);
 
   let customerOrigin = 'http://localhost:3001';
@@ -588,11 +744,6 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
     }
   }
 
-  const digitalPassUrl =
-    input.digitalPassUrl ||
-    (input.bookingToken
-      ? `${customerOrigin}/pass/${input.bookingToken}`
-      : input.bookingAccessUrl || `${customerOrigin}/pass`);
   const termsUrl = input.termsUrl || `${customerOrigin}/terms`;
 
   const qrImageUrl =
@@ -675,10 +826,11 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
         <img src="${escapeHtml(qrImageUrl)}" alt="Digital Pass QR Code" width="200" height="200" style="display: block; margin: 0 auto; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; padding: 6px;" />
         <div class="qr-code-text">${escapeHtml(input.referenceCode)}</div>
         <p class="qr-guide">Please present this QR code upon arrival at the workspace reception desk or kiosk.</p>
+        ${trackingUrl ? `
         <div style="margin-top: 16px;">
-          <a href="${escapeHtml(digitalPassUrl)}" class="btn btn-primary">View Digital Pass</a>
-          ${trackingUrl ? `<a href="${escapeHtml(trackingUrl)}" class="btn btn-secondary">Track Reservation</a>` : ''}
+          <a href="${escapeHtml(trackingUrl)}" class="btn btn-primary">Track Reservation</a>
         </div>
+        ` : ''}
       </div>
 
       <div class="guidelines-box">
@@ -702,16 +854,14 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Booking Confirmed! - DeskAtlas Ref #${input.referenceCode}
+Booking Confirmed! - ${profile.businessName || 'DeskAtlas'} Ref #${input.referenceCode}
 
 Hello ${customerName},
 
@@ -727,9 +877,7 @@ End Time: ${formatEmailTime(input.bookingEndAt)}
 Digital Access Pass
 QR Code Image: ${qrImageUrl}
 Please present this QR code upon arrival at the workspace reception desk or kiosk.
-
-View Digital Pass: ${digitalPassUrl}
-${trackingUrl ? `Track Reservation: ${trackingUrl}\n` : ''}
+${trackingUrl ? `\nTrack Reservation: ${trackingUrl}\n` : ''}
 Before Your Booking
 Please use only your assigned workspace and observe the applicable booking rules during your stay.
 
@@ -742,16 +890,18 @@ Facility Guidelines:
 - Present your QR pass at reception or kiosk for check-in and re-entry.
 - Please use designated call booths for phone calls.
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderManualResolutionEmail(input: ManualResolutionEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const businessName = input.businessName || 'DeskAtlas';
-  const businessEmail = input.businessEmail || 'support@deskatlas.com';
+  const businessName = profile.businessName || 'DeskAtlas';
+  const businessEmail = profile.contactEmail || 'support@deskatlas.com';
+  const businessPhone = profile.contactPhone;
   const subject = `Reservation Update: Manual Resolution Needed [${input.referenceCode}]`;
 
   const html = `
@@ -794,10 +944,10 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
           <span class="contact-label">Business Email:</span>
           <span class="contact-value"><a href="mailto:${escapeHtml(businessEmail)}" style="color: #0284c7; text-decoration: underline;">${escapeHtml(businessEmail)}</a></span>
         </div>
-        ${input.businessPhone ? `
+        ${businessPhone ? `
         <div class="contact-item">
           <span class="contact-label">Business Phone:</span>
-          <span class="contact-value">${escapeHtml(input.businessPhone)}</span>
+          <span class="contact-value">${escapeHtml(businessPhone)}</span>
         </div>
         ` : ''}
         <div class="contact-item">
@@ -815,16 +965,14 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Reservation Update: Manual Resolution Needed
+${businessName} Reservation Update: Manual Resolution Needed
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -834,16 +982,17 @@ Your payment has been received, but your requested workspace spot could not be a
 
 Please contact ${businessName} directly using the registered business details:
 Business Email: ${businessEmail}
-${input.businessPhone ? `Business Phone: ${input.businessPhone}\n` : ''}Reference Code: ${input.referenceCode}
+${businessPhone ? `Business Phone: ${businessPhone}\n` : ''}Reference Code: ${input.referenceCode}
 
 ${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderPaymentProofReceivedEmail(input: PaymentProofReceivedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Payment Proof Received - Waiting for Admin Approval (Ref #${input.referenceCode})`;
 
@@ -884,9 +1033,7 @@ export function renderPaymentProofReceivedEmail(input: PaymentProofReceivedEmail
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
@@ -901,16 +1048,19 @@ We have received your payment proof for reservation ${input.referenceCode}.
 Your 1-hour session timer has stopped. Our team is reviewing the submission. You will receive a booking confirmation email once approved.
 
 ${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Payment Proof Rejected - Reservation ${input.referenceCode}`;
   const reason = input.rejectionReason || 'The payment proof could not be verified by the admin team.';
+  const contactEmail = profile.contactEmail;
+  const contactPhone = profile.contactPhone;
 
   const html = `
 <!DOCTYPE html>
@@ -942,27 +1092,27 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
         ${escapeHtml(reason)}
       </div>
 
-      ${(input.businessEmail || input.businessPhone) ? `
+      ${(contactEmail || contactPhone) ? `
       <div class="contact-box" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
         <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Have Inquiries?</div>
         <p style="margin: 0 0 10px 0; font-size: 14px; color: #334155;">If you have inquiries regarding your reservation or payment, please contact us:</p>
-        ${input.businessEmail ? `
+        ${contactEmail ? `
         <div style="margin: 6px 0; font-size: 14px;">
           <span style="color: #64748b; font-weight: 500;">Email:</span>
-          <a href="mailto:${escapeHtml(input.businessEmail)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;">${escapeHtml(input.businessEmail)}</a>
+          <a href="mailto:${escapeHtml(contactEmail)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;">${escapeHtml(contactEmail)}</a>
         </div>
         ` : ''}
-        ${input.businessPhone ? `
+        ${contactPhone ? `
         <div style="margin: 6px 0; font-size: 14px;">
           <span style="color: #64748b; font-weight: 500;">Call / Text:</span>
-          <span style="color: #0f172a; font-weight: 600; margin-left: 6px;">${escapeHtml(input.businessPhone)}</span>
+          <span style="color: #0f172a; font-weight: 600; margin-left: 6px;">${escapeHtml(contactPhone)}</span>
         </div>
         ` : ''}
       </div>
       ` : ''}
 
       ${input.paymentUrl ? `
-      <p>If your 1-hour session is still active, you may re-submit a valid payment proof using the link below:</p>
+      <p>If your session is still active, you may re-submit a valid payment proof using the link below:</p>
       <div style="text-align: center;">
         <a href="${escapeHtml(input.paymentUrl)}" class="btn">Re-submit Payment Proof</a>
       </div>
@@ -974,16 +1124,14 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Payment Proof Rejected - DeskAtlas
+Payment Proof Rejected - ${profile.businessName || 'DeskAtlas'}
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -991,18 +1139,19 @@ Hello ${customerName},
 Your payment proof for reservation ${input.referenceCode} could not be verified and has been rejected.
 
 Reason: ${reason}
-${input.paymentUrl ? `\nRe-submit proof (if session is active): ${input.paymentUrl}\n` : ''}${(input.businessEmail || input.businessPhone) ? `\nIf you have inquiries, please contact us:\n${input.businessEmail ? `Email: ${input.businessEmail}\n` : ''}${input.businessPhone ? `Call / Text: ${input.businessPhone}\n` : ''}` : ''}${input.trackingUrl ? `\nTrack Reservation: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${input.paymentUrl ? `\nRe-submit proof (if session is active): ${input.paymentUrl}\n` : ''}${(contactEmail || contactPhone) ? `\nIf you have inquiries, please contact us:\n${contactEmail ? `Email: ${contactEmail}\n` : ''}${contactPhone ? `Call / Text: ${contactPhone}\n` : ''}` : ''}${input.trackingUrl ? `\nTrack Reservation: ${input.trackingUrl}\n` : ''}
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderReservationTrackingEmail(input: ReservationTrackingEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `DeskAtlas Reservation Status - Ref #${input.referenceCode}`;
+  const subject = `${profile.businessName || 'DeskAtlas'} Reservation Status - Ref #${input.referenceCode}`;
   const statusLabel = input.status || 'PENDING_PAYMENT';
-  const supportEmail = input.supportEmail || 'support@deskatlas.com';
+  const supportEmail = profile.contactEmail || 'support@deskatlas.com';
 
   const candidatesHtml = input.candidates && input.candidates.length > 0 ? `
     <div style="margin: 20px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
@@ -1057,7 +1206,7 @@ ${input.candidates.map((c) => {
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">DeskAtlas Reservation Status</div>
+      <div class="title">${escapeHtml(profile.businessName || 'DeskAtlas')} Reservation Status</div>
       <div style="margin-top: 6px;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong> &bull; <span class="badge">${escapeHtml(statusLabel)}</span></div>
     </div>
     <div class="content">
@@ -1078,16 +1227,14 @@ ${input.candidates.map((c) => {
         Need assistance? Reach out to support at <a href="mailto:${escapeHtml(supportEmail)}" style="color: #0284c7;">${escapeHtml(supportEmail)}</a>.
       </p>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; This is an automated transactional message.
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Reservation Status - Ref #${input.referenceCode}
+${profile.businessName || 'DeskAtlas'} Reservation Status - Ref #${input.referenceCode}
 
 Hello ${customerName},
 
@@ -1098,15 +1245,16 @@ Status: ${statusLabel}
 ${candidatesText ? `\n${candidatesText}\n` : ''}
 Need help? Contact support at: ${supportEmail}
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your DeskAtlas Booking Has Ended — We Value Your Feedback!`;
+  const subject = `Your ${profile.businessName || 'DeskAtlas'} Booking Has Ended — We Value Your Feedback!`;
   const defaultSurveyUrl = process.env.SURVEY_FORM_URL || process.env.NEXT_PUBLIC_SURVEY_FORM_URL || 'https://forms.google.com/deskatlas-feedback';
   const surveyUrl = input.surveyUrl || defaultSurveyUrl;
   const bookAgainUrl = input.bookAgainUrl || process.env.DESKATLAS_PUBLIC_APP_URL || 'https://deskatlas.com';
@@ -1134,7 +1282,7 @@ export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInpu
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">Thank you for visiting DeskAtlas! 🙌</div>
+      <div class="title">Thank you for visiting ${escapeHtml(profile.businessName || 'DeskAtlas')}! 🙌</div>
       <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
     </div>
     <div class="content">
@@ -1166,7 +1314,7 @@ export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInpu
         ` : ''}
       </div>
 
-      <p>To help us continuously improve the DeskAtlas workspace experience, could you please take 1 minute to share your thoughts?</p>
+      <p>To help us continuously improve the ${escapeHtml(profile.businessName || 'DeskAtlas')} workspace experience, could you please take 1 minute to share your thoughts?</p>
 
       <div style="text-align: center;">
         <a href="${escapeHtml(surveyUrl)}" class="btn-survey">Share Your Feedback (1-Min Survey)</a>
@@ -1188,21 +1336,19 @@ export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInpu
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Customer Experience &amp; Feedback
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(profile.businessName || 'DeskAtlas')} Workspace Reservation System • Customer Experience & Feedback`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Your DeskAtlas Booking Has Ended — We Value Your Feedback!
+Your ${profile.businessName || 'DeskAtlas'} Booking Has Ended — We Value Your Feedback!
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
 
-Thank you for working at DeskAtlas! We hope you had a productive session.
+Thank you for working at ${profile.businessName || 'DeskAtlas'}! We hope you had a productive session.
 
 Session Summary:
 - Reference: ${input.referenceCode}
@@ -1213,333 +1359,16 @@ Survey Link: ${surveyUrl}
 Ready to book another workspace? Visit:
 ${bookAgainUrl}
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
-function escapeHtml(str: string): string {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-export class TransactionalEmailService {
-  private readonly apiKey?: string;
-  private readonly fromEmail: string;
-  private readonly webhookUrl?: string;
-  private readonly fetcher: typeof fetch;
-
-  constructor(config?: ResendEmailConfig) {
-    this.apiKey = config?.apiKey ?? process.env.RESEND_API_KEY;
-    this.fromEmail = config?.fromEmail ?? process.env.RESEND_FROM_EMAIL ?? 'DeskAtlas <noreply@deskatlas.com>';
-    this.webhookUrl = config?.webhookUrl ?? process.env.TRANSACTIONAL_EMAIL_WEBHOOK_URL;
-    this.fetcher = config?.fetcher ?? fetch;
-  }
-
-  async sendEmail(input: RawEmailInput): Promise<EmailSendResult> {
-    const to = Array.isArray(input.to) ? input.to : [input.to];
-    const from = input.from || this.fromEmail;
-
-    // 1. Resend API mode if RESEND_API_KEY is configured
-    if (this.apiKey) {
-      try {
-        const response = await this.fetcher('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from,
-            to,
-            subject: input.subject,
-            html: input.html,
-            text: input.text,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[TransactionalEmail] Resend API error (${response.status}):`, errorText);
-          return { success: false, error: `Resend error (${response.status}): ${errorText}` };
-        }
-
-        const data: any = await response.json();
-        return { success: true, id: data?.id };
-      } catch (err: any) {
-        console.error('[TransactionalEmail] Failed to send via Resend:', err.message);
-        return { success: false, error: err.message };
-      }
-    }
-
-    // 2. Backward-compatible Webhook mode if TRANSACTIONAL_EMAIL_WEBHOOK_URL is configured
-    if (this.webhookUrl) {
-      try {
-        const response = await this.fetcher(this.webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to,
-            from,
-            subject: input.subject,
-            html: input.html,
-            text: input.text,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(`[TransactionalEmail] Webhook error (${response.status}):`, errorText);
-          return { success: false, error: `Webhook error: ${errorText}` };
-        }
-
-        return { success: true, id: 'webhook-dispatched' };
-      } catch (err: any) {
-        console.warn('[TransactionalEmail] Failed to dispatch email webhook:', err.message);
-        return { success: false, error: err.message };
-      }
-    }
-
-    // 3. Fallback logged mode for local development without credentials
-    console.info(`[TransactionalEmail] Skipped sending "${input.subject}" to [${to.join(', ')}]; no RESEND_API_KEY or TRANSACTIONAL_EMAIL_WEBHOOK_URL configured.`);
-    return { success: true, id: 'mock-local-skipped' };
-  }
-
-  async sendPaymentLinkEmail(input: PaymentLinkEmailInput): Promise<EmailSendResult> {
-    const rendered = renderPaymentLinkEmail(input);
-
-    // If webhookUrl is configured without Resend API key, maintain backward-compatible payload schema
-    if (!this.apiKey && this.webhookUrl) {
-      try {
-        await this.fetcher(this.webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template: 'payment-session',
-            ...input,
-          }),
-        });
-        return { success: true, id: 'webhook-payment-session' };
-      } catch (err: any) {
-        console.warn('[TransactionalEmail] Payment link webhook dispatch error:', err.message);
-      }
-    }
-
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendPaymentProofRequestEmail(input: PaymentProofRequestEmailInput): Promise<EmailSendResult> {
-    return this.sendPaymentLinkEmail(input);
-  }
-
-  async sendBookingConfirmationEmail(input: BookingConfirmationEmailInput): Promise<EmailSendResult> {
-    const rendered = renderBookingConfirmationEmail(input);
-
-    // If webhookUrl is configured without Resend API key, maintain backward-compatible payload schema
-    if (!this.apiKey && this.webhookUrl) {
-      try {
-        await this.fetcher(this.webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template: 'booking-confirmed',
-            ...input,
-          }),
-        });
-        return { success: true, id: 'webhook-booking-confirmed' };
-      } catch (err: any) {
-        console.warn('[TransactionalEmail] Booking confirmed webhook dispatch error:', err.message);
-      }
-    }
-
-    return this.sendEmail({
-      to: input.to || '',
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendManualResolutionEmail(input: ManualResolutionEmailInput): Promise<EmailSendResult> {
-    const rendered = renderManualResolutionEmail(input);
-
-    if (!this.apiKey && this.webhookUrl) {
-      try {
-        await this.fetcher(this.webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template: 'manual-resolution',
-            ...input,
-          }),
-        });
-        return { success: true, id: 'webhook-manual-resolution' };
-      } catch (err: any) {
-        console.warn('[TransactionalEmail] Manual resolution webhook dispatch error:', err.message);
-      }
-    }
-
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendPaymentProofReceivedEmail(input: PaymentProofReceivedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderPaymentProofReceivedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendPaymentProofRejectedEmail(input: PaymentProofRejectedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderPaymentProofRejectedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendReservationTrackingEmail(input: ReservationTrackingEmailInput): Promise<EmailSendResult> {
-    const rendered = renderReservationTrackingEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendStaffInvitationEmail(input: StaffInvitationEmailInput): Promise<EmailSendResult> {
-    const rendered = renderStaffInvitationEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitationAcceptedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderSuperAdminInvitationAcceptedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): Promise<EmailSendResult> {
-    const rendered = renderAdminPasswordResetEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendReservationCancelledEmail(input: ReservationCancelledEmailInput): Promise<EmailSendResult> {
-    const rendered = renderReservationCancelledEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendReservationRescheduledEmail(input: ReservationRescheduledEmailInput): Promise<EmailSendResult> {
-    const rendered = renderReservationRescheduledEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendReservationRelocatedEmail(input: ReservationRelocatedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderReservationRelocatedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendReservationExtendedEmail(input: ReservationExtendedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderReservationExtendedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
-    const rendered = renderBookingEndedSurveyEmail(input);
-    return this.sendEmail({
-      to: input.to || '',
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderTeamMemberJoinedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendAccountDeactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderAccountDeactivatedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-
-  async sendAccountReactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
-    const rendered = renderAccountReactivatedEmail(input);
-    return this.sendEmail({
-      to: input.to,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  }
-}
-
 export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { subject: string; html: string; text: string } {
-  const subject = `You've been invited to join DeskAtlas as ${input.role === 'ADMIN' ? 'an Administrator' : 'Staff'}`;
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = `You've been invited to join ${businessName} as ${input.role === 'ADMIN' ? 'an Administrator' : 'Staff'}`;
   const roleLabel = input.role === 'ADMIN' ? 'Administrator' : 'Staff Member';
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
     timeZone: 'Asia/Manila',
@@ -1571,11 +1400,11 @@ export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { 
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand">DeskAtlas</div>
+      <div class="brand">${escapeHtml(businessName)}</div>
       <span class="badge">Team Invitation</span>
     </div>
     <div class="content">
-      <div class="title">Welcome to DeskAtlas!</div>
+      <div class="title">Welcome to ${escapeHtml(businessName)}!</div>
       <p>Hello <strong>${escapeHtml(input.displayName)}</strong>,</p>
       <p>You have been invited to join the workspace operations team as a <strong>${escapeHtml(roleLabel)}</strong>.</p>
       
@@ -1601,20 +1430,18 @@ export function renderStaffInvitationEmail(input: StaffInvitationEmailInput): { 
         <a href="${escapeHtml(input.invitationUrl)}" style="color: #064E3B; word-break: break-all;">${escapeHtml(input.invitationUrl)}</a>
       </p>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Automated Staff Onboarding
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Automated Staff Onboarding`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Team Invitation
+${businessName} Team Invitation
 
 Hello ${input.displayName},
 
-You have been invited to join the DeskAtlas team as a ${roleLabel}.
+You have been invited to join the ${businessName} team as a ${roleLabel}.
 
 To finalize and activate your account, visit the link below:
 ${input.invitationUrl}
@@ -1625,13 +1452,15 @@ Please ask your workspace owner or administrator for your 6-digit 2FA confirmati
 
 This invitation expires on ${expiresFormatted}.
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Automated Staff Onboarding`)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitationAcceptedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
   const isAdmin = input.role.toUpperCase() === 'ADMIN';
   const subject = `New Administrator Joined: ${input.adminName}`;
   const dashboardUrl = input.dashboardUrl || 'http://localhost:3000/manage/staff';
@@ -1672,7 +1501,7 @@ export function renderSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitat
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand">DeskAtlas</div>
+      <div class="brand">${escapeHtml(businessName)}</div>
       <span class="badge">Team Notification</span>
     </div>
     <div class="content">
@@ -1691,16 +1520,14 @@ export function renderSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitat
         <a href="${escapeHtml(dashboardUrl)}" class="btn">View Staff &amp; Admins</a>
       </div>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Team Management Alert
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Team Management Alert`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Notification: New ${isAdmin ? 'Administrator' : 'Staff Member'} Joined
+${businessName} Notification: New ${isAdmin ? 'Administrator' : 'Staff Member'} Joined
 
 Hello Super Administrator,
 
@@ -1713,14 +1540,16 @@ Activated: ${activatedFormatted}
 
 View in dashboard: ${dashboardUrl}
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Team Management Alert`)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): { subject: string; html: string; text: string } {
-  const subject = 'Reset Your DeskAtlas Admin Password';
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = `Reset Your ${businessName} Admin Password`;
   const name = input.displayName || 'Administrator';
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
     timeZone: 'Asia/Manila',
@@ -1750,13 +1579,13 @@ export function renderAdminPasswordResetEmail(input: AdminPasswordResetEmailInpu
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand">DeskAtlas</div>
+      <div class="brand">${escapeHtml(businessName)}</div>
       <span class="badge">Security Recovery</span>
     </div>
     <div class="content">
       <div class="title">Reset Your Password</div>
       <p>Hello <strong>${escapeHtml(name)}</strong>,</p>
-      <p>We received a request to reset the password for your DeskAtlas administrative account.</p>
+      <p>We received a request to reset the password for your ${escapeHtml(businessName)} administrative account.</p>
       <p>Click the button below to set a new password:</p>
 
       <div style="text-align: center;">
@@ -1774,20 +1603,18 @@ export function renderAdminPasswordResetEmail(input: AdminPasswordResetEmailInpu
         <a href="${escapeHtml(input.resetUrl)}" style="color: #064E3B; word-break: break-all;">${escapeHtml(input.resetUrl)}</a>
       </p>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Administrative Security Alert
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Administrative Security Alert`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Admin Password Reset
+${businessName} Admin Password Reset
 
 Hello ${name},
 
-We received a request to reset the password for your DeskAtlas administrative account.
+We received a request to reset the password for your ${businessName} administrative account.
 
 To reset your password, visit the link below:
 ${input.resetUrl}
@@ -1796,15 +1623,16 @@ This link expires on ${expiresFormatted} (1 hour).
 
 If you did not request this, please ignore this email.
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Administrative Security Alert`)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderReservationCancelledEmail(input: ReservationCancelledEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your DeskAtlas Reservation Has Been Cancelled [${input.referenceCode}]`;
+  const subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Has Been Cancelled [${input.referenceCode}]`;
   const reasonText = input.cancellationNotes ? `${input.cancellationReason} - ${input.cancellationNotes}` : input.cancellationReason;
   const formattedSchedule = input.schedule ? formatEmailSchedule(input.schedule) : undefined;
 
@@ -1855,16 +1683,14 @@ export function renderReservationCancelledEmail(input: ReservationCancelledEmail
       </div>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Reservation Cancellation Notice - DeskAtlas
+Reservation Cancellation Notice - ${profile.businessName || 'DeskAtlas'}
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -1873,15 +1699,16 @@ Your workspace reservation ${input.referenceCode} has been cancelled.
 
 Reason: ${reasonText}
 ${input.workspaceDisplayName ? `Workspace: ${input.workspaceDisplayName}\n` : ''}${formattedSchedule ? `Original Schedule: ${formattedSchedule}\n` : ''}${input.trackingUrl ? `Status Link: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderReservationRescheduledEmail(input: ReservationRescheduledEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your DeskAtlas Reservation Has Been Rescheduled [${input.referenceCode}]`;
+  const subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Has Been Rescheduled [${input.referenceCode}]`;
   const formattedNewSchedule = formatEmailSchedule(input.newSchedule);
   const formattedOldSchedule = formatEmailSchedule(input.oldSchedule);
   const qrImageUrl =
@@ -1935,16 +1762,14 @@ export function renderReservationRescheduledEmail(input: ReservationRescheduledE
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Reservation Schedule Updated - DeskAtlas
+Reservation Schedule Updated - ${profile.businessName || 'DeskAtlas'}
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -1955,15 +1780,16 @@ Previous Schedule: ${formattedOldSchedule}
 Allocated Spot: ${input.workspaceDisplayName}
 Digital Access QR Pass: ${qrImageUrl}
 ${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderReservationRelocatedEmail(input: ReservationRelocatedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your DeskAtlas Reservation Spot Has Been Relocated [${input.referenceCode}]`;
+  const subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Spot Has Been Relocated [${input.referenceCode}]`;
   const formattedSchedule = formatEmailSchedule(input.schedule);
   const reasonText = input.relocationNotes ? `${input.relocationReason} - ${input.relocationNotes}` : input.relocationReason;
   const qrImageUrl =
@@ -2072,16 +1898,14 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Workspace Spot Relocation Notice - DeskAtlas
+Workspace Spot Relocation Notice - ${profile.businessName || 'DeskAtlas'}
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -2097,7 +1921,7 @@ Digital Access QR Pass: ${qrImageUrl}
 Your existing digital QR pass remains active and valid for your newly relocated spot.
 
 ${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
@@ -2125,8 +1949,9 @@ export function formatDurationFromDates(startAt: string, endAt: string): string 
 }
 
 export function renderReservationExtendedEmail(input: ReservationExtendedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your DeskAtlas Reservation Has Been Extended [${input.referenceCode}]`;
+  const subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Has Been Extended [${input.referenceCode}]`;
   const formattedNewEnd = formatEmailTime(input.newEndAt);
   const formattedPrevEnd = formatEmailTime(input.previousEndAt);
   const durationLabel = formatDurationMinutes(input.addedDurationMinutes);
@@ -2216,16 +2041,14 @@ export function renderReservationExtendedEmail(input: ReservationExtendedEmailIn
       </p>
       ` : ''}
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System
-    </div>
+    ${renderBusinessFooter(profile)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Reservation Time Extended - DeskAtlas
+Reservation Time Extended - ${profile.businessName || 'DeskAtlas'}
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -2247,16 +2070,18 @@ Your existing QR pass remains active and valid through your new extended time ($
 QR Pass: ${qrImageUrl}
 
 ${input.trackingUrl ? `Tracking Link: ${input.trackingUrl}\n` : ''}
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
   const isRoleAdmin = input.role.toUpperCase() === 'ADMIN';
   const roleLabel = isRoleAdmin ? 'Admin' : 'Staff';
-  const subject = `[DeskAtlas] New Team Member Joined: ${input.memberName} (${roleLabel})`;
+  const subject = `[${businessName}] New Team Member Joined: ${input.memberName} (${roleLabel})`;
   const rosterUrl = input.rosterUrl || 'http://localhost:3000/manage/staff';
   const joinedFormatted = input.joinedAt
     ? formatEmailTime(input.joinedAt)
@@ -2290,13 +2115,13 @@ export function renderTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): 
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand">DeskAtlas</div>
+      <div class="brand">${escapeHtml(businessName)}</div>
       <span class="badge">Team Notification</span>
     </div>
     <div class="content">
       <div class="title">New Team Member Joined</div>
       <p>Hello Administrator,</p>
-      <p>A new team member has joined DeskAtlas:</p>
+      <p>A new team member has joined ${escapeHtml(businessName)}:</p>
       
       <div class="info-box">
         <div class="info-row"><span class="info-label">Full Name:</span> <strong>${escapeHtml(input.memberName)}</strong></div>
@@ -2310,18 +2135,16 @@ export function renderTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): 
         <a href="${escapeHtml(rosterUrl)}" class="btn">View Team Roster</a>
       </div>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Team Management Alert
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Team Management Alert`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-DeskAtlas Notification: New Team Member Joined
+${businessName} Notification: New Team Member Joined
 
-A new team member has joined DeskAtlas:
+A new team member has joined ${businessName}:
 
 Full Name: ${input.memberName}
 Email Address: ${input.memberEmail}
@@ -2330,16 +2153,18 @@ Joined: ${joinedFormatted}
 ${input.invitedBy ? `Invited By: ${input.invitedBy}\n` : ''}
 View Team Roster: ${rosterUrl}
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Team Management Alert`)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderAccountDeactivatedEmail(input: AccountStatusChangedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
   const isRoleAdmin = input.role.toUpperCase() === 'ADMIN';
   const roleLabel = isRoleAdmin ? 'Admin' : 'Staff';
-  const subject = `[DeskAtlas] Notice: Your Account Has Been Deactivated`;
+  const subject = `[${businessName}] Notice: Your Account Has Been Deactivated`;
   const firstName = input.memberName.trim().split(' ')[0] || input.memberName;
   const effectiveFormatted = input.effectiveAt
     ? formatEmailTime(input.effectiveAt)
@@ -2350,8 +2175,8 @@ export function renderAccountDeactivatedEmail(input: AccountStatusChangedEmailIn
         hour12: true,
       }).format(new Date());
 
-  const supportEmail = input.supportEmail || 'support@deskatlas.com';
-  const contactNumber = input.contactNumber || '+63 2 8123 4567';
+  const supportEmail = profile.contactEmail || input.supportEmail || 'support@deskatlas.com';
+  const contactNumber = profile.contactPhone || input.contactNumber || '+63 2 8123 4567';
 
   const html = `
 <!DOCTYPE html>
@@ -2376,13 +2201,13 @@ export function renderAccountDeactivatedEmail(input: AccountStatusChangedEmailIn
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand">DeskAtlas</div>
+      <div class="brand">${escapeHtml(businessName)}</div>
       <span class="badge">Notice</span>
     </div>
     <div class="content">
       <div class="title">Account Deactivated</div>
       <p>Hello ${escapeHtml(firstName)},</p>
-      <p>Your DeskAtlas ${escapeHtml(roleLabel)} account has been deactivated by an administrator effective immediately.</p>
+      <p>Your ${escapeHtml(businessName)} ${escapeHtml(roleLabel)} account has been deactivated by an administrator effective immediately.</p>
       
       <div class="info-box">
         <div class="info-row"><span class="info-label">Account Name:</span> <strong>${escapeHtml(input.memberName)}</strong></div>
@@ -2400,20 +2225,18 @@ export function renderAccountDeactivatedEmail(input: AccountStatusChangedEmailIn
         <div class="info-row"><span class="info-label">Contact Number:</span> <strong>${escapeHtml(contactNumber)}</strong></div>
       </div>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Administrative Notification
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Administrative Notification`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Notice: Your DeskAtlas Account Has Been Deactivated
+Notice: Your ${businessName} Account Has Been Deactivated
 
 Hello ${firstName},
 
-Your DeskAtlas ${roleLabel} account has been deactivated by an administrator effective immediately.
+Your ${businessName} ${roleLabel} account has been deactivated by an administrator effective immediately.
 
 Account Details:
 - Name: ${input.memberName}
@@ -2427,16 +2250,18 @@ Support Contact Details:
 - Admin Email: ${supportEmail}
 - Contact Number: ${contactNumber}
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Administrative Notification`)}
   `.trim();
 
   return { subject, html, text };
 }
 
 export function renderAccountReactivatedEmail(input: AccountStatusChangedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
   const isRoleAdmin = input.role.toUpperCase() === 'ADMIN';
   const roleLabel = isRoleAdmin ? 'Admin' : 'Staff';
-  const subject = `[DeskAtlas] Your Account Has Been Reactivated`;
+  const subject = `[${businessName}] Your Account Has Been Reactivated`;
   const firstName = input.memberName.trim().split(' ')[0] || input.memberName;
   const effectiveFormatted = input.effectiveAt
     ? formatEmailTime(input.effectiveAt)
@@ -2473,13 +2298,13 @@ export function renderAccountReactivatedEmail(input: AccountStatusChangedEmailIn
 <body>
   <div class="card">
     <div class="header">
-      <div class="brand">DeskAtlas</div>
+      <div class="brand">${escapeHtml(businessName)}</div>
       <span class="badge">Reactivated</span>
     </div>
     <div class="content">
       <div class="title">Account Reactivated</div>
       <p>Hello ${escapeHtml(firstName)},</p>
-      <p>Your DeskAtlas ${escapeHtml(roleLabel)} account access has been restored.</p>
+      <p>Your ${escapeHtml(businessName)} ${escapeHtml(roleLabel)} account access has been restored.</p>
       
       <div class="info-box">
         <div class="info-row"><span class="info-label">Account Name:</span> <strong>${escapeHtml(input.memberName)}</strong></div>
@@ -2488,27 +2313,25 @@ export function renderAccountReactivatedEmail(input: AccountStatusChangedEmailIn
       </div>
 
       <div style="text-align: center;">
-        <a href="${escapeHtml(loginUrl)}" class="btn">Sign In to DeskAtlas</a>
+        <a href="${escapeHtml(loginUrl)}" class="btn">Sign In to ${escapeHtml(businessName)}</a>
       </div>
 
       <div class="guidance-box">
         <strong>Forgot your password?</strong> You can use the "Forgot Password" link on the sign-in page to reset your credentials.
       </div>
     </div>
-    <div class="footer">
-      DeskAtlas Workspace Reservation System &bull; Administrative Notification
-    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Administrative Notification`)}
   </div>
 </body>
 </html>
   `.trim();
 
   const text = `
-Your DeskAtlas Account Has Been Reactivated
+Your ${businessName} Account Has Been Reactivated
 
 Hello ${firstName},
 
-Your DeskAtlas ${roleLabel} account access has been restored.
+Your ${businessName} ${roleLabel} account access has been restored.
 
 Account Details:
 - Name: ${input.memberName}
@@ -2519,10 +2342,388 @@ Sign In: ${loginUrl}
 
 Forgot your password? You can use the "Forgot Password" link on the sign-in page to reset your credentials.
 
-DeskAtlas Workspace Reservation System
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Administrative Notification`)}
   `.trim();
 
   return { subject, html, text };
+}
+
+export class TransactionalEmailService {
+  private readonly apiKey?: string;
+  private readonly fromEmail: string;
+  private readonly webhookUrl?: string;
+  private readonly fetcher: typeof fetch;
+  private readonly defaultBusinessSettings?: BusinessEmailProfile;
+
+  constructor(config?: ResendEmailConfig) {
+    this.apiKey = config?.apiKey ?? process.env.RESEND_API_KEY;
+    this.fromEmail = config?.fromEmail ?? process.env.RESEND_FROM_EMAIL ?? 'DeskAtlas <noreply@deskatlas.com>';
+    this.webhookUrl = config?.webhookUrl ?? process.env.TRANSACTIONAL_EMAIL_WEBHOOK_URL;
+    this.fetcher = config?.fetcher ?? fetch;
+    this.defaultBusinessSettings = config?.businessSettings;
+  }
+
+  async sendEmail(input: RawEmailInput): Promise<EmailSendResult> {
+    const to = Array.isArray(input.to) ? input.to : [input.to];
+    const from = input.from || this.fromEmail;
+
+    // 1. Resend API mode if RESEND_API_KEY is configured
+    if (this.apiKey) {
+      try {
+        const response = await this.fetcher('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from,
+            to,
+            subject: input.subject,
+            html: input.html,
+            text: input.text,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[TransactionalEmail] Resend API error (${response.status}):`, errorText);
+          return { success: false, error: `Resend error (${response.status}): ${errorText}` };
+        }
+
+        const data: any = await response.json();
+        return { success: true, id: data?.id };
+      } catch (err: any) {
+        console.error('[TransactionalEmail] Failed to send via Resend:', err.message);
+        return { success: false, error: err.message };
+      }
+    }
+
+    // 2. Backward-compatible Webhook mode if TRANSACTIONAL_EMAIL_WEBHOOK_URL is configured
+    if (this.webhookUrl) {
+      try {
+        const response = await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to,
+            from,
+            subject: input.subject,
+            html: input.html,
+            text: input.text,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.warn(`[TransactionalEmail] Webhook error (${response.status}):`, errorText);
+          return { success: false, error: `Webhook error: ${errorText}` };
+        }
+
+        return { success: true, id: 'webhook-dispatched' };
+      } catch (err: any) {
+        console.warn('[TransactionalEmail] Failed to dispatch email webhook:', err.message);
+        return { success: false, error: err.message };
+      }
+    }
+
+    // 3. Fallback logged mode for local development without credentials
+    console.info(`[TransactionalEmail] Skipped sending "${input.subject}" to [${to.join(', ')}]; no RESEND_API_KEY or TRANSACTIONAL_EMAIL_WEBHOOK_URL configured.`);
+    return { success: true, id: 'mock-local-skipped' };
+  }
+
+  async sendPaymentLinkEmail(input: PaymentLinkEmailInput): Promise<EmailSendResult> {
+    const mergedInput: PaymentLinkEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderPaymentLinkEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'payment-session',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-payment-session' };
+      } catch (err: any) {
+        console.warn('[TransactionalEmail] Payment link webhook dispatch error:', err.message);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendPaymentProofRequestEmail(input: PaymentProofRequestEmailInput): Promise<EmailSendResult> {
+    return this.sendPaymentLinkEmail(input);
+  }
+
+  async sendBookingConfirmationEmail(input: BookingConfirmationEmailInput): Promise<EmailSendResult> {
+    const mergedInput: BookingConfirmationEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderBookingConfirmationEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'booking-confirmed',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-booking-confirmed' };
+      } catch (err: any) {
+        console.warn('[TransactionalEmail] Booking confirmed webhook dispatch error:', err.message);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to || '',
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendManualResolutionEmail(input: ManualResolutionEmailInput): Promise<EmailSendResult> {
+    const mergedInput: ManualResolutionEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderManualResolutionEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'manual-resolution',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-manual-resolution' };
+      } catch (err: any) {
+        console.warn('[TransactionalEmail] Manual resolution webhook dispatch error:', err.message);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendPaymentProofReceivedEmail(input: PaymentProofReceivedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: PaymentProofReceivedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderPaymentProofReceivedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendPaymentProofRejectedEmail(input: PaymentProofRejectedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: PaymentProofRejectedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderPaymentProofRejectedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationTrackingEmail(input: ReservationTrackingEmailInput): Promise<EmailSendResult> {
+    const mergedInput: ReservationTrackingEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderReservationTrackingEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to || '',
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendStaffInvitationEmail(input: StaffInvitationEmailInput): Promise<EmailSendResult> {
+    const mergedInput: StaffInvitationEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderStaffInvitationEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitationAcceptedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: SuperAdminInvitationAcceptedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderSuperAdminInvitationAcceptedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): Promise<EmailSendResult> {
+    const mergedInput: AdminPasswordResetEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderAdminPasswordResetEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationCancelledEmail(input: ReservationCancelledEmailInput): Promise<EmailSendResult> {
+    const mergedInput: ReservationCancelledEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderReservationCancelledEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationRescheduledEmail(input: ReservationRescheduledEmailInput): Promise<EmailSendResult> {
+    const mergedInput: ReservationRescheduledEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderReservationRescheduledEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationRelocatedEmail(input: ReservationRelocatedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: ReservationRelocatedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderReservationRelocatedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationExtendedEmail(input: ReservationExtendedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: ReservationExtendedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderReservationExtendedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
+    const mergedInput: BookingEndedSurveyEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderBookingEndedSurveyEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to || '',
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: TeamMemberJoinedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderTeamMemberJoinedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendAccountDeactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: AccountStatusChangedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderAccountDeactivatedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendAccountReactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
+    const mergedInput: AccountStatusChangedEmailInput = {
+      ...input,
+      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+    };
+    const rendered = renderAccountReactivatedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
 }
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {
