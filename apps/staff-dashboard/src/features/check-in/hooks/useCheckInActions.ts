@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { useAuth } from '@/features/auth';
+import { useAuth } from '../../auth/components/AuthProvider';
 
 export function useCheckInActions() {
   const { user } = useAuth();

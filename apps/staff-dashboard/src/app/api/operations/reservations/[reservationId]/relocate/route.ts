@@ -58,17 +58,25 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof StaffOperationsError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
     const message =
       error instanceof Error ? error.message : "Failed to relocate reservation.";
+    const isConflictOrStatusError =
+      message.includes("already booked") ||
+      message.includes("occupied") ||
+      message.includes("conflict") ||
+      message.includes("Relocation not allowed") ||
+      message.includes("not permitted") ||
+      message.includes("completed") ||
+      message.includes("expired") ||
+      message.includes("terminal") ||
+      message.includes("status");
+
     const status = message.includes("not found")
       ? 404
-      : message.includes("already booked") || message.includes("occupied") || message.includes("conflict")
+      : isConflictOrStatusError
       ? 409
       : 400;
+
     return NextResponse.json({ error: message }, { status });
   }
 }

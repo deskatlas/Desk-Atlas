@@ -8,6 +8,7 @@ import {
 export interface StaffOperationsRepository {
   listOperationalReservations(nowIso: string): Promise<StaffOperationalReservation[]>;
   getOperationalReservation(idOrReferenceCode: string): Promise<StaffOperationalReservation | null>;
+  getAdminReservationDetail?(idOrReferenceCode: string): Promise<any | null>;
   listOccupancy(nowIso: string): Promise<OccupancyRecord[]>;
   listOperationalActivity(limit: number): Promise<OperationalActivityRecord[]>;
   checkInReservation(input: {

@@ -646,6 +646,12 @@ export function ReservationDetail({ id }: { id: string }) {
 
   if (isConfirmed) {
     detailActions.push({
+      label: 'Extend Time',
+      style: { background: 'transparent', color: 'var(--da-brand-dark)', border: '1px solid var(--da-brand-dark)' },
+      onClick: () => setShowExtendModal(true),
+      testId: 'extend-booking-button',
+    });
+    detailActions.push({
       label: 'Relocate Spot',
       style: { background: 'transparent', color: '#0D9488', border: '1px solid #99F6E4' },
       onClick: () => setShowRelocateModal(true),
@@ -1990,7 +1996,8 @@ export function ReservationDetail({ id }: { id: string }) {
           currentEndAt={detail.endAt || undefined}
           hourlyRate={detail.rateSnapshot || 150}
           apiPrefix="/api/admin/reservations"
-          actorRole="ADMIN"
+          actorRole={user?.isSuperAdmin ? "SUPERADMIN" : "ADMIN"}
+          actorUserId={user?.id || undefined}
         />
       )}
     </main>

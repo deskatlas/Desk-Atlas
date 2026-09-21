@@ -25,6 +25,7 @@ import {
   AdminReservationRepository,
   RescheduleReservationInput,
   RescheduleSlotAvailability,
+  RescheduleAvailabilityResult,
   RelocateReservationInput,
   AvailableRelocationSpot,
   ListAvailableRelocationSpotsInput,
@@ -106,6 +107,8 @@ export class ReservationMemoryRepository
   }> = [];
   private operationalAuditEvents: OperationalActivityRecord[] = [];
   private surveyDispatchedReservationIds = new Set<string>();
+  private operatingHoursMap: Map<number, Array<{ opensAt: string; closesAt: string; isActive?: boolean }>> = new Map();
+  private businessScheduleBlocks: Array<{ startAt: string; endAt: string; blockType?: string; scope?: string; reason?: string }> = [];
   private operationQueue = Promise.resolve();
   private nextApprovalFailureMessage: string | null = null;
   private businessName: string = "DeskAtlas";
@@ -231,7 +234,7 @@ export class ReservationMemoryRepository
 
     if (request.source === "WEB" && paymentSession) {
       this.paymentAttempts.set(paymentSession.tokenHash, {
-        id: randomUUID(),
+        id: paymentSession.paymentAttemptId || randomUUID(),
         reservationId,
         channel: "WEB",
         tokenHash: paymentSession.tokenHash,
@@ -878,7 +881,7 @@ export class ReservationMemoryRepository
       (r) => r.id === idOrReferenceCode || r.referenceCode === idOrReferenceCode
     );
 
-    if (!reservation || !["CONFIRMED", "CHECKED_IN", "COMPLETED", "PENDING_COUNTER_CONFIRMATION"].includes(reservation.status)) {
+    if (!reservation) {
       return null;
     }
 
@@ -1702,6 +1705,9 @@ export class ReservationMemoryRepository
     actorUserId?: string;
     actorRole?: string;
   }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
+    if (input.actorRole && input.actorRole.toUpperCase() === "STAFF") {
+      throw new Error("Staff members are not authorized to cancel reservations.");
+    }
     const r = this.reservations.find(
       (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
     );
@@ -1739,6 +1745,9 @@ export class ReservationMemoryRepository
   }
 
   async rescheduleReservation(input: RescheduleReservationInput): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string; oldSchedule?: string }> {
+    if (input.actorRole && input.actorRole.toUpperCase() === "STAFF") {
+      throw new Error("Staff members are not authorized to reschedule reservations.");
+    }
     const r = this.reservations.find(
       (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
     );
@@ -1790,6 +1799,88 @@ export class ReservationMemoryRepository
             throw new Error("Rescheduled reservation must have the exact same duration as the original booking.");
           }
         }
+      }
+    }
+
+    // Check if target date is closed or outside operating hours
+    const timezone = "Asia/Manila";
+    let targetDateStr = "";
+    try {
+      targetDateStr = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(input.startAt));
+    } catch {
+      targetDateStr = input.startAt.split("T")[0];
+    }
+
+    const [year, month, day] = targetDateStr.split("-").map(Number);
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    const hasConfiguredOperatingHours = this.operatingHoursMap.size > 0;
+    const dayIntervals = (this.operatingHoursMap.get(dayOfWeek) ?? [])
+      .filter((i) => i.isActive !== false)
+      .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+
+    const targetDayStartMs = new Date(`${targetDateStr}T00:00:00+08:00`).getTime();
+    const targetDayEndMs = new Date(`${targetDateStr}T23:59:59.999+08:00`).getTime();
+
+    const hasBusinessClosure = this.businessScheduleBlocks.some((b) => {
+      const bStartMs = new Date(b.startAt).getTime();
+      const bEndMs = new Date(b.endAt).getTime();
+      return bStartMs < targetDayEndMs && bEndMs > targetDayStartMs;
+    });
+
+    const isClosed = hasBusinessClosure || (hasConfiguredOperatingHours && dayIntervals.length === 0);
+    if (isClosed) {
+      throw new Error("The facility is closed on the selected date.");
+    }
+
+    const is24Hours = dayIntervals.some(
+      (i) =>
+        (i.opensAt === "00:00:00" || i.opensAt === "00:00") &&
+        (i.closesAt === "24:00:00" ||
+          i.closesAt === "24:00" ||
+          i.closesAt === "23:59:59" ||
+          i.closesAt === "00:00:00" ||
+          i.closesAt === "00:00")
+    );
+
+    if (!is24Hours && dayIntervals.length > 0) {
+      const openTime = dayIntervals[0].opensAt.slice(0, 5);
+      const rawClose = dayIntervals[dayIntervals.length - 1].closesAt.slice(0, 5);
+      const closeTime = rawClose === "00:00" ? "24:00" : rawClose;
+
+      const startTimeStr = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(input.startAt));
+
+      const endTimeStr = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(input.endAt));
+
+      const [sH, sM] = startTimeStr.split(":").map(Number);
+      const startMin = (sH || 0) * 60 + (sM || 0);
+
+      const [eH, eM] = endTimeStr.split(":").map(Number);
+      const endMin = (eH || 0) * 60 + (eM || 0);
+
+      const [oH, oM] = openTime.split(":").map(Number);
+      const openMin = (oH || 0) * 60 + (oM || 0);
+
+      const [cH, cM] = closeTime.split(":").map(Number);
+      const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+
+      if (startMin < openMin || endMin > closeMin || startMin >= closeMin) {
+        throw new Error(`Cannot reschedule outside business operating hours (${openTime} - ${closeTime}).`);
       }
     }
 
@@ -1845,13 +1936,7 @@ export class ReservationMemoryRepository
     date?: string;
     durationHours?: number;
     workspaceInstanceId?: string;
-  }): Promise<{
-    available: boolean;
-    reason?: string;
-    workspaceInstanceId?: string;
-    workspaceDisplayName?: string;
-    slots?: RescheduleSlotAvailability[];
-  }> {
+  }): Promise<RescheduleAvailabilityResult> {
     const r = this.reservations.find(
       (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
     );
@@ -1861,6 +1946,68 @@ export class ReservationMemoryRepository
       r?.candidates?.find((c) => c.isAssigned)?.workspaceInstanceId ||
       r?.candidates?.[0]?.workspaceInstanceId ||
       "spot-1";
+
+    const timezone = "Asia/Manila";
+    let targetDate = input.date;
+    if (!targetDate && input.startAt) {
+      try {
+        targetDate = new Intl.DateTimeFormat("en-CA", {
+          timeZone: timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(input.startAt));
+      } catch {
+        targetDate = input.startAt.split("T")[0];
+      }
+    }
+
+    let dayOfWeek = 1;
+    if (targetDate) {
+      const [year, month, day] = targetDate.split("-").map(Number);
+      dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    }
+
+    const hasConfiguredOperatingHours = this.operatingHoursMap.size > 0;
+    const dayIntervals = (this.operatingHoursMap.get(dayOfWeek) ?? [])
+      .filter((i) => i.isActive !== false)
+      .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+
+    const targetDayStartMs = targetDate ? new Date(`${targetDate}T00:00:00+08:00`).getTime() : 0;
+    const targetDayEndMs = targetDate ? new Date(`${targetDate}T23:59:59.999+08:00`).getTime() : 0;
+
+    const hasBusinessClosure = targetDate
+      ? this.businessScheduleBlocks.some((b) => {
+          const bStartMs = new Date(b.startAt).getTime();
+          const bEndMs = new Date(b.endAt).getTime();
+          return bStartMs < targetDayEndMs && bEndMs > targetDayStartMs;
+        })
+      : false;
+
+    const isClosed = hasBusinessClosure || (hasConfiguredOperatingHours && dayIntervals.length === 0);
+
+    const is24Hours =
+      !isClosed &&
+      dayIntervals.some(
+        (i) =>
+          (i.opensAt === "00:00:00" || i.opensAt === "00:00") &&
+          (i.closesAt === "24:00:00" ||
+            i.closesAt === "24:00" ||
+            i.closesAt === "23:59:59" ||
+            i.closesAt === "00:00:00" ||
+            i.closesAt === "00:00")
+      );
+
+    let openTime = is24Hours ? "00:00" : "09:00";
+    let closeTime = is24Hours ? "24:00" : "18:00";
+
+    if (!isClosed && dayIntervals.length > 0) {
+      if (!is24Hours) {
+        openTime = dayIntervals[0].opensAt.slice(0, 5);
+        const rawClose = dayIntervals[dayIntervals.length - 1].closesAt.slice(0, 5);
+        closeTime = rawClose === "00:00" ? "24:00" : rawClose;
+      }
+    }
 
     let available = true;
     let reason: string | undefined;
@@ -1873,56 +2020,44 @@ export class ReservationMemoryRepository
       if (newStartMs < nowMs) {
         available = false;
         reason = "Cannot reschedule to a past date or time";
+      } else if (isClosed) {
+        available = false;
+        reason = "The facility is closed on the selected date.";
       } else {
-        for (const other of this.reservations) {
-          if (other.id === r?.id || other.status === "CANCELLED" || other.status === "EXPIRED") {
-            continue;
+        if (!is24Hours && dayIntervals.length > 0) {
+          const startTimeStr = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).format(new Date(input.startAt));
+
+          const endTimeStr = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).format(new Date(input.endAt));
+
+          const [sH, sM] = startTimeStr.split(":").map(Number);
+          const startMin = (sH || 0) * 60 + (sM || 0);
+
+          const [eH, eM] = endTimeStr.split(":").map(Number);
+          const endMin = (eH || 0) * 60 + (eM || 0);
+
+          const [oH, oM] = openTime.split(":").map(Number);
+          const openMin = (oH || 0) * 60 + (oM || 0);
+
+          const [cH, cM] = closeTime.split(":").map(Number);
+          const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+
+          if (startMin < openMin || endMin > closeMin || startMin >= closeMin) {
+            available = false;
+            reason = `Selected time is outside operating hours (${openTime} - ${closeTime})`;
           }
-          for (const otherCand of other.candidates ?? []) {
-            if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== targetInstanceId) {
-              continue;
-            }
-            const otherStartMs = new Date(otherCand.startAt).getTime();
-            const otherEndMs = new Date(otherCand.endAt).getTime();
-            if (newStartMs < otherEndMs && newEndMs > otherStartMs) {
-              available = false;
-              reason = "Spot is occupied during this time window";
-              break;
-            }
-          }
-          if (!available) break;
         }
-      }
-    }
 
-    // Compute slots for date
-    let slots: RescheduleSlotAvailability[] | undefined;
-    const targetDate = input.date || (input.startAt ? input.startAt.split("T")[0] : undefined);
-    const duration = input.durationHours || 2;
-
-    if (targetDate) {
-      const timeOptions = [
-        '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
-        '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'
-      ];
-
-      slots = timeOptions.map((time) => {
-        const [h, m] = time.split(":").map(Number);
-        const slotStart = zonedDateTimeToUtc(targetDate, time, "Asia/Manila");
-        const slotEnd = new Date(slotStart.getTime() + duration * 60 * 60 * 1000);
-        const startMs = slotStart.getTime();
-        const endMs = slotEnd.getTime();
-
-        const endHour = h + duration;
-        const endTime = `${String(endHour).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-
-        let slotAvailable = true;
-        let slotReason: string | undefined;
-
-        if (startMs < nowMs) {
-          slotAvailable = false;
-          slotReason = "Past";
-        } else {
+        if (available) {
           for (const other of this.reservations) {
             if (other.id === r?.id || other.status === "CANCELLED" || other.status === "EXPIRED") {
               continue;
@@ -1933,33 +2068,108 @@ export class ReservationMemoryRepository
               }
               const otherStartMs = new Date(otherCand.startAt).getTime();
               const otherEndMs = new Date(otherCand.endAt).getTime();
-              if (startMs < otherEndMs && endMs > otherStartMs) {
-                slotAvailable = false;
-                slotReason = "Booked";
+              if (newStartMs < otherEndMs && newEndMs > otherStartMs) {
+                available = false;
+                reason = "Spot is occupied during this time window";
                 break;
               }
             }
-            if (!slotAvailable) break;
+            if (!available) break;
           }
         }
+      }
+    }
 
-        return {
-          startTime: time,
-          endTime,
-          startAt: slotStart.toISOString(),
-          endAt: slotEnd.toISOString(),
-          isAvailable: slotAvailable,
-          reason: slotReason,
-        };
-      });
+    // Compute slots for date
+    let slots: RescheduleSlotAvailability[] | undefined;
+    const duration = input.durationHours || 2;
+    const durationMin = Math.round(duration * 60);
+
+    if (targetDate) {
+      if (isClosed) {
+        slots = [];
+      } else {
+        let startMinute = 0;
+        let maxStartMinute = 1440 - durationMin;
+
+        if (!is24Hours && dayIntervals.length > 0) {
+          const [oH, oM] = openTime.split(":").map(Number);
+          startMinute = (oH || 0) * 60 + (oM || 0);
+
+          const [cH, cM] = closeTime.split(":").map(Number);
+          const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+          maxStartMinute = closeMin - durationMin;
+        }
+
+        const intervalMinutes = 30;
+        const generatedSlots: RescheduleSlotAvailability[] = [];
+
+        for (let m = startMinute; m <= maxStartMinute; m += intervalMinutes) {
+          const sH = Math.floor(m / 60);
+          const sM = m % 60;
+          const time = `${String(sH).padStart(2, "0")}:${String(sM).padStart(2, "0")}`;
+
+          const slotStart = zonedDateTimeToUtc(targetDate, time, timezone);
+          const slotEnd = new Date(slotStart.getTime() + durationMin * 60 * 1000);
+          const startMs = slotStart.getTime();
+          const endMs = slotEnd.getTime();
+
+          const endMTotal = m + durationMin;
+          const endH = Math.floor(endMTotal / 60);
+          const endM = endMTotal % 60;
+          const endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+          let slotAvailable = true;
+          let slotReason: string | undefined;
+
+          if (startMs < nowMs) {
+            slotAvailable = false;
+            slotReason = "Past";
+          } else {
+            for (const other of this.reservations) {
+              if (other.id === r?.id || other.status === "CANCELLED" || other.status === "EXPIRED") {
+                continue;
+              }
+              for (const otherCand of other.candidates ?? []) {
+                if (!otherCand.isAssigned || otherCand.workspaceInstanceId !== targetInstanceId) {
+                  continue;
+                }
+                const otherStartMs = new Date(otherCand.startAt).getTime();
+                const otherEndMs = new Date(otherCand.endAt).getTime();
+                if (startMs < otherEndMs && endMs > otherStartMs) {
+                  slotAvailable = false;
+                  slotReason = "Booked";
+                  break;
+                }
+              }
+              if (!slotAvailable) break;
+            }
+          }
+
+          generatedSlots.push({
+            startTime: time,
+            endTime,
+            startAt: slotStart.toISOString(),
+            endAt: slotEnd.toISOString(),
+            isAvailable: slotAvailable,
+            reason: slotReason,
+          });
+        }
+
+        slots = generatedSlots;
+      }
     }
 
     return {
-      available,
-      reason,
+      available: isClosed ? false : available,
+      reason: isClosed ? (reason || "The facility is closed on the selected date.") : reason,
       workspaceInstanceId: targetInstanceId,
       workspaceDisplayName: targetInstanceId,
       slots,
+      openTime: isClosed ? undefined : openTime,
+      closeTime: isClosed ? undefined : closeTime,
+      is24Hours,
+      isClosed,
     };
   }
 
@@ -2016,10 +2226,12 @@ export class ReservationMemoryRepository
     }
   }
 
-  private operatingHoursMap: Map<number, Array<{ opensAt: string; closesAt: string; isActive?: boolean }>> = new Map();
-
   seedOperatingHours(dayOfWeek: number, intervals: Array<{ opensAt: string; closesAt: string; isActive?: boolean }>) {
     this.operatingHoursMap.set(dayOfWeek, intervals);
+  }
+
+  seedBusinessScheduleBlocks(blocks: Array<{ startAt: string; endAt: string; blockType?: string; scope?: string; reason?: string }>) {
+    this.businessScheduleBlocks = blocks;
   }
 
   async checkExtendAvailability(input: {
@@ -2291,6 +2503,10 @@ export class ReservationMemoryRepository
       return [];
     }
 
+    if (r.status !== "CONFIRMED" && r.status !== "CHECKED_IN") {
+      return [];
+    }
+
     const assigned = (r.candidates ?? []).find((c) => c.isAssigned) ?? (r.candidates ?? [])[0];
     if (!assigned) {
       return [];
@@ -2301,6 +2517,10 @@ export class ReservationMemoryRepository
       : this.nowProvider().getTime();
     const startMs = new Date(assigned.startAt).getTime();
     const endMs = new Date(assigned.endAt).getTime();
+
+    if (!isNaN(endMs) && endMs <= nowMs) {
+      return [];
+    }
 
     const isInSession =
       (r.status === "CONFIRMED" || r.status === "CHECKED_IN") &&
@@ -2406,6 +2626,16 @@ export class ReservationMemoryRepository
       throw new Error("No assigned workspace spot found for this reservation");
     }
 
+    const nowMs = input.evaluationTime
+      ? new Date(input.evaluationTime).getTime()
+      : this.nowProvider().getTime();
+    const startMs = new Date(assigned.startAt).getTime();
+    const endMs = new Date(assigned.endAt).getTime();
+
+    if (!isNaN(endMs) && endMs <= nowMs) {
+      throw new Error(`Relocation not allowed: reservation has already ended or expired (current status: ${r.status === "CHECKED_IN" ? "COMPLETED" : "EXPIRED"})`);
+    }
+
     const oldInstanceId = assigned.workspaceInstanceId;
     if (oldInstanceId === input.targetWorkspaceInstanceId) {
       throw new Error("Target spot must be different from current spot");
@@ -2436,12 +2666,6 @@ export class ReservationMemoryRepository
         throw new Error(`Cannot relocate to a spot that is ${opStatus.toLowerCase()}`);
       }
     }
-
-    const nowMs = input.evaluationTime
-      ? new Date(input.evaluationTime).getTime()
-      : this.nowProvider().getTime();
-    const startMs = new Date(assigned.startAt).getTime();
-    const endMs = new Date(assigned.endAt).getTime();
 
     const isInSession =
       (r.status === "CONFIRMED" || r.status === "CHECKED_IN") &&
@@ -2543,6 +2767,11 @@ export class ReservationMemoryRepository
     const assigned = (r.candidates ?? []).find((c) => c.isAssigned) ?? (r.candidates ?? [])[0];
     if (!assigned) {
       throw new Error("No assigned workspace spot found for this reservation");
+    }
+    const endMs = assigned.endAt ? new Date(assigned.endAt).getTime() : NaN;
+    const nowMs = this.nowProvider().getTime();
+    if (!isNaN(endMs) && endMs <= nowMs) {
+      throw new Error("Cannot request relocation: reservation has already ended or expired.");
     }
     if (assigned.workspaceInstanceId === input.targetWorkspaceInstanceId) {
       throw new Error("Target spot must be different from current spot");

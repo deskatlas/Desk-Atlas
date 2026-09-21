@@ -42,6 +42,10 @@ export interface RescheduleAvailabilityResult {
   workspaceInstanceId?: string;
   workspaceDisplayName?: string;
   slots?: RescheduleSlotAvailability[];
+  openTime?: string;
+  closeTime?: string;
+  is24Hours?: boolean;
+  isClosed?: boolean;
 }
 
 export interface RelocateReservationInput {
@@ -127,7 +131,7 @@ export interface ExtendReservationInput {
   additionalFee?: number;
   paymentMethod?: string;
   actorUserId?: string;
-  actorRole?: "ADMIN" | "STAFF";
+  actorRole?: "SUPERADMIN" | "SUPER_ADMIN" | "ADMIN" | "STAFF" | string;
 }
 
 export interface CheckExtendAvailabilityInput {

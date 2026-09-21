@@ -112,7 +112,8 @@
     "test:mf128": "vitest run tests/mf128-workspace-map-occupied-countdown-timer.test.ts",
     "test:mf129": "vitest run tests/mf129-instance-recommendation-tags-map-builder.test.ts",
     "test:mf143": "vitest run tests/mf143-booking-confirmed-email-details.test.ts",
-    "test:mf144": "vitest run tests/mf144-admin-scan-kiosk-queue-access.test.ts"
+    "test:mf144": "vitest run tests/mf144-admin-scan-kiosk-queue-access.test.ts",
+    "test:mf160": "vitest run tests/mf160-staff-reservation-detail-full-view.test.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.4",

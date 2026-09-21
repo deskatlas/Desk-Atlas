@@ -123,15 +123,28 @@ export function PaymentSessionPage({ token }: { token: string }) {
     return Math.max(0, Math.floor((new Date(data.expiresAt).getTime() - now) / 1000));
   }, [data?.expiresAt, now]);
 
+  const isCancelled =
+    data?.paymentStatus === "CANCELLED" ||
+    data?.paymentStatus === "REJECTED" ||
+    data?.reservationStatus === "CANCELLED";
+
   const isExpired =
     data?.paymentStatus === "EXPIRED" ||
     data?.reservationStatus === "EXPIRED" ||
-    (!loading && !!data?.expiresAt && remainingSeconds === 0 && !data?.proofSubmittedAt);
+    (!loading && !!data?.expiresAt && remainingSeconds === 0 && !data?.proofSubmittedAt) ||
+    isCancelled;
 
   const isUnderReview =
     data?.paymentStatus === "UNDER_REVIEW" ||
     data?.reservationStatus === "PAYMENT_UNDER_REVIEW" ||
     submitted;
+
+  const isConfirmed =
+    !isUnderReview &&
+    (data?.paymentStatus === "APPROVED" ||
+      data?.reservationStatus === "CONFIRMED" ||
+      data?.reservationStatus === "COMPLETED" ||
+      data?.reservationStatus === "CHECKED_IN");
 
   const selectedMethod = useMemo(() => {
     if (webPaymentMethods.length === 0) {
@@ -281,7 +294,13 @@ export function PaymentSessionPage({ token }: { token: string }) {
               Payment Session
             </p>
             <h1 className="mt-2 text-4xl font-extrabold tracking-[-0.03em] text-[var(--da-brand-dark)]">
-              {isUnderReview ? "Proof Submitted" : "Complete your payment"}
+              {isUnderReview
+                ? "Proof Submitted"
+                : isExpired
+                  ? "Payment link expired"
+                  : isConfirmed
+                    ? "Payment Confirmed"
+                    : "Complete your payment"}
             </h1>
           </div>
           <Link href="/track" className="da-secondary-button">
@@ -410,22 +429,43 @@ export function PaymentSessionPage({ token }: { token: string }) {
                 </div>
               </div>
             ) : isExpired ? (
-              /* Expired Session Screen */
+              /* Expired / Cancelled Session Screen (MF-162: completely hides payment details, QR, amounts) */
               <div className="mt-8 space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Panel label="Reference" value={data.reservationReferenceCode} />
                   <Panel label="Guest" value={`${data.customerFirstName} ${data.customerLastName}`} />
-                  <Panel label="Amount Due" value={`${data.currency} ${data.amountDue}`} />
-                  <Panel label="Status" value="Payment session expired" />
+                  <Panel label="Status" value={isCancelled ? "Reservation cancelled" : "Payment link expired"} />
                 </div>
                 <StateBox
                   tone="warning"
-                  title="Payment session expired"
-                  body="This one-hour payment session has expired and is no longer accepting proof uploads. If you still need a workspace, please create a new reservation."
+                  title="This payment link has expired."
+                  body="The reservation associated with this link is no longer active. If you believe this is an error, please contact the facility or create a new reservation."
                 />
                 <div className="flex items-center gap-4 pt-4">
                   <Link href="/reserve" className="da-primary-button">
                     Start New Reservation
+                  </Link>
+                  <Link href="/" className="da-secondary-button">
+                    Return to Home
+                  </Link>
+                </div>
+              </div>
+            ) : isConfirmed ? (
+              /* Already Confirmed / Paid Screen */
+              <div className="mt-8 space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Panel label="Reference" value={data.reservationReferenceCode} />
+                  <Panel label="Guest" value={`${data.customerFirstName} ${data.customerLastName}`} />
+                  <Panel label="Status" value="Payment confirmed" />
+                </div>
+                <StateBox
+                  tone="success"
+                  title="Payment Confirmed"
+                  body="This reservation has already been confirmed and paid. You can track your booking status or view your digital pass."
+                />
+                <div className="flex items-center gap-4 pt-4">
+                  <Link href={`/track?code=${encodeURIComponent(data.reservationReferenceCode)}`} className="da-primary-button">
+                    Track Reservation
                   </Link>
                   <Link href="/" className="da-secondary-button">
                     Return to Home

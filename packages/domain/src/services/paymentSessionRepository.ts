@@ -5,6 +5,7 @@ import {
 } from "../models/reservation";
 
 export interface CreateWebPaymentSessionInput {
+  paymentAttemptId?: string;
   tokenHash: string;
   expiresAt: string;
 }

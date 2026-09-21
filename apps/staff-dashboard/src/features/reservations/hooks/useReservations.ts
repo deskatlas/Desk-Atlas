@@ -33,7 +33,7 @@ export function useReservations() {
 }
 
 export function useReservationDetail(id: string) {
-  const [reservation, setReservation] = useState<StaffOperationalReservation | null>(null);
+  const [reservation, setReservation] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

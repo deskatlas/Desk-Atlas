@@ -140,6 +140,16 @@ export interface PaymentSessionView {
   businessName?: string;
 }
 
+export interface PaymentSessionStatusView {
+  reservationId: string;
+  reservationReferenceCode: string;
+  reservationStatus: ReservationStatus;
+  paymentStatus: PaymentAttemptStatus;
+  isValid: boolean;
+  isExpired: boolean;
+  expiresAt: string;
+}
+
 export interface CounterPaymentRecord {
   paymentAttemptId: string;
   reservationId: string;

@@ -15,7 +15,8 @@ interface ExtendReservationModalProps {
   currentEndAt?: string;
   hourlyRate?: number;
   apiPrefix?: string;
-  actorRole?: "ADMIN" | "STAFF";
+  actorRole?: "SUPERADMIN" | "SUPER_ADMIN" | "ADMIN" | "STAFF" | string;
+  actorUserId?: string;
 }
 
 function formatMinutes(minutes: number): string {
@@ -41,6 +42,7 @@ export function ExtendReservationModal({
   hourlyRate = 150,
   apiPrefix = "/api/admin/reservations",
   actorRole = "ADMIN",
+  actorUserId,
 }: ExtendReservationModalProps) {
   const [selectedMinutes, setSelectedMinutes] = useState<number>(60);
   const [isCustom, setIsCustom] = useState<boolean>(false);
@@ -120,6 +122,7 @@ export function ExtendReservationModal({
           additionalFee: availabilityData?.additionalFee,
           paymentMethod,
           actorRole,
+          actorUserId,
         }),
       });
 

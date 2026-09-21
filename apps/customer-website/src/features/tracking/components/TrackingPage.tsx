@@ -6,6 +6,7 @@ import { useReservationTracking } from "../hooks/useReservationTracking";
 import { CustomerRescheduleModal } from "./CustomerRescheduleModal";
 import { CustomerRelocateModal } from "./CustomerRelocateModal";
 import { CancellationTermsModal } from "./CancellationTermsModal";
+import { mapReservationStatusDisplay } from "../utils/reservationStatusMap";
 
 interface TrackingPageProps {
   initialReferenceCode?: string;
@@ -132,8 +133,13 @@ export function TrackingPage({
             data.paymentStatus === "REJECTED" ||
             (data.status === "CANCELLED" && (!data.confirmedAt || data.paymentStatus === "REJECTED"));
 
+          const isExpired = data.status === "EXPIRED";
+          const statusDisplay = mapReservationStatusDisplay(data.status, data.paymentStatus);
+
           const confirmedAtValue = isRejected
             ? "Rejected"
+            : isExpired && !data.confirmedAt
+            ? "Expired"
             : data.confirmedAt
             ? formatDateTime(data.confirmedAt)
             : "Pending";
@@ -172,16 +178,30 @@ export function TrackingPage({
                     </span>
                   )}
                   <span
+                    data-testid="tracking-status-badge"
                     className={`rounded-full px-4 py-2 text-xs font-bold ${
                       isRejected
                         ? "bg-red-100 text-red-700"
-                        : "bg-[var(--da-info)] text-[var(--da-primary)]"
+                        : statusDisplay.badgeClass
                     }`}
                   >
-                    {isRejected ? "REJECTED" : data.status}
+                    {isRejected ? "REJECTED" : statusDisplay.label}
                   </span>
                 </div>
               </div>
+
+              {isExpired && (
+                <div
+                  data-testid="expired-reservation-notice"
+                  className="mt-6 rounded-[18px] border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700"
+                >
+                  <p className="font-semibold text-gray-900">Reservation Expired</p>
+                  <p className="mt-1 text-xs text-gray-600">
+                    This reservation has expired. The booking window has passed without confirmed payment.
+                    Please create a new reservation if you still wish to book.
+                  </p>
+                </div>
+              )}
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <InfoCard label="Amount due" value={`${data.currency} ${data.amountDue}`} />
@@ -191,7 +211,7 @@ export function TrackingPage({
               </div>
 
               {/* In-Session Spot Relocation Section */}
-              {!isRejected && data.status === "CONFIRMED" && (
+              {!isRejected && !isExpired && data.status === "CONFIRMED" && (
                 data.pendingRelocationRequest?.status === "PENDING" ? (
                   <div
                     data-testid="customer-pending-relocation-badge"
@@ -255,7 +275,7 @@ export function TrackingPage({
               )}
 
               {/* Reschedule Action Section */}
-              {!isRejected && data.status === "CONFIRMED" && (
+              {!isRejected && !isExpired && data.status === "CONFIRMED" && (
                 <div className="mt-4 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>

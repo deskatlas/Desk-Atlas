@@ -301,6 +301,58 @@ export class AdminReservationService {
     return detail;
   }
 
+  async getReservationTimeline(idOrReferenceCode: string, _actorRole?: string): Promise<string[]> {
+    const detail = await this.getReservationDetail(idOrReferenceCode);
+    if (!detail) {
+      throw new AdminReservationError("Reservation not found.");
+    }
+    return detail.timeline || [];
+  }
+
+  async getPaymentHistory(
+    idOrReferenceCode: string,
+    _actorRole?: string
+  ): Promise<AdminReservationCandidateSummary[] | any[]> {
+    const detail = await this.getReservationDetail(idOrReferenceCode);
+    if (!detail) {
+      throw new AdminReservationError("Reservation not found.");
+    }
+    return detail.paymentAttempts || [];
+  }
+
+  async getBookingQrToken(
+    idOrReferenceCode: string,
+    _actorRole?: string
+  ): Promise<{
+    bookingToken: string | null;
+    bookingAccessUrl: string | null;
+    hasBookingQr: boolean;
+    qrIssuedAt: string | null;
+    qrRevokedAt: string | null;
+    referenceCode: string;
+    customerName: string;
+    schedule: string;
+    duration: string;
+    reservationStatus: string;
+  }> {
+    const detail = await this.getReservationDetail(idOrReferenceCode);
+    if (!detail) {
+      throw new AdminReservationError("Reservation not found.");
+    }
+    return {
+      bookingToken: detail.bookingToken,
+      bookingAccessUrl: detail.bookingAccessUrl,
+      hasBookingQr: detail.hasBookingQr,
+      qrIssuedAt: detail.qrIssuedAt,
+      qrRevokedAt: detail.qrRevokedAt,
+      referenceCode: detail.referenceCode,
+      customerName: detail.customerName,
+      schedule: detail.schedule,
+      duration: detail.duration,
+      reservationStatus: detail.reservationStatus,
+    };
+  }
+
   async cancelReservation(input: {
     reservationId: string;
     reason: string;
@@ -311,11 +363,14 @@ export class AdminReservationService {
     if (!input.reservationId || input.reservationId.trim() === "") {
       throw new AdminReservationError("Reservation ID is required.");
     }
+    if (input.actorRole && input.actorRole.toUpperCase() === "STAFF") {
+      throw new AdminReservationError("Staff members are not authorized to cancel reservations.");
+    }
     if (!input.reason || input.reason.trim() === "") {
       throw new AdminReservationError("Cancellation reason is required.");
     }
 
-    const result = await this.repository.cancelReservation({
+    const result = await this.repository.cancelReservation!({
       reservationId: input.reservationId.trim(),
       reason: input.reason.trim(),
       notes: input.notes?.trim(),
@@ -360,6 +415,9 @@ export class AdminReservationService {
   }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
     if (!input.reservationId || input.reservationId.trim() === "") {
       throw new AdminReservationError("Reservation ID is required.");
+    }
+    if (input.actorRole && input.actorRole.toUpperCase() === "STAFF") {
+      throw new AdminReservationError("Staff members are not authorized to reschedule reservations.");
     }
     if (!input.startAt || !input.endAt) {
       throw new AdminReservationError("Start time and end time are required.");
@@ -425,6 +483,13 @@ export class AdminReservationService {
     if (!reservationId || reservationId.trim() === "") {
       return [];
     }
+    const reservation = await this.getReservationDetail(reservationId.trim());
+    if (!reservation) {
+      return [];
+    }
+    if (!["CONFIRMED", "CHECKED_IN"].includes(reservation.reservationStatus)) {
+      return [];
+    }
     if (!this.repository.listAvailableRelocationSpots) {
       return [];
     }
@@ -449,6 +514,17 @@ export class AdminReservationService {
     if (!input.reason || input.reason.trim() === "") {
       throw new AdminReservationError("Relocation reason is required.");
     }
+
+    const currentReservation = await this.getReservationDetail(input.reservationId.trim());
+    if (!currentReservation) {
+      throw new AdminReservationError(`Reservation not found: ${input.reservationId}`);
+    }
+    if (!["CONFIRMED", "CHECKED_IN"].includes(currentReservation.reservationStatus)) {
+      throw new AdminReservationError(
+        `Relocation not allowed: Only confirmed or checked-in reservations can be relocated (reservation is in ${currentReservation.reservationStatus} status).`
+      );
+    }
+
     if (!this.repository.relocateReservation) {
       throw new AdminReservationError("Relocation is not supported by the repository.");
     }
@@ -612,6 +688,11 @@ export class AdminReservationService {
     if (!input.extensionMinutes || input.extensionMinutes <= 0) {
       throw new AdminReservationError("Extension duration in minutes must be greater than 0.");
     }
+    const ALLOWED_ACTOR_ROLES = ["SUPERADMIN", "SUPER_ADMIN", "ADMIN", "STAFF"];
+    if (input.actorRole && !ALLOWED_ACTOR_ROLES.includes(input.actorRole.toUpperCase())) {
+      throw new AdminReservationError(`Actor role '${input.actorRole}' is not authorized to extend reservations.`);
+    }
+
     if (!this.repository.extendReservation) {
       throw new AdminReservationError("Extension is not supported by repository.");
     }

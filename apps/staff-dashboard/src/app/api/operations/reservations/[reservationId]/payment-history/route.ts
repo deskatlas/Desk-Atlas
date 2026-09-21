@@ -22,30 +22,17 @@ export async function GET(
     }
 
     const service = createStaffOperationsService(new ReservationSupabaseRepository());
-    const detail = await service.getReservationDetail(reservationId.trim(), "STAFF");
-    const operationalRes = await service.getOperationalReservation(reservationId.trim());
+    const paymentAttempts = await service.getPaymentHistory(reservationId.trim(), "STAFF");
 
-    if (!detail && !operationalRes) {
-      return NextResponse.json({ error: "Reservation not found." }, { status: 404 });
-    }
-
-    const merged = {
-      ...(operationalRes || {}),
-      ...(detail || {}),
-      reservationId: (detail as any)?.id || operationalRes?.reservationId || reservationId.trim(),
-    };
-
-    return NextResponse.json({
-      ...merged,
-      reservation: merged,
-    });
+    return NextResponse.json({ paymentAttempts });
   } catch (error) {
     if (error instanceof StaffOperationsError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const status = error.message.toLowerCase().includes("not found") ? 404 : 400;
+      return NextResponse.json({ error: error.message }, { status });
     }
 
     const message =
-      error instanceof Error ? error.message : "Unable to load reservation.";
+      error instanceof Error ? error.message : "Unable to load payment history.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

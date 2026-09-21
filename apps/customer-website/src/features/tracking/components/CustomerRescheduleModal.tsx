@@ -32,6 +32,14 @@ export function CustomerRescheduleModal({
     }
   });
 
+  const [openTime, setOpenTime] = useState<string>("08:00");
+  const [closeTime, setCloseTime] = useState<string>("20:00");
+  const [is24Hours, setIs24Hours] = useState<boolean>(false);
+  const [isClosed, setIsClosed] = useState<boolean>(false);
+  const [timeOptions, setTimeOptions] = useState<string[]>(() =>
+    generateRescheduleTimeOptions("08:00", "20:00", false, false, 2)
+  );
+
   const [selectedTime, setSelectedTime] = useState<string>("09:00");
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [isSlotAvailable, setIsSlotAvailable] = useState<boolean | null>(null);
@@ -65,18 +73,12 @@ export function CustomerRescheduleModal({
     }
   })();
 
-  const timeOptions = [
-    "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
-    "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
-    "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
-    "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00"
-  ];
-
   // Compute calculated end time
   const calculatedEndTime = (() => {
     const [hStr, mStr] = selectedTime.split(":");
     const h = parseInt(hStr, 10);
     const m = parseInt(mStr || "0", 10);
+    if (isNaN(h)) return "";
     const totalMinutes = h * 60 + m + Math.round(originalDurationHours * 60);
     const endH = Math.floor(totalMinutes / 60);
     const endM = totalMinutes % 60;
@@ -106,7 +108,7 @@ export function CustomerRescheduleModal({
   }, [rescheduleDate, selectedTime]);
 
   async function checkAvailability() {
-    if (!rescheduleDate || !selectedTime || !startIso || !endIso) return;
+    if (!rescheduleDate) return;
     try {
       setIsCheckingAvailability(true);
       setErrorMessage(null);
@@ -117,20 +119,46 @@ export function CustomerRescheduleModal({
           referenceCode: trackingData.referenceCode,
           customerEmail,
           date: rescheduleDate,
-          startAt: new Date(startIso).toISOString(),
-          endAt: new Date(endIso).toISOString(),
+          startAt: startIso ? new Date(startIso).toISOString() : undefined,
+          endAt: endIso ? new Date(endIso).toISOString() : undefined,
           durationHours: originalDurationHours,
           workspaceInstanceId: finalAssignment?.workspaceInstanceId,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+
+      const respOpenTime = data.openTime || (data.is24Hours ? "00:00" : "08:00");
+      const respCloseTime = data.closeTime || (data.is24Hours ? "24:00" : "20:00");
+      const respIs24Hours = Boolean(data.is24Hours);
+      const respIsClosed = Boolean(data.isClosed);
+
+      setOpenTime(respOpenTime);
+      setCloseTime(respCloseTime);
+      setIs24Hours(respIs24Hours);
+      setIsClosed(respIsClosed);
+
+      const newSlots = generateRescheduleTimeOptions(
+        respOpenTime,
+        respCloseTime,
+        respIs24Hours,
+        respIsClosed,
+        originalDurationHours
+      );
+      setTimeOptions(newSlots);
+
+      if (respIsClosed) {
+        setIsSlotAvailable(false);
+        setAvailabilityReason(data.reason || "The facility is closed on the selected date.");
+      } else if (!res.ok) {
         setIsSlotAvailable(false);
         setAvailabilityReason(data.error || "Slot is unavailable");
       } else {
         setIsSlotAvailable(data.available !== false);
         setAvailabilityReason(data.reason || (data.available !== false ? null : "Spot is occupied during this time window"));
+        if (newSlots.length > 0 && !newSlots.includes(selectedTime)) {
+          setSelectedTime(newSlots[0]);
+        }
       }
     } catch {
       setIsSlotAvailable(false);
@@ -256,14 +284,18 @@ export function CustomerRescheduleModal({
               <select
                 value={selectedTime}
                 onChange={(e) => setSelectedTime(e.target.value)}
-                disabled={isSubmitting}
-                className="da-input mt-1 w-full text-sm font-semibold bg-white"
+                disabled={isSubmitting || isClosed || timeOptions.length === 0}
+                className="da-input mt-1 w-full text-sm font-semibold bg-white disabled:bg-gray-100 disabled:text-gray-400"
               >
-                {timeOptions.map((time) => (
-                  <option key={time} value={time}>
-                    {format12HourTime(time)}
-                  </option>
-                ))}
+                {timeOptions.length === 0 ? (
+                  <option value="">{isClosed ? "Facility Closed" : "No slots available"}</option>
+                ) : (
+                  timeOptions.map((time) => (
+                    <option key={time} value={time}>
+                      {format12HourTime(time)}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -315,7 +347,7 @@ export function CustomerRescheduleModal({
           <button
             type="button"
             onClick={handleConfirmReschedule}
-            disabled={!isSlotAvailable || isCheckingAvailability || isSubmitting}
+            disabled={!isSlotAvailable || isCheckingAvailability || isSubmitting || isClosed}
             className="da-primary-button text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSubmitting ? "Rescheduling..." : "Confirm Reschedule"}
@@ -324,6 +356,53 @@ export function CustomerRescheduleModal({
       </div>
     </div>
   );
+}
+
+function generateRescheduleTimeOptions(
+  openTime: string = "08:00",
+  closeTime: string = "20:00",
+  is24Hours: boolean = false,
+  isClosed: boolean = false,
+  durationHours: number = 2
+): string[] {
+  if (isClosed) return [];
+
+  const intervalMinutes = 30;
+  const durationMinutes = Math.round(durationHours * 60);
+
+  if (is24Hours) {
+    const slots: string[] = [];
+    const maxStartMinute = 1440 - durationMinutes;
+    for (let m = 0; m < 1440; m += intervalMinutes) {
+      if (m > maxStartMinute && maxStartMinute >= 0) {
+        continue;
+      }
+      const h = Math.floor(m / 60);
+      const min = m % 60;
+      slots.push(`${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
+    }
+    return slots.length > 0 ? slots : ["00:00"];
+  }
+
+  const [openH, openM] = openTime.split(":").map(Number);
+  const openMinutes = (openH || 0) * 60 + (openM || 0);
+
+  let closeMinutes = 20 * 60;
+  if (closeTime) {
+    const [closeH, closeM] = closeTime.split(":").map(Number);
+    closeMinutes = (closeH === 0 || closeH === 24 ? 24 : (closeH || 0)) * 60 + (closeM || 0);
+  }
+
+  const maxStartMinute = closeMinutes - durationMinutes;
+  const slots: string[] = [];
+
+  for (let m = openMinutes; m <= maxStartMinute; m += intervalMinutes) {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    slots.push(`${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
+  }
+
+  return slots;
 }
 
 function format12HourTime(timeStr: string) {

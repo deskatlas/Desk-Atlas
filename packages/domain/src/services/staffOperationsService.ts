@@ -1,4 +1,6 @@
 import {
+  AdminReservationDetail,
+  AdminReservationPaymentAttemptSummary,
   OperationalActivityRecord,
   OperationalActivityType,
   OccupancyRecord,
@@ -66,6 +68,83 @@ export class StaffOperationsService {
       return null;
     }
     return applyStaffOperationalDerivation(res, this.nowProvider().getTime());
+  }
+
+  async getReservationDetail(
+    idOrReferenceCode: string,
+    _actorRole: string = "STAFF"
+  ): Promise<AdminReservationDetail | null> {
+    if (!idOrReferenceCode || idOrReferenceCode.trim() === "") {
+      throw new StaffOperationsError("Reservation ID is required.");
+    }
+    if (this.staffOperationsRepository.getAdminReservationDetail) {
+      return this.staffOperationsRepository.getAdminReservationDetail(idOrReferenceCode.trim());
+    }
+    return null;
+  }
+
+  async getReservationTimeline(
+    reservationId: string,
+    actorRole: string = "STAFF"
+  ): Promise<string[]> {
+    if (!reservationId || reservationId.trim() === "") {
+      throw new StaffOperationsError("Reservation ID is required.");
+    }
+    const detail = await this.getReservationDetail(reservationId, actorRole);
+    if (!detail) {
+      throw new StaffOperationsError("Reservation not found.");
+    }
+    return detail.timeline || [];
+  }
+
+  async getPaymentHistory(
+    reservationId: string,
+    actorRole: string = "STAFF"
+  ): Promise<AdminReservationPaymentAttemptSummary[]> {
+    if (!reservationId || reservationId.trim() === "") {
+      throw new StaffOperationsError("Reservation ID is required.");
+    }
+    const detail = await this.getReservationDetail(reservationId, actorRole);
+    if (!detail) {
+      throw new StaffOperationsError("Reservation not found.");
+    }
+    return detail.paymentAttempts || [];
+  }
+
+  async getBookingQrToken(
+    reservationId: string,
+    actorRole: string = "STAFF"
+  ): Promise<{
+    bookingToken: string | null;
+    bookingAccessUrl: string | null;
+    hasBookingQr: boolean;
+    qrIssuedAt: string | null;
+    qrRevokedAt: string | null;
+    referenceCode: string;
+    customerName: string;
+    schedule: string;
+    duration: string;
+    reservationStatus: string;
+  }> {
+    if (!reservationId || reservationId.trim() === "") {
+      throw new StaffOperationsError("Reservation ID is required.");
+    }
+    const detail = await this.getReservationDetail(reservationId, actorRole);
+    if (!detail) {
+      throw new StaffOperationsError("Reservation not found.");
+    }
+    return {
+      bookingToken: detail.bookingToken,
+      bookingAccessUrl: detail.bookingAccessUrl,
+      hasBookingQr: detail.hasBookingQr,
+      qrIssuedAt: detail.qrIssuedAt,
+      qrRevokedAt: detail.qrRevokedAt,
+      referenceCode: detail.referenceCode,
+      customerName: detail.customerName,
+      schedule: detail.schedule,
+      duration: detail.duration,
+      reservationStatus: detail.reservationStatus,
+    };
   }
 
   async listOccupancy(): Promise<OccupancyRecord[]> {
@@ -179,6 +258,13 @@ export class StaffOperationsService {
     if (!reservationId || reservationId.trim() === "") {
       return [];
     }
+    const res = await this.getOperationalReservation(reservationId.trim());
+    if (!res) {
+      return [];
+    }
+    if (!["CONFIRMED", "CHECKED_IN"].includes(res.reservationStatus)) {
+      return [];
+    }
     if (this.staffOperationsRepository.listAvailableRelocationSpots) {
       return this.staffOperationsRepository.listAvailableRelocationSpots({
         reservationId: reservationId.trim(),
@@ -204,6 +290,17 @@ export class StaffOperationsService {
     if (!input.reason || input.reason.trim() === "") {
       throw new StaffOperationsError("Relocation reason is required.");
     }
+
+    const res = await this.getOperationalReservation(input.reservationId.trim());
+    if (!res) {
+      throw new StaffOperationsError(`Reservation not found: ${input.reservationId}`);
+    }
+    if (!["CONFIRMED", "CHECKED_IN"].includes(res.reservationStatus)) {
+      throw new StaffOperationsError(
+        `Relocation not allowed: Only confirmed or checked-in reservations can be relocated (reservation is in ${res.reservationStatus} status).`
+      );
+    }
+
     if (!this.staffOperationsRepository.relocateReservation) {
       throw new StaffOperationsError("Relocation is not supported by repository");
     }

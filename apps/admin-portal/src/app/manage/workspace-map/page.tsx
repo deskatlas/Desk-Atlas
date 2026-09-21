@@ -18,6 +18,7 @@ import {
 } from '@deskatlas/domain';
 import { WorkspaceCountdownBadge, useLiveCountdownClock } from '@deskatlas/ui';
 import { ExtendReservationModal } from '@/features/reservations/components/ExtendReservationModal';
+import { useAuth } from '@/features/auth';
 
 function formatStructureLabel(raw?: string | null): string {
   if (!raw || !raw.trim()) return 'Structure';
@@ -102,6 +103,7 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
 
 export default function WorkspaceMapPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const currentTick = useLiveCountdownClock(1000);
   const [builderZoom, setBuilderZoom] = useState(1);
   const [selectedObjId, setSelectedObjId] = useState<string | null>(null);
@@ -949,7 +951,8 @@ export default function WorkspaceMapPage() {
           currentEndAt={extendModalData.currentEndAt}
           hourlyRate={extendModalData.hourlyRate}
           apiPrefix="/api/admin/reservations"
-          actorRole="ADMIN"
+          actorRole={user?.isSuperAdmin ? "SUPERADMIN" : "ADMIN"}
+          actorUserId={user?.id || undefined}
         />
       )}
     </main>

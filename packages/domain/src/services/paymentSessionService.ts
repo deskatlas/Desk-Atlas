@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import {
   PaymentProofSubmissionResult,
+  PaymentSessionStatusView,
   PaymentSessionView,
   ReservationPaymentSession,
 } from "../models/reservation";
@@ -84,6 +85,29 @@ export class PaymentSessionService {
     };
   }
 
+  async getPaymentSessionStatus(token: string): Promise<PaymentSessionStatusView> {
+    const session = await this.getPaymentSession(token);
+    const nowIso = this.nowProvider().toISOString();
+    const isTimeExpired = !!session.expiresAt && nowIso >= session.expiresAt && !session.proofSubmittedAt;
+    const isStatusExpired = session.paymentStatus === "EXPIRED" || session.reservationStatus === "EXPIRED";
+    const isExpired = isStatusExpired || isTimeExpired;
+    const isPreConfirmation =
+      session.reservationStatus === "PENDING_PAYMENT" &&
+      session.paymentStatus === "PENDING" &&
+      session.proofSubmittedAt === null;
+    const isValid = isPreConfirmation && !isExpired;
+
+    return {
+      reservationId: session.reservationId,
+      reservationReferenceCode: session.reservationReferenceCode,
+      reservationStatus: session.reservationStatus,
+      paymentStatus: session.paymentStatus,
+      isValid,
+      isExpired,
+      expiresAt: session.expiresAt,
+    };
+  }
+
   async submitPaymentProof(input: {
     token: string;
     paymentMethodId: string;
@@ -96,6 +120,27 @@ export class PaymentSessionService {
       throw new PaymentSessionError("Invalid payment token.");
     }
 
+    if (session.reservationStatus === "EXPIRED" || session.paymentStatus === "EXPIRED") {
+      throw new PaymentSessionError("Reservation has expired. Payment proof cannot be submitted.");
+    }
+
+    if (
+      session.reservationStatus === "CANCELLED" ||
+      session.paymentStatus === "CANCELLED" ||
+      session.paymentStatus === "REJECTED"
+    ) {
+      throw new PaymentSessionError("Reservation has been cancelled. Payment proof cannot be submitted.");
+    }
+
+    if (
+      session.reservationStatus === "CONFIRMED" ||
+      session.reservationStatus === "COMPLETED" ||
+      session.reservationStatus === "CHECKED_IN" ||
+      session.paymentStatus === "APPROVED"
+    ) {
+      throw new PaymentSessionError("Reservation has already been confirmed.");
+    }
+
     if (session.proofSubmittedAt !== null || session.paymentStatus !== "PENDING") {
       throw new PaymentSessionError("Payment proof has already been submitted for this session.");
     }
@@ -103,7 +148,7 @@ export class PaymentSessionService {
     const proofSubmittedAt = this.nowProvider().toISOString();
     if (proofSubmittedAt >= session.expiresAt) {
       await this.paymentRepository.expirePaymentSession(tokenHash, proofSubmittedAt);
-      throw new PaymentSessionError("Payment session has expired.");
+      throw new PaymentSessionError("Reservation has expired. Payment proof cannot be submitted.");
     }
 
     return this.paymentRepository.submitPaymentProof({

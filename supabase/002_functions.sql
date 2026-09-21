@@ -2720,6 +2720,10 @@ BEGIN
     RAISE EXCEPTION 'No candidate found for reservation %', p_reservation_id;
   END IF;
 
+  IF v_assigned.end_at <= v_now THEN
+    RAISE EXCEPTION 'Relocation not allowed: reservation booking period has already ended';
+  END IF;
+
   IF v_assigned.workspace_instance_id = p_target_workspace_instance_id THEN
     RAISE EXCEPTION 'Target spot must be different from current spot';
   END IF;

@@ -67,8 +67,10 @@ export class GuestReservationTrackingService {
     const nowMs = this.nowProvider().getTime();
     let canReschedule = false;
 
+    const status = mapGuestTrackingStatus(record, nowMs);
+
     if (
-      record.reservationStatus === "CONFIRMED" &&
+      status === "CONFIRMED" &&
       rescheduleCount === 0 &&
       record.finalAssignment?.bookingStartAt
     ) {
@@ -87,7 +89,7 @@ export class GuestReservationTrackingService {
       : 0;
 
     const isInSession =
-      (record.reservationStatus === "CONFIRMED" || record.reservationStatus === "CHECKED_IN") &&
+      status === "CONFIRMED" &&
       bookingStartMs > 0 &&
       bookingEndMs > 0 &&
       nowMs >= bookingStartMs &&
@@ -99,7 +101,7 @@ export class GuestReservationTrackingService {
     return {
       reservationId: record.reservationId,
       referenceCode: record.referenceCode,
-      status: mapGuestTrackingStatus(record),
+      status,
       amountDue: record.amountDue,
       currency: record.currency,
       confirmedAt: record.confirmedAt,
@@ -119,11 +121,30 @@ export class GuestReservationTrackingService {
 }
 
 function mapGuestTrackingStatus(
-  record: GuestReservationTrackingRecord
+  record: GuestReservationTrackingRecord,
+  nowMs?: number
 ): GuestReservationTrackingStatus {
   if (record.paymentStatus === "REJECTED" || record.reservationStatus === "REJECTED") {
     return "REJECTED";
   }
+
+  if (record.reservationStatus === "EXPIRED") {
+    return "EXPIRED";
+  }
+  if (record.reservationStatus === "CANCELLED") {
+    return "CANCELLED";
+  }
+  if (record.reservationStatus === "COMPLETED") {
+    return "COMPLETED";
+  }
+
+  if (nowMs !== undefined && record.finalAssignment?.bookingEndAt) {
+    const bookingEndMs = new Date(record.finalAssignment.bookingEndAt).getTime();
+    if (!isNaN(bookingEndMs) && bookingEndMs > 0 && nowMs >= bookingEndMs) {
+      return "EXPIRED";
+    }
+  }
+
   switch (record.reservationStatus) {
     case "PENDING_PAYMENT":
       return "PENDING_PAYMENT";

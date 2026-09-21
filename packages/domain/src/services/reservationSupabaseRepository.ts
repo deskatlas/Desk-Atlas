@@ -25,6 +25,7 @@ import {
   AdminReservationRepository,
   RescheduleReservationInput,
   RescheduleSlotAvailability,
+  RescheduleAvailabilityResult,
   ExtendReservationInput,
   CheckExtendAvailabilityInput,
   ExtendAvailabilityResult,
@@ -2644,6 +2645,80 @@ export class ReservationSupabaseRepository
       }
     }
 
+    const timezone = "Asia/Manila";
+    let targetDateStr = "";
+    try {
+      targetDateStr = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(input.startAt));
+    } catch {
+      targetDateStr = input.startAt.split("T")[0];
+    }
+
+    const [year, month, day] = targetDateStr.split("-").map(Number);
+    const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+    const [operatingHours, scheduleBlocks] = await Promise.all([
+      this.request<any[]>(
+        `/operating_hours?day_of_week=eq.${dayOfWeek}&is_active=eq.true&order=opens_at.asc`
+      ).catch(() => []),
+      this.request<any[]>(
+        `/schedule_blocks?scope=eq.BUSINESS&start_at=lt.${encodeURIComponent(targetDateStr + "T23:59:59.999+08:00")}&end_at=gt.${encodeURIComponent(targetDateStr + "T00:00:00+08:00")}`
+      ).catch(() => []),
+    ]);
+
+    const isClosed = (scheduleBlocks && scheduleBlocks.length > 0) || (!operatingHours || operatingHours.length === 0);
+    if (isClosed) {
+      throw new Error("The facility is closed on the selected date.");
+    }
+
+    const is24Hours = (operatingHours ?? []).some(
+      (i) =>
+        (i.opens_at?.startsWith("00:00")) &&
+        (i.closes_at?.startsWith("24:00") ||
+          i.closes_at?.startsWith("00:00") ||
+          i.closes_at?.startsWith("23:59"))
+    );
+
+    if (!is24Hours && operatingHours && operatingHours.length > 0) {
+      const openTime = (operatingHours[0].opens_at || "09:00").slice(0, 5);
+      const rawClose = (operatingHours[operatingHours.length - 1].closes_at || "18:00").slice(0, 5);
+      const closeTime = rawClose === "00:00" ? "24:00" : rawClose;
+
+      const startTimeStr = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(input.startAt));
+
+      const endTimeStr = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(input.endAt));
+
+      const [sH, sM] = startTimeStr.split(":").map(Number);
+      const startMin = (sH || 0) * 60 + (sM || 0);
+
+      const [eH, eM] = endTimeStr.split(":").map(Number);
+      const endMin = (eH || 0) * 60 + (eM || 0);
+
+      const [oH, oM] = openTime.split(":").map(Number);
+      const openMin = (oH || 0) * 60 + (oM || 0);
+
+      const [cH, cM] = closeTime.split(":").map(Number);
+      const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+
+      if (startMin < openMin || endMin > closeMin || startMin >= closeMin) {
+        throw new Error(`Cannot reschedule outside business operating hours (${openTime} - ${closeTime}).`);
+      }
+    }
+
     for (const cand of conflictingCandidates ?? []) {
       const resStatus = cand.reservations?.status;
       if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
@@ -2719,13 +2794,7 @@ export class ReservationSupabaseRepository
     date?: string;
     durationHours?: number;
     workspaceInstanceId?: string;
-  }): Promise<{
-    available: boolean;
-    reason?: string;
-    workspaceInstanceId?: string;
-    workspaceDisplayName?: string;
-    slots?: RescheduleSlotAvailability[];
-  }> {
+  }): Promise<RescheduleAvailabilityResult> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
     const filter = isUuid
       ? `id=eq.${encodeURIComponent(input.reservationId)}`
@@ -2747,9 +2816,65 @@ export class ReservationSupabaseRepository
       return { available: true };
     }
 
-    const conflictingCandidates = await this.request<any[]>(
-      `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(targetInstanceId)}&is_assigned=eq.true${r ? `&reservation_id=neq.${encodeURIComponent(r.id)}` : ""}&select=id,start_at,end_at,reservations(id,status)`
-    ).catch(() => []);
+    const timezone = "Asia/Manila";
+    let targetDate = input.date;
+    if (!targetDate && input.startAt) {
+      try {
+        targetDate = new Intl.DateTimeFormat("en-CA", {
+          timeZone: timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(input.startAt));
+      } catch {
+        targetDate = input.startAt.split("T")[0];
+      }
+    }
+
+    let dayOfWeek = 1;
+    if (targetDate) {
+      const [year, month, day] = targetDate.split("-").map(Number);
+      dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    }
+
+    const [conflictingCandidates, operatingHours, scheduleBlocks] = await Promise.all([
+      this.request<any[]>(
+        `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(targetInstanceId)}&is_assigned=eq.true${r ? `&reservation_id=neq.${encodeURIComponent(r.id)}` : ""}&select=id,start_at,end_at,reservations(id,status)`
+      ).catch(() => []),
+      targetDate
+        ? this.request<any[]>(
+            `/operating_hours?day_of_week=eq.${dayOfWeek}&is_active=eq.true&order=opens_at.asc`
+          ).catch(() => [])
+        : Promise.resolve([]),
+      targetDate
+        ? this.request<any[]>(
+            `/schedule_blocks?scope=eq.BUSINESS&start_at=lt.${encodeURIComponent(targetDate + "T23:59:59.999+08:00")}&end_at=gt.${encodeURIComponent(targetDate + "T00:00:00+08:00")}`
+          ).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+
+    const isClosed = targetDate ? ((scheduleBlocks && scheduleBlocks.length > 0) || (!operatingHours || operatingHours.length === 0)) : false;
+
+    const is24Hours =
+      !isClosed &&
+      (operatingHours ?? []).some(
+        (i) =>
+          (i.opens_at?.startsWith("00:00")) &&
+          (i.closes_at?.startsWith("24:00") ||
+            i.closes_at?.startsWith("00:00") ||
+            i.closes_at?.startsWith("23:59"))
+      );
+
+    let openTime = is24Hours ? "00:00" : "09:00";
+    let closeTime = is24Hours ? "24:00" : "18:00";
+
+    if (!isClosed && operatingHours && operatingHours.length > 0) {
+      if (!is24Hours) {
+        openTime = (operatingHours[0].opens_at || "09:00").slice(0, 5);
+        const rawClose = (operatingHours[operatingHours.length - 1].closes_at || "18:00").slice(0, 5);
+        closeTime = rawClose === "00:00" ? "24:00" : rawClose;
+      }
+    }
 
     let available = true;
     let reason: string | undefined;
@@ -2762,51 +2887,44 @@ export class ReservationSupabaseRepository
       if (newStartMs < nowMs) {
         available = false;
         reason = "Cannot reschedule to a past date or time";
+      } else if (isClosed) {
+        available = false;
+        reason = "The facility is closed on the selected date.";
       } else {
-        for (const cand of conflictingCandidates ?? []) {
-          const resStatus = cand.reservations?.status;
-          if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
-            continue;
-          }
-          const candStartMs = new Date(cand.start_at).getTime();
-          const candEndMs = new Date(cand.end_at).getTime();
-          if (newStartMs < candEndMs && newEndMs > candStartMs) {
+        if (!is24Hours && operatingHours && operatingHours.length > 0) {
+          const startTimeStr = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).format(new Date(input.startAt));
+
+          const endTimeStr = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).format(new Date(input.endAt));
+
+          const [sH, sM] = startTimeStr.split(":").map(Number);
+          const startMin = (sH || 0) * 60 + (sM || 0);
+
+          const [eH, eM] = endTimeStr.split(":").map(Number);
+          const endMin = (eH || 0) * 60 + (eM || 0);
+
+          const [oH, oM] = openTime.split(":").map(Number);
+          const openMin = (oH || 0) * 60 + (oM || 0);
+
+          const [cH, cM] = closeTime.split(":").map(Number);
+          const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+
+          if (startMin < openMin || endMin > closeMin || startMin >= closeMin) {
             available = false;
-            reason = "Spot is occupied during this time window";
-            break;
+            reason = `Selected time is outside operating hours (${openTime} - ${closeTime})`;
           }
         }
-      }
-    }
 
-    // Compute slots
-    let slots: RescheduleSlotAvailability[] | undefined;
-    const targetDate = input.date || (input.startAt ? input.startAt.split("T")[0] : undefined);
-    const duration = input.durationHours || 2;
-
-    if (targetDate) {
-      const timeOptions = [
-        '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
-        '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'
-      ];
-
-      slots = timeOptions.map((time) => {
-        const [h, m] = time.split(":").map(Number);
-        const slotStart = zonedDateTimeToUtc(targetDate, time, "Asia/Manila");
-        const slotEnd = new Date(slotStart.getTime() + duration * 60 * 60 * 1000);
-        const startMs = slotStart.getTime();
-        const endMs = slotEnd.getTime();
-
-        const endHour = h + duration;
-        const endTime = `${String(endHour).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-
-        let slotAvailable = true;
-        let slotReason: string | undefined;
-
-        if (startMs < nowMs) {
-          slotAvailable = false;
-          slotReason = "Past";
-        } else {
+        if (available) {
           for (const cand of conflictingCandidates ?? []) {
             const resStatus = cand.reservations?.status;
             if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
@@ -2814,30 +2932,100 @@ export class ReservationSupabaseRepository
             }
             const candStartMs = new Date(cand.start_at).getTime();
             const candEndMs = new Date(cand.end_at).getTime();
-            if (startMs < candEndMs && endMs > candStartMs) {
-              slotAvailable = false;
-              slotReason = "Booked";
+            if (newStartMs < candEndMs && newEndMs > candStartMs) {
+              available = false;
+              reason = "Spot is occupied during this time window";
               break;
             }
           }
         }
+      }
+    }
 
-        return {
-          startTime: time,
-          endTime,
-          startAt: slotStart.toISOString(),
-          endAt: slotEnd.toISOString(),
-          isAvailable: slotAvailable,
-          reason: slotReason,
-        };
-      });
+    // Compute slots
+    let slots: RescheduleSlotAvailability[] | undefined;
+    const duration = input.durationHours || 2;
+    const durationMin = Math.round(duration * 60);
+
+    if (targetDate) {
+      if (isClosed) {
+        slots = [];
+      } else {
+        let startMinute = 0;
+        let maxStartMinute = 1440 - durationMin;
+
+        if (!is24Hours && operatingHours && operatingHours.length > 0) {
+          const [oH, oM] = openTime.split(":").map(Number);
+          startMinute = (oH || 0) * 60 + (oM || 0);
+
+          const [cH, cM] = closeTime.split(":").map(Number);
+          const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+          maxStartMinute = closeMin - durationMin;
+        }
+
+        const intervalMinutes = 30;
+        const generatedSlots: RescheduleSlotAvailability[] = [];
+
+        for (let m = startMinute; m <= maxStartMinute; m += intervalMinutes) {
+          const sH = Math.floor(m / 60);
+          const sM = m % 60;
+          const time = `${String(sH).padStart(2, "0")}:${String(sM).padStart(2, "0")}`;
+
+          const slotStart = zonedDateTimeToUtc(targetDate, time, timezone);
+          const slotEnd = new Date(slotStart.getTime() + durationMin * 60 * 1000);
+          const startMs = slotStart.getTime();
+          const endMs = slotEnd.getTime();
+
+          const endMTotal = m + durationMin;
+          const endH = Math.floor(endMTotal / 60);
+          const endM = endMTotal % 60;
+          const endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+          let slotAvailable = true;
+          let slotReason: string | undefined;
+
+          if (startMs < nowMs) {
+            slotAvailable = false;
+            slotReason = "Past";
+          } else {
+            for (const cand of conflictingCandidates ?? []) {
+              const resStatus = cand.reservations?.status;
+              if (resStatus === "CANCELLED" || resStatus === "EXPIRED") {
+                continue;
+              }
+              const candStartMs = new Date(cand.start_at).getTime();
+              const candEndMs = new Date(cand.end_at).getTime();
+              if (startMs < candEndMs && endMs > candStartMs) {
+                slotAvailable = false;
+                slotReason = "Booked";
+                break;
+              }
+            }
+          }
+
+          generatedSlots.push({
+            startTime: time,
+            endTime,
+            startAt: slotStart.toISOString(),
+            endAt: slotEnd.toISOString(),
+            isAvailable: slotAvailable,
+            reason: slotReason,
+          });
+        }
+
+        slots = generatedSlots;
+      }
     }
 
     return {
-      available,
-      reason,
+      available: isClosed ? false : available,
+      reason: isClosed ? (reason || "The facility is closed on the selected date.") : reason,
       workspaceInstanceId: targetInstanceId,
       slots,
+      openTime: isClosed ? undefined : openTime,
+      closeTime: isClosed ? undefined : closeTime,
+      is24Hours,
+      isClosed,
     };
   }
 
@@ -3222,11 +3410,23 @@ export class ReservationSupabaseRepository
       return [];
     }
 
+    if (r.status !== "CONFIRMED" && r.status !== "CHECKED_IN") {
+      return [];
+    }
+
     const candidates = await this.request<any[]>(
       `/reservation_candidates?reservation_id=eq.${encodeURIComponent(r.id)}&order=rank.asc`
     ).catch(() => []);
     const assigned = (candidates ?? []).find((c) => c.is_assigned) ?? candidates?.[0];
     if (!assigned || !assigned.workspace_instance_id) {
+      return [];
+    }
+
+    const nowMs = input.evaluationTime ? new Date(input.evaluationTime).getTime() : Date.now();
+    const startMs = new Date(assigned.start_at).getTime();
+    const endMs = new Date(assigned.end_at).getTime();
+
+    if (endMs <= nowMs) {
       return [];
     }
 
@@ -3248,10 +3448,6 @@ export class ReservationSupabaseRepository
 
     const templateMap = new Map((templates ?? []).map((t: any) => [t.id, t]));
     const floorMap = new Map((floors ?? []).map((f: any) => [f.id, f]));
-
-    const nowMs = input.evaluationTime ? new Date(input.evaluationTime).getTime() : Date.now();
-    const startMs = new Date(assigned.start_at).getTime();
-    const endMs = new Date(assigned.end_at).getTime();
 
     const isInSession =
       (r.status === "CONFIRMED" || r.status === "CHECKED_IN") &&
@@ -3336,6 +3532,18 @@ export class ReservationSupabaseRepository
 
     if (r.status !== "CONFIRMED" && r.status !== "CHECKED_IN") {
       throw new Error(`Only confirmed or checked-in reservations can be relocated (current status: ${r.status})`);
+    }
+
+    const candidateRows = await this.request<any[]>(
+      `/reservation_candidates?reservation_id=eq.${encodeURIComponent(r.id)}&order=rank.asc`
+    ).catch(() => []);
+    const assignedCand = (candidateRows ?? []).find((c) => c.is_assigned) ?? candidateRows?.[0];
+    if (assignedCand && assignedCand.end_at) {
+      const candEndMs = new Date(assignedCand.end_at).getTime();
+      const nowMs = Date.now();
+      if (candEndMs <= nowMs) {
+        throw new Error(`Relocation not allowed: reservation has already ended or expired (current status: ${r.status === "CHECKED_IN" ? "COMPLETED" : "EXPIRED"})`);
+      }
     }
 
     let rpcRes: any = null;

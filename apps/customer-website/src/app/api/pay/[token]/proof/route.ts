@@ -68,6 +68,41 @@ export async function POST(
     const repository = new ReservationSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
     const service = createPaymentSessionService(repository);
     const session = await service.getPaymentSession(token);
+
+    if (
+      session.reservationStatus === "EXPIRED" ||
+      session.paymentStatus === "EXPIRED" ||
+      (session.expiresAt && new Date().toISOString() >= session.expiresAt && !session.proofSubmittedAt)
+    ) {
+      return NextResponse.json(
+        { error: "Reservation has expired. Payment proof cannot be submitted." },
+        { status: 410 }
+      );
+    }
+
+    if (
+      session.reservationStatus === "CANCELLED" ||
+      session.paymentStatus === "CANCELLED" ||
+      session.paymentStatus === "REJECTED"
+    ) {
+      return NextResponse.json(
+        { error: "Reservation has been cancelled. Payment proof cannot be submitted." },
+        { status: 410 }
+      );
+    }
+
+    if (
+      session.reservationStatus === "CONFIRMED" ||
+      session.reservationStatus === "COMPLETED" ||
+      session.reservationStatus === "CHECKED_IN" ||
+      session.paymentStatus === "APPROVED"
+    ) {
+      return NextResponse.json(
+        { error: "Reservation has already been confirmed." },
+        { status: 409 }
+      );
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
     const bucketName = process.env.PRIVATE_PAYMENT_PROOF_BUCKET ?? "payment-proofs";
     const fileExt = proofFile.name.includes(".") ? proofFile.name.split(".").pop() : "bin";
@@ -124,11 +159,9 @@ export async function POST(
     }
 
     if (error instanceof PaymentSessionError) {
-      const status = error.message.includes("Invalid payment token")
-        ? 404
-        : error.message.includes("expired")
-          ? 409
-          : 409;
+      const isExpired = error.message.toLowerCase().includes("expired");
+      const isInvalid = error.message.includes("Invalid payment token");
+      const status = isInvalid ? 404 : isExpired ? 410 : 409;
       return NextResponse.json({ error: error.message }, { status });
     }
 
