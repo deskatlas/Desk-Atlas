@@ -51,7 +51,7 @@ export async function POST(
       } else {
         try {
           const res = await fetch(
-            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?role=in.(ADMIN,SUPERADMIN)&is_active=eq.true&limit=1`,
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?role=eq.ADMIN&is_active=eq.true&order=created_at.asc&limit=1`,
             {
               headers: {
                 apikey: serviceRoleKey,

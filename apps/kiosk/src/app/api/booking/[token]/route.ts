@@ -19,16 +19,30 @@ export async function GET(
     const { token } = await context.params;
     const decodedToken = decodeURIComponent(token || "").trim();
     const searchParams = _request.nextUrl?.searchParams;
-    let actorUserId = searchParams?.get("actorUserId") || searchParams?.get("userId") || _request.headers.get("x-actor-user-id") || "";
-    let actorRole: "ADMIN" | "STAFF" = searchParams?.get("actorRole") === "ADMIN" || _request.headers.get("x-actor-role") === "ADMIN" ? "ADMIN" : "STAFF";
+    let actorUserId = String(
+      searchParams?.get("actorUserId") ||
+      searchParams?.get("userId") ||
+      _request.headers.get("x-actor-user-id") ||
+      _request.headers.get("x-user-id") ||
+      ""
+    ).trim();
+    let actorRole: "ADMIN" | "STAFF" =
+      searchParams?.get("actorRole") === "ADMIN" ||
+      searchParams?.get("userRole") === "ADMIN" ||
+      _request.headers.get("x-actor-role") === "ADMIN" ||
+      _request.headers.get("x-user-role") === "ADMIN"
+        ? "ADMIN"
+        : "STAFF";
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId);
+
+    if (isValidUuid) {
       const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceRoleKey) {
         try {
           const res = await fetch(
-            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?select=user_id,role&is_active=eq.true&limit=1`,
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?user_id=eq.${actorUserId}&select=user_id,role&limit=1`,
             {
               headers: {
                 apikey: serviceRoleKey,
@@ -39,11 +53,8 @@ export async function GET(
           );
           if (res.ok) {
             const profiles = await res.json();
-            if (Array.isArray(profiles) && profiles[0]?.user_id) {
-              actorUserId = profiles[0].user_id;
-              if (profiles[0].role === "ADMIN") {
-                actorRole = "ADMIN";
-              }
+            if (Array.isArray(profiles) && profiles[0]?.role === "ADMIN") {
+              actorRole = "ADMIN";
             }
           }
         } catch {
@@ -52,7 +63,7 @@ export async function GET(
       }
     }
 
-    const actor = actorUserId ? { userId: actorUserId, role: actorRole } : undefined;
+    const actor = isValidUuid ? { userId: actorUserId, role: actorRole } : undefined;
     const service = createBookingAccessService(new ReservationSupabaseRepository());
     const result = await service.resolveBookingAccess(decodedToken, actor);
     return NextResponse.json(result);

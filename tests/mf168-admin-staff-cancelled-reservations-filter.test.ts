@@ -94,7 +94,7 @@ describe("MF-168: Admin and Staff Cancelled Reservations Filter", () => {
       amountDue: 1500,
       currency: "PHP",
       createdAt: "2026-09-21T09:00:00Z",
-      cancellationReason: "Payment proof rejected by Admin",
+      cancellationReason: "Customer requested cancellation at counter",
       cancelledAt: "2026-09-21T09:30:00Z",
     },
     {

@@ -1,21 +1,23 @@
 import type { DeskAtlasUser } from '../models/user';
 import type { OperatingHoursInterval } from '../models/availability';
-import type {
-  AdminPaymentMethod,
-  BusinessClosureException,
-  BusinessOperatingHoursMode,
-  BusinessSettings,
-  CreateBusinessClosureInput,
-  CreatePaymentMethodInput,
-  LandingPreviewPhoto,
-  OperatingHoursConfig,
-  OperatingHoursDaySchedule,
-  PublicLandingPreviewPhoto,
-  SettingsOverview,
-  UpdateBusinessSettingsInput,
-  UpdateOperatingHoursInput,
-  UpdatePaymentMethodInput,
-  WorkspaceStatusColors,
+import {
+  calculateRescheduleMaxAdvanceHours,
+  type AdminPaymentMethod,
+  type BusinessClosureException,
+  type BusinessOperatingHoursMode,
+  type BusinessSettings,
+  type CreateBusinessClosureInput,
+  type CreatePaymentMethodInput,
+  type LandingPreviewPhoto,
+  type OperatingHoursConfig,
+  type OperatingHoursDaySchedule,
+  type PublicLandingPreviewPhoto,
+  type RescheduleMaxAdvanceUnit,
+  type SettingsOverview,
+  type UpdateBusinessSettingsInput,
+  type UpdateOperatingHoursInput,
+  type UpdatePaymentMethodInput,
+  type WorkspaceStatusColors,
 } from '../models/settings';
 import type { SettingsRepository } from './settingsRepository';
 import { normalizeWorkspaceStatusColors } from './workspaceStatusColorService';
@@ -56,6 +58,9 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       websiteUrl?: string | null;
       customerSessionTimeoutMinutes: number;
       customerRescheduleCutoffHours: number;
+      rescheduleMaxAdvanceValue: number;
+      rescheduleMaxAdvanceUnit: RescheduleMaxAdvanceUnit;
+      rescheduleMaxAdvanceHours: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
       kioskAllowanceMinutes: number;
@@ -66,6 +71,10 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       cancellationPolicyUpdatedAt?: string | null;
     }> {
       const businessSettings = await repository.getBusinessSettings();
+      const maxAdvanceValue = businessSettings.rescheduleMaxAdvanceValue ?? 30;
+      const maxAdvanceUnit = (businessSettings.rescheduleMaxAdvanceUnit as RescheduleMaxAdvanceUnit) ?? 'DAYS';
+      const maxAdvanceHours = calculateRescheduleMaxAdvanceHours(maxAdvanceValue, maxAdvanceUnit);
+
       return {
         businessName: businessSettings.businessName,
         timezone: businessSettings.timezone,
@@ -77,6 +86,9 @@ export function createAdminSettingsService(repository: SettingsRepository) {
         websiteUrl: businessSettings.websiteUrl ?? null,
         customerSessionTimeoutMinutes: businessSettings.customerSessionTimeoutMinutes ?? 20,
         customerRescheduleCutoffHours: businessSettings.customerRescheduleCutoffHours ?? 12,
+        rescheduleMaxAdvanceValue: maxAdvanceValue,
+        rescheduleMaxAdvanceUnit: maxAdvanceUnit,
+        rescheduleMaxAdvanceHours: maxAdvanceHours,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
         kioskAllowanceMinutes: getKioskAllowanceMinutes(businessSettings.kioskAllowanceMinutes),
@@ -582,6 +594,32 @@ function normalizeBusinessSettingsInput(
     );
   }
 
+  if (
+    input.rescheduleMaxAdvanceUnit !== undefined &&
+    input.rescheduleMaxAdvanceUnit !== null &&
+    input.rescheduleMaxAdvanceUnit !== 'DAYS' &&
+    input.rescheduleMaxAdvanceUnit !== 'HOURS'
+  ) {
+    throw new SettingsValidationError('Reschedule max advance unit must be DAYS or HOURS');
+  }
+
+  if (
+    input.rescheduleMaxAdvanceValue !== undefined &&
+    input.rescheduleMaxAdvanceValue !== null
+  ) {
+    const isHours = (input.rescheduleMaxAdvanceUnit || 'DAYS') === 'HOURS';
+    const maxBound = isHours ? 8760 : 365;
+    if (
+      !Number.isInteger(input.rescheduleMaxAdvanceValue) ||
+      input.rescheduleMaxAdvanceValue < 1 ||
+      input.rescheduleMaxAdvanceValue > maxBound
+    ) {
+      throw new SettingsValidationError(
+        `Reschedule max advance limit must be a positive integer between 1 and ${maxBound} ${isHours ? 'hours' : 'days'}`
+      );
+    }
+  }
+
   let normalizedPhotos: LandingPreviewPhoto[] | undefined = undefined;
   if (input.landingPreviewPhotos !== undefined) {
     if (!Array.isArray(input.landingPreviewPhotos)) {
@@ -667,6 +705,14 @@ function normalizeBusinessSettingsInput(
       input.customerRescheduleCutoffHours !== undefined && input.customerRescheduleCutoffHours !== null
         ? input.customerRescheduleCutoffHours
         : 12,
+    rescheduleMaxAdvanceValue:
+      input.rescheduleMaxAdvanceValue !== undefined && input.rescheduleMaxAdvanceValue !== null
+        ? input.rescheduleMaxAdvanceValue
+        : 30,
+    rescheduleMaxAdvanceUnit:
+      input.rescheduleMaxAdvanceUnit !== undefined && input.rescheduleMaxAdvanceUnit !== null
+        ? input.rescheduleMaxAdvanceUnit
+        : 'DAYS',
     landingPreviewPhotos: normalizedPhotos,
     statusColors: normalizedStatusColors,
     cancellationPolicyPdfUrl:

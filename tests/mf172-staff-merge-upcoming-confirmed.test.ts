@@ -218,6 +218,6 @@ describe("MF-172: Staff Reservations - Merge Upcoming and Confirmed Filters", ()
     // Other tab filters are intact
     expect(STAFF_OPERATIONS_TAB_FILTERS.map((f) => f.filter)).toEqual(["all", "active", "checked_in"]);
     expect(STAFF_COMPLETED_TAB_FILTERS.map((f) => f.filter)).toEqual(["all", "completed"]);
-    expect(STAFF_EXPIRED_TAB_FILTERS.map((f) => f.filter)).toEqual(["all", "expired", "cancelled"]);
+    expect(STAFF_EXPIRED_TAB_FILTERS.map((f) => f.filter)).toEqual(["all", "expired", "rejected", "cancelled"]);
   });
 });

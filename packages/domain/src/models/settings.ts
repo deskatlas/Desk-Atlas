@@ -29,6 +29,22 @@ export const DEFAULT_WORKSPACE_STATUS_COLORS: WorkspaceStatusColors = {
   unavailable: '#6B7280',
 };
 
+export type RescheduleMaxAdvanceUnit = 'DAYS' | 'HOURS';
+
+export function calculateRescheduleMaxAdvanceHours(
+  value?: number | null,
+  unit?: RescheduleMaxAdvanceUnit | null
+): number {
+  const numValue = value !== undefined && value !== null && !isNaN(Number(value)) && Number(value) > 0
+    ? Number(value)
+    : 30;
+  const unitNormalized = (unit || 'DAYS').toUpperCase();
+  if (unitNormalized === 'HOURS') {
+    return numValue;
+  }
+  return numValue * 24;
+}
+
 export interface BusinessSettings {
   id: number;
   businessName: string;
@@ -46,6 +62,8 @@ export interface BusinessSettings {
   bookingEndAlertMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
+  rescheduleMaxAdvanceValue?: number;
+  rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
   cancellationPolicyPdfUrl?: string | null;
@@ -100,6 +118,8 @@ export interface UpdateBusinessSettingsInput {
   bookingEndAlertMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
+  rescheduleMaxAdvanceValue?: number | null;
+  rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
   cancellationPolicyPdfUrl?: string | null;

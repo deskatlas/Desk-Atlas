@@ -208,6 +208,23 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     return this.updateInstance(id, { operationalStatus: 'INACTIVE' });
   }
 
+  async deleteInstance(id: string): Promise<{ deleted: boolean; archived?: boolean; instance?: WorkspaceInstanceDetails }> {
+    const existing = this.requireInstance(id);
+    const futureReservations = await this.listFutureConfirmedReservations(id, '1970-01-01T00:00:00.000Z');
+    const hasReservations = (this.reservationImpacts.get(id)?.length ?? 0) > 0 || futureReservations.length > 0;
+
+    if (hasReservations) {
+      const deactivated = await this.deactivateInstance(id);
+      return { deleted: false, archived: true, instance: deactivated };
+    }
+
+    this.instances.delete(id);
+    if (this.mapPlacedInstanceIds) {
+      this.mapPlacedInstanceIds.delete(id);
+    }
+    return { deleted: true, archived: false };
+  }
+
   async duplicateInstance(
     id: string,
     input: DuplicateWorkspaceInstanceInput

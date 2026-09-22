@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { type BookingScanResult, extractBookingToken } from '@deskatlas/domain';
+import { useAuth } from '../../auth/components/AuthProvider';
 
 export { extractBookingToken };
 
 
 export function useBookingLookup() {
+  const { user } = useAuth();
   const [result, setResult] = useState<BookingScanResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,22 @@ export function useBookingLookup() {
     }
     
     try {
-      const res = await fetch(`/api/booking/${encodeURIComponent(token)}`);
+      const queryParams = new URLSearchParams();
+      if (user?.id) {
+        queryParams.set("actorUserId", user.id);
+        queryParams.set("actorRole", (user.role || "ADMIN").toUpperCase());
+      }
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
+      const res = await fetch(`/api/booking/${encodeURIComponent(token)}${queryString}`, {
+        headers: {
+          ...(user?.id ? {
+            'x-actor-user-id': user.id,
+            'x-actor-role': (user.role || 'ADMIN').toUpperCase(),
+            'x-user-id': user.id,
+            'x-user-role': (user.role || 'ADMIN').toUpperCase(),
+          } : {}),
+        },
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to lookup booking');

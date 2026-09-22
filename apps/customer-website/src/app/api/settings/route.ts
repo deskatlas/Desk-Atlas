@@ -16,6 +16,9 @@ export async function GET() {
       return NextResponse.json({
         customerSessionTimeoutMinutes: 20,
         customerRescheduleCutoffHours: 12,
+        rescheduleMaxAdvanceValue: 30,
+        rescheduleMaxAdvanceUnit: 'DAYS',
+        rescheduleMaxAdvanceHours: 720,
         bookingIntervalMinutes: 30,
         paymentExpiryMinutes: 60,
         kioskAllowanceMinutes: 5,
@@ -43,6 +46,9 @@ export async function GET() {
     return NextResponse.json({
       customerSessionTimeoutMinutes: 20,
       customerRescheduleCutoffHours: 12,
+      rescheduleMaxAdvanceValue: 30,
+      rescheduleMaxAdvanceUnit: 'DAYS',
+      rescheduleMaxAdvanceHours: 720,
       bookingIntervalMinutes: 30,
       paymentExpiryMinutes: 60,
       kioskAllowanceMinutes: 5,

@@ -100,6 +100,8 @@ export function canSaveBusinessProfile(params: {
   bookingIntervalMinutes?: number | string | null;
   kioskAllowanceMinutes?: number | string | null;
   bookingEndAlertMinutes?: number | string | null;
+  rescheduleMaxAdvanceValue?: number | string | null;
+  rescheduleMaxAdvanceUnit?: string | null;
 }): { canSave: boolean; reason?: string } {
   if (!params.businessName || !params.businessName.trim()) {
     return { canSave: false, reason: 'Business name is required' };
@@ -161,6 +163,15 @@ export function canSaveBusinessProfile(params: {
     const alertNum = Number(params.bookingEndAlertMinutes);
     if (isNaN(alertNum) || alertNum < 1 || alertNum > 60) {
       return { canSave: false, reason: 'Booking end-time alert threshold must be between 1 and 60 minutes' };
+    }
+  }
+
+  if (params.rescheduleMaxAdvanceValue !== undefined && params.rescheduleMaxAdvanceValue !== null && params.rescheduleMaxAdvanceValue !== '' as any) {
+    const val = Number(params.rescheduleMaxAdvanceValue);
+    const isHours = params.rescheduleMaxAdvanceUnit === 'HOURS';
+    const maxBound = isHours ? 8760 : 365;
+    if (isNaN(val) || val < 1 || val > maxBound) {
+      return { canSave: false, reason: `Maximum reschedule advance limit must be between 1 and ${maxBound} ${isHours ? 'hours' : 'days'}` };
     }
   }
 
@@ -302,6 +313,8 @@ export function Settings() {
     bookingEndAlertMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
+    rescheduleMaxAdvanceValue: 30,
+    rescheduleMaxAdvanceUnit: 'DAYS',
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
   });
@@ -832,6 +845,11 @@ export function Settings() {
       const normalizedRescheduleCutoff = businessSettings.customerRescheduleCutoffHours === undefined || businessSettings.customerRescheduleCutoffHours === null || Number(businessSettings.customerRescheduleCutoffHours) < 0
         ? 12
         : Math.min(720, Math.max(0, Number(businessSettings.customerRescheduleCutoffHours)));
+      const normalizedMaxAdvanceUnit = businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 'HOURS' : 'DAYS';
+      const maxBound = normalizedMaxAdvanceUnit === 'HOURS' ? 8760 : 365;
+      const normalizedMaxAdvanceVal = !businessSettings.rescheduleMaxAdvanceValue || Number(businessSettings.rescheduleMaxAdvanceValue) < 1
+        ? 30
+        : Math.min(maxBound, Math.max(1, Number(businessSettings.rescheduleMaxAdvanceValue)));
 
       const payload = {
         ...businessSettings,
@@ -848,6 +866,8 @@ export function Settings() {
         bookingEndAlertMinutes: normalizedEndAlert,
         customerSessionTimeoutMinutes: normalizedSessionTimeout,
         customerRescheduleCutoffHours: normalizedRescheduleCutoff,
+        rescheduleMaxAdvanceValue: normalizedMaxAdvanceVal,
+        rescheduleMaxAdvanceUnit: normalizedMaxAdvanceUnit,
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -1729,6 +1749,56 @@ export function Settings() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Maximum Reschedule Advance Limit
+                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    max={businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365} 
+                    value={businessSettings.rescheduleMaxAdvanceValue === '' as any ? '' : (businessSettings.rescheduleMaxAdvanceValue ?? 30)}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setBusinessSettings({
+                        ...businessSettings,
+                        rescheduleMaxAdvanceValue: raw === '' ? ('' as any) : Number(raw),
+                      });
+                    }}
+                    onBlur={() => {
+                      const maxLimit = businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365;
+                      if (!businessSettings.rescheduleMaxAdvanceValue || Number(businessSettings.rescheduleMaxAdvanceValue) < 1) {
+                        setBusinessSettings({ ...businessSettings, rescheduleMaxAdvanceValue: 30 });
+                      } else if (Number(businessSettings.rescheduleMaxAdvanceValue) > maxLimit) {
+                        setBusinessSettings({ ...businessSettings, rescheduleMaxAdvanceValue: maxLimit });
+                      }
+                    }}
+                    onKeyDown={(e) => handleNumericKeyDown(e)}
+                    data-testid="reschedule-max-advance-value-input"
+                    style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                  />
+                  <select
+                    value={businessSettings.rescheduleMaxAdvanceUnit || 'DAYS'}
+                    onChange={(e) => {
+                      const newUnit = e.target.value as 'DAYS' | 'HOURS';
+                      setBusinessSettings({
+                        ...businessSettings,
+                        rescheduleMaxAdvanceUnit: newUnit,
+                      });
+                    }}
+                    data-testid="reschedule-max-advance-unit-select"
+                    style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
+                  >
+                    <option value="DAYS">Days</option>
+                    <option value="HOURS">Hours</option>
+                  </select>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                  Maximum distance into the future a customer or staff may reschedule a booking.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                   Booking End-Time Alert (Minutes Before)
                 </label>
                 <input 
@@ -1916,6 +1986,8 @@ export function Settings() {
                   phoneDigits,
                   bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
                   bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
+                  rescheduleMaxAdvanceValue: businessSettings.rescheduleMaxAdvanceValue,
+                  rescheduleMaxAdvanceUnit: businessSettings.rescheduleMaxAdvanceUnit,
                 });
                 const isDisabled = saving || !check.canSave;
                 return (

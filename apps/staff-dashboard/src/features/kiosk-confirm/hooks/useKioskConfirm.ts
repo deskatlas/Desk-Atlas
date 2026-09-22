@@ -42,7 +42,15 @@ export function useKioskConfirm() {
     try {
       const res = await fetch(`/api/payments/${encodeURIComponent(codeOrId.trim())}/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.id ? {
+            'x-actor-user-id': user.id,
+            'x-actor-role': (user.role || 'STAFF').toUpperCase(),
+            'x-user-id': user.id,
+            'x-user-role': (user.role || 'STAFF').toUpperCase(),
+          } : {}),
+        },
         body: JSON.stringify({
           code: codeOrId.trim(),
           actor: {

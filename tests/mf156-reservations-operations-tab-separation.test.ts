@@ -438,6 +438,7 @@ describe("MF-156: 4-Way Tab Separation (Reservations, Active Operations, Complet
       expect(STAFF_EXPIRED_TAB_FILTERS).toEqual([
         { label: "All", filter: "all" },
         { label: "Expired", filter: "expired" },
+        { label: "Rejected", filter: "rejected" },
         { label: "Cancelled", filter: "cancelled" },
       ]);
     });

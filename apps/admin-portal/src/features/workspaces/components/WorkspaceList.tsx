@@ -24,12 +24,16 @@ export function WorkspaceList() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [floors, setFloors] = useState<any[]>([]);
+  const [mapPlacedInstanceIds, setMapPlacedInstanceIds] = useState<Set<string>>(new Set());
 
   // Selected item states
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
+  const [instanceToDelete, setInstanceToDelete] = useState<any | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteInstanceError, setDeleteInstanceError] = useState<string | null>(null);
+  const [instanceStatusFilter, setInstanceStatusFilter] = useState<'active' | 'archived'>('active');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Form states
@@ -70,6 +74,7 @@ export function WorkspaceList() {
       setTemplates(data.templates || []);
       setInstances(sortWorkspaceInstances(data.instances || []));
       setFloors(data.floors || []);
+      setMapPlacedInstanceIds(new Set(data.mapPlacedInstanceIds || []));
     } catch (err: any) {
       setErrorMsg(err.message || 'Error loading workspaces');
     } finally {
@@ -391,9 +396,43 @@ export function WorkspaceList() {
     }
   };
 
+  const handleDeleteInstance = async () => {
+    if (!instanceToDelete) return;
+    try {
+      setActionLoading(true);
+      setDeleteInstanceError(null);
+      const res = await fetch(`/api/admin/workspaces/instances/${instanceToDelete.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete workspace instance');
+      }
+      const result = await res.json();
+      setToastMessage({
+        text: result.archived
+          ? `Physical workspace "${instanceToDelete.displayName || instanceToDelete.name}" has reservation records and was archived.`
+          : `Physical workspace "${instanceToDelete.displayName || instanceToDelete.name}" was deleted successfully.`,
+        type: 'success',
+      });
+      setInstanceToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      setDeleteInstanceError(err.message || 'Failed to delete physical workspace');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const activeTemplates = templates.filter((t) => t.isActive !== false);
   const archivedTemplates = templates.filter((t) => t.isActive === false);
-  const activeInstances = instances.filter((ins) => ins.template?.isActive !== false);
+  const activeInstances = instances.filter(
+    (ins) => ins.template?.isActive !== false && ins.operationalStatus !== 'INACTIVE'
+  );
+  const archivedInstances = instances.filter(
+    (ins) => ins.operationalStatus === 'INACTIVE' || ins.template?.isActive === false
+  );
+  const displayedInstances = instanceStatusFilter === 'active' ? activeInstances : archivedInstances;
 
   return (
     <main data-screen-label="Workspaces" style={{ padding: '26px 28px 40px' }}>
@@ -578,37 +617,80 @@ export function WorkspaceList() {
         )
       ) : (
         <div>
-          <div style={{ marginBottom: '16px', display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-            <button
-              onClick={() => setInstanceFilter('All')}
-              style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: instanceFilter === 'All' ? 'var(--da-brand-dark)' : 'var(--da-canvas)', color: instanceFilter === 'All' ? '#fff' : 'var(--da-text-primary)', border: '1px solid var(--da-border)' }}
-            >
-              All
-            </button>
-            {Array.from(new Set(activeInstances.map(i => i.template?.name || i.template || 'Default'))).map(tpl => (
+          <div style={{ marginBottom: '16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
               <button
-                key={tpl}
-                onClick={() => setInstanceFilter(tpl)}
-                style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: instanceFilter === tpl ? 'var(--da-brand-dark)' : 'var(--da-canvas)', color: instanceFilter === tpl ? '#fff' : 'var(--da-text-primary)', border: '1px solid var(--da-border)' }}
+                type="button"
+                onClick={() => setInstanceStatusFilter('active')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'var(--da-font-family)',
+                  background: instanceStatusFilter === 'active' ? 'var(--da-brand-dark)' : 'var(--da-canvas)',
+                  color: instanceStatusFilter === 'active' ? '#fff' : 'var(--da-text-primary)',
+                  border: '1px solid var(--da-border)',
+                }}
               >
-                {tpl}
+                Active ({activeInstances.length})
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setInstanceStatusFilter('archived')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'var(--da-font-family)',
+                  background: instanceStatusFilter === 'archived' ? 'var(--da-brand-dark)' : 'var(--da-canvas)',
+                  color: instanceStatusFilter === 'archived' ? '#fff' : 'var(--da-text-primary)',
+                  border: '1px solid var(--da-border)',
+                }}
+              >
+                Archived / Inactive ({archivedInstances.length})
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+              <button
+                onClick={() => setInstanceFilter('All')}
+                style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: instanceFilter === 'All' ? 'var(--da-brand-dark)' : 'transparent', color: instanceFilter === 'All' ? '#fff' : 'var(--da-text-secondary)', border: '1px solid var(--da-border)' }}
+              >
+                All Templates
+              </button>
+              {Array.from(new Set(displayedInstances.map(i => i.template?.name || i.template || 'Default'))).map(tpl => (
+                <button
+                  key={tpl}
+                  onClick={() => setInstanceFilter(tpl)}
+                  style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', background: instanceFilter === tpl ? 'var(--da-brand-dark)' : 'transparent', color: instanceFilter === tpl ? '#fff' : 'var(--da-text-secondary)', border: '1px solid var(--da-border)' }}
+                >
+                  {tpl}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {activeInstances.length === 0 ? (
+          {displayedInstances.length === 0 ? (
             <div style={{ padding: '40px', textAlign: 'center', background: '#fff', border: '1px dashed var(--da-border)', borderRadius: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-              No physical instances created yet. Open Map Builder to place instances on a floor.
+              {instanceStatusFilter === 'active'
+                ? 'No active physical instances created yet. Open Map Builder to place instances on a floor.'
+                : 'No archived or inactive physical workspace instances.'}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {Array.from(new Set(activeInstances.map(i => i.template?.name || i.template || 'Default')))
+              {Array.from(new Set(displayedInstances.map(i => i.template?.name || i.template || 'Default')))
                 .filter(tpl => instanceFilter === 'All' || instanceFilter === tpl)
                 .map(tpl => (
                   <div key={tpl}>
                     <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-text-primary)', marginBottom: '12px', marginTop: 0 }}>{tpl}</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
-                      {activeInstances
+                      {displayedInstances
                         .filter(i => (i.template?.name || i.template || 'Default') === tpl)
                         .slice()
                         .sort(compareWorkspaceInstances)
@@ -618,17 +700,25 @@ export function WorkspaceList() {
                             ? { background: 'var(--da-info)', color: 'var(--da-brand-dark)' }
                             : { background: 'var(--da-soft)', color: 'var(--da-brand-dark)' };
                           const mark = status === 'ACTIVE' ? '✓' : '!';
+                          const isPlaced = mapPlacedInstanceIds.has(i.id);
                           return (
                             <div key={i.id || idx} style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', padding: '16px' }}>
                               <div style={{ fontWeight: 800, color: 'var(--da-text-primary)', fontSize: '15px' }}>{i.displayName || i.name}</div>
                               <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '10px' }}>
-                                {i.floor?.name || i.floor || 'Floor'} &middot; {i.instanceCode || ''}
+                                {i.floor?.name || i.floor || 'Floor'} &middot; {i.instanceCode || ''} &middot; <span style={{ fontWeight: 600, color: isPlaced ? 'var(--da-brand-dark)' : 'var(--da-text-secondary)' }}>{isPlaced ? 'Placed' : 'Unmapped'}</span>
                               </div>
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', ...statusStyle }}>
                                 <span aria-hidden="true">{mark}</span>{status}
                               </span>
                               <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
                                 <button onClick={() => openEditInstance(i)} style={{ flex: 1, background: 'var(--da-canvas)', border: 'none', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-text-primary)' }}>Edit</button>
+                                <button 
+                                  type="button"
+                                  onClick={() => { setDeleteInstanceError(null); setInstanceToDelete(i); }} 
+                                  style={{ flex: 1, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-danger)' }}
+                                >
+                                  Delete
+                                </button>
                               </div>
                             </div>
                           );
@@ -954,6 +1044,55 @@ export function WorkspaceList() {
                 type="button"
                 disabled={actionLoading}
                 onClick={handleDeleteTemplate}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: actionLoading ? 'not-allowed' : 'pointer', background: 'var(--da-danger)', color: '#fff', border: 'none', fontFamily: 'var(--da-font-family)', opacity: actionLoading ? 0.7 : 1 }}
+              >
+                {actionLoading ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {instanceToDelete && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(18, 37, 26, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, overflowY: 'auto' }}>
+          <div style={{ background: 'var(--da-surface)', padding: '28px', borderRadius: '16px', width: '100%', maxWidth: '480px', boxShadow: 'var(--da-shadow-lg)', margin: '20px auto' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 12px', letterSpacing: '-0.02em' }}>
+              Delete Physical Workspace
+            </h2>
+            
+            {deleteInstanceError && (
+              <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: '13px', marginBottom: '14px', fontWeight: 600 }}>
+                {deleteInstanceError}
+              </div>
+            )}
+
+            <div style={{ fontSize: '14px', color: 'var(--da-text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
+              Are you sure you want to delete <strong style={{ color: 'var(--da-text-primary)' }}>{instanceToDelete.displayName || instanceToDelete.name}</strong>?
+            </div>
+
+            <div style={{ background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: 'var(--da-text-primary)' }}>
+              <div><strong>Template:</strong> {instanceToDelete.template?.name || instanceToDelete.template || 'Default'}</div>
+              <div><strong>Floor:</strong> {instanceToDelete.floor?.name || instanceToDelete.floor || 'Floor'}</div>
+              <div><strong>Instance Code:</strong> {instanceToDelete.instanceCode || ''}</div>
+              <div><strong>Status:</strong> {instanceToDelete.operationalStatus || instanceToDelete.status || 'ACTIVE'}</div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', lineHeight: 1.4, marginBottom: '20px' }}>
+              Notice: If this workspace instance has historical reservation records, it will be moved to Archived / Inactive to preserve booking audit trails. If it has no reservations, it will be permanently deleted from the database.
+            </div>
+
+            <div className="mobile-flex-col" style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => { setInstanceToDelete(null); setDeleteInstanceError(null); }}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: '#fff', color: 'var(--da-text-primary)', border: '1px solid var(--da-border)', fontFamily: 'var(--da-font-family)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleDeleteInstance}
                 style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: actionLoading ? 'not-allowed' : 'pointer', background: 'var(--da-danger)', color: '#fff', border: 'none', fontFamily: 'var(--da-font-family)', opacity: actionLoading ? 0.7 : 1 }}
               >
                 {actionLoading ? 'Deleting...' : 'Confirm Delete'}

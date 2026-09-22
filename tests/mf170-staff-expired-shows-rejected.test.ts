@@ -229,13 +229,22 @@ describe("MF-170 — Staff Reservations: Show Rejected Under Expired Tab", () =>
       expect(codes).toContain("DA-2008"); // CANCELLED
     });
 
-    it("surfaces both EXPIRED and REJECTED reservations under 'expired' tab with 'expired' sub-filter", () => {
+    it("surfaces strictly EXPIRED reservations under 'expired' tab with 'expired' sub-filter", () => {
       const results = filterStaffReservationsByTab(sampleStaffReservations, "expired", "expired", fixedNow);
       const codes = results.map((r) => r.referenceCode);
       expect(codes).toContain("DA-2005"); // EXPIRED
+      expect(codes).not.toContain("DA-2006"); // REJECTED
+      expect(codes).not.toContain("DA-2007"); // REJECTED via paymentStatus
+      expect(codes).not.toContain("DA-2008"); // Plain CANCELLED is in cancelled subfilter
+    });
+
+    it("surfaces strictly REJECTED reservations under 'expired' tab with 'rejected' sub-filter", () => {
+      const results = filterStaffReservationsByTab(sampleStaffReservations, "expired", "rejected", fixedNow);
+      const codes = results.map((r) => r.referenceCode);
+      expect(codes).not.toContain("DA-2005"); // EXPIRED
       expect(codes).toContain("DA-2006"); // REJECTED
       expect(codes).toContain("DA-2007"); // REJECTED via paymentStatus
-      expect(codes).not.toContain("DA-2008"); // Plain CANCELLED is in cancelled subfilter
+      expect(codes).not.toContain("DA-2008"); // Plain CANCELLED
     });
 
     it("does not surface REJECTED reservations under 'reservations' tab", () => {

@@ -55,6 +55,14 @@ export async function PATCH(request: NextRequest) {
           body.customerRescheduleCutoffHours !== undefined && body.customerRescheduleCutoffHours !== null
             ? Number(body.customerRescheduleCutoffHours)
             : 12,
+        rescheduleMaxAdvanceValue:
+          body.rescheduleMaxAdvanceValue !== undefined && body.rescheduleMaxAdvanceValue !== null
+            ? Number(body.rescheduleMaxAdvanceValue)
+            : 30,
+        rescheduleMaxAdvanceUnit:
+          body.rescheduleMaxAdvanceUnit !== undefined && body.rescheduleMaxAdvanceUnit !== null
+            ? body.rescheduleMaxAdvanceUnit
+            : "DAYS",
         landingPreviewPhotos: body.landingPreviewPhotos,
         statusColors: body.statusColors,
         cancellationPolicyPdfUrl: body.cancellationPolicyPdfUrl,

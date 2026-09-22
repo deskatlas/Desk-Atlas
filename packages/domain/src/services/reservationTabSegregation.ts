@@ -47,6 +47,7 @@ export type StaffCompletedSubFilter =
 export type StaffExpiredSubFilter =
   | "all"
   | "expired"
+  | "rejected"
   | "cancelled";
 
 export interface ReservationTabFilterOption<T extends string = string> {
@@ -101,8 +102,45 @@ export const STAFF_COMPLETED_TAB_FILTERS: ReservationTabFilterOption<StaffComple
 export const STAFF_EXPIRED_TAB_FILTERS: ReservationTabFilterOption<StaffExpiredSubFilter>[] = [
   { label: "All", filter: "all" },
   { label: "Expired", filter: "expired" },
+  { label: "Rejected", filter: "rejected" },
   { label: "Cancelled", filter: "cancelled" },
 ];
+
+export function isReservationRejected(
+  r: {
+    reservationStatus?: string;
+    status?: string;
+    paymentStatus?: string;
+    paymentAttemptStatus?: string | null;
+    cancellationReason?: string | null;
+  }
+): boolean {
+  return (
+    r.reservationStatus === "REJECTED" ||
+    Boolean(r.status && r.status.toLowerCase().includes("rejected")) ||
+    Boolean(r.paymentStatus && r.paymentStatus.toLowerCase().includes("rejected")) ||
+    Boolean(r.paymentAttemptStatus && r.paymentAttemptStatus.toLowerCase().includes("rejected")) ||
+    Boolean(r.cancellationReason && r.cancellationReason.toLowerCase().includes("rejected"))
+  );
+}
+
+export function isReservationCancelled(
+  r: {
+    reservationStatus?: string;
+    status?: string;
+    paymentStatus?: string;
+    paymentAttemptStatus?: string | null;
+    cancellationReason?: string | null;
+  }
+): boolean {
+  if (isReservationRejected(r)) {
+    return false;
+  }
+  return (
+    r.reservationStatus === "CANCELLED" ||
+    Boolean(r.status && r.status.toLowerCase().includes("cancelled"))
+  );
+}
 
 function isTimeWithinWindow(
   startStr?: string | null,
@@ -122,19 +160,24 @@ export function isAdminExpiredReservation(
 ): boolean {
   const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
 
+  if (
+    res.reservationStatus === "COMPLETED" ||
+    Boolean(res.checkedOutAt) ||
+    (res.status && res.status.toLowerCase().includes("completed")) ||
+    (res.status && res.status.toLowerCase().includes("checked out"))
+  ) {
+    return false;
+  }
+
   if (res.reservationStatus === "EXPIRED" || res.status.toLowerCase() === "expired") {
     return true;
   }
 
-  if (
-    res.status.toLowerCase() === "rejected" ||
-    (res.paymentAttemptStatus ?? "").toLowerCase() === "rejected" ||
-    res.paymentStatus.toLowerCase().includes("rejected")
-  ) {
+  if (isReservationRejected(res)) {
     return true;
   }
 
-  if (res.reservationStatus === "CANCELLED" || res.status.toLowerCase().includes("cancelled")) {
+  if (isReservationCancelled(res)) {
     return true;
   }
 
@@ -154,7 +197,7 @@ export function isAdminExpiredReservation(
   }
 
   // End time elapsed without being checked-in or completed
-  if (res.endAt && !res.checkedInAt && res.reservationStatus !== "COMPLETED") {
+  if (res.endAt && !res.checkedInAt && (res.reservationStatus as string) !== "COMPLETED") {
     const endMs = new Date(res.endAt).getTime();
     if (!isNaN(endMs) && endMs <= nowMs) {
       return true;
@@ -282,22 +325,18 @@ export function filterAdminReservationsByTab(
             r.reservationStatus
           ) &&
           r.reservationStatus !== "EXPIRED" &&
-          r.status.toLowerCase() !== "rejected"
+          !isReservationRejected(r)
         );
 
       case "counter_queue":
         return base.filter(
           (r) =>
             r.reservationStatus === "PENDING_COUNTER_CONFIRMATION" &&
-            r.status.toLowerCase() !== "rejected"
+            !isReservationRejected(r)
         );
 
       case "cancelled":
-        return reservations.filter(
-          (r) =>
-            r.reservationStatus === "CANCELLED" ||
-            r.status.toLowerCase().includes("cancelled")
-        );
+        return reservations.filter((r) => isReservationCancelled(r));
 
       default:
         return base;
@@ -348,25 +387,21 @@ export function filterAdminReservationsByTab(
       case "expired":
         return base.filter(
           (r) =>
-            r.reservationStatus === "EXPIRED" ||
-            r.status.toLowerCase() === "expired" ||
-            (r.endAt && !r.checkedInAt && new Date(r.endAt).getTime() <= nowMs && r.status.toLowerCase() !== "rejected" && r.reservationStatus !== "CANCELLED")
+            !isReservationCancelled(r) &&
+            !isReservationRejected(r) &&
+            (r.reservationStatus === "EXPIRED" ||
+              r.status.toLowerCase() === "expired" ||
+              (r.endAt && !r.checkedInAt && new Date(r.endAt).getTime() <= nowMs) ||
+              (r.reservationStatus === "PENDING_PAYMENT" &&
+                ((r.paymentExpiresAt && new Date(r.paymentExpiresAt).getTime() <= nowMs) ||
+                  (r.createdAt && new Date(r.createdAt).getTime() + 60 * 60 * 1000 <= nowMs))))
         );
 
       case "rejected":
-        return base.filter(
-          (r) =>
-            r.status.toLowerCase() === "rejected" ||
-            r.paymentStatus.toLowerCase().includes("rejected") ||
-            (r.paymentAttemptStatus ?? "").toLowerCase() === "rejected"
-        );
+        return base.filter((r) => isReservationRejected(r));
 
       case "cancelled":
-        return base.filter(
-          (r) =>
-            r.reservationStatus === "CANCELLED" ||
-            r.status.toLowerCase().includes("cancelled")
-        );
+        return base.filter((r) => isReservationCancelled(r));
 
       default:
         return base;
@@ -379,6 +414,16 @@ export function isStaffExpiredReservation(
   now: Date | number = new Date()
 ): boolean {
   const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
+
+  if (
+    res.reservationStatus === "COMPLETED" ||
+    res.checkInState === "CHECKED_OUT" ||
+    Boolean(res.checkedOutAt) ||
+    (res.status && res.status.toLowerCase().includes("completed")) ||
+    (res.status && res.status.toLowerCase().includes("checked out"))
+  ) {
+    return false;
+  }
 
   if (
     res.reservationStatus === "EXPIRED" ||
@@ -395,7 +440,7 @@ export function isStaffExpiredReservation(
     res.bookingEndAt &&
     !res.checkedInAt &&
     res.checkInState === "NOT_CHECKED_IN" &&
-    res.reservationStatus !== "COMPLETED"
+    (res.reservationStatus as string) !== "COMPLETED"
   ) {
     const endMs = new Date(res.bookingEndAt).getTime();
     if (!isNaN(endMs) && endMs <= nowMs) {
@@ -523,7 +568,7 @@ export function filterStaffReservationsByTab(
         return base.filter((r) => r.reservationStatus === "PENDING_COUNTER_CONFIRMATION");
 
       case "cancelled":
-        return reservations.filter((r) => r.reservationStatus === "CANCELLED");
+        return reservations.filter((r) => isReservationCancelled(r));
 
       default:
         return base;
@@ -574,19 +619,20 @@ export function filterStaffReservationsByTab(
       case "expired":
         return base.filter(
           (r) =>
-            r.reservationStatus === "EXPIRED" ||
-            r.reservationStatus === "REJECTED" ||
-            (r.status && r.status.toLowerCase() === "rejected") ||
-            (r.paymentStatus && r.paymentStatus.toLowerCase().includes("rejected")) ||
-            (r.paymentAttemptStatus && r.paymentAttemptStatus.toLowerCase() === "rejected") ||
-            (r.bookingEndAt &&
-              !r.checkedInAt &&
-              new Date(r.bookingEndAt).getTime() <= nowMs &&
-              r.reservationStatus !== "CANCELLED")
+            !isReservationCancelled(r) &&
+            !isReservationRejected(r) &&
+            (r.reservationStatus === "EXPIRED" ||
+              (r.status && r.status.toLowerCase() === "expired") ||
+              (r.bookingEndAt &&
+                !r.checkedInAt &&
+                new Date(r.bookingEndAt).getTime() <= nowMs))
         );
 
+      case "rejected":
+        return base.filter((r) => isReservationRejected(r));
+
       case "cancelled":
-        return base.filter((r) => r.reservationStatus === "CANCELLED");
+        return base.filter((r) => isReservationCancelled(r));
 
       default:
         return base;
@@ -606,13 +652,13 @@ export function getAdminReservationTabCounts(
   let expiredBadgeCount = 0;
 
   for (const r of reservations) {
-    if (isAdminExpiredReservation(r, nowMs)) {
-      expiredBadgeCount++;
+    if (isAdminCompletedReservation(r)) {
+      completedBadgeCount++;
       continue;
     }
 
-    if (isAdminCompletedReservation(r)) {
-      completedBadgeCount++;
+    if (isAdminExpiredReservation(r, nowMs)) {
+      expiredBadgeCount++;
       continue;
     }
 
@@ -664,13 +710,13 @@ export function getStaffReservationTabCounts(
   let expiredBadgeCount = 0;
 
   for (const r of reservations) {
-    if (isStaffExpiredReservation(r, nowMs)) {
-      expiredBadgeCount++;
+    if (isStaffCompletedReservation(r)) {
+      completedBadgeCount++;
       continue;
     }
 
-    if (isStaffCompletedReservation(r)) {
-      completedBadgeCount++;
+    if (isStaffExpiredReservation(r, nowMs)) {
+      expiredBadgeCount++;
       continue;
     }
 

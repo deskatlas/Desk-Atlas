@@ -498,6 +498,11 @@ export function ReservationList() {
                       <div style={{ fontWeight: 600, color: 'var(--da-text-primary)' }}>
                         {res.bookingStartAt ? format(new Date(res.bookingStartAt), 'h:mm a') : '-'} to {res.bookingEndAt ? format(new Date(res.bookingEndAt), 'h:mm a') : '-'}
                       </div>
+                      {res.bookingStartAt && (
+                        <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)' }}>
+                          {format(new Date(res.bookingStartAt), 'MMM d, yyyy')}
+                        </div>
+                      )}
                       {isCheckedInOrActive && res.bookingEndAt && (
                         <div style={{ marginTop: '4px' }}>
                           <WorkspaceCountdownBadge bookingEndAt={res.bookingEndAt} nowMs={currentTick} />

@@ -16,7 +16,6 @@ import {
   getAdminReservationTabCounts,
   ADMIN_RESERVATIONS_TAB_FILTERS,
   ADMIN_OPERATIONS_TAB_FILTERS,
-  ADMIN_COMPLETED_TAB_FILTERS,
   ADMIN_EXPIRED_TAB_FILTERS,
   type AdminReservationSummary,
   type AdminReservationAdvancedFilters,
@@ -24,7 +23,6 @@ import {
   type ReservationTabType,
   type AdminReservationsSubFilter,
   type AdminOperationsSubFilter,
-  type AdminCompletedSubFilter,
   type AdminExpiredSubFilter,
 } from '@deskatlas/domain';
 import { ReservationFilterModal } from './ReservationFilterModal';
@@ -48,7 +46,6 @@ export function ReservationList() {
   const [activeTab, setActiveTab] = useState<ReservationTabType>(initialTab);
   const [reservationsSubFilter, setReservationsSubFilter] = useState<AdminReservationsSubFilter>('all');
   const [operationsSubFilter, setOperationsSubFilter] = useState<AdminOperationsSubFilter>('all');
-  const [completedSubFilter, setCompletedSubFilter] = useState<AdminCompletedSubFilter>('all');
   const [expiredSubFilter, setExpiredSubFilter] = useState<AdminExpiredSubFilter>('all');
   const [scheduleSort, setScheduleSort] = useState<ReservationSortDirection | 'none'>('none');
   const [reservations, setReservations] = useState<AdminReservationSummary[]>([]);
@@ -102,7 +99,7 @@ export function ReservationList() {
       : activeTab === 'operations'
       ? operationsSubFilter
       : activeTab === 'completed'
-      ? completedSubFilter
+      ? 'all'
       : expiredSubFilter;
 
   const tabFiltered = filterAdminReservationsByTab(reservations, activeTab, currentSubFilter, currentTick);
@@ -114,7 +111,7 @@ export function ReservationList() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, reservationsSubFilter, operationsSubFilter, completedSubFilter, expiredSubFilter, searchQuery, advancedFilters, scheduleSort]);
+  }, [activeTab, reservationsSubFilter, operationsSubFilter, expiredSubFilter, searchQuery, advancedFilters, scheduleSort]);
 
   const pagination = paginateList(displayedReservations, currentPage, 15);
   const paginatedReservations = pagination.items;
@@ -469,22 +466,7 @@ export function ReservationList() {
                   );
                 })
               : activeTab === 'completed'
-              ? ADMIN_COMPLETED_TAB_FILTERS.map((f, i) => {
-                  const isActive = completedSubFilter === f.filter;
-                  const filterStyle = isActive
-                    ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
-                    : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setCompletedSubFilter(f.filter)}
-                      style={{ padding: '7px 14px', borderRadius: '9999px', whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--da-font-family)', ...filterStyle }}
-                    >
-                      {f.label}
-                    </button>
-                  );
-                })
+              ? null
               : ADMIN_EXPIRED_TAB_FILTERS.map((f, i) => {
                   const isActive = expiredSubFilter === f.filter;
                   const filterStyle = isActive

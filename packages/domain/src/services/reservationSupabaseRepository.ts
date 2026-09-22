@@ -23,6 +23,7 @@ import {
 } from "../models/reservation";
 import {
   AdminReservationRepository,
+  CheckRescheduleAvailabilityInput,
   RescheduleReservationInput,
   RescheduleSlotAvailability,
   RescheduleAvailabilityResult,
@@ -1011,36 +1012,6 @@ export class ReservationSupabaseRepository
         }
         decisionResult.reservationStatus = "CHECKED_IN";
       }
-
-      // Record operational check-in audit log for activity feed
-      try {
-        await fetch(`${this.restUrl}/audit_logs`, {
-          method: "POST",
-          headers: {
-            apikey: this.serviceRoleKey,
-            Authorization: `Bearer ${this.serviceRoleKey}`,
-            "Content-Type": "application/json",
-            Prefer: "return=minimal",
-          },
-          cache: "no-store",
-          body: JSON.stringify({
-            actor_user_id: input.actorUserId,
-            actor_role: "STAFF",
-            action: "reservation_checked_in",
-            entity_type: "reservation",
-            entity_id: decisionResult.reservationId,
-            metadata: {
-              source: "KIOSK",
-              auto_check_in: true,
-              workspace_instance_id: decisionResult.assignedCandidate.workspaceInstanceId,
-              start_at: decisionResult.assignedCandidate.startAt,
-              end_at: decisionResult.assignedCandidate.endAt,
-            },
-          }),
-        });
-      } catch {
-        // non-blocking
-      }
     }
 
     return decisionResult;
@@ -1155,6 +1126,9 @@ export class ReservationSupabaseRepository
       qrRevokedAt: reservation.qr_revoked_at,
       checkedInAt: reservation.checked_in_at,
       checkedOutAt: reservation.checked_out_at,
+      confirmedAt: reservation.confirmed_at ?? null,
+      source: reservation.source ?? null,
+      hasPreviousScan: false,
       assignedWorkspaceInstanceId: assignedCandidate.workspace_instance_id,
       assignedWorkspaceDisplayName:
         workspaceInstance?.display_name ?? workspaceInstance?.instance_code ?? assignedCandidate.workspace_instance_id,
@@ -1231,6 +1205,9 @@ export class ReservationSupabaseRepository
       qrRevokedAt: reservation.qr_revoked_at ?? null,
       checkedInAt: reservation.checked_in_at,
       checkedOutAt: reservation.checked_out_at,
+      confirmedAt: reservation.confirmed_at ?? null,
+      source: reservation.source ?? null,
+      hasPreviousScan: false,
       assignedWorkspaceInstanceId: assignedCandidate.workspace_instance_id,
       assignedWorkspaceDisplayName:
         workspaceInstance?.display_name ?? workspaceInstance?.instance_code ?? assignedCandidate.workspace_instance_id,
@@ -2694,6 +2671,19 @@ export class ReservationSupabaseRepository
       throw new Error("Cannot reschedule to a past date or time.");
     }
 
+    const maxAdvanceValue = input.maxAdvanceValue;
+    const maxAdvanceUnit = input.maxAdvanceUnit || (input.maxAdvanceHours && input.maxAdvanceHours % 24 === 0 ? "DAYS" : "HOURS");
+    const maxAdvanceHours = input.maxAdvanceHours ?? (maxAdvanceValue !== undefined && maxAdvanceValue !== null ? (maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24) : undefined);
+
+    if (maxAdvanceHours !== undefined) {
+      const maxAllowedMs = nowMs + maxAdvanceHours * 60 * 60 * 1000;
+      if (newStartMs > maxAllowedMs) {
+        const val = maxAdvanceValue ?? (maxAdvanceUnit === "DAYS" ? maxAdvanceHours / 24 : maxAdvanceHours);
+        const unitStr = (maxAdvanceUnit || "DAYS").toLowerCase();
+        throw new Error(`Rescheduling is only allowed up to ${val} ${unitStr} in advance.`);
+      }
+    }
+
     const isCustomerActor = input.actorRole === "CUSTOMER";
     const currentRescheduleCount = r.reschedule_count ?? 0;
 
@@ -2914,14 +2904,9 @@ export class ReservationSupabaseRepository
     };
   }
 
-  async checkRescheduleAvailability(input: {
-    reservationId: string;
-    startAt?: string;
-    endAt?: string;
-    date?: string;
-    durationHours?: number;
-    workspaceInstanceId?: string;
-  }): Promise<RescheduleAvailabilityResult> {
+  async checkRescheduleAvailability(
+    input: CheckRescheduleAvailabilityInput
+  ): Promise<RescheduleAvailabilityResult> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
     const filter = isUuid
       ? `id=eq.${encodeURIComponent(input.reservationId)}`
@@ -3007,11 +2992,42 @@ export class ReservationSupabaseRepository
     let reason: string | undefined;
     const nowMs = new Date().getTime();
 
-    if (input.startAt && input.endAt) {
+    const maxAdvanceValue = input.maxAdvanceValue;
+    const maxAdvanceUnit = input.maxAdvanceUnit || (input.maxAdvanceHours && input.maxAdvanceHours % 24 === 0 ? "DAYS" : "HOURS");
+    const maxAdvanceHours = input.maxAdvanceHours ?? (maxAdvanceValue !== undefined && maxAdvanceValue !== null ? (maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24) : undefined);
+
+    let maxAllowedDate: string | undefined;
+    if (maxAdvanceHours !== undefined) {
+      const maxAllowedMs = nowMs + maxAdvanceHours * 60 * 60 * 1000;
+      try {
+        maxAllowedDate = new Intl.DateTimeFormat("en-CA", {
+          timeZone: timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(maxAllowedMs));
+      } catch {
+        maxAllowedDate = new Date(maxAllowedMs).toISOString().split("T")[0];
+      }
+
+      if (targetDate && maxAllowedDate && targetDate > maxAllowedDate) {
+        available = false;
+        const val = maxAdvanceValue ?? (maxAdvanceUnit === "DAYS" ? maxAdvanceHours / 24 : maxAdvanceHours);
+        const unitStr = (maxAdvanceUnit || "DAYS").toLowerCase();
+        reason = `Rescheduling is only allowed up to ${val} ${unitStr} in advance.`;
+      }
+    }
+
+    if (input.startAt && input.endAt && available) {
       const newStartMs = new Date(input.startAt).getTime();
       const newEndMs = new Date(input.endAt).getTime();
 
-      if (newStartMs < nowMs) {
+      if (maxAdvanceHours !== undefined && newStartMs > nowMs + maxAdvanceHours * 60 * 60 * 1000) {
+        available = false;
+        const val = maxAdvanceValue ?? (maxAdvanceUnit === "DAYS" ? maxAdvanceHours / 24 : maxAdvanceHours);
+        const unitStr = (maxAdvanceUnit || "DAYS").toLowerCase();
+        reason = `Rescheduling is only allowed up to ${val} ${unitStr} in advance.`;
+      } else if (newStartMs < nowMs) {
         available = false;
         reason = "Cannot reschedule to a past date or time";
       } else if (isClosed) {
@@ -3076,10 +3092,8 @@ export class ReservationSupabaseRepository
               ).catch(() => []),
             ]);
 
-            const nextDayClosed =
-              (nextScheduleBlocks && nextScheduleBlocks.length > 0) ||
-              (!nextOperatingHours || nextOperatingHours.length === 0);
-
+            const nextDayBlocked = nextScheduleBlocks && nextScheduleBlocks.length > 0;
+            const nextDayClosed = nextDayBlocked || (!nextOperatingHours || nextOperatingHours.length === 0);
             if (nextDayClosed) {
               available = false;
               reason = "The facility is closed during overnight hours on the following date.";
@@ -3105,13 +3119,13 @@ export class ReservationSupabaseRepository
       }
     }
 
-    // Compute slots
+    // Compute slots for date
     let slots: RescheduleSlotAvailability[] | undefined;
     const duration = input.durationHours || 2;
     const durationMin = Math.round(duration * 60);
 
     if (targetDate) {
-      if (isClosed) {
+      if (isClosed || (targetDate && maxAllowedDate && targetDate > maxAllowedDate)) {
         slots = [];
       } else {
         const intervalMinutes = 30;
@@ -3123,21 +3137,21 @@ export class ReservationSupabaseRepository
           startMinute = (oH || 0) * 60 + (oM || 0);
 
           const [cH, cM] = closeTime.split(":").map(Number);
-          const closeMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
-          maxStartMinute = closeMin - durationMin;
+          const rawCloseMin = (cH === 0 || cH === 24 ? 24 : (cH || 0)) * 60 + (cM || 0);
+          maxStartMinute = rawCloseMin - durationMin;
         }
 
         const generatedSlots: RescheduleSlotAvailability[] = [];
 
         for (let m = startMinute; m <= maxStartMinute; m += intervalMinutes) {
-          const sH = Math.floor(m / 60);
-          const sM = m % 60;
-          const time = `${String(sH).padStart(2, "0")}:${String(sM).padStart(2, "0")}`;
+          const h = Math.floor(m / 60);
+          const min = m % 60;
+          const time = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 
           const slotStart = zonedDateTimeToUtc(targetDate, time, timezone);
-          const slotEnd = new Date(slotStart.getTime() + durationMin * 60 * 1000);
+          const endMs = slotStart.getTime() + durationMin * 60 * 1000;
+          const slotEnd = new Date(endMs);
           const startMs = slotStart.getTime();
-          const endMs = slotEnd.getTime();
 
           const endMTotal = m + durationMin;
           const endH = Math.floor(endMTotal / 60);
@@ -3150,6 +3164,11 @@ export class ReservationSupabaseRepository
           if (startMs < nowMs) {
             slotAvailable = false;
             slotReason = "Past";
+          } else if (maxAdvanceHours !== undefined && startMs > nowMs + maxAdvanceHours * 60 * 60 * 1000) {
+            slotAvailable = false;
+            const val = maxAdvanceValue ?? (maxAdvanceUnit === "DAYS" ? maxAdvanceHours / 24 : maxAdvanceHours);
+            const unitStr = (maxAdvanceUnit || "DAYS").toLowerCase();
+            slotReason = `Rescheduling is only allowed up to ${val} ${unitStr} in advance.`;
           } else {
             for (const cand of conflictingCandidates ?? []) {
               const resStatus = cand.reservations?.status;
@@ -3189,6 +3208,10 @@ export class ReservationSupabaseRepository
       closeTime: isClosed ? undefined : closeTime,
       is24Hours,
       isClosed,
+      maxAdvanceValue,
+      maxAdvanceUnit,
+      maxAdvanceHours,
+      maxAllowedDate,
     };
   }
 

@@ -177,10 +177,21 @@ function buildStaffActivityStream(
 ): AdminDashboardActivityItem[] {
   const items: AdminDashboardActivityItem[] = [];
   const seenEvents = new Set<string>();
+  const recordedCheckInsByReservation = new Map<string, number[]>();
 
   // 1. Audit log activities (Check-ins, Check-outs, Re-entries)
   for (const event of auditActivity) {
     if (isWithinRange(event.occurredAt, start, end)) {
+      const eventTime = new Date(event.occurredAt).getTime();
+      if (event.activityType === "CHECK_IN") {
+        const existingCheckIns = recordedCheckInsByReservation.get(event.reservationId) ?? [];
+        if (existingCheckIns.some((t) => Math.abs(t - eventTime) <= 60_000)) {
+          continue;
+        }
+        existingCheckIns.push(eventTime);
+        recordedCheckInsByReservation.set(event.reservationId, existingCheckIns);
+      }
+
       const eventKey = `${event.reservationId}-${event.activityType}-${event.occurredAt}`;
       if (!seenEvents.has(eventKey)) {
         seenEvents.add(eventKey);

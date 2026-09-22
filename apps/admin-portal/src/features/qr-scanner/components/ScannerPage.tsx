@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import jsQR from 'jsqr';
 import { useBookingLookup } from '../hooks/useBookingLookup';
-import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '@/features/check-in';
+import { useCheckInActions, EarlyCheckInModal, isEarlyCheckInError } from '../../check-in';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 

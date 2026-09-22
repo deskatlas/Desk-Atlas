@@ -443,6 +443,7 @@ export function ReservationFilterModal({
             >
               <option value="all">All Reservation Statuses</option>
               <option value="CANCELLED">Cancelled</option>
+              <option value="REJECTED">Rejected</option>
               <option value="CONFIRMED">Confirmed</option>
               <option value="CHECKED_IN">Checked In</option>
               <option value="COMPLETED">Completed</option>

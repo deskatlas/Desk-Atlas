@@ -28,6 +28,8 @@ export class InMemorySettingsRepository implements SettingsRepository {
     bookingEndAlertMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
+    rescheduleMaxAdvanceValue: 30,
+    rescheduleMaxAdvanceUnit: 'DAYS',
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     cancellationPolicyPdfUrl: null,
@@ -89,6 +91,8 @@ export class InMemorySettingsRepository implements SettingsRepository {
   async getBusinessSettings(): Promise<BusinessSettings> {
     return {
       ...this.businessSettings,
+      rescheduleMaxAdvanceValue: this.businessSettings.rescheduleMaxAdvanceValue ?? 30,
+      rescheduleMaxAdvanceUnit: this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS',
       facebookUrl: this.businessSettings.facebookUrl ?? null,
       instagramUrl: this.businessSettings.instagramUrl ?? null,
       twitterUrl: this.businessSettings.twitterUrl ?? null,
@@ -126,6 +130,12 @@ export class InMemorySettingsRepository implements SettingsRepository {
       bookingEndAlertMinutes: input.bookingEndAlertMinutes ?? 5,
       customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? 12,
+      rescheduleMaxAdvanceValue: input.rescheduleMaxAdvanceValue !== undefined && input.rescheduleMaxAdvanceValue !== null
+        ? input.rescheduleMaxAdvanceValue
+        : (this.businessSettings.rescheduleMaxAdvanceValue ?? 30),
+      rescheduleMaxAdvanceUnit: input.rescheduleMaxAdvanceUnit !== undefined && input.rescheduleMaxAdvanceUnit !== null
+        ? input.rescheduleMaxAdvanceUnit
+        : (this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS'),
       landingPreviewPhotos:
         input.landingPreviewPhotos !== undefined
           ? [...input.landingPreviewPhotos]
@@ -150,6 +160,8 @@ export class InMemorySettingsRepository implements SettingsRepository {
     };
     return {
       ...this.businessSettings,
+      rescheduleMaxAdvanceValue: this.businessSettings.rescheduleMaxAdvanceValue ?? 30,
+      rescheduleMaxAdvanceUnit: this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS',
       facebookUrl: this.businessSettings.facebookUrl ?? null,
       instagramUrl: this.businessSettings.instagramUrl ?? null,
       twitterUrl: this.businessSettings.twitterUrl ?? null,

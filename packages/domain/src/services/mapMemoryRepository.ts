@@ -144,13 +144,24 @@ export class InMemoryMapRepository implements MapRepository {
       publishedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    this.versions.set(publishedVersion.id, publishedVersion);
+    const publishedElements = this.cloneElements(publishedVersion.id);
+    const placedIds = new Set(
+      publishedElements
+        .map((e) => e.workspaceInstanceId)
+        .filter((id): id is string => Boolean(id))
+    );
+
+    for (const [id, instance] of this.workspaceInstances.entries()) {
+      if (instance.floorId === input.floorId && !placedIds.has(id)) {
+        this.workspaceInstances.delete(id);
+      }
+    }
 
     return {
       published: {
         floor,
         version: publishedVersion,
-        elements: this.cloneElements(publishedVersion.id),
+        elements: publishedElements,
       },
       archivedVersionIds,
     };

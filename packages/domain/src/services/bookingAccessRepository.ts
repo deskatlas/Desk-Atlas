@@ -13,6 +13,9 @@ export interface BookingAccessRecord {
   qrRevokedAt: string | null;
   checkedInAt: string | null;
   checkedOutAt: string | null;
+  confirmedAt?: string | null;
+  source?: string | null;
+  hasPreviousScan?: boolean;
   assignedWorkspaceInstanceId: string;
   assignedWorkspaceDisplayName: string;
   assignedWorkspaceInstanceCode: string;

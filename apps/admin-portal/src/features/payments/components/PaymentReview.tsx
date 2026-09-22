@@ -34,12 +34,18 @@ function formatScheduleRange(startIso?: string, endIso?: string, timezone = 'Asi
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       return `${startIso} - ${endIso}`;
     }
-    const dateFormatted = new Intl.DateTimeFormat('en-US', {
+    const startDateFormatted = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     }).format(start);
+    const endDateFormatted = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(end);
     const startTime = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       hour: 'numeric',
@@ -52,7 +58,10 @@ function formatScheduleRange(startIso?: string, endIso?: string, timezone = 'Asi
       minute: '2-digit',
       hour12: true,
     }).format(end);
-    return `${dateFormatted}, ${startTime} - ${endTime}`;
+    if (startDateFormatted === endDateFormatted) {
+      return `${startDateFormatted}, ${startTime} - ${endTime}`;
+    }
+    return `${startDateFormatted}, ${startTime} - ${endDateFormatted}, ${endTime}`;
   } catch {
     return `${startIso} - ${endIso}`;
   }

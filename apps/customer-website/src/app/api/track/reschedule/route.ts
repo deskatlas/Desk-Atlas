@@ -81,6 +81,11 @@ export async function POST(request: NextRequest) {
     }
 
     const cutoffHours = businessSettings?.customerRescheduleCutoffHours ?? 12;
+    const maxAdvanceValue = businessSettings?.rescheduleMaxAdvanceValue ?? 30;
+    const maxAdvanceUnit = businessSettings?.rescheduleMaxAdvanceUnit ?? "DAYS";
+    const maxAdvanceHours = maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24;
+    const maxAdvanceMs = maxAdvanceHours * 3600 * 1000;
+
     const origStartMs = trackingRecord.finalAssignment?.bookingStartAt
       ? new Date(trackingRecord.finalAssignment.bookingStartAt).getTime()
       : 0;
@@ -95,6 +100,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (startMs > nowMs + maxAdvanceMs) {
+      return NextResponse.json(
+        {
+          error: `Rescheduling is only allowed up to ${maxAdvanceValue} ${maxAdvanceUnit.toLowerCase()} in advance.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const result = await reservationRepo.rescheduleReservation({
       reservationId: trackingRecord.reservationId,
       startAt,
@@ -102,6 +116,9 @@ export async function POST(request: NextRequest) {
       workspaceInstanceId,
       actorRole: "CUSTOMER",
       cutoffHours,
+      maxAdvanceValue,
+      maxAdvanceUnit,
+      maxAdvanceHours,
     });
 
     // Dispatch confirmation email

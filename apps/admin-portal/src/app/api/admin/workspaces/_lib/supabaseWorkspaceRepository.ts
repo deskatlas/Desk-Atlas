@@ -284,6 +284,54 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     return this.updateInstance(id, { operationalStatus: 'INACTIVE' });
   }
 
+  async deleteInstance(id: string): Promise<{ deleted: boolean; archived?: boolean; instance?: WorkspaceInstanceDetails }> {
+    const [existing] = await this.request<InstanceRow[]>(
+      `/workspace_instances?id=eq.${encodeURIComponent(id)}&select=*,template:workspace_templates(*),floor:floors(*)&limit=1`
+    );
+    if (!existing) throw new WorkspaceValidationError(`Instance not found: ${id}`);
+
+    const candidates = await this.request<any[]>(
+      `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(id)}&select=id&limit=1`
+    );
+
+    if (candidates.length > 0) {
+      const deactivated = await this.deactivateInstance(id);
+      return { deleted: false, archived: true, instance: deactivated };
+    }
+
+    try {
+      await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      return { deleted: true, archived: false };
+    } catch {
+      const deactivated = await this.deactivateInstance(id);
+      return { deleted: false, archived: true, instance: deactivated };
+    }
+  }
+
+  async getMapPlacedInstanceIds(): Promise<Set<string>> {
+    try {
+      const rows = await this.request<Array<{ workspace_instance_id: string | null }>>(
+        '/map_elements?select=workspace_instance_id,map_version:map_versions!inner(status)&map_version.status=eq.PUBLISHED&workspace_instance_id=not.is.null'
+      );
+      const ids = new Set<string>();
+      for (const row of rows) {
+        if (row.workspace_instance_id) {
+          ids.add(row.workspace_instance_id);
+        }
+      }
+      return ids;
+    } catch {
+      const catalog = await this.listCatalog();
+      return new Set(
+        catalog.instances
+          .filter((i) => i.operationalStatus === 'ACTIVE')
+          .map((i) => i.id)
+      );
+    }
+  }
+
   async duplicateInstance(
     id: string,
     input: DuplicateWorkspaceInstanceInput

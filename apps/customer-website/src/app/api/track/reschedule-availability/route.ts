@@ -65,6 +65,10 @@ export async function POST(request: NextRequest) {
     }
 
     const cutoffHours = businessSettings?.customerRescheduleCutoffHours ?? 12;
+    const maxAdvanceValue = businessSettings?.rescheduleMaxAdvanceValue ?? 30;
+    const maxAdvanceUnit = businessSettings?.rescheduleMaxAdvanceUnit ?? "DAYS";
+    const maxAdvanceHours = maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24;
+
     const origStartMs = trackingRecord.finalAssignment?.bookingStartAt
       ? new Date(trackingRecord.finalAssignment.bookingStartAt).getTime()
       : 0;
@@ -94,12 +98,18 @@ export async function POST(request: NextRequest) {
       endAt,
       durationHours,
       workspaceInstanceId: workspaceInstanceId || trackingRecord.finalAssignment?.workspaceInstanceId,
+      maxAdvanceValue,
+      maxAdvanceUnit,
+      maxAdvanceHours,
     });
 
     return NextResponse.json({
       ...result,
       durationHours,
       cutoffHours,
+      maxAdvanceValue,
+      maxAdvanceUnit,
+      maxAdvanceHours,
       assignedWorkspaceDisplayName: trackingRecord.finalAssignment?.workspaceDisplayName,
       assignedWorkspaceTemplateName: trackingRecord.finalAssignment?.workspaceTemplateName,
     });

@@ -150,6 +150,7 @@ describe("MF-171: Staff Reservations - Remove Redundant All/Completed Filters Un
     expect(STAFF_EXPIRED_TAB_FILTERS.map((f) => f.filter)).toEqual([
       "all",
       "expired",
+      "rejected",
       "cancelled",
     ]);
   });

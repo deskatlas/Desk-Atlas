@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminReservationService } from "../../_lib/reservationService";
+import { getAdminSettingsService } from "../../../settings/_lib/settingsService";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,13 @@ export async function POST(
       );
     }
 
+    const [settingsOverview] = await Promise.all([
+      getAdminSettingsService().getSettingsOverview().catch(() => null),
+    ]);
+    const maxAdvanceValue = settingsOverview?.businessSettings?.rescheduleMaxAdvanceValue ?? 30;
+    const maxAdvanceUnit = settingsOverview?.businessSettings?.rescheduleMaxAdvanceUnit ?? "DAYS";
+    const maxAdvanceHours = maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24;
+
     const service = getAdminReservationService();
     const result = await service.rescheduleReservation({
       reservationId: id,
@@ -36,6 +44,9 @@ export async function POST(
       endAt,
       workspaceInstanceId,
       actorRole: "ADMIN",
+      maxAdvanceValue,
+      maxAdvanceUnit,
+      maxAdvanceHours,
     });
 
     return NextResponse.json(result);

@@ -27,6 +27,9 @@ export async function GET() {
       filename: settings.cancellationPolicyPdfFilename ?? null,
       updatedAt: settings.cancellationPolicyUpdatedAt ?? null,
       rescheduleCutoffHours: settings.customerRescheduleCutoffHours ?? 12,
+      rescheduleMaxAdvanceValue: settings.rescheduleMaxAdvanceValue ?? 30,
+      rescheduleMaxAdvanceUnit: settings.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      rescheduleMaxAdvanceHours: settings.rescheduleMaxAdvanceHours ?? 720,
       businessName: settings.businessName || 'DeskAtlas Coworking',
     }, {
       headers: {
@@ -39,6 +42,9 @@ export async function GET() {
       filename: null,
       updatedAt: null,
       rescheduleCutoffHours: 12,
+      rescheduleMaxAdvanceValue: 30,
+      rescheduleMaxAdvanceUnit: 'DAYS',
+      rescheduleMaxAdvanceHours: 720,
       businessName: 'DeskAtlas Coworking',
     });
   }

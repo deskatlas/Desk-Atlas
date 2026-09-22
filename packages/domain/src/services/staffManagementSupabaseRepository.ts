@@ -324,7 +324,27 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         throw new StaffManagementError('Failed to update staff account');
       }
 
-      return this.mapRowToStaffMember(rows[0]);
+      const member = this.mapRowToStaffMember(rows[0]);
+      if (!member.email || member.email === 'unknown@deskatlas.com') {
+        try {
+          const authUserRes = await fetch(`${this.authAdminUrl}/users/${encodeURIComponent(input.staffUserId)}`, {
+            headers: {
+              apikey: this.serviceRoleKey,
+              Authorization: `Bearer ${this.serviceRoleKey}`,
+            },
+          });
+          if (authUserRes.ok) {
+            const authUserData = await authUserRes.json();
+            if (authUserData && authUserData.email) {
+              member.email = authUserData.email;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      return member;
     } catch (err: any) {
       if (err instanceof Error) {
         if (
@@ -396,7 +416,28 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
         }).catch(() => {});
       }
 
-      return this.mapRowToStaffMember(profiles[0]);
+      let email: string | undefined;
+      try {
+        const authUserRes = await fetch(`${this.authAdminUrl}/users/${encodeURIComponent(input.staffUserId)}`, {
+          headers: {
+            apikey: this.serviceRoleKey,
+            Authorization: `Bearer ${this.serviceRoleKey}`,
+          },
+        });
+        if (authUserRes.ok) {
+          const authUserData = await authUserRes.json();
+          if (authUserData && authUserData.email) {
+            email = authUserData.email;
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      return this.mapRowToStaffMember({
+        ...profiles[0],
+        email: email || 'unknown@deskatlas.com',
+      });
     }
   }
 

@@ -178,6 +178,7 @@ export interface WorkspaceRepository {
   createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails>;
   updateInstance(id: string, input: UpdateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails>;
   deactivateInstance(id: string): Promise<WorkspaceInstanceDetails>;
+  deleteInstance?(id: string): Promise<{ deleted: boolean; archived?: boolean; instance?: WorkspaceInstanceDetails }>;
   duplicateInstance(id: string, input: DuplicateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails>;
   listFutureConfirmedReservations(
     instanceId: string,

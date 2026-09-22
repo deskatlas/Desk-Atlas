@@ -208,8 +208,22 @@ export function ReservationDetail({ id }: { id: string }) {
     try {
       const res = await fetch(`/api/payments/${encodeURIComponent(reservation.referenceCode)}/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: reservation.referenceCode }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.id ? {
+            'x-actor-user-id': user.id,
+            'x-actor-role': (user.role || 'STAFF').toUpperCase(),
+            'x-user-id': user.id,
+            'x-user-role': (user.role || 'STAFF').toUpperCase(),
+          } : {}),
+        },
+        body: JSON.stringify({
+          code: reservation.referenceCode,
+          actor: {
+            userId: user?.id,
+            role: user?.role?.toUpperCase() || 'STAFF',
+          },
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -256,7 +270,9 @@ export function ReservationDetail({ id }: { id: string }) {
   const contactNumber = reservation.customerContactNumber || reservation.customerPhone || null;
   const scheduleText = reservation.schedule || (
     reservation.bookingStartAt && reservation.bookingEndAt
-      ? `${format(new Date(reservation.bookingStartAt), 'MMM d, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'h:mm a')}`
+      ? (format(new Date(reservation.bookingStartAt), 'yyyy-MM-dd') === format(new Date(reservation.bookingEndAt), 'yyyy-MM-dd')
+          ? `${format(new Date(reservation.bookingStartAt), 'MMM d, yyyy, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'h:mm a')}`
+          : `${format(new Date(reservation.bookingStartAt), 'MMM d, yyyy, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'MMM d, yyyy, h:mm a')}`)
       : '-'
   );
   const durationText = reservation.duration || '-';

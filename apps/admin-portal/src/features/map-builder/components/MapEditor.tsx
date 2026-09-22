@@ -670,13 +670,16 @@ export function MapEditor() {
     try {
       setActionLoading(true);
       const templateName = tpl.name.trim();
-      let maxSequence = 0;
+      const activeInstancesForTemplate = instances.filter(
+        (i: any) => (i.templateId === tpl.id || i.template?.id === tpl.id) && i.operationalStatus !== 'INACTIVE'
+      );
       const existingForTemplate = [
-        ...instances.filter((i: any) => i.templateId === tpl.id),
+        ...activeInstancesForTemplate,
         ...builderObjects.filter((o: any) => o.template === tpl.name),
       ];
 
       const escapedTplName = templateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      let maxSequence = 0;
       for (const item of existingForTemplate) {
         const name = (item.displayName || item.name || '').trim();
         const match = new RegExp(`^${escapedTplName}\\s+(\\d+)$`, 'i').exec(name);
@@ -1550,7 +1553,7 @@ export function MapEditor() {
     }
   };
 
-  const handleRemoveObject = (id: string) => {
+  const handleRemoveObject = async (id: string) => {
     const targetIndex = builderObjects.findIndex(o => o.id === id);
     const targetObj = builderObjects[targetIndex];
     if (targetObj && selectedFloorId) {
@@ -1561,6 +1564,19 @@ export function MapEditor() {
       });
       syncUndoRedoState(selectedFloorId);
     }
+
+    if (targetObj?.workspaceInstanceId) {
+      const instanceId = targetObj.workspaceInstanceId;
+      try {
+        await fetch(`/api/admin/workspaces/instances/${instanceId}`, {
+          method: 'DELETE',
+        });
+        setInstances(prev => prev.filter(i => i.id !== instanceId));
+      } catch {
+        // Non-blocking
+      }
+    }
+
     setBuilderObjects(prev => prev.filter(o => o.id !== id));
     if (selectedObjId === id) setSelectedObjId(null);
     setSaveState('Unsaved changes');

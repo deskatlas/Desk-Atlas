@@ -167,10 +167,12 @@ export async function POST(
       let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
       let businessName = "DeskAtlas";
       let businessPhone: string | undefined;
+      let businessSettings: any = undefined;
 
       try {
         const settingsRepo = new SupabaseSettingsRepository();
         const settings = await settingsRepo.getBusinessSettings();
+        businessSettings = settings;
         if (settings.contactEmail) {
           businessEmail = settings.contactEmail;
         }
@@ -194,6 +196,7 @@ export async function POST(
           businessName,
           businessEmail,
           businessPhone,
+          businessSettings,
           trackingUrl,
         });
 
@@ -217,10 +220,12 @@ export async function POST(
       let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
       let businessName = "DeskAtlas";
       let businessPhone: string | undefined;
+      let businessSettings: any = undefined;
 
       try {
         const settingsRepo = new SupabaseSettingsRepository();
         const settings = await settingsRepo.getBusinessSettings();
+        businessSettings = settings;
         if (settings.contactEmail) {
           businessEmail = settings.contactEmail;
         }
@@ -245,6 +250,7 @@ export async function POST(
           businessName,
           businessEmail,
           businessPhone,
+          businessSettings,
           trackingUrl,
         });
 

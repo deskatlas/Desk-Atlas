@@ -12,6 +12,7 @@ import {
 import { ProofImageViewer } from '../../payments/components/ProofImageViewer';
 import { ExtendReservationModal } from './ExtendReservationModal';
 import { useAuth } from '../../auth/components/AuthProvider';
+import { useCheckInActions } from '../../check-in';
 
 export function canViewBookingQr(detail: AdminReservationDetailType | null): boolean {
   if (!detail) return false;
@@ -111,6 +112,7 @@ const DURATION_OPTIONS = [
 export function ReservationDetail({ id }: { id: string }) {
   const router = useRouter();
   const { user } = useAuth();
+  const { checkOut, loading: checkOutLoading } = useCheckInActions();
   const [detail, setDetail] = useState<AdminReservationDetailType | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,15 +142,18 @@ export function ReservationDetail({ id }: { id: string }) {
 
   // Reschedule modal states
   const [showRescheduleModal, setShowRescheduleModal] = useState<boolean>(false);
-  const [catalogInstances, setCatalogInstances] = useState<any[]>([]);
-  const [selectedSpotId, setSelectedSpotId] = useState<string>("");
+  const [maxRescheduleDate, setMaxRescheduleDate] = useState<string | undefined>(undefined);
+  const [isRescheduling, setIsRescheduling] = useState<boolean>(false);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState<boolean>(false);
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [rescheduleStartTime, setRescheduleStartTime] = useState<string>("09:00");
   const [rescheduleDuration, setRescheduleDuration] = useState<number>(1);
-  const [isCheckingAvailability, setIsCheckingAvailability] = useState<boolean>(false);
+  const [selectedSpotId, setSelectedSpotId] = useState<string>("");
+  const [catalogInstances, setCatalogInstances] = useState<any[]>([]);
   const [availabilityResult, setAvailabilityResult] = useState<{
     available: boolean;
     reason?: string;
+    maxAllowedDate?: string;
     slots?: Array<{
       startTime: string;
       endTime: string;
@@ -158,7 +163,6 @@ export function ReservationDetail({ id }: { id: string }) {
       reason?: string;
     }>;
   } | null>(null);
-  const [isRescheduling, setIsRescheduling] = useState<boolean>(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [showExtendModal, setShowExtendModal] = useState<boolean>(false);
 
@@ -334,6 +338,9 @@ export function ReservationDetail({ id }: { id: string }) {
         const data = await res.json();
         if (!isCancelled) {
           setAvailabilityResult(data);
+          if (data.maxAllowedDate) {
+            setMaxRescheduleDate(data.maxAllowedDate);
+          }
           // If current selected start time is booked or past, clear it
           if (rescheduleStartTime) {
             const slotDateUtc = zonedDateTimeToUtc(rescheduleDate, rescheduleStartTime, "Asia/Manila");
@@ -587,6 +594,16 @@ export function ReservationDetail({ id }: { id: string }) {
     }
   };
 
+  const handleCheckOut = async () => {
+    try {
+      await checkOut(detail?.id || id);
+      await fetchDetail();
+      setToastMessage({ text: "Reservation checked out successfully.", type: "success" });
+    } catch (err: any) {
+      setToastMessage({ text: err?.message || "Failed to check out reservation", type: "error" });
+    }
+  };
+
   const detailFields = detail
     ? [
         { label: 'Customer Name', value: detail.customerName },
@@ -640,14 +657,29 @@ export function ReservationDetail({ id }: { id: string }) {
       ];
 
   const isConfirmed = detail?.reservationStatus === 'CONFIRMED' || detail?.reservationStatus === 'CHECKED_IN';
+  const isCheckedIn =
+    detail?.reservationStatus === 'CHECKED_IN' ||
+    (detail as any)?.checkInState === 'CHECKED_IN' ||
+    Boolean(detail?.checkedInAt && !detail?.checkedOutAt && detail?.reservationStatus !== 'COMPLETED' && detail?.reservationStatus !== 'CANCELLED' && detail?.reservationStatus !== 'EXPIRED');
+
   const detailActions: Array<{
     label: string;
     style: React.CSSProperties;
     onClick?: () => void;
     testId?: string;
+    disabled?: boolean;
   }> = [];
 
   if (isConfirmed) {
+    if (isCheckedIn) {
+      detailActions.push({
+        label: checkOutLoading ? 'Checking Out...' : 'Check Out',
+        style: { background: '#fff', color: 'var(--da-danger)', border: '1px solid var(--da-danger)' },
+        onClick: handleCheckOut,
+        testId: 'checkout-booking-button',
+        disabled: checkOutLoading,
+      });
+    }
     detailActions.push({
       label: 'Extend Time',
       style: { background: 'transparent', color: 'var(--da-brand-dark)', border: '1px solid var(--da-brand-dark)' },
@@ -863,7 +895,17 @@ export function ReservationDetail({ id }: { id: string }) {
                   key={i}
                   data-testid={act.testId}
                   onClick={act.onClick}
-                  style={{ padding: '9px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...act.style }}
+                  disabled={act.disabled}
+                  style={{
+                    padding: '9px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: act.disabled ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    fontFamily: 'var(--da-font-family)',
+                    ...act.style,
+                  }}
                 >
                   {act.label}
                 </button>
@@ -1537,6 +1579,7 @@ export function ReservationDetail({ id }: { id: string }) {
                   type="date"
                   data-testid="reschedule-date-input"
                   min={getTodayManila()}
+                  max={maxRescheduleDate || undefined}
                   value={rescheduleDate}
                   onChange={(e) => setRescheduleDate(e.target.value)}
                   disabled={isRescheduling}

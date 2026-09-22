@@ -46,6 +46,7 @@ export function CustomerRescheduleModal({
   const [availabilityReason, setAvailabilityReason] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [maxAllowedDate, setMaxAllowedDate] = useState<string | undefined>(undefined);
 
   const finalAssignment = trackingData.finalAssignment;
   const originalStartAt = finalAssignment?.bookingStartAt;
@@ -158,6 +159,10 @@ export function CustomerRescheduleModal({
         originalDurationHours
       );
       setTimeOptions(newSlots);
+
+      if (data.maxAllowedDate) {
+        setMaxAllowedDate(data.maxAllowedDate);
+      }
 
       if (respIsClosed) {
         setIsSlotAvailable(false);
@@ -281,6 +286,7 @@ export function CustomerRescheduleModal({
             <input
               type="date"
               min={minDate}
+              max={maxAllowedDate || undefined}
               value={rescheduleDate}
               onChange={(e) => setRescheduleDate(e.target.value)}
               disabled={isSubmitting}

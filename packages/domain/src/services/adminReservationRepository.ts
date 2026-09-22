@@ -16,6 +16,9 @@ export interface RescheduleReservationInput {
   actorUserId?: string;
   actorRole?: string;
   cutoffHours?: number;
+  maxAdvanceValue?: number;
+  maxAdvanceUnit?: "DAYS" | "HOURS";
+  maxAdvanceHours?: number;
 }
 
 export interface RescheduleSlotAvailability {
@@ -34,6 +37,9 @@ export interface CheckRescheduleAvailabilityInput {
   date?: string;
   durationHours?: number;
   workspaceInstanceId?: string;
+  maxAdvanceValue?: number;
+  maxAdvanceUnit?: "DAYS" | "HOURS";
+  maxAdvanceHours?: number;
 }
 
 export interface RescheduleAvailabilityResult {
@@ -46,6 +52,10 @@ export interface RescheduleAvailabilityResult {
   closeTime?: string;
   is24Hours?: boolean;
   isClosed?: boolean;
+  maxAdvanceValue?: number;
+  maxAdvanceUnit?: "DAYS" | "HOURS";
+  maxAdvanceHours?: number;
+  maxAllowedDate?: string;
 }
 
 export interface RelocateReservationInput {

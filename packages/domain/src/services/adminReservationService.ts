@@ -31,6 +31,10 @@ import {
   filterReservations,
 } from "./reservationFilters";
 import {
+  isReservationCancelled,
+  isReservationRejected,
+} from "./reservationTabSegregation";
+import {
   TransactionalEmailService,
   createTransactionalEmailService,
   buildReservationTrackingUrl,
@@ -72,6 +76,13 @@ export class AdminReservationService {
     const nowMs = now.getTime();
 
     const isReservationExpired = (r: AdminReservationSummary): boolean => {
+      if (
+        r.reservationStatus === "COMPLETED" ||
+        r.status.toLowerCase().includes("completed") ||
+        Boolean(r.checkedOutAt)
+      ) {
+        return false;
+      }
       if (r.reservationStatus === "EXPIRED") {
         return true;
       }
@@ -116,6 +127,22 @@ export class AdminReservationService {
         const pres = mapStatusPresentation(r.reservationStatus, "REJECTED");
         return {
           ...r,
+          status: pres.label,
+          statusStyle: pres.style,
+          mark: pres.mark,
+          paymentStatus: pres.payment,
+          paymentColor: pres.paymentColor,
+        };
+      }
+      if (
+        r.reservationStatus === "COMPLETED" ||
+        r.status.toLowerCase().includes("completed") ||
+        Boolean(r.checkedOutAt)
+      ) {
+        const pres = mapStatusPresentation("COMPLETED");
+        return {
+          ...r,
+          reservationStatus: "COMPLETED" as ReservationStatus,
           status: pres.label,
           statusStyle: pres.style,
           mark: pres.mark,
@@ -183,24 +210,15 @@ export class AdminReservationService {
           r.status.toLowerCase() !== "rejected"
       );
     } else if (filter === "rejected") {
-      filtered = filtered.filter(
-        (r) =>
-          r.status.toLowerCase() === "rejected" ||
-          r.paymentStatus.toLowerCase().includes("rejected") ||
-          (r.paymentAttemptStatus ?? "").toLowerCase() === "rejected"
-      );
+      filtered = filtered.filter((r) => isReservationRejected(r));
     } else if (filter === "counter_queue") {
       filtered = filtered.filter(
         (r) =>
           r.reservationStatus === "PENDING_COUNTER_CONFIRMATION" &&
-          r.status.toLowerCase() !== "rejected"
+          !isReservationRejected(r)
       );
     } else if (filter === "cancelled") {
-      filtered = filtered.filter(
-        (r) =>
-          r.reservationStatus === "CANCELLED" ||
-          r.status.toLowerCase().includes("cancelled")
-      );
+      filtered = filtered.filter((r) => isReservationCancelled(r));
     }
     // "all": retains all items in mappedList (both active and expired)
 
@@ -241,6 +259,24 @@ export class AdminReservationService {
       const pres = mapStatusPresentation(detail.reservationStatus, "REJECTED");
       return {
         ...detail,
+        status: pres.label,
+        statusStyle: pres.style,
+        mark: pres.mark,
+        paymentStatus: `${pres.payment} (${formatAmountWithCurrency(detail.amountDue, detail.currency)})`,
+        paymentColor: pres.paymentColor,
+      };
+    }
+
+    const isCompleted =
+      detail.reservationStatus === "COMPLETED" ||
+      detail.status.toLowerCase().includes("completed") ||
+      Boolean(detail.checkedOutAt);
+
+    if (isCompleted) {
+      const pres = mapStatusPresentation("COMPLETED");
+      return {
+        ...detail,
+        reservationStatus: "COMPLETED",
         status: pres.label,
         statusStyle: pres.style,
         mark: pres.mark,
@@ -424,6 +460,9 @@ export class AdminReservationService {
     actorUserId?: string;
     actorRole?: string;
     cutoffHours?: number;
+    maxAdvanceValue?: number;
+    maxAdvanceUnit?: "DAYS" | "HOURS";
+    maxAdvanceHours?: number;
   }): Promise<{ success: boolean; reservation: AdminReservationDetail; message?: string }> {
     if (!input.reservationId || input.reservationId.trim() === "") {
       throw new AdminReservationError("Reservation ID is required.");
@@ -440,6 +479,21 @@ export class AdminReservationService {
       throw new AdminReservationError("End time must be strictly after start time.");
     }
 
+    const maxAdvanceValue = input.maxAdvanceValue;
+    const maxAdvanceUnit = input.maxAdvanceUnit || (input.maxAdvanceHours && input.maxAdvanceHours % 24 === 0 ? "DAYS" : "HOURS");
+    const maxAdvanceHours = input.maxAdvanceHours ?? (maxAdvanceValue !== undefined && maxAdvanceValue !== null ? (maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24) : undefined);
+
+    if (maxAdvanceHours !== undefined) {
+      const now = this.nowProvider();
+      const nowMs = now.getTime();
+      const maxAllowedMs = nowMs + maxAdvanceHours * 60 * 60 * 1000;
+      if (startMs > maxAllowedMs) {
+        const val = maxAdvanceValue ?? (maxAdvanceUnit === "DAYS" ? maxAdvanceHours / 24 : maxAdvanceHours);
+        const unitStr = (maxAdvanceUnit || "DAYS").toLowerCase();
+        throw new AdminReservationError(`Rescheduling is only allowed up to ${val} ${unitStr} in advance.`);
+      }
+    }
+
     const result = await this.repository.rescheduleReservation({
       reservationId: input.reservationId.trim(),
       startAt: input.startAt,
@@ -448,6 +502,9 @@ export class AdminReservationService {
       actorUserId: input.actorUserId,
       actorRole: input.actorRole ?? "ADMIN",
       cutoffHours: input.cutoffHours,
+      maxAdvanceValue: input.maxAdvanceValue,
+      maxAdvanceUnit: input.maxAdvanceUnit,
+      maxAdvanceHours,
     });
 
     if (result.reservation && result.reservation.customerEmail) {
@@ -822,7 +879,7 @@ export function mapStatusPresentation(
       return {
         label: "Completed",
         mark: "✓",
-        style: { background: "#E2E8F0", color: "#334155" },
+        style: { background: "#DCFCE7", color: "#166534" },
         payment: "Paid",
         paymentColor: "var(--da-success)",
       };
@@ -883,11 +940,19 @@ export function formatSchedule(
       return `${startAt} - ${endAt}`;
     }
 
-    const dateStr = new Intl.DateTimeFormat("en-US", {
+    const startDateStr = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       month: "short",
       day: "numeric",
+      year: "numeric",
     }).format(startDate);
+
+    const endDateStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(endDate);
 
     const startTimeStr = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
@@ -903,7 +968,11 @@ export function formatSchedule(
       hour12: true,
     }).format(endDate);
 
-    return `${dateStr}, ${startTimeStr} - ${endTimeStr}`;
+    if (startDateStr === endDateStr) {
+      return `${startDateStr}, ${startTimeStr} - ${endTimeStr}`;
+    }
+
+    return `${startDateStr}, ${startTimeStr} - ${endDateStr}, ${endTimeStr}`;
   } catch {
     return `${startAt} - ${endAt}`;
   }
@@ -959,6 +1028,7 @@ export function formatTimelineDate(isoString: string, timezone: string = "Asia/M
       timeZone: timezone,
       month: "short",
       day: "numeric",
+      year: "numeric",
     }).format(d);
 
     const timeStr = new Intl.DateTimeFormat("en-US", {

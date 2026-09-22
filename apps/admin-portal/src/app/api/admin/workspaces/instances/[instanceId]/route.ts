@@ -100,8 +100,8 @@ export async function DELETE(
 ) {
   try {
     const { instanceId } = await context.params;
-    const instance = await getAdminWorkspaceService().deactivateInstance(instanceId);
-    return NextResponse.json({ instance });
+    const result = await getAdminWorkspaceService().deleteInstance(instanceId);
+    return NextResponse.json(result);
   } catch (error) {
     return workspaceErrorResponse(error);
   }

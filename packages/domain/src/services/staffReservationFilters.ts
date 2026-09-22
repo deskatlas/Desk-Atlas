@@ -1,4 +1,5 @@
 import { StaffOperationalReservation } from "../models/reservation";
+import { isReservationCancelled } from "./reservationTabSegregation";
 
 export type StaffReservationFilter =
   | "active"
@@ -94,7 +95,7 @@ export function matchesStaffReservationFilter(
       return res.reservationStatus === "PENDING_COUNTER_CONFIRMATION";
 
     case "cancelled":
-      return res.reservationStatus === "CANCELLED";
+      return isReservationCancelled(res);
 
     default:
       return true;

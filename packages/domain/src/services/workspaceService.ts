@@ -361,13 +361,13 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
 
       const templateName = template.name.trim();
       const baseName = deriveTemplatePlacementBaseName(templateName);
-      let highestSequence = 0;
-
       const templateInstances = catalog.instances.filter((entry) => entry.templateId === template.id);
+      let highestSequence = 0;
       for (const instance of templateInstances) {
         const match = new RegExp(`^(?:${escapeForRegExp(templateName)}|${escapeForRegExp(baseName)})\\s+(\\d+)$`, 'i').exec(instance.displayName);
-        if (!match) continue;
-        highestSequence = Math.max(highestSequence, Number.parseInt(match[1], 10));
+        if (match) {
+          highestSequence = Math.max(highestSequence, Number.parseInt(match[1], 10));
+        }
       }
 
       const usesBaseNameOnly =
@@ -439,6 +439,14 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
     },
     async deactivateInstance(id: string) {
       return repository.deactivateInstance(requireNonBlank(id, 'Instance id'));
+    },
+    async deleteInstance(id: string) {
+      const instanceId = requireNonBlank(id, 'Instance id');
+      if (repository.deleteInstance) {
+        return repository.deleteInstance(instanceId);
+      }
+      const instance = await repository.deactivateInstance(instanceId);
+      return { deleted: false, archived: true, instance };
     },
     async duplicateInstance(id: string, input: DuplicateWorkspaceInstanceInput) {
       return repository.duplicateInstance(

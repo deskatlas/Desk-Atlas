@@ -1,4 +1,8 @@
 import { AdminReservationSummary } from "../models/reservation";
+import {
+  isReservationCancelled,
+  isReservationRejected,
+} from "./reservationTabSegregation";
 
 export type DateRangePreset =
   | "all"
@@ -256,14 +260,10 @@ export function matchesReservationFilters(
         attemptStatus === "expired" ||
         paymentStatus.includes("expired");
     } else if (targetStatus === "rejected") {
-      matchesPayment =
-        attemptStatus === "rejected" ||
-        paymentStatus.includes("rejected") ||
-        item.status.toLowerCase() === "rejected";
+      matchesPayment = isReservationRejected(item);
     } else if (targetStatus === "refunded" || targetStatus === "cancelled") {
       matchesPayment =
-        resStatus === "CANCELLED" ||
-        paymentStatus.includes("cancelled") ||
+        isReservationCancelled(item) ||
         paymentStatus.includes("refunded");
     } else {
       matchesPayment =
@@ -285,10 +285,21 @@ export function matchesReservationFilters(
     const itemStatus = (item.status ?? "").toUpperCase();
 
     const matchesStatus = rawStatuses.some((target) => {
+      if (target === "REJECTED") {
+        return isReservationRejected(item);
+      }
+      if (target === "CANCELLED") {
+        return isReservationCancelled(item);
+      }
+      if (target === "EXPIRED") {
+        return (
+          !isReservationCancelled(item) &&
+          !isReservationRejected(item) &&
+          (resStatus === "EXPIRED" || itemStatus.includes("EXPIRED"))
+        );
+      }
       if (target === resStatus) return true;
       if (itemStatus.includes(target)) return true;
-      if (target === "CANCELLED" && (resStatus === "CANCELLED" || itemStatus.includes("CANCELLED"))) return true;
-      if (target === "EXPIRED" && (resStatus === "EXPIRED" || itemStatus.includes("EXPIRED"))) return true;
       if (target === "CONFIRMED" && (resStatus === "CONFIRMED" || itemStatus.includes("CONFIRMED"))) return true;
       if (target === "CHECKED_IN" && (resStatus === "CHECKED_IN" || itemStatus.includes("CHECKED IN") || itemStatus.includes("CHECKED_IN"))) return true;
       if (target === "COMPLETED" && (resStatus === "COMPLETED" || itemStatus.includes("COMPLETED"))) return true;

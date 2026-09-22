@@ -160,10 +160,24 @@ export class BookingAccessService {
       !record.checkedInAt &&
       record.reservationStatus === "CONFIRMED";
 
+    // MF-178: Kiosk walk-in reservations are auto-checked in during counter payment confirmation.
+    // Initial token issuance, verification, or first physical scan after counter confirmation
+    // must NOT produce a spurious REENTRY (re-checkin) audit log.
+    const isAutoCheckedInKiosk =
+      record.source === "KIOSK" ||
+      Boolean(
+        record.confirmedAt &&
+        record.checkedInAt &&
+        Math.abs(new Date(record.checkedInAt).getTime() - new Date(record.confirmedAt).getTime()) <= 5000
+      );
+
+    const isInitialKioskAccess = isAutoCheckedInKiosk && !record.hasPreviousScan;
+
     const isReentry =
       accessState === "ACTIVE" &&
       Boolean(record.checkedInAt || record.reservationStatus === "CHECKED_IN") &&
-      !isInitialCheckIn;
+      !isInitialCheckIn &&
+      !isInitialKioskAccess;
 
     if (shouldRecordScan) {
       await this.bookingAccessRepository.recordBookingScan({

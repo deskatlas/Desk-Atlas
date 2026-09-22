@@ -12,6 +12,9 @@
  * - Reservation cancellation, rescheduling, relocation, and extension notifications
  */
 
+import type { SettingsRepository } from './settingsRepository';
+import type { BusinessSettings } from '../models/settings';
+
 export interface BusinessEmailProfile {
   businessName?: string;
   contactEmail?: string;
@@ -43,6 +46,8 @@ export interface ResendEmailConfig {
   webhookUrl?: string;
   fetcher?: typeof fetch;
   businessSettings?: BusinessEmailProfile;
+  settingsRepository?: SettingsRepository;
+  settingsProvider?: () => Promise<BusinessSettings | BusinessEmailProfile | null | undefined>;
 }
 
 export interface EmailSendResult {
@@ -100,6 +105,56 @@ export function resolveBusinessProfile(
       defaultSettings?.twitterUrl,
   };
   return merged;
+}
+
+export async function getOrResolveBusinessProfile(
+  input?: BaseEmailBusinessFields,
+  defaultProfile?: BusinessEmailProfile
+): Promise<BusinessEmailProfile> {
+  const initial = resolveBusinessProfile(input, defaultProfile);
+  if (
+    initial.facebookUrl ||
+    initial.instagramUrl ||
+    initial.twitterUrl ||
+    initial.websiteUrl ||
+    (initial.contactEmail && initial.contactEmail !== 'support@deskatlas.com') ||
+    initial.contactPhone
+  ) {
+    return initial;
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (supabaseUrl && serviceRoleKey) {
+    try {
+      const endpoint = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/business_settings?select=business_name,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url&id=eq.1&limit=1`;
+      const res = await fetch(endpoint, {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+      });
+      if (res.ok) {
+        const rows: any = await res.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          const r = rows[0];
+          return resolveBusinessProfile(input, {
+            businessName: r.business_name || initial.businessName,
+            contactEmail: r.contact_email || initial.contactEmail,
+            contactPhone: r.contact_phone || initial.contactPhone,
+            websiteUrl: r.website_url || initial.websiteUrl,
+            facebookUrl: r.facebook_url || initial.facebookUrl,
+            instagramUrl: r.instagram_url || initial.instagramUrl,
+            twitterUrl: r.twitter_url || initial.twitterUrl,
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return initial;
 }
 
 export function renderBusinessFooter(
@@ -606,6 +661,19 @@ export interface AccountStatusChangedEmailInput extends BaseEmailBusinessFields 
   loginUrl?: string;
 }
 
+export interface RoleChangeNotificationEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  displayName: string;
+  previousRole: 'ADMIN' | 'STAFF' | string;
+  newRole: 'ADMIN' | 'STAFF' | string;
+  updatedByAdminName?: string;
+  updatedAt?: string;
+  loginUrl?: string;
+  portalName?: string;
+  contactNumber?: string;
+  supportEmail?: string;
+}
+
 export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject: string; html: string; text: string } {
   const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
@@ -1092,10 +1160,10 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
         ${escapeHtml(reason)}
       </div>
 
-      ${(contactEmail || contactPhone) ? `
+      ${(contactEmail || contactPhone || profile.facebookUrl || profile.instagramUrl || profile.twitterUrl || profile.websiteUrl) ? `
       <div class="contact-box" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
-        <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Have Inquiries?</div>
-        <p style="margin: 0 0 10px 0; font-size: 14px; color: #334155;">If you have inquiries regarding your reservation or payment, please contact us:</p>
+        <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Need Help or Have Inquiries?</div>
+        <p style="margin: 0 0 10px 0; font-size: 14px; color: #334155;">If you have inquiries regarding your reservation or need assistance resubmitting payment proof, feel free to contact us:</p>
         ${contactEmail ? `
         <div style="margin: 6px 0; font-size: 14px;">
           <span style="color: #64748b; font-weight: 500;">Email:</span>
@@ -1105,7 +1173,31 @@ export function renderPaymentProofRejectedEmail(input: PaymentProofRejectedEmail
         ${contactPhone ? `
         <div style="margin: 6px 0; font-size: 14px;">
           <span style="color: #64748b; font-weight: 500;">Call / Text:</span>
-          <span style="color: #0f172a; font-weight: 600; margin-left: 6px;">${escapeHtml(contactPhone)}</span>
+          <a href="tel:${escapeHtml(contactPhone)}" style="color: #0f172a; font-weight: 600; text-decoration: none; margin-left: 6px;">${escapeHtml(contactPhone)}</a>
+        </div>
+        ` : ''}
+        ${profile.facebookUrl ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500;">Facebook:</span>
+          <a href="${escapeHtml(profile.facebookUrl)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;" target="_blank" rel="noopener noreferrer">Message us on Facebook</a>
+        </div>
+        ` : ''}
+        ${profile.instagramUrl ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500;">Instagram:</span>
+          <a href="${escapeHtml(profile.instagramUrl)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;" target="_blank" rel="noopener noreferrer">${escapeHtml(profile.instagramUrl)}</a>
+        </div>
+        ` : ''}
+        ${profile.twitterUrl ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500;">Twitter / X:</span>
+          <a href="${escapeHtml(profile.twitterUrl)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;" target="_blank" rel="noopener noreferrer">${escapeHtml(profile.twitterUrl)}</a>
+        </div>
+        ` : ''}
+        ${profile.websiteUrl ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500;">Website:</span>
+          <a href="${escapeHtml(profile.websiteUrl)}" style="color: #0284c7; text-decoration: underline; font-weight: 600; margin-left: 6px;" target="_blank" rel="noopener noreferrer">${escapeHtml(profile.websiteUrl.replace(/^https?:\/\//i, ''))}</a>
         </div>
         ` : ''}
       </div>
@@ -1139,7 +1231,7 @@ Hello ${customerName},
 Your payment proof for reservation ${input.referenceCode} could not be verified and has been rejected.
 
 Reason: ${reason}
-${input.paymentUrl ? `\nRe-submit proof (if session is active): ${input.paymentUrl}\n` : ''}${(contactEmail || contactPhone) ? `\nIf you have inquiries, please contact us:\n${contactEmail ? `Email: ${contactEmail}\n` : ''}${contactPhone ? `Call / Text: ${contactPhone}\n` : ''}` : ''}${input.trackingUrl ? `\nTrack Reservation: ${input.trackingUrl}\n` : ''}
+${input.paymentUrl ? `\nRe-submit proof (if session is active): ${input.paymentUrl}\n` : ''}${(contactEmail || contactPhone || profile.facebookUrl || profile.instagramUrl || profile.twitterUrl || profile.websiteUrl) ? `\nIf you have inquiries or need assistance resubmitting payment proof, please contact us:\n${contactEmail ? `Email: ${contactEmail}\n` : ''}${contactPhone ? `Call / Text: ${contactPhone}\n` : ''}${profile.facebookUrl ? `Facebook: ${profile.facebookUrl}\n` : ''}${profile.instagramUrl ? `Instagram: ${profile.instagramUrl}\n` : ''}${profile.twitterUrl ? `Twitter/X: ${profile.twitterUrl}\n` : ''}${profile.websiteUrl ? `Website: ${profile.websiteUrl}\n` : ''}` : ''}${input.trackingUrl ? `\nTrack Reservation: ${input.trackingUrl}\n` : ''}
 ${renderBusinessFooterText(profile)}
   `.trim();
 
@@ -2348,12 +2440,141 @@ ${renderBusinessFooterText(profile, `${businessName} Workspace Reservation Syste
   return { subject, html, text };
 }
 
+export function renderRoleChangeNotificationEmail(input: RoleChangeNotificationEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const isNewRoleAdmin = String(input.newRole).toUpperCase() === 'ADMIN';
+  const isPrevRoleAdmin = String(input.previousRole).toUpperCase() === 'ADMIN';
+  const newRoleLabel = isNewRoleAdmin ? 'Admin' : 'Staff';
+  const prevRoleLabel = isPrevRoleAdmin ? 'Admin' : 'Staff';
+  const subject = `[${businessName}] Account Update: Your Role is Now ${newRoleLabel}`;
+  const firstName = input.displayName ? (input.displayName.trim().split(' ')[0] || input.displayName) : 'Team Member';
+  const updatedFormatted = input.updatedAt
+    ? formatEmailTime(input.updatedAt)
+    : new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      }).format(new Date());
+
+  const supportEmail = profile.contactEmail || input.supportEmail || 'support@deskatlas.com';
+  const contactNumber = profile.contactPhone || input.contactNumber || '+63 2 8123 4567';
+
+  const defaultPortalName = isNewRoleAdmin ? 'Admin Portal' : 'Staff Dashboard';
+  const defaultLoginUrl = isNewRoleAdmin ? 'http://localhost:3000/manage/login' : 'http://localhost:3002/manage/login';
+  const portalName = input.portalName || defaultPortalName;
+  const loginUrl = input.loginUrl || defaultLoginUrl;
+
+  const roleDescription = isNewRoleAdmin
+    ? 'As an Administrator, you now have access to administrative management, workspace map design, financial reports, reservation overrides, and staff roster oversight.'
+    : 'As a Staff Member, you now have access to front-desk operations, check-in and check-out management, scanner tools, floor map overview, and kiosk payment confirmations.';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 36px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 20px; font-weight: 800; color: #064E3B; letter-spacing: -0.5px; }
+    .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 16px 0 8px 0; }
+    .badge { display: inline-block; background-color: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px; }
+    .info-row { margin: 6px 0; }
+    .info-label { color: #64748b; font-weight: 600; display: inline-block; width: 140px; }
+    .btn { display: inline-block; background: linear-gradient(180deg, #064E3B 0%, #043629 100%); color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 18px 0; text-align: center; }
+    .guidance-box { background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin: 20px 0; font-size: 14px; color: #0369a1; line-height: 1.5; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">${escapeHtml(businessName)}</div>
+      <span class="badge">Role Updated</span>
+    </div>
+    <div class="content">
+      <div class="title">Account Role Updated</div>
+      <p>Hello ${escapeHtml(input.displayName || firstName)},</p>
+      <p>Your ${escapeHtml(businessName)} account role has been updated from <strong>${escapeHtml(prevRoleLabel)}</strong> to <strong>${escapeHtml(newRoleLabel)}</strong>.</p>
+      
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Account Name:</span> <strong>${escapeHtml(input.displayName)}</strong></div>
+        <div class="info-row"><span class="info-label">Previous Role:</span> <strong>${escapeHtml(prevRoleLabel)}</strong></div>
+        <div class="info-row"><span class="info-label">New Role:</span> <strong>${escapeHtml(newRoleLabel)}</strong></div>
+        ${input.updatedByAdminName ? `<div class="info-row"><span class="info-label">Updated By:</span> <strong>${escapeHtml(input.updatedByAdminName)}</strong></div>` : ''}
+        <div class="info-row"><span class="info-label">Effective Date:</span> ${escapeHtml(updatedFormatted)}</div>
+      </div>
+
+      <div class="guidance-box">
+        <strong>${escapeHtml(portalName)} Access:</strong><br />
+        ${escapeHtml(roleDescription)}
+      </div>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(loginUrl)}" class="btn">Sign In to ${escapeHtml(portalName)}</a>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b; margin-top: 16px; text-align: center;">
+        Direct Login Link: <a href="${escapeHtml(loginUrl)}" style="color: #0284c7;">${escapeHtml(loginUrl)}</a>
+      </p>
+
+      <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
+        If you have questions about your permissions or believe this was done in error, please contact management:
+      </p>
+      <div class="info-box">
+        <div class="info-row"><span class="info-label">Admin Email:</span> <a href="mailto:${escapeHtml(supportEmail)}" style="color: #0284c7;">${escapeHtml(supportEmail)}</a></div>
+        <div class="info-row"><span class="info-label">Contact Number:</span> <strong>${escapeHtml(contactNumber)}</strong></div>
+      </div>
+    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace Reservation System • Administrative Notification`)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Account Role Updated - ${businessName}
+
+Hello ${input.displayName || firstName},
+
+Your ${businessName} account role has been updated from ${prevRoleLabel} to ${newRoleLabel}.
+
+Account Details:
+- Name: ${input.displayName}
+- Previous Role: ${prevRoleLabel}
+- New Role: ${newRoleLabel}
+${input.updatedByAdminName ? `- Updated By: ${input.updatedByAdminName}\n` : ''}- Effective Date: ${updatedFormatted}
+
+${portalName} Access:
+${roleDescription}
+
+Sign In to ${portalName}:
+${loginUrl}
+
+Support Contact Details:
+- Admin Email: ${supportEmail}
+- Contact Number: ${contactNumber}
+
+${renderBusinessFooterText(profile, `${businessName} Workspace Reservation System • Administrative Notification`)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
 export class TransactionalEmailService {
   private readonly apiKey?: string;
   private readonly fromEmail: string;
   private readonly webhookUrl?: string;
   private readonly fetcher: typeof fetch;
   private readonly defaultBusinessSettings?: BusinessEmailProfile;
+  private readonly settingsRepository?: SettingsRepository;
+  private readonly settingsProvider?: () => Promise<BusinessSettings | BusinessEmailProfile | null | undefined>;
+  private cachedSettings?: BusinessEmailProfile;
 
   constructor(config?: ResendEmailConfig) {
     this.apiKey = config?.apiKey ?? process.env.RESEND_API_KEY;
@@ -2361,6 +2582,112 @@ export class TransactionalEmailService {
     this.webhookUrl = config?.webhookUrl ?? process.env.TRANSACTIONAL_EMAIL_WEBHOOK_URL;
     this.fetcher = config?.fetcher ?? fetch;
     this.defaultBusinessSettings = config?.businessSettings;
+    this.settingsRepository = config?.settingsRepository;
+    this.settingsProvider = config?.settingsProvider;
+  }
+
+  private async fetchBusinessSettings(): Promise<BusinessEmailProfile | null> {
+    if (this.cachedSettings) {
+      return this.cachedSettings;
+    }
+    if (this.settingsProvider) {
+      try {
+        const res = await this.settingsProvider();
+        if (res) {
+          this.cachedSettings = {
+            businessName: res.businessName || (res as any).business_name || undefined,
+            contactEmail: res.contactEmail || (res as any).contact_email || undefined,
+            contactPhone: res.contactPhone || (res as any).contact_phone || undefined,
+            websiteUrl: res.websiteUrl || (res as any).website_url || undefined,
+            facebookUrl: res.facebookUrl || (res as any).facebook_url || undefined,
+            instagramUrl: res.instagramUrl || (res as any).instagram_url || undefined,
+            twitterUrl: res.twitterUrl || (res as any).twitter_url || undefined,
+          };
+          return this.cachedSettings;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (this.settingsRepository) {
+      try {
+        const res = await this.settingsRepository.getBusinessSettings();
+        if (res) {
+          this.cachedSettings = {
+            businessName: res.businessName,
+            contactEmail: res.contactEmail || undefined,
+            contactPhone: res.contactPhone || undefined,
+            websiteUrl: res.websiteUrl || undefined,
+            facebookUrl: res.facebookUrl || undefined,
+            instagramUrl: res.instagramUrl || undefined,
+            twitterUrl: res.twitterUrl || undefined,
+          };
+          return this.cachedSettings;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceRoleKey) {
+      try {
+        const endpoint = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/business_settings?select=business_name,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url&id=eq.1&limit=1`;
+        const res = await this.fetcher(endpoint, {
+          headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+          },
+        });
+        if (res.ok) {
+          const rows: any = await res.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            const r = rows[0];
+            this.cachedSettings = {
+              businessName: r.business_name || undefined,
+              contactEmail: r.contact_email || undefined,
+              contactPhone: r.contact_phone || undefined,
+              websiteUrl: r.website_url || undefined,
+              facebookUrl: r.facebook_url || undefined,
+              instagramUrl: r.instagram_url || undefined,
+              twitterUrl: r.twitter_url || undefined,
+            };
+            return this.cachedSettings;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return null;
+  }
+
+  private async resolveProfile(input?: BaseEmailBusinessFields): Promise<BusinessEmailProfile> {
+    let profile = resolveBusinessProfile(input, this.defaultBusinessSettings);
+    if (
+      !profile.facebookUrl &&
+      !profile.instagramUrl &&
+      !profile.twitterUrl &&
+      !profile.websiteUrl &&
+      (!profile.contactEmail || profile.contactEmail === 'support@deskatlas.com') &&
+      !profile.contactPhone
+    ) {
+      const fetched = await this.fetchBusinessSettings();
+      if (fetched) {
+        profile = resolveBusinessProfile(input, {
+          businessName: fetched.businessName || profile.businessName,
+          contactEmail: fetched.contactEmail || profile.contactEmail,
+          contactPhone: fetched.contactPhone || profile.contactPhone,
+          websiteUrl: fetched.websiteUrl || profile.websiteUrl,
+          facebookUrl: fetched.facebookUrl || profile.facebookUrl,
+          instagramUrl: fetched.instagramUrl || profile.instagramUrl,
+          twitterUrl: fetched.twitterUrl || profile.twitterUrl,
+        });
+      }
+    }
+    return profile;
   }
 
   async sendEmail(input: RawEmailInput): Promise<EmailSendResult> {
@@ -2433,9 +2760,10 @@ export class TransactionalEmailService {
   }
 
   async sendPaymentLinkEmail(input: PaymentLinkEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: PaymentLinkEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderPaymentLinkEmail(mergedInput);
 
@@ -2468,9 +2796,10 @@ export class TransactionalEmailService {
   }
 
   async sendBookingConfirmationEmail(input: BookingConfirmationEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: BookingConfirmationEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderBookingConfirmationEmail(mergedInput);
 
@@ -2499,9 +2828,10 @@ export class TransactionalEmailService {
   }
 
   async sendManualResolutionEmail(input: ManualResolutionEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: ManualResolutionEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderManualResolutionEmail(mergedInput);
 
@@ -2530,9 +2860,10 @@ export class TransactionalEmailService {
   }
 
   async sendPaymentProofReceivedEmail(input: PaymentProofReceivedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: PaymentProofReceivedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderPaymentProofReceivedEmail(mergedInput);
     return this.sendEmail({
@@ -2543,10 +2874,15 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendPaymentProofSubmittedEmail(input: PaymentProofReceivedEmailInput): Promise<EmailSendResult> {
+    return this.sendPaymentProofReceivedEmail(input);
+  }
+
   async sendPaymentProofRejectedEmail(input: PaymentProofRejectedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: PaymentProofRejectedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderPaymentProofRejectedEmail(mergedInput);
     return this.sendEmail({
@@ -2557,10 +2893,15 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendPaymentRejectionEmail(input: PaymentProofRejectedEmailInput): Promise<EmailSendResult> {
+    return this.sendPaymentProofRejectedEmail(input);
+  }
+
   async sendReservationTrackingEmail(input: ReservationTrackingEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: ReservationTrackingEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderReservationTrackingEmail(mergedInput);
     return this.sendEmail({
@@ -2572,9 +2913,10 @@ export class TransactionalEmailService {
   }
 
   async sendStaffInvitationEmail(input: StaffInvitationEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: StaffInvitationEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderStaffInvitationEmail(mergedInput);
     return this.sendEmail({
@@ -2586,9 +2928,10 @@ export class TransactionalEmailService {
   }
 
   async sendSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitationAcceptedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: SuperAdminInvitationAcceptedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderSuperAdminInvitationAcceptedEmail(mergedInput);
     return this.sendEmail({
@@ -2600,9 +2943,10 @@ export class TransactionalEmailService {
   }
 
   async sendAdminPasswordResetEmail(input: AdminPasswordResetEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: AdminPasswordResetEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderAdminPasswordResetEmail(mergedInput);
     return this.sendEmail({
@@ -2614,9 +2958,10 @@ export class TransactionalEmailService {
   }
 
   async sendReservationCancelledEmail(input: ReservationCancelledEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: ReservationCancelledEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderReservationCancelledEmail(mergedInput);
     return this.sendEmail({
@@ -2627,10 +2972,15 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendReservationCancellationEmail(input: ReservationCancelledEmailInput): Promise<EmailSendResult> {
+    return this.sendReservationCancelledEmail(input);
+  }
+
   async sendReservationRescheduledEmail(input: ReservationRescheduledEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: ReservationRescheduledEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderReservationRescheduledEmail(mergedInput);
     return this.sendEmail({
@@ -2642,9 +2992,10 @@ export class TransactionalEmailService {
   }
 
   async sendReservationRelocatedEmail(input: ReservationRelocatedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: ReservationRelocatedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderReservationRelocatedEmail(mergedInput);
     return this.sendEmail({
@@ -2655,10 +3006,15 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendReservationRelocationEmail(input: ReservationRelocatedEmailInput): Promise<EmailSendResult> {
+    return this.sendReservationRelocatedEmail(input);
+  }
+
   async sendReservationExtendedEmail(input: ReservationExtendedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: ReservationExtendedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderReservationExtendedEmail(mergedInput);
     return this.sendEmail({
@@ -2669,10 +3025,15 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendReservationTimeExtensionEmail(input: ReservationExtendedEmailInput): Promise<EmailSendResult> {
+    return this.sendReservationExtendedEmail(input);
+  }
+
   async sendBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: BookingEndedSurveyEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderBookingEndedSurveyEmail(mergedInput);
     return this.sendEmail({
@@ -2683,10 +3044,15 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendSurveyEmail(input: BookingEndedSurveyEmailInput): Promise<EmailSendResult> {
+    return this.sendBookingEndedSurveyEmail(input);
+  }
+
   async sendTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: TeamMemberJoinedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderTeamMemberJoinedEmail(mergedInput);
     return this.sendEmail({
@@ -2698,9 +3064,10 @@ export class TransactionalEmailService {
   }
 
   async sendAccountDeactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: AccountStatusChangedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderAccountDeactivatedEmail(mergedInput);
     return this.sendEmail({
@@ -2712,11 +3079,27 @@ export class TransactionalEmailService {
   }
 
   async sendAccountReactivatedEmail(input: AccountStatusChangedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: AccountStatusChangedEmailInput = {
       ...input,
-      businessSettings: input.businessSettings || this.defaultBusinessSettings,
+      businessSettings: resolvedProfile,
     };
     const rendered = renderAccountReactivatedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendRoleChangeNotificationEmail(input: RoleChangeNotificationEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: RoleChangeNotificationEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderRoleChangeNotificationEmail(mergedInput);
     return this.sendEmail({
       to: input.to,
       subject: rendered.subject,

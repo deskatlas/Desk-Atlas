@@ -19,16 +19,55 @@ export async function GET(
     const { token } = await context.params;
     const decodedToken = decodeURIComponent(token || "").trim();
     const searchParams = _request.nextUrl?.searchParams;
-    let actorUserId = searchParams?.get("actorUserId") || searchParams?.get("userId") || _request.headers.get("x-actor-user-id") || "";
-    let actorRole: "ADMIN" | "STAFF" = searchParams?.get("actorRole") === "STAFF" || _request.headers.get("x-actor-role") === "STAFF" ? "STAFF" : "ADMIN";
+    let actorUserId = String(
+      searchParams?.get("actorUserId") ||
+      searchParams?.get("userId") ||
+      _request.headers.get("x-actor-user-id") ||
+      _request.headers.get("x-user-id") ||
+      ""
+    ).trim();
+    let actorRole: "ADMIN" | "STAFF" =
+      searchParams?.get("actorRole") === "STAFF" ||
+      searchParams?.get("userRole") === "STAFF" ||
+      _request.headers.get("x-actor-role") === "STAFF" ||
+      _request.headers.get("x-user-role") === "STAFF"
+        ? "STAFF"
+        : "ADMIN";
 
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId);
+
+    if (isValidUuid) {
       const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (supabaseUrl && serviceRoleKey) {
         try {
           const res = await fetch(
-            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?role=in.(ADMIN,SUPERADMIN)&is_active=eq.true&limit=1`,
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?user_id=eq.${actorUserId}&select=user_id,role&limit=1`,
+            {
+              headers: {
+                apikey: serviceRoleKey,
+                Authorization: `Bearer ${serviceRoleKey}`,
+              },
+              cache: "no-store",
+            }
+          );
+          if (res.ok) {
+            const profiles = await res.json();
+            if (Array.isArray(profiles) && profiles[0]?.role) {
+              actorRole = profiles[0].role === "STAFF" ? "STAFF" : "ADMIN";
+            }
+          }
+        } catch {
+          // fallback
+        }
+      }
+    } else {
+      const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && serviceRoleKey) {
+        try {
+          const res = await fetch(
+            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?role=eq.ADMIN&is_active=eq.true&order=created_at.asc&select=user_id,role&limit=1`,
             {
               headers: {
                 apikey: serviceRoleKey,
@@ -41,7 +80,7 @@ export async function GET(
             const profiles = await res.json();
             if (Array.isArray(profiles) && profiles[0]?.user_id) {
               actorUserId = profiles[0].user_id;
-              actorRole = "ADMIN";
+              actorRole = profiles[0].role === "STAFF" ? "STAFF" : "ADMIN";
             }
           }
         } catch {

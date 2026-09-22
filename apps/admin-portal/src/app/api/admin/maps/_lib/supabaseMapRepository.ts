@@ -245,6 +245,49 @@ export class SupabaseMapRepository implements MapRepository {
       .filter((version) => version.status === 'PUBLISHED')
       .map((version) => version.id);
 
+    try {
+      const floorInstances = await this.request<Array<{ id: string; operational_status: string }>>(
+        `/workspace_instances?floor_id=eq.${encodeURIComponent(input.floorId)}&select=id,operational_status`
+      );
+      const placedInstanceIds = new Set(
+        published.elements
+          .map((e) => e.workspace_instance_id)
+          .filter((id): id is string => Boolean(id))
+      );
+
+      for (const instance of floorInstances) {
+        if (!placedInstanceIds.has(instance.id)) {
+          const candidates = await this.request<any[]>(
+            `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(instance.id)}&select=id&limit=1`
+          );
+
+          if (candidates.length > 0) {
+            if (instance.operational_status !== 'INACTIVE') {
+              await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(instance.id)}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ operational_status: 'INACTIVE' }),
+              });
+            }
+          } else {
+            try {
+              await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(instance.id)}`, {
+                method: 'DELETE',
+              });
+            } catch {
+              if (instance.operational_status !== 'INACTIVE') {
+                await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(instance.id)}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ operational_status: 'INACTIVE' }),
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-blocking for publish response
+    }
+
     return {
       published: {
         floor: mapFloor(published.floor),

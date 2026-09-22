@@ -172,6 +172,17 @@ export class StaffManagementService {
       actorIsSuperAdmin: isSuperAdmin,
     });
 
+    const targetEmail =
+      updated.email && updated.email !== 'unknown@deskatlas.com'
+        ? updated.email
+        : existing.email && existing.email !== 'unknown@deskatlas.com'
+        ? existing.email
+        : updated.email;
+
+    if ((!updated.email || updated.email === 'unknown@deskatlas.com') && targetEmail && targetEmail !== 'unknown@deskatlas.com') {
+      updated.email = targetEmail;
+    }
+
     if (existing.isActive !== updated.isActive) {
       let actorNameOrEmail: string | undefined;
       if (input.actorUserId) {
@@ -181,7 +192,7 @@ export class StaffManagementService {
       if (existing.isActive && !updated.isActive) {
         try {
           await this.emailService.sendAccountDeactivatedEmail({
-            to: updated.email,
+            to: targetEmail,
             memberName: updated.name || updated.email,
             role: updated.rawRole || updated.role,
             effectiveAt: this.nowProvider().toISOString(),
@@ -195,7 +206,7 @@ export class StaffManagementService {
           const adminBaseUrl = (process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || process.env.ADMIN_PORTAL_URL || 'http://localhost:3000').replace(/\/$/, '');
           const loginUrl = `${adminBaseUrl}/manage/login`;
           await this.emailService.sendAccountReactivatedEmail({
-            to: updated.email,
+            to: targetEmail,
             memberName: updated.name || updated.email,
             role: updated.rawRole || updated.role,
             effectiveAt: this.nowProvider().toISOString(),
@@ -205,6 +216,38 @@ export class StaffManagementService {
         } catch (e) {
           console.warn('[StaffManagementService] Failed to send account reactivated email:', e);
         }
+      }
+    }
+
+    const prevRole = existing.rawRole || (existing.role?.toUpperCase() as 'ADMIN' | 'STAFF');
+    const newRole = updated.rawRole || (updated.role?.toUpperCase() as 'ADMIN' | 'STAFF');
+
+    if (prevRole && newRole && prevRole !== newRole) {
+      try {
+        let actorNameOrEmail: string | undefined;
+        if (input.actorUserId) {
+          actorNameOrEmail = await this.getActorNameOrEmail(input.actorUserId);
+        }
+
+        const isNewAdmin = newRole === 'ADMIN';
+        const adminBaseUrl = (process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || process.env.ADMIN_PORTAL_URL || 'http://localhost:3000').replace(/\/$/, '');
+        const staffBaseUrl = (process.env.NEXT_PUBLIC_STAFF_PORTAL_URL || process.env.STAFF_PORTAL_URL || 'http://localhost:3002').replace(/\/$/, '');
+
+        const loginUrl = isNewAdmin ? `${adminBaseUrl}/manage/login` : `${staffBaseUrl}/manage/login`;
+        const portalName = isNewAdmin ? 'Admin Portal' : 'Staff Dashboard';
+
+        await this.emailService.sendRoleChangeNotificationEmail({
+          to: targetEmail,
+          displayName: updated.name || updated.email,
+          previousRole: prevRole,
+          newRole: newRole,
+          updatedByAdminName: actorNameOrEmail,
+          updatedAt: this.nowProvider().toISOString(),
+          loginUrl,
+          portalName,
+        });
+      } catch (e) {
+        console.warn('[StaffManagementService] Failed to send role change email:', e);
       }
     }
 
