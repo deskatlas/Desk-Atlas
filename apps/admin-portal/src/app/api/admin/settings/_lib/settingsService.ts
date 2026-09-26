@@ -1,6 +1,8 @@
 import {
   createAdminSettingsService,
+  createTransactionalEmailService,
   InMemorySettingsRepository,
+  ReservationSupabaseRepository,
   SupabaseSettingsRepository,
 } from "@deskatlas/domain";
 
@@ -15,8 +17,18 @@ export function getAdminSettingsService() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (supabaseUrl && serviceRoleKey) {
+    const settingsRepo = new SupabaseSettingsRepository({ supabaseUrl, serviceRoleKey });
+    const reservationRepo = new ReservationSupabaseRepository({ supabaseUrl, serviceRoleKey });
+    const emailService = createTransactionalEmailService({
+      apiKey: process.env.RESEND_API_KEY || process.env.POSTMARK_SERVER_TOKEN || "mock-token",
+      fromEmail: process.env.FROM_EMAIL || process.env.POSTMARK_SENDER_EMAIL || "notifications@deskatlas.com",
+      settingsRepository: settingsRepo,
+    });
+
     serviceInstance = createAdminSettingsService(
-      new SupabaseSettingsRepository({ supabaseUrl, serviceRoleKey })
+      settingsRepo,
+      reservationRepo,
+      emailService
     );
   } else {
     serviceInstance = createAdminSettingsService(new InMemorySettingsRepository());

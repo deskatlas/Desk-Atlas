@@ -11,16 +11,24 @@ export async function GET(request: NextRequest) {
   try {
     const service = createPublishedMapService(new SupabasePublishedMapRepository());
     const floorId = request.nextUrl.searchParams.get('floorId') ?? undefined;
-    const [floors, published] = await Promise.all([
+    const includeAllFloors = request.nextUrl.searchParams.get('includeAllFloors') === 'true';
+
+    const [floors, published, allFloors] = await Promise.all([
       service.listPublishedFloors(),
       service.loadPublishedFloorMap(floorId, { audience: 'KIOSK' }),
+      includeAllFloors ? service.loadAllPublishedFloorMaps({ audience: 'KIOSK' }) : Promise.resolve(undefined),
     ]);
 
     return NextResponse.json(
-      { floors, published },
+      {
+        floors,
+        published,
+        ...(allFloors !== undefined ? { allFloors } : {}),
+      },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          'CDN-Cache-Control': 'public, s-maxage=3600',
         },
       }
     );

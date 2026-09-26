@@ -69,15 +69,23 @@ export class GuestReservationTrackingService {
 
     const status = mapGuestTrackingStatus(record, nowMs);
 
+    const isClosurePending = Boolean(
+      record.isClosureImpacted &&
+      (record.closureImpactStatus === "AFFECTED_PENDING_ACTION" || record.closureImpactStatus === "MANUAL_RESOLUTION_REQUIRED")
+    );
+
     if (
       status === "CONFIRMED" &&
-      rescheduleCount === 0 &&
-      record.finalAssignment?.bookingStartAt
+      (isClosurePending || (rescheduleCount === 0 && record.finalAssignment?.bookingStartAt))
     ) {
-      const startMs = new Date(record.finalAssignment.bookingStartAt).getTime();
-      const cutoffMs = cutoffHours * 60 * 60 * 1000;
-      if (nowMs <= startMs - cutoffMs) {
+      if (isClosurePending) {
         canReschedule = true;
+      } else if (record.finalAssignment?.bookingStartAt) {
+        const startMs = new Date(record.finalAssignment.bookingStartAt).getTime();
+        const cutoffMs = cutoffHours * 60 * 60 * 1000;
+        if (nowMs <= startMs - cutoffMs) {
+          canReschedule = true;
+        }
       }
     }
 
@@ -96,7 +104,7 @@ export class GuestReservationTrackingService {
       nowMs < bookingEndMs;
 
     const remainingMinutes = isInSession ? Math.max(0, Math.round((bookingEndMs - nowMs) / 60000)) : 0;
-    const canRelocate = isInSession;
+    const canRelocate = isInSession || isClosurePending;
 
     return {
       reservationId: record.reservationId,
@@ -116,6 +124,11 @@ export class GuestReservationTrackingService {
       canRelocate,
       remainingMinutes,
       pendingRelocationRequest: record.pendingRelocationRequest ?? null,
+      isClosureImpacted: record.isClosureImpacted ?? false,
+      closureImpactStatus: record.closureImpactStatus ?? null,
+      closureReason: record.closureReason ?? null,
+      closureDate: record.closureDate ?? null,
+      closureNotifiedAt: record.closureNotifiedAt ?? null,
     };
   }
 }

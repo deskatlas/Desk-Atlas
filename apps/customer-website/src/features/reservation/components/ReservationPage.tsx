@@ -15,6 +15,7 @@ import {
   DEFAULT_MAP_CANVAS_WIDTH,
   DEFAULT_MAP_CANVAS_HEIGHT,
   DEFAULT_MAP_GRID_SIZE,
+  type PublishedFloorMap,
   type PublishedMapElement,
   type AvailableInstanceSummary,
   type AvailableTimeSlot,
@@ -364,6 +365,7 @@ export function ReservationPage() {
   const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(
     DEFAULT_WORKSPACE_STATUS_COLORS
   );
+  const [maxAdvanceBookingDays, setMaxAdvanceBookingDays] = useState<number>(90);
 
   useEffect(() => {
     let isMounted = true;
@@ -377,6 +379,9 @@ export function ReservationPage() {
           }
           if (data?.statusColors) {
             setStatusColors(normalizeWorkspaceStatusColors(data.statusColors));
+          }
+          if (typeof data?.maxAdvanceBookingDays === "number") {
+            setMaxAdvanceBookingDays(data.maxAdvanceBookingDays);
           }
         }
       })
@@ -467,8 +472,8 @@ export function ReservationPage() {
     router.push("/");
   };
 
-  // Published map & all workspaces across floors
-  const [allFloorWorkspaces, setAllFloorWorkspaces] = useState<WorkspaceMapViewModel[]>([]);
+  // Published map & cached loaded floor maps
+  const [loadedFloorMaps, setLoadedFloorMaps] = useState<Map<string, PublishedFloorMap>>(new Map());
 
   const [zoom, setZoom] = useState(1);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -557,33 +562,24 @@ export function ReservationPage() {
     setFloorId(newFloorId);
   };
 
-  // Fetch all workspaces across all published floors for complete template coverage
+  // Cache loaded floor maps and derive workspaces on demand (Phase 4)
   useEffect(() => {
-    if (floors.length === 0) return;
-
-    let cancelled = false;
-    Promise.all(
-      floors.map(async (floor) => {
-        try {
-          const res = await fetch(`/api/published-map?floorId=${encodeURIComponent(floor.id)}`, {
-            cache: "no-store",
-          });
-          if (!res.ok) return [];
-          const data = await res.json();
-          return data.published ? mapPublishedFloorToWorkspaceCards(data.published) : [];
-        } catch {
-          return [];
-        }
-      })
-    ).then((results) => {
-      if (cancelled) return;
-      setAllFloorWorkspaces(results.flat());
+    if (!published?.floor?.id) return;
+    setLoadedFloorMaps((prev) => {
+      if (prev.get(published.floor.id) === published) return prev;
+      const next = new Map(prev);
+      next.set(published.floor.id, published);
+      return next;
     });
+  }, [published]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [floors]);
+  const allFloorWorkspaces = useMemo(() => {
+    const list: WorkspaceMapViewModel[] = [];
+    for (const pub of loadedFloorMaps.values()) {
+      list.push(...mapPublishedFloorToWorkspaceCards(pub));
+    }
+    return list;
+  }, [loadedFloorMaps]);
 
   // Aggregate published workspaces into unique workspace templates
   const availableTemplates: WorkspaceTemplateSummary[] = useMemo(() => {
@@ -2124,6 +2120,7 @@ export function ReservationPage() {
           <ScheduleCalendarStep
             workspace={selectedWorkspace}
             candidateRank={activeRank}
+            maxAdvanceBookingDays={maxAdvanceBookingDays}
             onBackToMap={() => {
               setStep("map");
             }}

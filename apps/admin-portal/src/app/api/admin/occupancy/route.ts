@@ -12,7 +12,14 @@ export async function GET() {
   try {
     const service = createStaffOperationsService(new ReservationSupabaseRepository());
     const occupancy = await service.listOccupancy();
-    return NextResponse.json({ occupancy });
+    return NextResponse.json(
+      { occupancy },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=5, stale-while-revalidate=15",
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof StaffOperationsError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

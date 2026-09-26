@@ -63,6 +63,10 @@ export async function PATCH(request: NextRequest) {
           body.rescheduleMaxAdvanceUnit !== undefined && body.rescheduleMaxAdvanceUnit !== null
             ? body.rescheduleMaxAdvanceUnit
             : "DAYS",
+        maxAdvanceBookingDays:
+          body.maxAdvanceBookingDays !== undefined && body.maxAdvanceBookingDays !== null
+            ? Number(body.maxAdvanceBookingDays)
+            : 90,
         landingPreviewPhotos: body.landingPreviewPhotos,
         statusColors: body.statusColors,
         cancellationPolicyPdfUrl: body.cancellationPolicyPdfUrl,

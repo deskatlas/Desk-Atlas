@@ -24,6 +24,7 @@ DECLARE
   v_actor_role public.staff_role;
   v_actor_active boolean;
   v_previous_published_ids uuid[];
+  v_compiled_map jsonb;
   v_result jsonb;
 BEGIN
   IF p_published_by_user_id IS NULL THEN
@@ -111,6 +112,7 @@ BEGIN
     RAISE EXCEPTION 'Draft contains duplicate workspace-instance placements';
   END IF;
 
+  -- GiST Spatial collision detection for overlapping workspaces (O(log N))
   PERFORM 1
   FROM public.map_elements a
   JOIN public.map_elements b
@@ -119,6 +121,8 @@ BEGIN
   WHERE a.map_version_id = v_draft.id
     AND a.element_role = 'WORKSPACE'
     AND b.element_role = 'WORKSPACE'
+    AND box(point(a.x, a.y), point(a.x + a.width, a.y + a.height)) &&
+        box(point(b.x, b.y), point(b.x + b.width, b.y + b.height))
     AND a.x < b.x + b.width
     AND a.x + a.width > b.x
     AND a.y < b.y + b.height
@@ -129,6 +133,7 @@ BEGIN
     RAISE EXCEPTION 'Draft contains overlapping bookable workspaces';
   END IF;
 
+  -- GiST Spatial collision detection for workspaces conflicting with walls/dividers
   PERFORM 1
   FROM public.map_elements workspace_element
   JOIN public.map_elements wall_element
@@ -138,6 +143,8 @@ BEGIN
     AND workspace_element.element_role = 'WORKSPACE'
     AND wall_element.element_role = 'STRUCTURE'
     AND wall_element.element_type IN ('wall', 'divider')
+    AND box(point(workspace_element.x, workspace_element.y), point(workspace_element.x + workspace_element.width, workspace_element.y + workspace_element.height)) &&
+        box(point(wall_element.x, wall_element.y), point(wall_element.x + wall_element.width, wall_element.y + wall_element.height))
     AND workspace_element.x < wall_element.x + wall_element.width
     AND workspace_element.x + workspace_element.width > wall_element.x
     AND workspace_element.y < wall_element.y + wall_element.height
@@ -147,6 +154,39 @@ BEGIN
   IF FOUND THEN
     RAISE EXCEPTION 'Draft contains a workspace conflicting with a wall/divider';
   END IF;
+
+  -- In-database atomic reconciliation of unmapped instances on the floor (Phase 1)
+  -- 1. Deactivate unmapped instances that have active/historical reservations
+  UPDATE public.workspace_instances
+  SET
+    operational_status = 'INACTIVE',
+    updated_at = now()
+  WHERE floor_id = v_draft.floor_id
+    AND id NOT IN (
+      SELECT workspace_instance_id
+      FROM public.map_elements
+      WHERE map_version_id = v_draft.id
+        AND workspace_instance_id IS NOT NULL
+    )
+    AND id IN (
+      SELECT DISTINCT workspace_instance_id
+      FROM public.reservation_candidates
+    )
+    AND operational_status <> 'INACTIVE';
+
+  -- 2. Delete unmapped instances that have zero reservations
+  DELETE FROM public.workspace_instances
+  WHERE floor_id = v_draft.floor_id
+    AND id NOT IN (
+      SELECT workspace_instance_id
+      FROM public.map_elements
+      WHERE map_version_id = v_draft.id
+        AND workspace_instance_id IS NOT NULL
+    )
+    AND id NOT IN (
+      SELECT DISTINCT workspace_instance_id
+      FROM public.reservation_candidates
+    );
 
   WITH locked_published AS (
     SELECT id
@@ -163,11 +203,95 @@ BEGIN
   SET status = 'ARCHIVED'
   WHERE id = ANY(v_previous_published_ids);
 
+  -- Compile pre-materialized PublishedFloorMap document (Phase 2)
+  SELECT jsonb_build_object(
+    'floor', jsonb_build_object(
+      'id', f.id,
+      'name', f.name,
+      'floorNumber', f.floor_number,
+      'displayOrder', f.display_order,
+      'isActive', f.is_active
+    ),
+    'version', jsonb_build_object(
+      'id', v_draft.id,
+      'versionNumber', v_draft.version_number,
+      'canvasWidth', v_draft.canvas_width,
+      'canvasHeight', v_draft.canvas_height,
+      'gridSize', v_draft.grid_size,
+      'publishedAt', now()
+    ),
+    'elements', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id', e.id,
+            'elementRole', CASE WHEN e.element_role = 'EDITOR_AID' THEN 'INFORMATION' ELSE e.element_role::text END,
+            'elementType', e.element_type,
+            'x', e.x,
+            'y', e.y,
+            'width', e.width,
+            'height', e.height,
+            'rotation', e.rotation,
+            'zIndex', e.z_index,
+            'label', e.label,
+            'style', COALESCE(e.properties, '{}'::jsonb),
+            'workspace', CASE
+              WHEN e.workspace_instance_id IS NOT NULL AND wi.id IS NOT NULL AND wt.id IS NOT NULL THEN
+                jsonb_build_object(
+                  'workspaceInstanceId', wi.id,
+                  'templateId', wt.id,
+                  'floorId', wi.floor_id,
+                  'instanceCode', wi.instance_code,
+                  'displayName', wi.display_name,
+                  'templateName', wt.name,
+                  'description', wt.description,
+                  'photoPath', wt.photo_path,
+                  'photoPosition', wt.default_style->'photoPosition',
+                  'capacity', wt.capacity,
+                  'rateAmount', wt.rate_amount,
+                  'pricingUnit', wt.pricing_unit,
+                  'operationalStatus', wi.operational_status,
+                  'maintenanceNote', wi.maintenance_note,
+                  'isBookable', (wi.operational_status = 'ACTIVE' AND wt.is_active = true),
+                  'blockingReason', CASE
+                    WHEN wt.is_active = false THEN 'TEMPLATE_INACTIVE'
+                    WHEN wi.operational_status <> 'ACTIVE' THEN 'OPERATIONAL_STATUS_BLOCKED'
+                    ELSE NULL
+                  END,
+                  'tags', COALESCE(
+                    e.properties->'recommendationTags',
+                    e.properties->'recommendations',
+                    e.properties->'tags',
+                    wt.default_style->'recommendationTags',
+                    wt.default_style->'recommendations',
+                    wt.default_style->'tags'
+                  )
+                )
+              ELSE NULL
+            END
+          )
+          ORDER BY e.z_index ASC, e.id ASC
+        )
+        FROM public.map_elements e
+        LEFT JOIN public.workspace_instances wi ON wi.id = e.workspace_instance_id
+        LEFT JOIN public.workspace_templates wt ON wt.id = wi.template_id
+        WHERE e.map_version_id = v_draft.id
+          AND e.element_role <> 'EDITOR_AID'
+          AND (e.element_role <> 'WORKSPACE' OR (wt.id IS NOT NULL AND wt.is_active = true))
+      ),
+      '[]'::jsonb
+    )
+  )
+  INTO v_compiled_map
+  FROM public.floors f
+  WHERE f.id = v_draft.floor_id;
+
   UPDATE public.map_versions
   SET
     status = 'PUBLISHED',
     published_by_user_id = p_published_by_user_id,
-    published_at = now()
+    published_at = now(),
+    compiled_map_cache = v_compiled_map
   WHERE id = v_draft.id;
 
   INSERT INTO public.audit_logs (
@@ -282,11 +406,19 @@ BEGIN
     RETURNING * INTO v_reservation;
 
     FOR v_candidate IN
-        SELECT * FROM jsonb_to_recordset(p_candidates) AS x(
+        SELECT
+            x.rank,
+            COALESCE(x."workspaceInstanceId", x.workspace_instance_id) AS workspace_instance_id,
+            COALESCE(x."startAt", x.start_at) AS start_at,
+            COALESCE(x."endAt", x.end_at) AS end_at
+        FROM jsonb_to_recordset(p_candidates) AS x(
             rank smallint,
             "workspaceInstanceId" uuid,
+            workspace_instance_id uuid,
             "startAt" timestamptz,
-            "endAt" timestamptz
+            start_at timestamptz,
+            "endAt" timestamptz,
+            end_at timestamptz
         )
     LOOP
         INSERT INTO public.reservation_candidates (
@@ -300,9 +432,9 @@ BEGIN
         VALUES (
             v_reservation.id,
             v_candidate.rank,
-            v_candidate."workspaceInstanceId",
-            v_candidate."startAt",
-            v_candidate."endAt",
+            v_candidate.workspace_instance_id,
+            v_candidate.start_at,
+            v_candidate.end_at,
             false
         );
     END LOOP;
@@ -361,11 +493,19 @@ BEGIN
   RETURNING * INTO v_reservation;
 
   FOR v_candidate IN
-    SELECT * FROM jsonb_to_recordset(p_candidates) AS x(
+    SELECT
+      x.rank,
+      COALESCE(x."workspaceInstanceId", x.workspace_instance_id) AS workspace_instance_id,
+      COALESCE(x."startAt", x.start_at) AS start_at,
+      COALESCE(x."endAt", x.end_at) AS end_at
+    FROM jsonb_to_recordset(p_candidates) AS x(
       rank smallint,
       "workspaceInstanceId" uuid,
+      workspace_instance_id uuid,
       "startAt" timestamptz,
-      "endAt" timestamptz
+      start_at timestamptz,
+      "endAt" timestamptz,
+      end_at timestamptz
     )
   LOOP
     INSERT INTO public.reservation_candidates (
@@ -379,9 +519,9 @@ BEGIN
     VALUES (
       v_reservation.id,
       v_candidate.rank,
-      v_candidate."workspaceInstanceId",
-      v_candidate."startAt",
-      v_candidate."endAt",
+      v_candidate.workspace_instance_id,
+      v_candidate.start_at,
+      v_candidate.end_at,
       false
     );
   END LOOP;
@@ -980,11 +1120,19 @@ BEGIN
   RETURNING * INTO v_reservation;
 
   FOR v_candidate IN
-    SELECT * FROM jsonb_to_recordset(p_candidates) AS x(
+    SELECT
+      x.rank,
+      COALESCE(x."workspaceInstanceId", x.workspace_instance_id) AS workspace_instance_id,
+      COALESCE(x."startAt", x.start_at) AS start_at,
+      COALESCE(x."endAt", x.end_at) AS end_at
+    FROM jsonb_to_recordset(p_candidates) AS x(
       rank smallint,
       "workspaceInstanceId" uuid,
+      workspace_instance_id uuid,
       "startAt" timestamptz,
-      "endAt" timestamptz
+      start_at timestamptz,
+      "endAt" timestamptz,
+      end_at timestamptz
     )
   LOOP
     INSERT INTO public.reservation_candidates (
@@ -998,9 +1146,9 @@ BEGIN
     VALUES (
       v_reservation.id,
       v_candidate.rank,
-      v_candidate."workspaceInstanceId",
-      v_candidate."startAt",
-      v_candidate."endAt",
+      v_candidate.workspace_instance_id,
+      v_candidate.start_at,
+      v_candidate.end_at,
       false
     );
   END LOOP;

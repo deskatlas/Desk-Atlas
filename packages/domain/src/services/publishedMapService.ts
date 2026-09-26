@@ -17,13 +17,21 @@ export function createPublishedMapService(repository: PublishedMapRepository) {
       floorId?: string,
       options?: { audience?: PublishedMapAudience }
     ): Promise<PublishedFloorMap> {
+      const trimmedFloorId = floorId?.trim();
+      if (trimmedFloorId) {
+        const published = await repository.loadPublishedFloorMap(trimmedFloorId, options);
+        if (published) {
+          return published;
+        }
+      }
+
       const floors = await repository.listPublishedFloors();
 
       if (floors.length === 0) {
         throw new PublishedMapNotFoundError('No published floor map is available');
       }
 
-      const selectedFloorId = floorId?.trim() || floors[0].id;
+      const selectedFloorId = trimmedFloorId || floors[0].id;
       const floorExists = floors.some((floor) => floor.id === selectedFloorId);
 
       if (!floorExists) {
@@ -36,6 +44,19 @@ export function createPublishedMapService(repository: PublishedMapRepository) {
       }
 
       return published;
+    },
+
+    async loadAllPublishedFloorMaps(
+      options?: { audience?: PublishedMapAudience }
+    ): Promise<PublishedFloorMap[]> {
+      if (repository.loadAllPublishedFloorMaps) {
+        return repository.loadAllPublishedFloorMaps(options);
+      }
+      const floors = await repository.listPublishedFloors();
+      const results = await Promise.all(
+        floors.map((floor) => repository.loadPublishedFloorMap(floor.id, options))
+      );
+      return results.filter((map): map is PublishedFloorMap => Boolean(map));
     },
   };
 }

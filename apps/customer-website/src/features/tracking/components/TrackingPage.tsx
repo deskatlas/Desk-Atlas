@@ -210,6 +210,55 @@ export function TrackingPage({
                 <InfoCard label="Booking time" value={bookingTimeValue} />
               </div>
 
+              {/* Closure Impact Remedy Banner */}
+              {data.isClosureImpacted && (
+                <div
+                  data-testid="closure-impact-remedy-banner"
+                  className="mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-5 shadow-sm"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <span className="text-2xl">⚠️</span>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-extrabold uppercase tracking-[0.14em] text-amber-900">
+                          Action Required: Booking Impacted by Business Closure
+                        </h3>
+                        <span className="rounded-full bg-amber-200/80 px-3 py-1 text-xs font-bold text-amber-950">
+                          {data.closureImpactStatus === "MANUAL_RESOLUTION_REQUIRED"
+                            ? "Staff Intervention In Progress"
+                            : data.closureImpactStatus === "CUSTOMER_RESOLVED"
+                            ? "Resolved by Customer"
+                            : data.closureImpactStatus === "STAFF_RESOLVED"
+                            ? "Resolved by Staff"
+                            : "Self-Service Remedy Available"}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs font-medium text-amber-900 leading-relaxed">
+                        Your reservation overlaps with a scheduled facility closure or holiday maintenance. Advance rescheduling cutoffs and reschedule limits have been waived so you can immediately choose a new date or time or switch spots at no penalty.
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowRescheduleModal(true)}
+                          data-testid="closure-remedy-reschedule-button"
+                          className="da-primary-button text-xs font-bold"
+                        >
+                          Reschedule Date / Time
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowRelocateModal(true)}
+                          data-testid="closure-remedy-relocate-button"
+                          className="da-secondary-button text-xs font-bold"
+                        >
+                          Relocate Spot
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* In-Session Spot Relocation Section */}
               {!isRejected && !isExpired && data.status === "CONFIRMED" && (
                 data.pendingRelocationRequest?.status === "PENDING" ? (

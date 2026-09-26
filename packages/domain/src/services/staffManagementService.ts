@@ -233,7 +233,7 @@ export class StaffManagementService {
         const adminBaseUrl = (process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || process.env.ADMIN_PORTAL_URL || 'http://localhost:3000').replace(/\/$/, '');
         const staffBaseUrl = (process.env.NEXT_PUBLIC_STAFF_PORTAL_URL || process.env.STAFF_PORTAL_URL || 'http://localhost:3002').replace(/\/$/, '');
 
-        const loginUrl = isNewAdmin ? `${adminBaseUrl}/manage/login` : `${staffBaseUrl}/manage/login`;
+        const loginUrl = isNewAdmin ? `${adminBaseUrl}/manage/login` : `${staffBaseUrl}/manage`;
         const portalName = isNewAdmin ? 'Admin Portal' : 'Staff Dashboard';
 
         await this.emailService.sendRoleChangeNotificationEmail({

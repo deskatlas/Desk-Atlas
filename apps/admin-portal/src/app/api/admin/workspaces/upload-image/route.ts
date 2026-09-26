@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
           apikey: serviceRoleKey,
           Authorization: `Bearer ${serviceRoleKey}`,
           'Content-Type': file.type,
+          'cache-control': '31536000',
           'x-upsert': 'true',
         },
         body: buffer,

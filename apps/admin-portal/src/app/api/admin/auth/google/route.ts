@@ -24,9 +24,10 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.redirect(authUrl);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to initiate Google OAuth';
     return NextResponse.json(
-      { error: error?.message || 'Failed to initiate Google OAuth' },
+      { error: msg },
       { status: 500 }
     );
   }

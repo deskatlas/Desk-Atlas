@@ -8,6 +8,9 @@ import {
   ReservationCandidate,
   ReservationResponseDTO,
   ReservationStatus,
+  ClosureImpactPreviewResult,
+  LogClosurePhoneCallInput,
+  FlagClosureManualResolutionInput,
 } from "../models/reservation";
 import {
   AdminReservationRepository,
@@ -805,6 +808,39 @@ export class AdminReservationService {
     }
 
     return result;
+  }
+
+  async previewClosureImpact(
+    startAt: string,
+    endAt: string,
+    workspaceInstanceId?: string
+  ): Promise<ClosureImpactPreviewResult> {
+    if (!this.repository.previewClosureImpact) {
+      return { impactedCount: 0, reservations: [] };
+    }
+    return this.repository.previewClosureImpact(startAt, endAt, workspaceInstanceId);
+  }
+
+  async logClosurePhoneCall(input: LogClosurePhoneCallInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    if (!this.repository.logClosurePhoneCall) {
+      throw new AdminReservationError("Logging closure phone calls is not supported by repository.");
+    }
+    return this.repository.logClosurePhoneCall(input);
+  }
+
+  async flagClosureManualResolution(input: FlagClosureManualResolutionInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    if (!this.repository.flagClosureManualResolution) {
+      throw new AdminReservationError("Flagging closure manual resolution is not supported by repository.");
+    }
+    return this.repository.flagClosureManualResolution(input);
   }
 }
 

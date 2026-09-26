@@ -363,9 +363,10 @@ export class SupabaseStaffRepository implements StaffRepository {
       }
 
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof AdminSetupError) throw err;
-      throw new AdminSetupError(`Failed to set admin password: ${err?.message || 'Unknown error'}`, 500);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      throw new AdminSetupError(`Failed to set admin password: ${msg}`, 500);
     }
   }
 }
@@ -379,14 +380,26 @@ export class StaffService {
 
   async getSetupStatus(userId?: string): Promise<AdminSetupStatus> {
     const hasAdmin = await this.repository.hasAdmin();
-    const result: AdminSetupStatus = {
+    let isPasswordConfigured = false;
+    let adminEmail: string | null = null;
+
+    if (hasAdmin && userId) {
+      isPasswordConfigured = await this.repository.isPasswordConfigured(userId);
+      const profile = await this.repository.getProfileByUserId(userId);
+      if (profile) {
+        adminEmail = profile.email;
+      }
+    } else if (hasAdmin) {
+      isPasswordConfigured = await this.repository.isPasswordConfigured();
+    }
+
+    return {
       hasAdmin,
       setupAllowed: !hasAdmin,
+      passwordSetupPending: hasAdmin && !isPasswordConfigured,
+      isPasswordConfigured,
+      ...(adminEmail ? { adminEmail } : {}),
     };
-    if (userId !== undefined) {
-      result.isPasswordConfigured = await this.repository.isPasswordConfigured(userId);
-    }
-    return result;
   }
 
   async setupInitialAdmin(input: AdminSetupInput): Promise<StaffProfile> {

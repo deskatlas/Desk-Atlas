@@ -139,6 +139,7 @@ describe("MF-187: Admin Completed - Remove Redundant Sub-Filters", () => {
       "upcoming",
       "awaiting_proof",
       "counter_queue",
+      "closure_impacted",
       "cancelled",
     ]);
 

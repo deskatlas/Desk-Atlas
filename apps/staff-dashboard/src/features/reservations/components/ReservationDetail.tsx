@@ -50,6 +50,18 @@ export function ReservationDetail({ id }: { id: string }) {
   const [isDecidingRelocation, setIsDecidingRelocation] = useState<boolean>(false);
   const [relocationDecisionError, setRelocationDecisionError] = useState<string | null>(null);
 
+  // Closure outreach & manual resolution modal states
+  const [showLogCallModal, setShowLogCallModal] = useState<boolean>(false);
+  const [outreachStatus, setOutreachStatus] = useState<string>("SPOKE_WITH_CUSTOMER");
+  const [callNotes, setCallNotes] = useState<string>("");
+  const [isLoggingCall, setIsLoggingCall] = useState<boolean>(false);
+  const [callLogError, setCallLogError] = useState<string | null>(null);
+
+  const [showFlagManualModal, setShowFlagManualModal] = useState<boolean>(false);
+  const [flagManualNotes, setFlagManualNotes] = useState<string>("");
+  const [isFlaggingManual, setIsFlaggingManual] = useState<boolean>(false);
+  const [flagManualError, setFlagManualError] = useState<string | null>(null);
+
   // Payment proof inspection modal states
   const [viewingProofAttemptId, setViewingProofAttemptId] = useState<string | null>(null);
   const [viewingProofUrl, setViewingProofUrl] = useState<string | null>(null);
@@ -237,6 +249,65 @@ export function ReservationDetail({ id }: { id: string }) {
     }
   };
 
+  const handleConfirmLogCall = async () => {
+    const resId = reservation?.reservationId || reservation?.id || id;
+    setIsLoggingCall(true);
+    setCallLogError(null);
+    try {
+      const response = await fetch(`/api/operations/reservations/${encodeURIComponent(resId)}/log-call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffUserId: user?.id || "staff",
+          staffName: user?.email ? user.email.split('@')[0] : "Staff",
+          outreachStatus,
+          notes: callNotes,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to log phone call outreach");
+      }
+      refetch();
+      setShowLogCallModal(false);
+      setCallNotes("");
+      setToastMessage({ text: "Phone call outreach logged successfully.", type: "success" });
+    } catch (err: any) {
+      setCallLogError(err?.message || "Failed to log call outreach");
+    } finally {
+      setIsLoggingCall(false);
+    }
+  };
+
+  const handleConfirmFlagManual = async () => {
+    const resId = reservation?.reservationId || reservation?.id || id;
+    setIsFlaggingManual(true);
+    setFlagManualError(null);
+    try {
+      const response = await fetch(`/api/operations/reservations/${encodeURIComponent(resId)}/flag-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorUserId: user?.id || "staff",
+          actorRole: "STAFF",
+          notes: flagManualNotes,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to flag for manual resolution");
+      }
+      refetch();
+      setShowFlagManualModal(false);
+      setFlagManualNotes("");
+      setToastMessage({ text: "Reservation flagged for manual resolution.", type: "success" });
+    } catch (err: any) {
+      setFlagManualError(err?.message || "Failed to flag for manual resolution");
+    } finally {
+      setIsFlaggingManual(false);
+    }
+  };
+
   const handleCheckIn = async () => {
     try {
       await checkIn(id);
@@ -407,6 +478,107 @@ export function ReservationDetail({ id }: { id: string }) {
           {reservation.reservationStatus === 'PENDING_COUNTER_CONFIRMATION' ? 'Counter Queue' : (reservation.status || reservation.reservationStatus)}
         </span>
       </div>
+
+      {reservation.isClosureImpacted && (
+        <div
+          data-testid="closure-impacted-banner"
+          style={{
+            background: '#FFFBEB',
+            border: '1px solid #FDE68A',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ flex: 1, minWidth: '240px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>⚠️</span>
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#92400E' }}>
+                  Facility Closure Impacted Reservation
+                </h4>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    background: reservation.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#FEE2E2' : '#FEF3C7',
+                    color: reservation.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#991B1B' : '#92400E',
+                  }}
+                >
+                  {reservation.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED'
+                    ? 'Manual Resolution Required'
+                    : reservation.closureImpactStatus === 'CUSTOMER_RESOLVED'
+                    ? 'Customer Resolved'
+                    : reservation.closureImpactStatus === 'STAFF_RESOLVED'
+                    ? 'Staff Resolved'
+                    : 'Action Pending'}
+                </span>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#78350F' }}>
+                This reservation was booked for a date or time affected by a facility closure. The customer was notified via email with a self-service link to relocate or reschedule.
+              </p>
+              {reservation.closureNotifiedAt && (
+                <div style={{ fontSize: '11px', color: '#B45309', marginTop: '4px' }}>
+                  Alert Sent: {formatTimelineDate(reservation.closureNotifiedAt)}
+                </div>
+              )}
+              {reservation.manualResolutionNotes && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', background: '#FEF3C7', borderRadius: '6px', fontSize: '12px', color: '#78350F', whiteSpace: 'pre-wrap' }}>
+                  <strong>Outreach & Resolution Notes:</strong>
+                  <div>{reservation.manualResolutionNotes}</div>
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                data-testid="log-closure-call-button"
+                onClick={() => setShowLogCallModal(true)}
+                style={{
+                  background: '#D97706',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>📞</span> Log Phone Call
+              </button>
+              {reservation.closureImpactStatus !== 'MANUAL_RESOLUTION_REQUIRED' && (
+                <button
+                  data-testid="flag-manual-resolution-button"
+                  onClick={() => setShowFlagManualModal(true)}
+                  style={{
+                    background: '#EF4444',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <span>🚩</span> Flag for Manual Resolution
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {reservation.pendingRelocationRequest && reservation.pendingRelocationRequest.status === 'PENDING' && (
         <div
@@ -1170,6 +1342,289 @@ export function ReservationDetail({ id }: { id: string }) {
                 }}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Log Customer Phone Call Modal */}
+      {showLogCallModal && reservation && (
+        <div
+          data-testid="log-call-modal"
+          onClick={() => !isLoggingCall && setShowLogCallModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
+              border: '1px solid var(--da-border)',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
+                Log Phone Outreach Call
+              </h3>
+              <button
+                data-testid="close-log-call-modal-button"
+                onClick={() => setShowLogCallModal(false)}
+                disabled={isLoggingCall}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  color: 'var(--da-text-secondary)',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {callLogError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>
+                {callLogError}
+              </div>
+            )}
+
+            <div style={{ background: '#F8FAFC', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: 'var(--da-text-secondary)' }}>Customer:</span>
+                <span style={{ fontWeight: 700 }}>{customerFullName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--da-text-secondary)' }}>Contact Phone:</span>
+                <span style={{ fontWeight: 700 }}>{contactNumber || 'None provided'}</span>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                Call Outcome / Status *
+              </label>
+              <select
+                data-testid="outreach-status-select"
+                value={outreachStatus}
+                onChange={(e) => setOutreachStatus(e.target.value)}
+                disabled={isLoggingCall}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border)',
+                  fontSize: '13px',
+                  color: 'var(--da-text-primary)',
+                  backgroundColor: '#fff',
+                }}
+              >
+                <option value="SPOKE_WITH_CUSTOMER">Spoke with Customer</option>
+                <option value="LEFT_VOICEMAIL">Left Voicemail / SMS</option>
+                <option value="NO_ANSWER">No Answer</option>
+                <option value="WRONG_NUMBER">Invalid / Wrong Number</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                Call Notes / Customer Preference *
+              </label>
+              <textarea
+                data-testid="call-notes-input"
+                value={callNotes}
+                onChange={(e) => setCallNotes(e.target.value)}
+                placeholder="e.g. Customer agreed to relocate to alternate desk or reschedule date..."
+                disabled={isLoggingCall}
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border)',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                  fontFamily: 'var(--da-font-family)',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowLogCallModal(false)}
+                disabled={isLoggingCall}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  color: 'var(--da-text-primary)',
+                  border: '1px solid var(--da-border)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="confirm-log-call-button"
+                onClick={handleConfirmLogCall}
+                disabled={isLoggingCall || !callNotes.trim()}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: (isLoggingCall || !callNotes.trim()) ? 'not-allowed' : 'pointer',
+                  background: '#D97706',
+                  color: '#fff',
+                  border: 'none',
+                  opacity: (isLoggingCall || !callNotes.trim()) ? 0.6 : 1,
+                }}
+              >
+                {isLoggingCall ? 'Saving...' : 'Save Call Log'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flag for Manual Resolution Modal */}
+      {showFlagManualModal && reservation && (
+        <div
+          data-testid="flag-manual-modal"
+          onClick={() => !isFlaggingManual && setShowFlagManualModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
+              border: '1px solid var(--da-border)',
+              position: 'relative',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#DC2626', margin: 0 }}>
+                Flag for Manual Resolution
+              </h3>
+              <button
+                data-testid="close-flag-manual-modal-button"
+                onClick={() => setShowFlagManualModal(false)}
+                disabled={isFlaggingManual}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  color: 'var(--da-text-secondary)',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {flagManualError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', marginBottom: '14px' }}>
+                {flagManualError}
+              </div>
+            )}
+
+            <p style={{ fontSize: '13px', color: 'var(--da-text-secondary)', margin: '0 0 14px' }}>
+              Flagging this reservation as <strong>Manual Resolution Required</strong> alerts operational staff that manual intervention or offline customer handling is needed.
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>
+                Reason / Investigation Notes *
+              </label>
+              <textarea
+                data-testid="flag-manual-notes-input"
+                value={flagManualNotes}
+                onChange={(e) => setFlagManualNotes(e.target.value)}
+                placeholder="Describe why manual resolution is required and next actions needed..."
+                disabled={isFlaggingManual}
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border)',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                  fontFamily: 'var(--da-font-family)',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowFlagManualModal(false)}
+                disabled={isFlaggingManual}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  color: 'var(--da-text-primary)',
+                  border: '1px solid var(--da-border)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="confirm-flag-manual-button"
+                onClick={handleConfirmFlagManual}
+                disabled={isFlaggingManual || !flagManualNotes.trim()}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: (isFlaggingManual || !flagManualNotes.trim()) ? 'not-allowed' : 'pointer',
+                  background: '#DC2626',
+                  color: '#fff',
+                  border: 'none',
+                  opacity: (isFlaggingManual || !flagManualNotes.trim()) ? 0.6 : 1,
+                }}
+              >
+                {isFlaggingManual ? 'Flagging...' : 'Confirm Flag'}
               </button>
             </div>
           </div>

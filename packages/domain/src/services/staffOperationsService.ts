@@ -7,6 +7,8 @@ import {
   ReservationOperationalActionRequest,
   ReservationOperationalActionResult,
   StaffOperationalReservation,
+  LogClosurePhoneCallInput,
+  FlagClosureManualResolutionInput,
 } from "../models/reservation";
 import { StaffOperationsRepository } from "./staffOperationsRepository";
 import { filterReservationsBySearch } from "./reservationSearch";
@@ -417,6 +419,28 @@ export class StaffOperationsService {
     }
 
     return result;
+  }
+
+  async logClosurePhoneCall(input: LogClosurePhoneCallInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    if (!this.staffOperationsRepository.logClosurePhoneCall) {
+      throw new StaffOperationsError("Logging closure phone calls is not supported by repository.");
+    }
+    return this.staffOperationsRepository.logClosurePhoneCall(input);
+  }
+
+  async flagClosureManualResolution(input: FlagClosureManualResolutionInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    if (!this.staffOperationsRepository.flagClosureManualResolution) {
+      throw new StaffOperationsError("Flagging closure manual resolution is not supported by repository.");
+    }
+    return this.staffOperationsRepository.flagClosureManualResolution(input);
   }
 }
 

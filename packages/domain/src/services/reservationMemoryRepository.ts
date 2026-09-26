@@ -20,6 +20,10 @@ import {
   ReservationResponseDTO,
   StaffOperationalReservation,
   CustomerRelocationRequest,
+  ClosureImpactPreviewResult,
+  ClosureImpactedReservationSummary,
+  LogClosurePhoneCallInput,
+  FlagClosureManualResolutionInput,
 } from "../models/reservation";
 import {
   AdminReservationRepository,
@@ -296,6 +300,34 @@ export class ReservationMemoryRepository
     }
 
     return reservation;
+  }
+
+  async confirmReservation(
+    id: string,
+    options?: {
+      confirmedAt?: string;
+      assignedCandidateId?: string;
+      amountPaid?: number;
+      paymentMethodId?: string;
+      paymentMethodType?: string;
+    }
+  ): Promise<ReservationResponseDTO> {
+    const res = this.reservations.find((r) => r.id === id);
+    if (!res) {
+      throw new Error(`Reservation not found: ${id}`);
+    }
+    res.status = "CONFIRMED";
+    res.confirmedAt = options?.confirmedAt ?? this.nowProvider().toISOString();
+    if (res.candidates && res.candidates.length > 0) {
+      res.candidates.forEach((c) => {
+        if (options?.assignedCandidateId) {
+          c.isAssigned = c.workspaceInstanceId === options.assignedCandidateId;
+        } else {
+          c.isAssigned = c.rank === 0 || c.rank === 1;
+        }
+      });
+    }
+    return res;
   }
 
   async getPaymentExpiryMinutes(): Promise<number> {
@@ -1026,12 +1058,14 @@ export class ReservationMemoryRepository
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
-  async findGuestReservationTrackingRecord(input: {
+  async findGuestReservationTrackingRecord(input: string | {
     referenceCode: string;
     customerEmail?: string;
   }): Promise<GuestReservationTrackingRecord | null> {
-    const targetRef = input.referenceCode.trim().toUpperCase();
-    const targetEmail = input.customerEmail?.trim().toLowerCase();
+    const ref = typeof input === "string" ? input : input.referenceCode;
+    const email = typeof input === "string" ? undefined : input.customerEmail;
+    const targetRef = (ref || "").trim().toUpperCase();
+    const targetEmail = email?.trim().toLowerCase();
     const reservation = this.reservations.find(
       (entry) =>
         entry.referenceCode.toUpperCase() === targetRef &&
@@ -1071,6 +1105,12 @@ export class ReservationMemoryRepository
       rejectionReason: latestAttempt?.rejectionReason ?? null,
       rescheduleCount: (reservation as any).rescheduleCount ?? 0,
       pendingRelocationRequest: (reservation as any).pendingRelocationRequest ?? null,
+      isClosureImpacted: reservation.isClosureImpacted ?? false,
+      closureImpactStatus: reservation.closureImpactStatus ?? null,
+      closureReason: (reservation as any).closureReason ?? null,
+      closureDate: (reservation as any).closureDate ?? null,
+      closureNotifiedAt: reservation.closureNotifiedAt ?? null,
+      manualResolutionNotes: reservation.manualResolutionNotes ?? null,
     };
   }
 
@@ -1371,6 +1411,13 @@ export class ReservationMemoryRepository
       cancellationReason: (reservation as any).cancellationReason ?? (reservation as any).cancellation_reason ?? null,
       cancelledAt: (reservation as any).cancelledAt ?? (reservation as any).cancelled_at ?? null,
       cancelledByUserId: (reservation as any).cancelledByUserId ?? (reservation as any).cancelled_by_user_id ?? null,
+      closureExceptionId: reservation.closureExceptionId ?? null,
+      isClosureImpacted: reservation.isClosureImpacted ?? false,
+      closureImpactStatus: reservation.closureImpactStatus ?? null,
+      closureNotifiedAt: reservation.closureNotifiedAt ?? null,
+      manualResolutionNotes: reservation.manualResolutionNotes ?? null,
+      closureReason: (reservation as any).closureReason ?? null,
+      closureDate: (reservation as any).closureDate ?? null,
     };
   }
 
@@ -1474,6 +1521,13 @@ export class ReservationMemoryRepository
         cancellationReason: (r as any).cancellationReason ?? (r as any).cancellation_reason ?? null,
         cancelledAt: (r as any).cancelledAt ?? (r as any).cancelled_at ?? null,
         cancelledByUserId: (r as any).cancelledByUserId ?? (r as any).cancelled_by_user_id ?? null,
+        closureExceptionId: r.closureExceptionId ?? null,
+        isClosureImpacted: r.isClosureImpacted ?? false,
+        closureImpactStatus: r.closureImpactStatus ?? null,
+        closureNotifiedAt: r.closureNotifiedAt ?? null,
+        manualResolutionNotes: r.manualResolutionNotes ?? null,
+        closureReason: (r as any).closureReason ?? null,
+        closureDate: (r as any).closureDate ?? null,
       };
     });
   }
@@ -1753,6 +1807,13 @@ export class ReservationMemoryRepository
       rescheduleCount: (r as any).rescheduleCount ?? 0,
       paymentAttempts: paymentAttemptsSummary,
       pendingRelocationRequest: (r as any).pendingRelocationRequest ?? null,
+      closureExceptionId: r.closureExceptionId ?? null,
+      isClosureImpacted: r.isClosureImpacted ?? false,
+      closureImpactStatus: r.closureImpactStatus ?? null,
+      closureNotifiedAt: r.closureNotifiedAt ?? null,
+      manualResolutionNotes: r.manualResolutionNotes ?? null,
+      closureReason: (r as any).closureReason ?? null,
+      closureDate: (r as any).closureDate ?? null,
     };
   }
 
@@ -1848,10 +1909,11 @@ export class ReservationMemoryRepository
     }
 
     const isCustomerActor = input.actorRole === "CUSTOMER";
+    const isClosureWaiver = Boolean(r.isClosureImpacted);
     const currentRescheduleCount = (r as any).rescheduleCount ?? 0;
 
     if (isCustomerActor) {
-      if (currentRescheduleCount >= 1) {
+      if (!isClosureWaiver && currentRescheduleCount >= 1) {
         throw new Error("Customer can only reschedule a reservation once.");
       }
 
@@ -1859,7 +1921,7 @@ export class ReservationMemoryRepository
         const origStartMs = new Date(assigned.startAt).getTime();
         const cutoffHours = input.cutoffHours ?? 12;
         const cutoffMs = cutoffHours * 60 * 60 * 1000;
-        if (nowMs > origStartMs - cutoffMs) {
+        if (!isClosureWaiver && nowMs > origStartMs - cutoffMs) {
           throw new Error(`Reschedule must be requested at least ${cutoffHours} hours before the scheduled start time.`);
         }
 
@@ -2018,7 +2080,10 @@ export class ReservationMemoryRepository
     r.updatedAt = nowIso;
     (r as any).rescheduledAt = nowIso;
     (r as any).rescheduledByRole = input.actorRole ?? "ADMIN";
-    (r as any).rescheduleCount = currentRescheduleCount + 1;
+    (r as any).rescheduleCount = isClosureWaiver ? currentRescheduleCount : currentRescheduleCount + 1;
+    if (r.isClosureImpacted) {
+      r.closureImpactStatus = isCustomerActor ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED";
+    }
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -2925,6 +2990,10 @@ export class ReservationMemoryRepository
       reentry: false,
     });
 
+    if (r.isClosureImpacted) {
+      r.closureImpactStatus = input.actorRole === "CUSTOMER" ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED";
+    }
+
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
       throw new Error("Failed to retrieve updated reservation detail");
@@ -3055,6 +3124,212 @@ export class ReservationMemoryRepository
       };
     }
   }
+
+  async previewClosureImpact(
+    startAtOrInput:
+      | string
+      | {
+          date: string;
+          endDate?: string | null;
+          closureType: string;
+          opensAt?: string | null;
+          closesAt?: string | null;
+          timezone?: string;
+        },
+    endAtParam?: string,
+    _workspaceInstanceIdParam?: string
+  ): Promise<ClosureImpactPreviewResult> {
+    const closureIntervals: Array<{ startUtc: string; endUtc: string }> = [];
+
+    if (typeof startAtOrInput === "string") {
+      closureIntervals.push({
+        startUtc: startAtOrInput,
+        endUtc: endAtParam || startAtOrInput,
+      });
+    } else {
+      const input = startAtOrInput;
+      const tz = input.timezone || "Asia/Manila";
+      const startDate = input.date;
+      const endDate = input.endDate || input.date;
+
+      if (input.closureType === "FULL_DAY") {
+        const startUtc = zonedDateTimeToUtc(startDate, "00:00:00", tz).toISOString();
+        const endUtc = zonedDateTimeToUtc(addDaysHelper(endDate, 1), "00:00:00", tz).toISOString();
+        closureIntervals.push({ startUtc, endUtc });
+      } else if (input.closureType === "SPECIAL_HOURS") {
+        const opensAt = input.opensAt || "00:00";
+        const closesAt = input.closesAt || "24:00";
+        if (opensAt !== "00:00") {
+          closureIntervals.push({
+            startUtc: zonedDateTimeToUtc(startDate, "00:00:00", tz).toISOString(),
+            endUtc: zonedDateTimeToUtc(startDate, opensAt, tz).toISOString(),
+          });
+        }
+        if (closesAt !== "24:00" && closesAt !== "23:59") {
+          closureIntervals.push({
+            startUtc: zonedDateTimeToUtc(startDate, closesAt, tz).toISOString(),
+            endUtc: zonedDateTimeToUtc(addDaysHelper(startDate, 1), "00:00:00", tz).toISOString(),
+          });
+        }
+      }
+    }
+
+    const colliding: ClosureImpactedReservationSummary[] = [];
+
+    for (const r of this.reservations) {
+      if (["CANCELLED", "EXPIRED", "REJECTED", "COMPLETED"].includes(r.status)) {
+        continue;
+      }
+      const assigned = (r.candidates ?? []).find((c) => c.isAssigned) || (r.candidates ?? [])[0];
+      if (!assigned || !assigned.startAt || !assigned.endAt) continue;
+
+      const rStart = new Date(assigned.startAt).getTime();
+      const rEnd = new Date(assigned.endAt).getTime();
+
+      const overlaps = closureIntervals.some((interval) => {
+        const cStart = new Date(interval.startUtc).getTime();
+        const cEnd = new Date(interval.endUtc).getTime();
+        return rStart < cEnd && rEnd > cStart;
+      });
+
+      if (overlaps) {
+        let workspaceDisplayName = assigned.workspaceDisplayName || assigned.workspaceInstanceId;
+        let workspaceInstanceCode = assigned.workspaceInstanceCode || null;
+        if (this.workspaceRepository) {
+          try {
+            const catalog = await this.workspaceRepository.listCatalog();
+            const inst = catalog.instances.find((i) => i.id === assigned.workspaceInstanceId);
+            if (inst) {
+              workspaceDisplayName = inst.displayName;
+              workspaceInstanceCode = inst.instanceCode;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        colliding.push({
+          reservationId: r.id,
+          referenceCode: r.referenceCode,
+          customerName: `${r.customerFirstName} ${r.customerLastName}`.trim(),
+          customerFirstName: r.customerFirstName,
+          customerLastName: r.customerLastName,
+          customerEmail: r.customerEmail,
+          customerContactNumber: r.customerContactNumber ?? null,
+          workspaceDisplayName,
+          workspaceInstanceCode,
+          startAt: assigned.startAt,
+          endAt: assigned.endAt,
+          amountDue: r.amountDue,
+          currency: r.currency,
+          status: r.status,
+          closureImpactStatus: r.closureImpactStatus ?? "AFFECTED_PENDING_ACTION",
+        });
+      }
+    }
+
+    return {
+      impactedCount: colliding.length,
+      reservations: colliding,
+    };
+  }
+
+  async markReservationsClosureImpacted(
+    reservationIds: string[],
+    closureExceptionId?: string | null,
+    closureReason?: string | null,
+    closureDate?: string | null
+  ): Promise<void> {
+    const nowIso = this.nowProvider().toISOString();
+    for (const id of reservationIds) {
+      const r = this.reservations.find((res) => res.id === id || res.referenceCode.toLowerCase() === id.toLowerCase());
+      if (r) {
+        r.isClosureImpacted = true;
+        r.closureImpactStatus = "AFFECTED_PENDING_ACTION";
+        r.closureExceptionId = closureExceptionId ?? null;
+        r.closureNotifiedAt = nowIso;
+        (r as any).closureReason = closureReason ?? null;
+        (r as any).closureDate = closureDate ?? null;
+      }
+    }
+  }
+
+  async logClosurePhoneCall(input: LogClosurePhoneCallInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    const r = this.reservations.find((res) => res.id === input.reservationId || res.referenceCode.toLowerCase() === input.reservationId.toLowerCase());
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+    const nowIso = this.nowProvider().toISOString();
+    const staffName = input.staffName || "Staff Member";
+    const logEntry = `[${nowIso}] Call by ${staffName} (${input.staffUserId}) - Status: ${input.outreachStatus}. Notes: ${input.notes}`;
+    r.manualResolutionNotes = r.manualResolutionNotes ? `${r.manualResolutionNotes}\n${logEntry}` : logEntry;
+
+    this.recordOperationalAudit({
+      reservation: r,
+      action: "CLOSURE_OUTREACH_LOGGED" as any,
+      actedAt: nowIso,
+      actorRole: "STAFF" as any,
+      actorUserId: input.staffUserId,
+      reentry: false,
+    });
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to load reservation detail");
+    }
+    return {
+      success: true,
+      reservation: detail,
+      message: "Customer call logged successfully",
+    };
+  }
+
+  async flagClosureManualResolution(input: FlagClosureManualResolutionInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    const r = this.reservations.find((res) => res.id === input.reservationId || res.referenceCode.toLowerCase() === input.reservationId.toLowerCase());
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+    const nowIso = this.nowProvider().toISOString();
+    r.closureImpactStatus = "MANUAL_RESOLUTION_REQUIRED";
+    if (input.notes) {
+      const noteEntry = `[${nowIso}] Flagged for Manual Resolution by ${input.actorUserId} (${input.actorRole}): ${input.notes}`;
+      r.manualResolutionNotes = r.manualResolutionNotes ? `${r.manualResolutionNotes}\n${noteEntry}` : noteEntry;
+    }
+
+    this.recordOperationalAudit({
+      reservation: r,
+      action: "CLOSURE_MANUAL_RESOLUTION_FLAGGED" as any,
+      actedAt: nowIso,
+      actorRole: (input.actorRole || "ADMIN") as any,
+      actorUserId: input.actorUserId,
+      reentry: false,
+    });
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to load reservation detail");
+    }
+    return {
+      success: true,
+      reservation: detail,
+      message: "Reservation flagged for manual resolution",
+    };
+  }
+}
+
+function addDaysHelper(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 

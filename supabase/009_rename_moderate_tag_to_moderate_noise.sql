@@ -35,12 +35,3 @@ SET default_style = jsonb_set(
 WHERE default_style ? 'recommendationTags'
   AND default_style->'recommendationTags' @> '["Moderate"]'::jsonb;
 
--- 3. Update floor_map_drafts draft_data JSONB if containing "Moderate"
-UPDATE public.floor_map_drafts
-SET draft_data = regexp_replace(draft_data::text, '"Moderate"', '"Moderate Noise"', 'g')::jsonb
-WHERE draft_data::text LIKE '%"Moderate"%';
-
--- 4. Update floor_map_published_versions elements_data JSONB if containing "Moderate"
-UPDATE public.floor_map_published_versions
-SET elements_data = regexp_replace(elements_data::text, '"Moderate"', '"Moderate Noise"', 'g')::jsonb
-WHERE elements_data::text LIKE '%"Moderate"%';

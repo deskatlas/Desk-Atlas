@@ -257,6 +257,10 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
   async createInstance(input: CreateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     await this.assertUniqueInstanceCode(input.instanceCode);
     await this.assertUniqueDisplayName(input.templateId, input.displayName);
+    const operationalStatus = input.operationalStatus ?? "ACTIVE";
+    if (operationalStatus !== "INACTIVE") {
+      await this.assertUniqueActiveFloorDisplayName(input.floorId, input.displayName);
+    }
     const [row] = await this.request<InstanceRow[]>(
       "/workspace_instances?select=*,template:workspace_templates(*),floor:floors(*)",
       {
@@ -272,12 +276,24 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     id: string,
     input: UpdateWorkspaceInstanceInput
   ): Promise<WorkspaceInstanceDetails> {
-    if (input.displayName !== undefined) {
-      const existing = await this.getInstance(id);
-      if (input.displayName.trim().toLowerCase() !== existing.displayName.trim().toLowerCase()) {
-        await this.assertUniqueDisplayName(existing.templateId, input.displayName, id);
-      }
+    const existing = await this.getInstance(id);
+    const targetName = input.displayName ?? existing.displayName;
+    const isNameChanging =
+      input.displayName !== undefined &&
+      input.displayName.trim().toLowerCase() !== existing.displayName.trim().toLowerCase();
+    const isActivating =
+      existing.operationalStatus === "INACTIVE" &&
+      input.operationalStatus !== undefined &&
+      input.operationalStatus !== "INACTIVE";
+
+    if (isNameChanging) {
+      await this.assertUniqueDisplayName(existing.templateId, input.displayName!, id);
     }
+
+    if (isNameChanging || isActivating) {
+      await this.assertUniqueActiveFloorDisplayName(existing.floorId, targetName, id);
+    }
+
     const [row] = await this.request<InstanceRow[]>(
       `/workspace_instances?id=eq.${encodeURIComponent(id)}&select=*,template:workspace_templates(*),floor:floors(*)`,
       {
@@ -415,6 +431,18 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     }
   }
 
+  private async assertUniqueActiveFloorDisplayName(floorId: string, displayName: string, excludeId?: string) {
+    let query = `/workspace_instances?select=id&floor_id=eq.${encodeURIComponent(floorId)}&display_name=ilike.${encodeURIComponent(displayName)}&operational_status=neq.INACTIVE`;
+    if (excludeId) {
+      query += `&id=neq.${encodeURIComponent(excludeId)}`;
+    }
+    query += '&limit=1';
+    const rows = await this.request<Array<{ id: string }>>(query);
+    if (rows.length > 0) {
+      throw new WorkspaceConflictError(`An active workspace named '${displayName}' already exists on this floor.`);
+    }
+  }
+
   private async request<T>(
     path: string,
     options: RequestInit & { prefer?: string } = {}
@@ -433,6 +461,13 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
 
     if (!response.ok) {
       const detail = await response.text();
+      if (
+        detail.includes('uq_workspace_instances_active_floor_name') ||
+        detail.includes('unique_active_instance_display_name_per_floor') ||
+        (response.status === 409 && detail.includes('display_name'))
+      ) {
+        throw new WorkspaceConflictError('An active workspace with this name already exists on this floor.');
+      }
       throw new Error(`Supabase workspace request failed (${response.status}): ${detail}`);
     }
 

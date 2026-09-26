@@ -18,9 +18,13 @@ export async function GET(request: NextRequest) {
     const occupiedNow = searchParams.get('occupiedNow') === 'true' || searchParams.get('scope') === 'occupied_now';
     const upcoming = searchParams.get('upcoming') === 'true' || searchParams.get('nextReservation') === 'true';
 
+    const CACHE_HEADERS = {
+      'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30',
+    };
+
     if (upcoming) {
       const result = await service.getNextUpcomingBooking(workspaceInstanceId, nowIso);
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     if (occupiedNow) {
@@ -28,7 +32,7 @@ export async function GET(request: NextRequest) {
         nowIso,
         durationMinutes: !isNaN(durationMinutes) && durationMinutes > 0 ? durationMinutes : undefined,
       });
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     if (templateId) {
@@ -39,7 +43,7 @@ export async function GET(request: NextRequest) {
         startTime: searchParams.get('startTime') ?? undefined,
         nowIso,
       });
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     if (searchParams.has('date')) {
@@ -49,7 +53,7 @@ export async function GET(request: NextRequest) {
         durationMinutes,
         nowIso,
       });
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     const result = await service.listDateAvailability({
@@ -59,7 +63,7 @@ export async function GET(request: NextRequest) {
       durationMinutes,
       nowIso,
     });
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: CACHE_HEADERS });
   } catch (error) {
     if (error instanceof AvailabilityValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

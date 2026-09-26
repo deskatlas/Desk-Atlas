@@ -14,6 +14,12 @@ export interface GuestReservationTrackingRecord {
   rejectionReason?: string | null;
   rescheduleCount?: number;
   pendingRelocationRequest?: CustomerRelocationRequest | null;
+  isClosureImpacted?: boolean;
+  closureImpactStatus?: import("../models/reservation").ClosureImpactStatus | null;
+  closureReason?: string | null;
+  closureDate?: string | null;
+  closureNotifiedAt?: string | null;
+  manualResolutionNotes?: string | null;
 }
 
 export interface GuestReservationTrackingRepository {

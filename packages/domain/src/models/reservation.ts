@@ -12,6 +12,12 @@ export type ReservationStatus =
   | "EXPIRED"
   | "REJECTED";
 
+export type ClosureImpactStatus =
+  | "AFFECTED_PENDING_ACTION"
+  | "CUSTOMER_RESOLVED"
+  | "STAFF_RESOLVED"
+  | "MANUAL_RESOLUTION_REQUIRED";
+
 export interface Reservation {
   id: string;
   referenceCode: string;
@@ -38,6 +44,11 @@ export interface Reservation {
   cancelledByUserId?: string | null;
   cancelledAt?: string | null;
   rescheduleCount?: number;
+  closureExceptionId?: string | null;
+  isClosureImpacted?: boolean;
+  closureImpactStatus?: ClosureImpactStatus | null;
+  closureNotifiedAt?: string | null;
+  manualResolutionNotes?: string | null;
 }
 
 export type CandidateRank = 0 | 1 | 2;
@@ -323,6 +334,13 @@ export interface StaffOperationalReservation {
   paymentExpiresAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  closureExceptionId?: string | null;
+  isClosureImpacted?: boolean;
+  closureImpactStatus?: ClosureImpactStatus | null;
+  closureNotifiedAt?: string | null;
+  manualResolutionNotes?: string | null;
+  closureReason?: string | null;
+  closureDate?: string | null;
   paymentAttempts?: Array<{
     id?: string;
     channel?: string;
@@ -420,9 +438,14 @@ export interface GuestReservationTrackingResult {
   canRelocate?: boolean;
   remainingMinutes?: number;
   pendingRelocationRequest?: CustomerRelocationRequest | null;
+  isClosureImpacted?: boolean;
+  closureImpactStatus?: ClosureImpactStatus | null;
+  closureReason?: string | null;
+  closureDate?: string | null;
+  closureNotifiedAt?: string | null;
 }
 
-export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue" | "cancelled";
+export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue" | "cancelled" | "closure_impacted";
 
 export interface AdminReservationSummary {
   id: string;
@@ -465,6 +488,13 @@ export interface AdminReservationSummary {
   cancellationReason?: string | null;
   cancelledAt?: string | null;
   cancelledByUserId?: string | null;
+  closureExceptionId?: string | null;
+  isClosureImpacted?: boolean;
+  closureImpactStatus?: ClosureImpactStatus | null;
+  closureNotifiedAt?: string | null;
+  manualResolutionNotes?: string | null;
+  closureReason?: string | null;
+  closureDate?: string | null;
 }
 
 export interface AdminReservationCandidateSummary {
@@ -548,6 +578,51 @@ export interface AdminReservationDetail {
   rescheduleCount?: number;
   paymentAttempts?: AdminReservationPaymentAttemptSummary[];
   pendingRelocationRequest?: CustomerRelocationRequest | null;
+  closureExceptionId?: string | null;
+  isClosureImpacted?: boolean;
+  closureImpactStatus?: ClosureImpactStatus | null;
+  closureNotifiedAt?: string | null;
+  manualResolutionNotes?: string | null;
+  closureReason?: string | null;
+  closureDate?: string | null;
+}
+
+export interface ClosureImpactedReservationSummary {
+  reservationId: string;
+  referenceCode: string;
+  customerName: string;
+  customerFirstName: string;
+  customerLastName: string;
+  customerEmail: string;
+  customerContactNumber?: string | null;
+  workspaceDisplayName: string;
+  workspaceInstanceCode?: string | null;
+  startAt: string;
+  endAt: string;
+  amountDue: number;
+  currency: string;
+  status: ReservationStatus;
+  closureImpactStatus?: ClosureImpactStatus | null;
+}
+
+export interface ClosureImpactPreviewResult {
+  impactedCount: number;
+  reservations: ClosureImpactedReservationSummary[];
+}
+
+export interface LogClosurePhoneCallInput {
+  reservationId: string;
+  staffUserId: string;
+  staffName?: string;
+  outreachStatus: "Connected" | "Voicemail" | "Unreachable";
+  notes: string;
+}
+
+export interface FlagClosureManualResolutionInput {
+  reservationId: string;
+  actorUserId: string;
+  actorRole: string;
+  notes?: string;
 }
 
 

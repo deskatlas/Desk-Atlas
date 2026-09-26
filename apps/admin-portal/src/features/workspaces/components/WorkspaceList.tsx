@@ -31,8 +31,10 @@ export function WorkspaceList() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [templateToDelete, setTemplateToDelete] = useState<any | null>(null);
   const [instanceToDelete, setInstanceToDelete] = useState<any | null>(null);
+  const [instanceToRestore, setInstanceToRestore] = useState<any | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteInstanceError, setDeleteInstanceError] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   const [instanceStatusFilter, setInstanceStatusFilter] = useState<'active' | 'archived'>('active');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -424,6 +426,33 @@ export function WorkspaceList() {
     }
   };
 
+  const handleRestoreInstance = async () => {
+    if (!instanceToRestore) return;
+    try {
+      setActionLoading(true);
+      setRestoreError(null);
+      const res = await fetch(`/api/admin/workspaces/instances/${instanceToRestore.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operationalStatus: 'ACTIVE' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to restore physical workspace');
+      }
+      setToastMessage({
+        text: `Physical workspace "${instanceToRestore.displayName || instanceToRestore.name}" was restored to active instances.`,
+        type: 'success',
+      });
+      setInstanceToRestore(null);
+      await loadData();
+    } catch (err: any) {
+      setRestoreError(err.message || 'Failed to restore physical workspace');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const activeTemplates = templates.filter((t) => t.isActive !== false);
   const archivedTemplates = templates.filter((t) => t.isActive === false);
   const activeInstances = instances.filter(
@@ -711,6 +740,15 @@ export function WorkspaceList() {
                                 <span aria-hidden="true">{mark}</span>{status}
                               </span>
                               <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
+                                {status === 'INACTIVE' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setRestoreError(null); setInstanceToRestore(i); }}
+                                    style={{ flex: 1, background: 'var(--da-brand-dark)', border: 'none', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: '#fff' }}
+                                  >
+                                    Restore
+                                  </button>
+                                ) : null}
                                 <button onClick={() => openEditInstance(i)} style={{ flex: 1, background: 'var(--da-canvas)', border: 'none', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-text-primary)' }}>Edit</button>
                                 <button 
                                   type="button"
@@ -1096,6 +1134,73 @@ export function WorkspaceList() {
                 style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: actionLoading ? 'not-allowed' : 'pointer', background: 'var(--da-danger)', color: '#fff', border: 'none', fontFamily: 'var(--da-font-family)', opacity: actionLoading ? 0.7 : 1 }}
               >
                 {actionLoading ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {instanceToRestore && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(18, 37, 26, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, overflowY: 'auto' }}>
+          <div style={{ background: 'var(--da-surface)', padding: '28px', borderRadius: '16px', width: '100%', maxWidth: '480px', boxShadow: 'var(--da-shadow-lg)', margin: '20px auto' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 12px', letterSpacing: '-0.02em' }}>
+              Restore Physical Workspace
+            </h2>
+            
+            {restoreError && (
+              <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: '13px', marginBottom: '14px', fontWeight: 600 }}>
+                {restoreError}
+              </div>
+            )}
+
+            <div style={{ fontSize: '14px', color: 'var(--da-text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
+              Are you sure you want to restore <strong style={{ color: 'var(--da-text-primary)' }}>{instanceToRestore.displayName || instanceToRestore.name}</strong> to active service?
+            </div>
+
+            <div style={{ background: 'var(--da-canvas)', border: '1px solid var(--da-border)', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: 'var(--da-text-primary)' }}>
+              <div><strong>Template:</strong> {instanceToRestore.template?.name || instanceToRestore.template || 'Default'}</div>
+              <div><strong>Floor:</strong> {instanceToRestore.floor?.name || instanceToRestore.floor || 'Floor'}</div>
+              <div><strong>Instance Code:</strong> {instanceToRestore.instanceCode || ''}</div>
+              <div><strong>Placement:</strong> {mapPlacedInstanceIds.has(instanceToRestore.id) ? 'Placed on Map' : 'Unmapped'}</div>
+            </div>
+
+            {instanceToRestore.template?.isActive === false && (
+              <div style={{ padding: '10px 14px', borderRadius: '8px', background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', fontSize: '13px', marginBottom: '16px', fontWeight: 600, lineHeight: 1.4 }}>
+                Cannot restore this physical instance because its parent template "{instanceToRestore.template?.name || 'Template'}" is archived. Please restore the template first.
+              </div>
+            )}
+
+            <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', lineHeight: 1.4, marginBottom: '20px' }}>
+              Restoring this workspace will set its status to ACTIVE. It will become available for floor map placement in Map Builder and future reservations.
+            </div>
+
+            <div className="mobile-flex-col" style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => { setInstanceToRestore(null); setRestoreError(null); }}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', background: '#fff', color: 'var(--da-text-primary)', border: '1px solid var(--da-border)', fontFamily: 'var(--da-font-family)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading || instanceToRestore.template?.isActive === false}
+                onClick={handleRestoreInstance}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: actionLoading || instanceToRestore.template?.isActive === false ? 'not-allowed' : 'pointer',
+                  background: 'var(--da-brand-dark)',
+                  color: '#fff',
+                  border: 'none',
+                  fontFamily: 'var(--da-font-family)',
+                  opacity: actionLoading || instanceToRestore.template?.isActive === false ? 0.6 : 1,
+                }}
+              >
+                {actionLoading ? 'Restoring...' : 'Confirm Restore'}
               </button>
             </div>
           </div>

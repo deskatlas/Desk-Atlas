@@ -49,8 +49,29 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateReservationRequest = await request.json();
 
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    let maxAdvanceDays = 90;
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        const { data: settingsData } = await supabase
+          .from('business_settings')
+          .select('max_advance_booking_days')
+          .eq('id', 1)
+          .single();
+        if (settingsData && typeof settingsData.max_advance_booking_days === 'number') {
+          maxAdvanceDays = settingsData.max_advance_booking_days;
+        }
+      } catch {
+        // Fall back to default
+      }
+    }
+
     if (body.candidates && Array.isArray(body.candidates)) {
       const now = Date.now();
+      const maxAdvanceMs = maxAdvanceDays * 24 * 60 * 60 * 1000;
       for (const candidate of body.candidates) {
         const candidateStartTime = new Date(candidate.startAt).getTime();
         if (isNaN(candidateStartTime) || candidateStartTime - now < 30 * 60 * 1000) {
@@ -62,11 +83,17 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+        if (candidateStartTime > now + maxAdvanceMs) {
+          const requestedDateStr = candidate.startAt.split('T')[0];
+          return NextResponse.json(
+            {
+              error: `Selected booking date (${requestedDateStr}) exceeds the maximum allowable booking window of ${maxAdvanceDays} days.`,
+            },
+            { status: 400 }
+          );
+        }
       }
     }
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase configuration is missing.');

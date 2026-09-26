@@ -394,6 +394,7 @@ describe("MF-156: 4-Way Tab Separation (Reservations, Active Operations, Complet
         { label: "Upcoming", filter: "upcoming" },
         { label: "Awaiting Proof", filter: "awaiting_proof" },
         { label: "Counter Queue", filter: "counter_queue" },
+        { label: "Closure Impacted", filter: "closure_impacted" },
         { label: "Cancelled", filter: "cancelled" },
       ]);
 
@@ -421,6 +422,7 @@ describe("MF-156: 4-Way Tab Separation (Reservations, Active Operations, Complet
         { label: "All", filter: "all" },
         { label: "Upcoming", filter: "upcoming" },
         { label: "Counter Queue", filter: "counter_queue" },
+        { label: "Closure Impacted", filter: "closure_impacted" },
         { label: "Cancelled", filter: "cancelled" },
       ]);
 

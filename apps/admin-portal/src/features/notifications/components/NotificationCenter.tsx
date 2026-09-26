@@ -15,6 +15,7 @@ import {
   Clock,
 } from "lucide-react";
 import { AdminNotificationItem, AdminNotificationType } from "@deskatlas/domain";
+import { useActiveTabPolling } from "@deskatlas/ui";
 
 const STORAGE_KEY = "deskatlas_admin_read_notifications";
 
@@ -166,11 +167,7 @@ export function NotificationCenter() {
     }
   };
 
-  useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  useActiveTabPolling(fetchNotifications, 60000);
 
   // Close dropdown on click outside or escape key
   useEffect(() => {

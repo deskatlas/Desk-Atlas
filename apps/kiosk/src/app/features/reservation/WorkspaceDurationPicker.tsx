@@ -42,6 +42,7 @@ export function WorkspaceDurationPicker({
   const startStr = `${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}`;
 
   const endTotalMinutes = startHour * 60 + startMinute + (durationHours > 0 ? durationHours : 0) * 60;
+  const isNextDay = (durationHours > 0) && (endTotalMinutes >= 1440);
   const endHour = Math.floor(endTotalMinutes / 60) % 24;
   const endMinute = endTotalMinutes % 60;
   const endStr = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
@@ -72,7 +73,9 @@ export function WorkspaceDurationPicker({
           Step 2: Walk-In Duration
         </div>
         <h1 style={{ fontSize: "36px", fontWeight: 800, color: "#12251A", margin: "0 0 10px 0" }}>
-          How long do you need this {template.name}?
+          {isNextDay
+            ? `Walk-in Stay • Concludes Tomorrow at ${formatTime12Hour(endStr)} (Next Day)`
+            : `How long do you need this ${template.name}?`}
         </h1>
         <p style={{ fontSize: "18px", color: "#455A64", margin: 0 }}>
           Walk-in bookings start immediately upon confirmation.
@@ -97,7 +100,7 @@ export function WorkspaceDurationPicker({
             Immediate Walk-In Window
           </div>
           <div style={{ fontSize: "22px", fontWeight: 800, color: "#1B5E20", marginTop: "4px" }}>
-            Starting Now ({formatTime12Hour(startStr)}) → {formatTime12Hour(endStr)}
+            Starting Now ({formatTime12Hour(startStr)}) → {formatTime12Hour(endStr)}{isNextDay ? " (Next Day)" : ""}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -120,6 +123,8 @@ export function WorkspaceDurationPicker({
         {DURATION_OPTIONS.map((hours) => {
           const isSelected = durationHours === hours;
           const cost = rate * hours;
+          const buttonEndMinutes = startHour * 60 + startMinute + hours * 60;
+          const buttonIsNextDay = buttonEndMinutes >= 1440;
           return (
             <button
               key={hours}
@@ -143,6 +148,18 @@ export function WorkspaceDurationPicker({
               <div style={{ fontSize: "32px", fontWeight: 800, marginBottom: "4px" }}>
                 {hours} {hours === 1 ? "hr" : "hrs"}
               </div>
+              {buttonIsNextDay && (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: isSelected ? "#C8F451" : "#2E7D32",
+                    marginBottom: "4px",
+                  }}
+                >
+                  (Next Day)
+                </div>
+              )}
               <div
                 style={{
                   fontSize: "16px",

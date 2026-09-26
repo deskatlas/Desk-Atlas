@@ -11,6 +11,7 @@ export type AdminReservationsSubFilter =
   | "upcoming"
   | "awaiting_proof"
   | "counter_queue"
+  | "closure_impacted"
   | "cancelled";
 
 export type AdminOperationsSubFilter =
@@ -33,6 +34,7 @@ export type StaffReservationsSubFilter =
   | "upcoming"
   | "confirmed"
   | "counter_queue"
+  | "closure_impacted"
   | "cancelled";
 
 export type StaffOperationsSubFilter =
@@ -60,6 +62,7 @@ export const ADMIN_RESERVATIONS_TAB_FILTERS: ReservationTabFilterOption<AdminRes
   { label: "Upcoming", filter: "upcoming" },
   { label: "Awaiting Proof", filter: "awaiting_proof" },
   { label: "Counter Queue", filter: "counter_queue" },
+  { label: "Closure Impacted", filter: "closure_impacted" },
   { label: "Cancelled", filter: "cancelled" },
 ];
 
@@ -85,6 +88,7 @@ export const STAFF_RESERVATIONS_TAB_FILTERS: ReservationTabFilterOption<StaffRes
   { label: "All", filter: "all" },
   { label: "Upcoming", filter: "upcoming" },
   { label: "Counter Queue", filter: "counter_queue" },
+  { label: "Closure Impacted", filter: "closure_impacted" },
   { label: "Cancelled", filter: "cancelled" },
 ];
 
@@ -335,6 +339,13 @@ export function filterAdminReservationsByTab(
             !isReservationRejected(r)
         );
 
+      case "closure_impacted":
+        return reservations.filter(
+          (r) =>
+            r.isClosureImpacted === true ||
+            (Boolean(r.closureImpactStatus) && r.closureImpactStatus !== "CUSTOMER_RESOLVED" && r.closureImpactStatus !== "STAFF_RESOLVED")
+        );
+
       case "cancelled":
         return reservations.filter((r) => isReservationCancelled(r));
 
@@ -566,6 +577,13 @@ export function filterStaffReservationsByTab(
 
       case "counter_queue":
         return base.filter((r) => r.reservationStatus === "PENDING_COUNTER_CONFIRMATION");
+
+      case "closure_impacted":
+        return reservations.filter(
+          (r) =>
+            r.isClosureImpacted === true ||
+            (Boolean(r.closureImpactStatus) && r.closureImpactStatus !== "CUSTOMER_RESOLVED" && r.closureImpactStatus !== "STAFF_RESOLVED")
+        );
 
       case "cancelled":
         return reservations.filter((r) => isReservationCancelled(r));

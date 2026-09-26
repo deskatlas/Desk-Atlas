@@ -6,6 +6,7 @@ import {
   getWorkspacePhotoObjectPosition,
 } from "@/features/workspace-discovery";
 import type { AvailableTimeSlot, AvailableDate } from "@deskatlas/domain";
+import { calculateMaxBookingDate } from "@deskatlas/domain";
 import { fetchDateAvailability, fetchTimeAvailability } from "@/app/lib/availabilityApi";
 import { handleNumericKeyDown } from "@deskatlas/ui";
 
@@ -25,6 +26,7 @@ interface ScheduleCalendarStepProps {
     initialStartTime?: string;
     excludedStartTimes?: string[];
   };
+  maxAdvanceBookingDays?: number;
 }
 
 // Format 24-hour HH:mm to friendly 12-hour (e.g. "09:00" -> "9:00 AM", "13:00" -> "1:00 PM")
@@ -77,11 +79,21 @@ export function ScheduleCalendarStep({
   onContinue,
   candidateRank = 0,
   lockedSchedule,
+  maxAdvanceBookingDays = 90,
 }: ScheduleCalendarStepProps) {
   const todayStr = useMemo(() => getTodayManila(), []);
   const [todayYear, todayMonth] = useMemo(() => todayStr.split("-").map(Number), [todayStr]);
   const initialDate = lockedSchedule?.date || todayStr;
   const [initialYear, initialMonth] = initialDate.split("-").map(Number);
+
+  const maxAllowedDateStr = useMemo(
+    () => calculateMaxBookingDate(todayStr, maxAdvanceBookingDays || 90),
+    [todayStr, maxAdvanceBookingDays]
+  );
+  const [maxViewYear, maxViewMonth] = useMemo(
+    () => maxAllowedDateStr.split("-").map(Number),
+    [maxAllowedDateStr]
+  );
 
   const [viewYear, setViewYear] = useState<number>(initialYear);
   const [viewMonth, setViewMonth] = useState<number>(initialMonth); // 1-12
@@ -120,6 +132,8 @@ export function ScheduleCalendarStep({
 
   const isCurrentOrPastMonth =
     viewYear < todayYear || (viewYear === todayYear && viewMonth <= todayMonth);
+  const isAtOrPastMaxMonth =
+    viewYear > maxViewYear || (viewYear === maxViewYear && viewMonth >= maxViewMonth);
 
   // Fetch month date availability
   useEffect(() => {
@@ -207,6 +221,7 @@ export function ScheduleCalendarStep({
   };
 
   const handleNextMonth = () => {
+    if (isAtOrPastMaxMonth) return;
     if (viewMonth === 12) {
       setViewYear((y) => y + 1);
       setViewMonth(1);
@@ -344,7 +359,12 @@ export function ScheduleCalendarStep({
                   <button
                     type="button"
                     onClick={handleNextMonth}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--da-border)] bg-white text-sm font-bold hover:bg-slate-50 text-[var(--da-brand-dark)] transition"
+                    disabled={isAtOrPastMaxMonth}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--da-border)] bg-white text-sm font-bold transition ${
+                      isAtOrPastMaxMonth
+                        ? "opacity-30 cursor-not-allowed bg-slate-50 text-slate-300"
+                        : "hover:bg-slate-50 text-[var(--da-brand-dark)]"
+                    }`}
                     aria-label="Next month"
                   >
                     →
@@ -386,16 +406,24 @@ export function ScheduleCalendarStep({
                 const isToday = dateStr === todayStr;
                 const isSelected = dateStr === selectedDate;
 
+                const isBeyondHorizon = dateStr > maxAllowedDateStr;
                 const dayAvail = monthAvailability[dateStr];
                 const isClosed = dayAvail && !dayAvail.isAvailable && dayAvail.reason === "BUSINESS_CLOSED";
                 const isBlocked = dayAvail && !dayAvail.isAvailable && dayAvail.reason === "BLOCKED";
-                const isUnavailable = isPast || isClosed || isBlocked || (Boolean(lockedSchedule) && !isSelected);
+                const isUnavailable = isPast || isBeyondHorizon || isClosed || isBlocked || (Boolean(lockedSchedule) && !isSelected);
 
                 return (
                   <button
                     key={dateStr}
                     type="button"
                     disabled={isUnavailable}
+                    title={
+                      isBeyondHorizon
+                        ? `Bookings open only up to ${maxAdvanceBookingDays} days in advance (until ${formatDateDisplay(maxAllowedDateStr)})`
+                        : isClosed
+                        ? "Business is closed on this day"
+                        : undefined
+                    }
                     onClick={() => {
                       if (!lockedSchedule) {
                         setSelectedDate(dateStr);
@@ -404,7 +432,7 @@ export function ScheduleCalendarStep({
                     className={`group relative flex h-10 sm:h-12 flex-col items-center justify-center rounded-xl text-xs font-bold transition-all ${
                       isSelected
                         ? "bg-[var(--da-primary)] text-white shadow-md ring-2 ring-[var(--da-accent)]"
-                        : isPast
+                        : isPast || isBeyondHorizon
                         ? "opacity-30 cursor-not-allowed bg-slate-50 text-slate-400"
                         : isClosed || isBlocked || Boolean(lockedSchedule)
                         ? "opacity-45 cursor-not-allowed bg-slate-50 text-slate-400 border border-slate-100"

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { DeactivatedAccountModal } from '@deskatlas/ui';
+import { DeactivatedAccountModal, useActiveTabPolling } from '@deskatlas/ui';
 
 type Role = 'admin' | 'staff' | 'member' | null;
 
@@ -49,46 +49,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Heartbeat check every 15 seconds
-  useEffect(() => {
+  // Heartbeat check every 60 seconds with active tab visibility guard
+  const checkSession = useCallback(async () => {
     if (!user?.id || isDeactivated) return;
+    try {
+      const res = await fetch('/api/auth/session', {
+        headers: {
+          'x-user-id': user.id || '',
+          'x-user-role': (user.role || 'STAFF').toUpperCase(),
+        },
+        cache: 'no-store',
+      });
 
-    let isCancelled = false;
-
-    const checkSession = async () => {
-      try {
-        const res = await fetch('/api/auth/session', {
-          headers: {
-            'x-user-id': user.id || '',
-            'x-user-role': (user.role || 'STAFF').toUpperCase(),
-          },
-          cache: 'no-store',
-        });
-
-        if (isCancelled) return;
-
-        if (res.status === 403) {
-          handleDeactivation();
-          return;
-        }
-
-        const data = await res.json().catch(() => ({}));
-        if (data?.deactivated === true || (data?.active === false && res.status !== 200)) {
-          handleDeactivation();
-        }
-      } catch (e) {
-        // ignore network error
+      if (res.status === 403) {
+        handleDeactivation();
+        return;
       }
-    };
 
-    checkSession();
-    const interval = setInterval(checkSession, 15000);
-
-    return () => {
-      isCancelled = true;
-      clearInterval(interval);
-    };
+      const data = await res.json().catch(() => ({}));
+      if (data?.deactivated === true || (data?.active === false && res.status !== 200)) {
+        handleDeactivation();
+      }
+    } catch {
+      // ignore network error
+    }
   }, [user?.id, user?.role, isDeactivated, handleDeactivation]);
+
+  useActiveTabPolling(checkSession, 60000, {
+    enabled: Boolean(user?.id) && !isDeactivated,
+    immediate: true,
+  });
 
   // Global fetch response interceptor for 403 deactivations (for active logged-in sessions)
   useEffect(() => {

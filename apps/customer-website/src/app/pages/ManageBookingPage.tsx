@@ -353,7 +353,14 @@ export function ManageBookingPage() {
                           setAvailableTimes([]);
                         }}
                         className="rdp-custom"
-                        disabled={(date) => date < new Date()}
+                        disabled={(date) => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          if (date < today) return true;
+                          const maxDate = new Date(today);
+                          maxDate.setDate(maxDate.getDate() + 90);
+                          return date > maxDate;
+                        }}
                       />
                     </div>
                   )}

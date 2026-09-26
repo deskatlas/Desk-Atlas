@@ -30,6 +30,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
     rescheduleMaxAdvanceUnit: 'DAYS',
+    maxAdvanceBookingDays: 90,
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     cancellationPolicyPdfUrl: null,
@@ -93,6 +94,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
       ...this.businessSettings,
       rescheduleMaxAdvanceValue: this.businessSettings.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      maxAdvanceBookingDays: this.businessSettings.maxAdvanceBookingDays ?? 90,
       facebookUrl: this.businessSettings.facebookUrl ?? null,
       instagramUrl: this.businessSettings.instagramUrl ?? null,
       twitterUrl: this.businessSettings.twitterUrl ?? null,
@@ -136,6 +138,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
       rescheduleMaxAdvanceUnit: input.rescheduleMaxAdvanceUnit !== undefined && input.rescheduleMaxAdvanceUnit !== null
         ? input.rescheduleMaxAdvanceUnit
         : (this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS'),
+      maxAdvanceBookingDays: input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null
+        ? input.maxAdvanceBookingDays
+        : (this.businessSettings.maxAdvanceBookingDays ?? 90),
       landingPreviewPhotos:
         input.landingPreviewPhotos !== undefined
           ? [...input.landingPreviewPhotos]
@@ -162,6 +167,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
       ...this.businessSettings,
       rescheduleMaxAdvanceValue: this.businessSettings.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      maxAdvanceBookingDays: this.businessSettings.maxAdvanceBookingDays ?? 90,
       facebookUrl: this.businessSettings.facebookUrl ?? null,
       instagramUrl: this.businessSettings.instagramUrl ?? null,
       twitterUrl: this.businessSettings.twitterUrl ?? null,

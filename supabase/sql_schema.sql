@@ -201,7 +201,8 @@ CREATE TABLE "map_versions" (
   "published_by_user_id" uuid,
   "created_at" timestamptz NOT NULL DEFAULT (now()),
   "updated_at" timestamptz NOT NULL DEFAULT (now()),
-  "published_at" timestamptz
+  "published_at" timestamptz,
+  "compiled_map_cache" jsonb
 );
 
 CREATE TABLE "map_elements" (

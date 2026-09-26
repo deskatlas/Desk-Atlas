@@ -143,9 +143,6 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
     const blockingStatuses = new Set([
       'CONFIRMED',
       'CHECKED_IN',
-      'PENDING_PAYMENT',
-      'PAYMENT_UNDER_REVIEW',
-      'PENDING_COUNTER_CONFIRMATION',
     ]);
     for (const res of this.reservations) {
       if (

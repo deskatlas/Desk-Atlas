@@ -116,6 +116,32 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     floorId: string,
     options?: { audience?: PublishedMapAudience }
   ): Promise<PublishedFloorMap | null> {
+    const isStaffOrAdmin = options?.audience === 'STAFF' || options?.audience === 'ADMIN';
+
+    // Phase 2: Instant pre-materialized compiled_map_cache point lookup (< 15ms)
+    const [cachedRow] = await this.request<Array<{ compiled_map_cache: PublishedFloorMap | null }>>(
+      `/map_versions?select=compiled_map_cache&floor_id=eq.${encodeURIComponent(
+        floorId
+      )}&status=eq.PUBLISHED&limit=1`
+    );
+
+    if (cachedRow?.compiled_map_cache) {
+      const compiled = cachedRow.compiled_map_cache;
+      if (!isStaffOrAdmin) {
+        return {
+          ...compiled,
+          elements: compiled.elements.filter((row) => {
+            if (row.elementRole === 'WORKSPACE' && row.workspace?.operationalStatus === 'INACTIVE') {
+              return false;
+            }
+            return true;
+          }),
+        };
+      }
+      return compiled;
+    }
+
+    // Graceful fallback for legacy records prior to pre-materialization
     const [floorRow] = await this.request<FloorRow[]>(
       `/floors?select=*&id=eq.${encodeURIComponent(floorId)}&is_active=eq.true&limit=1`
     );
@@ -138,8 +164,6 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
       )}&order=z_index.asc,id.asc`
     );
 
-    const isStaffOrAdmin = options?.audience === 'STAFF' || options?.audience === 'ADMIN';
-
     return {
       floor: mapFloor(floorRow),
       version: mapPublishedVersion(versionRow),
@@ -155,6 +179,41 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
         })
         .map((row) => mapPublishedElement(row, floorRow)),
     };
+  }
+
+  async loadAllPublishedFloorMaps(
+    options?: { audience?: PublishedMapAudience }
+  ): Promise<PublishedFloorMap[]> {
+    const publishedVersions = await this.request<
+      Array<{ compiled_map_cache: PublishedFloorMap | null; floor_id: string }>
+    >('/map_versions?select=compiled_map_cache,floor_id&status=eq.PUBLISHED');
+
+    const isStaffOrAdmin = options?.audience === 'STAFF' || options?.audience === 'ADMIN';
+    const maps: PublishedFloorMap[] = [];
+
+    for (const v of publishedVersions) {
+      if (v.compiled_map_cache) {
+        const compiled = v.compiled_map_cache;
+        maps.push(
+          !isStaffOrAdmin
+            ? {
+                ...compiled,
+                elements: compiled.elements.filter((el) => {
+                  if (el.elementRole === 'WORKSPACE' && el.workspace?.operationalStatus === 'INACTIVE') {
+                    return false;
+                  }
+                  return true;
+                }),
+              }
+            : compiled
+        );
+      } else {
+        const map = await this.loadPublishedFloorMap(v.floor_id, options);
+        if (map) maps.push(map);
+      }
+    }
+
+    return maps;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -262,9 +321,17 @@ function extractPhotoPosition(
   defaultStyle: Record<string, unknown> | null | undefined
 ): { x: number; y: number } | undefined {
   if (!defaultStyle) return undefined;
-  const pos = defaultStyle.photoPosition as any;
-  if (pos && typeof pos === 'object' && typeof pos.x === 'number' && typeof pos.y === 'number') {
-    return { x: pos.x, y: pos.y };
+  const pos = defaultStyle.photoPosition;
+  if (
+    pos &&
+    typeof pos === 'object' &&
+    'x' in pos &&
+    'y' in pos &&
+    typeof (pos as { x: unknown; y: unknown }).x === 'number' &&
+    typeof (pos as { x: unknown; y: unknown }).y === 'number'
+  ) {
+    const typed = pos as { x: number; y: number };
+    return { x: typed.x, y: typed.y };
   }
   return undefined;
 }

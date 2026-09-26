@@ -38,6 +38,10 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     });
   }
 
+  seedFloor(floor: Floor) {
+    this.floors.set(floor.id, { ...floor });
+  }
+
   async listCatalog(): Promise<WorkspaceCatalog> {
     return {
       templates: Array.from(this.templates.values()),
@@ -164,6 +168,9 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     this.requireUniqueDisplayName(template.id, input.displayName);
     const floor = this.requireFloor(input.floorId);
     const operationalStatus = input.operationalStatus ?? 'ACTIVE';
+    if (operationalStatus !== 'INACTIVE') {
+      this.requireUniqueActiveFloorDisplayName(floor.id, input.displayName);
+    }
     const instance: WorkspaceInstanceDetails = {
       id: `instance-${this.sequence++}`,
       templateId: template.id,
@@ -181,10 +188,24 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
   async updateInstance(id: string, input: UpdateWorkspaceInstanceInput): Promise<WorkspaceInstanceDetails> {
     const existing = this.requireInstance(id);
-    if (input.displayName !== undefined && input.displayName.trim().toLowerCase() !== existing.displayName.trim().toLowerCase()) {
-      this.requireUniqueDisplayName(existing.templateId, input.displayName, existing.id);
-    }
+    const targetName = input.displayName ?? existing.displayName;
     const newStatus = input.operationalStatus ?? existing.operationalStatus;
+    const isNameChanging =
+      input.displayName !== undefined &&
+      input.displayName.trim().toLowerCase() !== existing.displayName.trim().toLowerCase();
+    const isActivating =
+      existing.operationalStatus === 'INACTIVE' &&
+      input.operationalStatus !== undefined &&
+      input.operationalStatus !== 'INACTIVE';
+
+    if (isNameChanging) {
+      this.requireUniqueDisplayName(existing.templateId, input.displayName!, existing.id);
+    }
+
+    if (isNameChanging || isActivating) {
+      this.requireUniqueActiveFloorDisplayName(existing.floorId, targetName, existing.id);
+    }
+
     let newNote = existing.maintenanceNote ?? null;
     if (newStatus === 'MAINTENANCE') {
       if (input.maintenanceNote !== undefined) {
@@ -196,7 +217,7 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
     const updated: WorkspaceInstanceDetails = {
       ...existing,
-      displayName: input.displayName ?? existing.displayName,
+      displayName: targetName,
       operationalStatus: newStatus,
       maintenanceNote: newNote,
     };
@@ -277,7 +298,7 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
   }
 
   async listAuditLogs(limit?: number): Promise<WorkspaceAuditLogEntry[]> {
-    const sorted = [...this.auditLogs].sort((a, b) => {
+    const sorted = [...this.auditLogs].reverse().sort((a, b) => {
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return timeB - timeA;
@@ -354,6 +375,19 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
     );
     if (exists) {
       throw new WorkspaceConflictError(`Instance name '${displayName}' already exists for this template`);
+    }
+  }
+
+  private requireUniqueActiveFloorDisplayName(floorId: string, displayName: string, excludeId?: string) {
+    const exists = Array.from(this.instances.values()).some(
+      (instance) =>
+        instance.floorId === floorId &&
+        instance.id !== excludeId &&
+        instance.operationalStatus !== 'INACTIVE' &&
+        instance.displayName.trim().toLowerCase() === displayName.trim().toLowerCase()
+    );
+    if (exists) {
+      throw new WorkspaceConflictError(`An active workspace named '${displayName}' already exists on this floor.`);
     }
   }
 

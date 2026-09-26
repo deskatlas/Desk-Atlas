@@ -30,6 +30,7 @@ export async function GET() {
     return NextResponse.json({
       statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
       kioskAllowanceMinutes: 5,
+      maxAdvanceBookingDays: 90,
     });
   }
 }

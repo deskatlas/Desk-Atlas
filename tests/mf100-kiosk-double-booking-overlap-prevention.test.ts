@@ -68,10 +68,10 @@ describe('MF-100: Kiosk Double Booking Prevention for Overlapping Online Reserva
 
     repo.seedOperatingHours(1, [{ opensAt: '08:00', closesAt: '22:00' }]);
 
-    // Online booking at 6:00 PM (10:00 UTC) with PAYMENT_UNDER_REVIEW status
+    // Online booking at 6:00 PM (10:00 UTC) with CONFIRMED status
     repo.seedBlockingReservation('desk-1', {
       reservationId: 'res-online-6pm',
-      reservationStatus: 'PAYMENT_UNDER_REVIEW',
+      reservationStatus: 'CONFIRMED',
       startAt: '2026-09-14T10:00:00.000Z',
       endAt: '2026-09-14T11:00:00.000Z',
     });

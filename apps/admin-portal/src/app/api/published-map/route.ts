@@ -11,12 +11,27 @@ export async function GET(request: NextRequest) {
   try {
     const service = createPublishedMapService(new SupabasePublishedMapRepository());
     const floorId = request.nextUrl.searchParams.get('floorId') ?? undefined;
-    const [floors, published] = await Promise.all([
+    const includeAllFloors = request.nextUrl.searchParams.get('includeAllFloors') === 'true';
+
+    const [floors, published, allFloors] = await Promise.all([
       service.listPublishedFloors(),
       service.loadPublishedFloorMap(floorId, { audience: 'ADMIN' }),
+      includeAllFloors ? service.loadAllPublishedFloorMaps({ audience: 'ADMIN' }) : Promise.resolve(undefined),
     ]);
 
-    return NextResponse.json({ floors, published });
+    return NextResponse.json(
+      {
+        floors,
+        published,
+        ...(allFloors !== undefined ? { allFloors } : {}),
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          'CDN-Cache-Control': 'public, s-maxage=3600',
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof PublishedMapNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });

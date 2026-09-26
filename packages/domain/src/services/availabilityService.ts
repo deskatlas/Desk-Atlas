@@ -28,6 +28,25 @@ export class AvailabilityValidationError extends Error {
   }
 }
 
+export function calculateMaxBookingDate(todayDateStr: string, maxAdvanceDays: number): string {
+  const [year, month, day] = todayDateStr.split('-').map(Number);
+  const targetDate = new Date(Date.UTC(year, month - 1, day + maxAdvanceDays));
+  return targetDate.toISOString().split('T')[0];
+}
+
+export function validateBookingDateWithinHorizon(
+  requestedDateStr: string,
+  todayDateStr: string,
+  maxAdvanceDays: number
+): void {
+  const maxAllowedDate = calculateMaxBookingDate(todayDateStr, maxAdvanceDays);
+  if (requestedDateStr > maxAllowedDate) {
+    throw new AvailabilityValidationError(
+      `Selected booking date (${requestedDateStr}) exceeds the maximum allowable booking window of ${maxAdvanceDays} days (latest available date is ${maxAllowedDate}).`
+    );
+  }
+}
+
 export function createAvailabilityService(repository: AvailabilityRepository) {
   return {
     async listDateAvailability(query: DateAvailabilityQuery): Promise<DateAvailabilityResult> {
@@ -69,6 +88,14 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       }
 
       const settings = await repository.getBusinessSettings();
+      const now = normalized.nowIso ? new Date(normalized.nowIso) : new Date();
+      const { dateStr: todayDateStr } = getDatePartsInTz(now, settings.timezone);
+      validateBookingDateWithinHorizon(
+        normalized.date,
+        todayDateStr,
+        settings.maxAdvanceBookingDays ?? 90
+      );
+
       const workspaceAvailability = getWorkspaceAvailabilityStatus(instance);
       const slots = await listTimeSlotsForDate(
         repository,
@@ -77,7 +104,7 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
         instance.id,
         normalized.date,
         normalized.durationMinutes,
-        normalized.nowIso ? new Date(normalized.nowIso) : new Date(),
+        now,
         normalized.minimumLeadMinutes
       );
 
@@ -108,6 +135,12 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       const templateName = instances[0].template.name;
       const settings = await repository.getBusinessSettings();
       const now = normalized.nowIso ? new Date(normalized.nowIso) : new Date();
+      const { dateStr: todayDateStr } = getDatePartsInTz(now, settings.timezone);
+      validateBookingDateWithinHorizon(
+        normalized.date,
+        todayDateStr,
+        settings.maxAdvanceBookingDays ?? 90
+      );
 
       const allInstances: AvailableInstanceSummary[] = [];
 
@@ -247,7 +280,7 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       const now = query?.nowIso ? new Date(query.nowIso) : new Date();
       const durationMs = query?.durationMinutes && query.durationMinutes > 0
         ? query.durationMinutes * 60 * 1000
-        : 5 * 60 * 1000;
+        : 0;
       const endWindow = new Date(now.getTime() + durationMs);
       const rangeStartIso = now.toISOString();
       const rangeEndIso = endWindow.toISOString();
@@ -311,25 +344,77 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
         minutesUntilNextBooking = Math.max(0, Math.floor(diffMs / (60 * 1000)));
       }
 
-      // Check operating hours closing time
-      const { dateStr, dayOfWeek } = getDatePartsInTz(now, timezone);
+      // Check operating hours closing time (evaluating contiguous multi-day intervals)
+      const { dateStr, dayOfWeek, timeStr } = getDatePartsInTz(now, timezone);
+      const nowMinutes = parseTimeToMinutes(timeStr);
+
       const dayIntervals = (await repository.listOperatingHours(dayOfWeek))
         .filter((i) => i.isActive)
         .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
 
+      // Find the active interval that currently covers now
+      const activeInterval = dayIntervals.find((interval) => {
+        const openMin = parseTimeToMinutes(interval.opensAt);
+        const closeMin = parseTimeToMinutes(interval.closesAt);
+        return openMin <= nowMinutes && closeMin > nowMinutes;
+      });
+
       let operatingHoursCloseAt: string | null = null;
       let minutesUntilClosing: number | null = null;
 
-      if (dayIntervals.length > 0) {
-        const lastInterval = dayIntervals[dayIntervals.length - 1];
-        const closeUtc = zonedDateTimeToUtc(dateStr, lastInterval.closesAt, timezone);
-        operatingHoursCloseAt = closeUtc.toISOString();
-        const diffCloseMs = closeUtc.getTime() - now.getTime();
-        minutesUntilClosing = Math.max(0, Math.floor(diffCloseMs / (60 * 1000)));
-      } else {
-        // Venue is closed for the entire day
+      if (!activeInterval) {
+        // Venue is closed right now
         operatingHoursCloseAt = null;
         minutesUntilClosing = 0;
+      } else {
+        let curDateStr = dateStr;
+        let curDayOfWeek = dayOfWeek;
+        let curInterval = activeInterval;
+        let currentCloseUtc = zonedDateTimeToUtc(curDateStr, curInterval.closesAt, timezone);
+
+        // Crawl forward across contiguous intervals up to 24 hours (1440 minutes) from now
+        while (currentCloseUtc.getTime() - now.getTime() < 24 * 60 * 60 * 1000) {
+          const closeMin = parseTimeToMinutes(curInterval.closesAt);
+          if (closeMin >= MINUTES_PER_DAY || curInterval.closesAt === '24:00' || curInterval.closesAt === '24:00:00' || curInterval.closesAt === '23:59') {
+            const nextDateStr = addDays(curDateStr, 1);
+            const nextDayOfWeek = (curDayOfWeek + 1) % 7;
+            const nextDayIntervals = (await repository.listOperatingHours(nextDayOfWeek))
+              .filter((i) => i.isActive)
+              .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+
+            const contiguousNext = nextDayIntervals.find(
+              (i) => parseTimeToMinutes(i.opensAt) === 0
+            );
+
+            if (contiguousNext) {
+              curDateStr = nextDateStr;
+              curDayOfWeek = nextDayOfWeek;
+              curInterval = contiguousNext;
+              currentCloseUtc = zonedDateTimeToUtc(curDateStr, curInterval.closesAt, timezone);
+              continue;
+            } else {
+              break;
+            }
+          } else {
+            const sameDayIntervals = (await repository.listOperatingHours(curDayOfWeek))
+              .filter((i) => i.isActive)
+              .sort((a, b) => a.opensAt.localeCompare(b.opensAt));
+            const contiguousSameDay = sameDayIntervals.find(
+              (i) => parseTimeToMinutes(i.opensAt) === closeMin
+            );
+            if (contiguousSameDay) {
+              curInterval = contiguousSameDay;
+              currentCloseUtc = zonedDateTimeToUtc(curDateStr, curInterval.closesAt, timezone);
+              continue;
+            } else {
+              break;
+            }
+          }
+        }
+
+        operatingHoursCloseAt = currentCloseUtc.toISOString();
+        const diffCloseMs = currentCloseUtc.getTime() - now.getTime();
+        minutesUntilClosing = Math.max(0, Math.floor(diffCloseMs / (60 * 1000)));
       }
 
       // Kiosk walk-in sessions cap at max 24 hours (1440 minutes) or closing time
@@ -405,6 +490,22 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       const settings = await repository.getBusinessSettings();
       const timezone = settings.timezone || 'Asia/Manila';
 
+      // 0. Check maximum advance booking horizon
+      const { dateStr: startDateStr, timeStr: startTimeStr } = getDatePartsInTz(
+        new Date(startMs),
+        timezone
+      );
+      const { dateStr: todayDateStr } = getDatePartsInTz(new Date(), timezone);
+      const maxAdvanceDays = settings.maxAdvanceBookingDays ?? 90;
+      const maxAllowedDate = calculateMaxBookingDate(todayDateStr, maxAdvanceDays);
+      if (startDateStr > maxAllowedDate) {
+        return {
+          isValid: false,
+          conflictType: 'MAX_DURATION_EXCEEDED',
+          errorMessage: `Selected booking date (${startDateStr}) exceeds the maximum allowable booking window of ${maxAdvanceDays} days (latest available date is ${maxAllowedDate}).`,
+        };
+      }
+
       // 1. Check schedule blocks across [startAt, endAt)
       const scheduleBlocks = await repository
         .listScheduleBlocks(workspaceInstanceId, startAt, endAt)
@@ -433,10 +534,6 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       }
 
       // 2. Check operating hours coverage
-      const { dateStr: startDateStr, timeStr: startTimeStr } = getDatePartsInTz(
-        new Date(startMs),
-        timezone
-      );
       const startDayOfWeek = getDayOfWeek(startDateStr);
       const startMinutes = parseTimeToMinutes(startTimeStr);
 
@@ -496,15 +593,29 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
 
 async function listDateAvailabilityForRange(
   repository: AvailabilityRepository,
-  settings: { timezone: string; bookingIntervalMinutes: number },
+  settings: { timezone: string; bookingIntervalMinutes: number; maxAdvanceBookingDays?: number },
   workspaceIsBookable: boolean,
   query: Required<DateAvailabilityQuery>,
   now: Date
 ): Promise<AvailableDate[]> {
   const dates: AvailableDate[] = [];
   let currentDate = query.startDate;
+  const { dateStr: todayDateStr } = getDatePartsInTz(now, settings.timezone);
+  const maxAdvanceDays = settings.maxAdvanceBookingDays ?? 90;
+  const maxAllowedDateStr = calculateMaxBookingDate(todayDateStr, maxAdvanceDays);
 
   while (currentDate <= query.endDate) {
+    if (currentDate > maxAllowedDateStr) {
+      dates.push({
+        date: currentDate,
+        isAvailable: false,
+        reason: 'BLOCKED',
+        firstAvailableTime: null,
+      });
+      currentDate = addDays(currentDate, 1);
+      continue;
+    }
+
     const slots = await listTimeSlotsForDate(
       repository,
       settings,

@@ -476,6 +476,7 @@ CREATE TABLE public.map_versions (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   published_at timestamptz,
+  compiled_map_cache jsonb,
 
   CONSTRAINT map_versions_floor_fk
     FOREIGN KEY (floor_id)

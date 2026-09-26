@@ -19,57 +19,42 @@ export async function POST(
   try {
     const { reservationId } = await context.params;
     const body = await request.json();
-    const service = createStaffOperationsService(new ReservationSupabaseRepository());
     let actorUserId = String(body.actor?.userId ?? body.actorUserId ?? "").trim();
     let actorRole = String(body.actor?.role ?? body.actorRole ?? "").trim().toUpperCase();
+
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId);
+    if (!actorUserId || !isValidUuid) {
+      return NextResponse.json(
+        { error: "Actor user ID is required for check-in." },
+        { status: 401 }
+      );
+    }
+
+    const service = createStaffOperationsService(new ReservationSupabaseRepository());
 
     const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (supabaseUrl && serviceRoleKey) {
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorUserId)) {
-        try {
-          const res = await fetch(
-            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?user_id=eq.${actorUserId}&select=user_id,role&limit=1`,
-            {
-              headers: {
-                apikey: serviceRoleKey,
-                Authorization: `Bearer ${serviceRoleKey}`,
-              },
-              cache: "no-store",
-            }
-          );
-          if (res.ok) {
-            const profiles = await res.json();
-            if (Array.isArray(profiles) && profiles[0]?.role) {
-              actorRole = profiles[0].role;
-            }
+      try {
+        const res = await fetch(
+          `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?user_id=eq.${actorUserId}&select=user_id,role&limit=1`,
+          {
+            headers: {
+              apikey: serviceRoleKey,
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+            cache: "no-store",
           }
-        } catch {
-          // fallback
-        }
-      } else {
-        try {
-          const res = await fetch(
-            `${supabaseUrl.replace(/\/$/, "")}/rest/v1/staff_profiles?select=user_id,role&is_active=eq.true&limit=1`,
-            {
-              headers: {
-                apikey: serviceRoleKey,
-                Authorization: `Bearer ${serviceRoleKey}`,
-              },
-              cache: "no-store",
-            }
-          );
-          if (res.ok) {
-            const profiles = await res.json();
-            if (Array.isArray(profiles) && profiles[0]?.user_id) {
-              actorUserId = profiles[0].user_id;
-              actorRole = profiles[0].role || "STAFF";
-            }
+        );
+        if (res.ok) {
+          const profiles = await res.json();
+          if (Array.isArray(profiles) && profiles[0]?.role) {
+            actorRole = profiles[0].role;
           }
-        } catch {
-          // fallback
         }
+      } catch {
+        // fallback
       }
     }
     const resolvedRole: "ADMIN" | "STAFF" = actorRole === "ADMIN" ? "ADMIN" : "STAFF";

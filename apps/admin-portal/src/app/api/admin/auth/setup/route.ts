@@ -90,6 +90,26 @@ export async function POST(request: NextRequest) {
     // Check single-use guard
     const exists = await staffService.checkAdminExists();
     if (exists) {
+      // Check if user matches the existing administrator (e.g. logging in via Google OAuth or unsealed password setup)
+      const existingProfile = await staffService.getProfile(userId);
+      if (existingProfile && existingProfile.role === 'ADMIN' && existingProfile.isActive) {
+        const setupStatus = await staffService.getSetupStatus(existingProfile.userId);
+        const sessionToken = token || `da_session_${Date.now()}_${existingProfile.userId}`;
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: existingProfile.userId,
+            email: existingProfile.email,
+            role: 'admin',
+            displayName: existingProfile.displayName,
+            isSuperAdmin: Boolean(existingProfile.isSuperAdmin ?? true),
+          },
+          isPasswordConfigured: setupStatus.isPasswordConfigured,
+          passwordSetupPending: setupStatus.passwordSetupPending,
+          token: sessionToken,
+        });
+      }
+
       return NextResponse.json(
         { error: 'Administrator account already exists. Setup is sealed.' },
         { status: 403 }
@@ -114,9 +134,11 @@ export async function POST(request: NextRequest) {
         displayName: profile.displayName,
         isSuperAdmin: true,
       },
+      isPasswordConfigured: false,
+      passwordSetupPending: true,
       token: sessionToken,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof AdminAlreadyExistsError) {
       return NextResponse.json(
         { error: error.message },
@@ -125,9 +147,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('[Admin Setup] Unexpected error during initial setup:', error);
+    const msg = error instanceof Error ? error.message : 'Failed to complete initial admin setup';
     return NextResponse.json(
-      { error: error?.message || 'Failed to complete initial admin setup' },
-      { status: error?.statusCode || 500 }
+      { error: msg },
+      { status: 500 }
     );
   }
 }

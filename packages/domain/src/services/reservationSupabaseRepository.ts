@@ -10,6 +10,7 @@ import {
   OperationalActivityRecord,
   OccupancyRecord,
   PaymentMethod,
+  PaymentMethodType,
   PaymentProofSubmissionResult,
   PaymentReviewDecisionResult,
   PaymentReviewDetail,
@@ -18,8 +19,13 @@ import {
   ReservationOperationalActionResult,
   ReservationCandidate,
   ReservationResponseDTO,
+  ReservationStatus,
   StaffOperationalReservation,
   CustomerRelocationRequest,
+  ClosureImpactPreviewResult,
+  ClosureImpactedReservationSummary,
+  LogClosurePhoneCallInput,
+  FlagClosureManualResolutionInput,
 } from "../models/reservation";
 import {
   AdminReservationRepository,
@@ -69,6 +75,74 @@ import {
 } from "./guestReservationTrackingRepository";
 import { BookingSurveyRepository, EndedReservationForSurvey } from "./bookingSurveyService";
 import { zonedDateTimeToUtc } from "./availabilityService";
+
+interface CatalogWorkspaceInstance {
+  id: string;
+  template_id: string;
+  floor_id?: string | null;
+  instance_code?: string | null;
+  display_name?: string | null;
+  [key: string]: unknown;
+}
+
+interface CatalogWorkspaceTemplate {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+interface CatalogFloor {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+interface CatalogPaymentMethod {
+  id: string;
+  name?: string;
+  method_type?: PaymentMethodType | null;
+  display_name?: string | null;
+  [key: string]: unknown;
+}
+
+interface ReservationCandidateRow {
+  id: string;
+  reservation_id: string;
+  workspace_instance_id: string;
+  rank: number;
+  is_assigned?: boolean | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  [key: string]: unknown;
+}
+
+interface PaymentAttemptRow {
+  id: string;
+  reservation_id: string;
+  channel: string;
+  status: string;
+  proof_submitted_at?: string | null;
+  proof_storage_path?: string | null;
+  expires_at?: string | null;
+  rejection_reason?: string | null;
+  [key: string]: unknown;
+}
+
+interface RelocationAuditLogRow {
+  id?: string;
+  entity_id: string;
+  action: string;
+  created_at?: string;
+  metadata?: {
+    request_id?: string;
+    target_workspace_instance_id?: string;
+    target_workspace_name?: string;
+    reason?: string;
+    notes?: string | null;
+    [key: string]: unknown;
+  } | null;
+  [key: string]: unknown;
+}
 
 export class ReservationSupabaseRepository
   implements
@@ -124,6 +198,296 @@ export class ReservationSupabaseRepository
     if (response.status === 204) return undefined as T;
     const text = await response.text();
     return text ? (JSON.parse(text) as T) : (undefined as T);
+  }
+
+  private catalogCache: {
+    data?: {
+      instancesById: Map<string, CatalogWorkspaceInstance>;
+      templatesById: Map<string, CatalogWorkspaceTemplate>;
+      floorsById: Map<string, CatalogFloor>;
+      paymentMethodsById: Map<string, CatalogPaymentMethod>;
+    };
+    expiresAt: number;
+  } = { expiresAt: 0 };
+
+  public invalidateCatalogCache(): void {
+    this.catalogCache.expiresAt = 0;
+  }
+
+  private async getVenueCatalog(): Promise<{
+    instancesById: Map<string, CatalogWorkspaceInstance>;
+    templatesById: Map<string, CatalogWorkspaceTemplate>;
+    floorsById: Map<string, CatalogFloor>;
+    paymentMethodsById: Map<string, CatalogPaymentMethod>;
+  }> {
+    const now = Date.now();
+    if (this.catalogCache.data && this.catalogCache.expiresAt > now) {
+      return this.catalogCache.data;
+    }
+
+    const [instancesRows, templatesRows, floorsRows, paymentMethodsRows] =
+      await Promise.all([
+        this.request<CatalogWorkspaceInstance[]>("/workspace_instances?select=*"),
+        this.request<CatalogWorkspaceTemplate[]>("/workspace_templates?select=*"),
+        this.request<CatalogFloor[]>("/floors?select=*"),
+        this.request<CatalogPaymentMethod[]>("/payment_methods?select=*").catch(() => []),
+      ]);
+
+    const instancesById = new Map<string, CatalogWorkspaceInstance>(
+      (instancesRows ?? []).map((i) => [i.id, i])
+    );
+    const templatesById = new Map<string, CatalogWorkspaceTemplate>(
+      (templatesRows ?? []).map((t) => [t.id, t])
+    );
+    const floorsById = new Map<string, CatalogFloor>(
+      (floorsRows ?? []).map((f) => [f.id, f])
+    );
+    const paymentMethodsById = new Map<string, CatalogPaymentMethod>(
+      (paymentMethodsRows ?? []).map((m) => [m.id, m])
+    );
+
+    const catalog = {
+      instancesById,
+      templatesById,
+      floorsById,
+      paymentMethodsById,
+    };
+
+    this.catalogCache = {
+      data: catalog,
+      expiresAt: now + 60_000,
+    };
+
+    return catalog;
+  }
+
+  private async fetchCandidatesForReservationIds(
+    reservationIds: string[]
+  ): Promise<ReservationCandidateRow[]> {
+    if (!reservationIds.length) return [];
+    const chunkSize = 60;
+    const chunks: string[][] = [];
+    for (let i = 0; i < reservationIds.length; i += chunkSize) {
+      chunks.push(reservationIds.slice(i, i + chunkSize));
+    }
+
+    const results = await Promise.all(
+      chunks.map((chunk) => {
+        const inFilter = chunk.map((id) => encodeURIComponent(id)).join(",");
+        return this.request<ReservationCandidateRow[]>(
+          `/reservation_candidates?select=*&reservation_id=in.(${inFilter})&order=rank.asc`
+        ).catch(() => []);
+      })
+    );
+
+    return results.flat();
+  }
+
+  private async fetchPaymentAttemptsForReservationIds(
+    reservationIds: string[]
+  ): Promise<PaymentAttemptRow[]> {
+    if (!reservationIds.length) return [];
+    const chunkSize = 60;
+    const chunks: string[][] = [];
+    for (let i = 0; i < reservationIds.length; i += chunkSize) {
+      chunks.push(reservationIds.slice(i, i + chunkSize));
+    }
+
+    const results = await Promise.all(
+      chunks.map((chunk) => {
+        const inFilter = chunk.map((id) => encodeURIComponent(id)).join(",");
+        return this.request<PaymentAttemptRow[]>(
+          `/payment_attempts?select=*&reservation_id=in.(${inFilter})&order=created_at.desc`
+        ).catch(() => []);
+      })
+    );
+
+    return results.flat();
+  }
+
+  private async fetchRelocationAuditLogsForReservationIds(
+    reservationIds: string[]
+  ): Promise<Map<string, CustomerRelocationRequest>> {
+    const relocationMap = new Map<string, CustomerRelocationRequest>();
+    if (!reservationIds.length) return relocationMap;
+
+    const chunkSize = 60;
+    const chunks: string[][] = [];
+    for (let i = 0; i < reservationIds.length; i += chunkSize) {
+      chunks.push(reservationIds.slice(i, i + chunkSize));
+    }
+
+    const results = await Promise.all(
+      chunks.map((chunk) => {
+        const inFilter = chunk.map((id) => encodeURIComponent(id)).join(",");
+        return this.request<RelocationAuditLogRow[]>(
+          `/audit_logs?select=*&entity_type=eq.reservation&entity_id=in.(${inFilter})&action=in.(reservation_relocation_requested,reservation_relocation_approved,reservation_relocation_declined,reservation_relocated,RESERVATION_RELOCATED)&order=created_at.desc`
+        ).catch(() => []);
+      })
+    );
+
+    const logsByReservation = new Map<string, RelocationAuditLogRow[]>();
+    for (const log of results.flat()) {
+      const list = logsByReservation.get(log.entity_id) ?? [];
+      list.push(log);
+      logsByReservation.set(log.entity_id, list);
+    }
+
+    for (const [resId, logs] of logsByReservation.entries()) {
+      const reqEvents = logs.filter((a) => a.action === "reservation_relocation_requested");
+      if (reqEvents.length > 0) {
+        const latestReq = reqEvents[0];
+        const reqTime = latestReq.created_at;
+        const subsequentDecisions = logs.filter(
+          (a) =>
+            (a.action === "reservation_relocation_approved" ||
+              a.action === "reservation_relocation_declined" ||
+              a.action === "reservation_relocated" ||
+              a.action === "RESERVATION_RELOCATED") &&
+            (a.created_at || "") > (reqTime || "")
+        );
+        if (subsequentDecisions.length === 0) {
+          relocationMap.set(resId, {
+            requestId: latestReq.id || latestReq.metadata?.request_id || "req",
+            targetWorkspaceInstanceId: latestReq.metadata?.target_workspace_instance_id,
+            targetWorkspaceDisplayName: latestReq.metadata?.target_workspace_name || "Target Spot",
+            reason: latestReq.metadata?.reason || "Spot Issue",
+            notes: latestReq.metadata?.notes ?? null,
+            requestedAt: latestReq.created_at || new Date().toISOString(),
+            status: "PENDING",
+          });
+        }
+      }
+    }
+
+    return relocationMap;
+  }
+
+  private async loadOperationalReservationsBatched(
+    reservations: Array<{
+      id: string;
+      reference_code: string;
+      source: "WEB" | "KIOSK";
+      customer_first_name: string;
+      customer_last_name: string;
+      customer_email: string;
+      customer_contact_number?: string | null;
+      status: string;
+      rate_snapshot: number | string;
+      amount_due: number | string;
+      created_at: string;
+      updated_at: string;
+      confirmed_at?: string | null;
+      checked_in_at?: string | null;
+      checked_out_at?: string | null;
+      qr_issued_at?: string | null;
+      cancellation_reason?: string | null;
+      cancelled_at?: string | null;
+      cancelled_by_user_id?: string | null;
+      [key: string]: unknown;
+    }>
+  ): Promise<StaffOperationalReservation[]> {
+    if (!reservations || reservations.length === 0) {
+      return [];
+    }
+
+    const reservationIds = reservations.map((r) => r.id).filter(Boolean);
+
+    const [candidatesRows, paymentAttemptsRows, catalog, relocationMap] =
+      await Promise.all([
+        this.fetchCandidatesForReservationIds(reservationIds),
+        this.fetchPaymentAttemptsForReservationIds(reservationIds),
+        this.getVenueCatalog(),
+        this.fetchRelocationAuditLogsForReservationIds(reservationIds),
+      ]);
+
+    const candidatesByReservation = new Map<string, ReservationCandidateRow[]>();
+    for (const c of candidatesRows) {
+      const list = candidatesByReservation.get(c.reservation_id) ?? [];
+      list.push(c);
+      candidatesByReservation.set(c.reservation_id, list);
+    }
+
+    const attemptsByReservation = new Map<string, PaymentAttemptRow[]>();
+    for (const pa of paymentAttemptsRows) {
+      const list = attemptsByReservation.get(pa.reservation_id) ?? [];
+      list.push(pa);
+      attemptsByReservation.set(pa.reservation_id, list);
+    }
+
+    return reservations.map((reservation) => {
+      const candidateList = candidatesByReservation.get(reservation.id) ?? [];
+      const candidate =
+        candidateList.find((entry) => entry.is_assigned === true) ?? candidateList[0] ?? null;
+
+      const workspaceInstance = candidate
+        ? catalog.instancesById.get(candidate.workspace_instance_id) ?? null
+        : null;
+      const workspaceTemplate = workspaceInstance
+        ? catalog.templatesById.get(workspaceInstance.template_id) ?? null
+        : null;
+      const floor = workspaceInstance
+        ? catalog.floorsById.get(workspaceInstance.floor_id) ?? null
+        : null;
+
+      const pendingRelocationRequest = relocationMap.get(reservation.id) ?? null;
+
+      const paymentAttempts = attemptsByReservation.get(reservation.id) ?? [];
+      const latestAttempt = paymentAttempts[0] ?? null;
+      const isPaymentRejected =
+        latestAttempt?.status === "REJECTED" ||
+        (reservation.status === "CANCELLED" && paymentAttempts.some((a) => a.status === "REJECTED"));
+      const pres = mapStatusPresentation(
+        reservation.status as ReservationStatus,
+        isPaymentRejected ? "REJECTED" : latestAttempt?.status
+      );
+
+      return {
+        reservationId: reservation.id,
+        referenceCode: reservation.reference_code,
+        source: reservation.source,
+        customerFirstName: reservation.customer_first_name,
+        customerLastName: reservation.customer_last_name,
+        customerEmail: reservation.customer_email,
+        customerContactNumber: reservation.customer_contact_number ?? null,
+        reservationStatus: (isPaymentRejected ? "REJECTED" : reservation.status) as ReservationStatus,
+        status: pres.label,
+        paymentStatus: pres.payment,
+        paymentAttemptStatus: latestAttempt?.status ?? null,
+        paymentExpiresAt: latestAttempt?.expires_at ?? null,
+        createdAt: reservation.created_at,
+        updatedAt: reservation.updated_at,
+        paymentAttempts: paymentAttempts.map((a) => ({
+          id: a.id,
+          channel: a.channel,
+          status: a.status,
+          proofSubmittedAt: a.proof_submitted_at,
+          proofStoragePath: a.proof_storage_path,
+          expiresAt: a.expires_at,
+          rejectionReason: a.rejection_reason,
+        })),
+        checkInState: getCheckInState(reservation.checked_in_at, reservation.checked_out_at),
+        workspaceInstanceId: candidate?.workspace_instance_id ?? null,
+        workspaceDisplayName:
+          workspaceInstance?.display_name ?? workspaceInstance?.instance_code ?? null,
+        workspaceInstanceCode: workspaceInstance?.instance_code ?? null,
+        workspaceTemplateName: workspaceTemplate?.name ?? null,
+        floorName: floor?.name ?? null,
+        bookingStartAt: candidate?.start_at ?? null,
+        bookingEndAt: candidate?.end_at ?? null,
+        confirmedAt: reservation.confirmed_at,
+        checkedInAt: reservation.checked_in_at,
+        checkedOutAt: reservation.checked_out_at,
+        qrIssuedAt: reservation.qr_issued_at,
+        pendingRelocationRequest,
+        rateSnapshot: Number(reservation.rate_snapshot),
+        bookedRatePerHour: Number(reservation.rate_snapshot),
+        amountDue: Number(reservation.amount_due),
+        cancellationReason: reservation.cancellation_reason ?? null,
+        cancelledAt: reservation.cancelled_at ?? null,
+        cancelledByUserId: reservation.cancelled_by_user_id ?? null,
+      };
+    });
   }
 
   private mapReservation(data: any, candidates: ReservationCandidate[]): ReservationResponseDTO {
@@ -1328,9 +1692,7 @@ export class ReservationSupabaseRepository
       "/reservations?select=*&order=created_at.desc&limit=200"
     );
 
-    const summaries = await Promise.all(
-      reservations.map((reservation) => this.loadOperationalReservation(reservation.id, reservation))
-    );
+    const summaries = await this.loadOperationalReservationsBatched(reservations ?? []);
 
     return summaries
       .filter((summary): summary is StaffOperationalReservation => summary !== null)
@@ -1348,9 +1710,7 @@ export class ReservationSupabaseRepository
       "/reservations?select=*&status=in.(CONFIRMED,CHECKED_IN)&limit=200"
     );
 
-    const summaries = await Promise.all(
-      reservations.map((reservation) => this.loadOperationalReservation(reservation.id, reservation))
-    );
+    const summaries = await this.loadOperationalReservationsBatched(reservations ?? []);
 
     return summaries
       .filter((summary): summary is StaffOperationalReservation => summary !== null)
@@ -1448,18 +1808,20 @@ export class ReservationSupabaseRepository
   }
 
   async listReportReservations(): Promise<ReportReservationRecord[]> {
-    const [reservations, candidatesRows, instancesRows, templatesRows, floorsRows] =
-      await Promise.all([
-        this.request<any[]>("/reservations?select=*&order=created_at.desc&limit=500"),
-        this.request<any[]>("/reservation_candidates?select=*&order=rank.asc"),
-        this.request<any[]>("/workspace_instances?select=*"),
-        this.request<any[]>("/workspace_templates?select=*"),
-        this.request<any[]>("/floors?select=*"),
-      ]);
+    const reservations = await this.request<any[]>(
+      "/reservations?select=*&order=created_at.desc&limit=500"
+    );
 
     if (!reservations || reservations.length === 0) {
       return [];
     }
+
+    const reservationIds = reservations.map((r) => r.id).filter(Boolean);
+
+    const [candidatesRows, catalog] = await Promise.all([
+      this.fetchCandidatesForReservationIds(reservationIds),
+      this.getVenueCatalog(),
+    ]);
 
     const candidatesByReservation = new Map<string, any[]>();
     for (const c of candidatesRows ?? []) {
@@ -1468,9 +1830,7 @@ export class ReservationSupabaseRepository
       candidatesByReservation.set(c.reservation_id, list);
     }
 
-    const instancesById = new Map<string, any>((instancesRows ?? []).map((i) => [i.id, i]));
-    const templatesById = new Map<string, any>((templatesRows ?? []).map((t) => [t.id, t]));
-    const floorsById = new Map<string, any>((floorsRows ?? []).map((f) => [f.id, f]));
+    const { instancesById, templatesById, floorsById } = catalog;
 
     return reservations
       .map((r) => {
@@ -1665,6 +2025,12 @@ export class ReservationSupabaseRepository
       rejectionReason: paymentAttempt?.rejection_reason ?? null,
       rescheduleCount: reservation.reschedule_count ?? 0,
       pendingRelocationRequest,
+      isClosureImpacted: reservation.is_closure_impacted ?? false,
+      closureImpactStatus: reservation.closure_impact_status ?? null,
+      closureReason: reservation.closure_reason ?? null,
+      closureDate: reservation.closure_date ?? null,
+      closureNotifiedAt: reservation.closure_notified_at ?? null,
+      manualResolutionNotes: reservation.manual_resolution_notes ?? null,
     };
   }
 
@@ -2078,6 +2444,13 @@ export class ReservationSupabaseRepository
       cancellationReason: reservation.cancellation_reason ?? null,
       cancelledAt: reservation.cancelled_at ?? null,
       cancelledByUserId: reservation.cancelled_by_user_id ?? null,
+      closureExceptionId: reservation.closure_exception_id ?? null,
+      isClosureImpacted: reservation.is_closure_impacted ?? false,
+      closureImpactStatus: reservation.closure_impact_status ?? null,
+      closureNotifiedAt: reservation.closure_notified_at ?? null,
+      manualResolutionNotes: reservation.manual_resolution_notes ?? null,
+      closureReason: reservation.closure_reason ?? null,
+      closureDate: reservation.closure_date ?? null,
     };
   }
 
@@ -2160,15 +2533,13 @@ export class ReservationSupabaseRepository
       return [];
     }
 
-    const [candidatesRows, instancesRows, templatesRows, floorsRows, paymentAttemptsRows, paymentMethodsRows] =
-      await Promise.all([
-        this.request<any[]>("/reservation_candidates?select=*&order=rank.asc"),
-        this.request<any[]>("/workspace_instances?select=*"),
-        this.request<any[]>("/workspace_templates?select=*"),
-        this.request<any[]>("/floors?select=*"),
-        this.request<any[]>("/payment_attempts?select=*&order=created_at.desc"),
-        this.request<any[]>("/payment_methods?select=*").catch(() => []),
-      ]);
+    const reservationIds = reservations.map((r) => r.id).filter(Boolean);
+
+    const [candidatesRows, paymentAttemptsRows, catalog] = await Promise.all([
+      this.fetchCandidatesForReservationIds(reservationIds),
+      this.fetchPaymentAttemptsForReservationIds(reservationIds),
+      this.getVenueCatalog(),
+    ]);
 
     const candidatesByReservation = new Map<string, any[]>();
     for (const c of candidatesRows ?? []) {
@@ -2184,10 +2555,7 @@ export class ReservationSupabaseRepository
       }
     }
 
-    const instancesById = new Map<string, any>((instancesRows ?? []).map((i) => [i.id, i]));
-    const templatesById = new Map<string, any>((templatesRows ?? []).map((t) => [t.id, t]));
-    const floorsById = new Map<string, any>((floorsRows ?? []).map((f) => [f.id, f]));
-    const paymentMethodsById = new Map<string, any>((paymentMethodsRows ?? []).map((m) => [m.id, m]));
+    const { instancesById, templatesById, floorsById, paymentMethodsById } = catalog;
 
     return reservations.map((r) => {
       const candidates = candidatesByReservation.get(r.id) ?? [];
@@ -2257,11 +2625,18 @@ export class ReservationSupabaseRepository
         paymentExpiresAt,
         paymentAttemptStatus: latestAttempt?.status ?? null,
         paymentMethodId: latestAttempt?.payment_method_id ?? null,
-        paymentMethodType: paymentMethod?.method_type ?? null,
-        paymentMethodDisplayName: paymentMethod?.display_name ?? null,
+        paymentMethodType: (paymentMethod?.method_type ?? null) as PaymentMethodType | null,
+        paymentMethodDisplayName: (paymentMethod?.display_name as string | null | undefined) ?? null,
         cancellationReason: r.cancellation_reason ?? null,
         cancelledAt: r.cancelled_at ?? null,
         cancelledByUserId: r.cancelled_by_user_id ?? null,
+        closureExceptionId: r.closure_exception_id ?? null,
+        isClosureImpacted: r.is_closure_impacted ?? false,
+        closureImpactStatus: r.closure_impact_status ?? null,
+        closureNotifiedAt: r.closure_notified_at ?? null,
+        manualResolutionNotes: r.manual_resolution_notes ?? null,
+        closureReason: r.closure_reason ?? null,
+        closureDate: r.closure_date ?? null,
       };
     });
   }
@@ -2572,6 +2947,13 @@ export class ReservationSupabaseRepository
       rescheduleCount: r.reschedule_count ?? 0,
       paymentAttempts: paymentAttemptsSummary,
       pendingRelocationRequest,
+      closureExceptionId: r.closure_exception_id ?? null,
+      isClosureImpacted: r.is_closure_impacted ?? false,
+      closureImpactStatus: r.closure_impact_status ?? null,
+      closureNotifiedAt: r.closure_notified_at ?? null,
+      manualResolutionNotes: r.manual_resolution_notes ?? null,
+      closureReason: r.closure_reason ?? null,
+      closureDate: r.closure_date ?? null,
     };
   }
 
@@ -2685,10 +3067,11 @@ export class ReservationSupabaseRepository
     }
 
     const isCustomerActor = input.actorRole === "CUSTOMER";
+    const isClosureWaiver = Boolean(r.is_closure_impacted);
     const currentRescheduleCount = r.reschedule_count ?? 0;
 
     if (isCustomerActor) {
-      if (currentRescheduleCount >= 1) {
+      if (!isClosureWaiver && currentRescheduleCount >= 1) {
         throw new Error("Customer can only reschedule a reservation once.");
       }
 
@@ -2696,7 +3079,7 @@ export class ReservationSupabaseRepository
         const origStartMs = new Date(assigned.start_at).getTime();
         const cutoffHours = input.cutoffHours ?? 12;
         const cutoffMs = cutoffHours * 60 * 60 * 1000;
-        if (nowMs > origStartMs - cutoffMs) {
+        if (!isClosureWaiver && nowMs > origStartMs - cutoffMs) {
           throw new Error(`Reschedule must be requested at least ${cutoffHours} hours before the scheduled start time.`);
         }
 
@@ -2847,17 +3230,23 @@ export class ReservationSupabaseRepository
       });
     }
 
+    const patchBody: Record<string, unknown> = {
+      updated_at: nowIso,
+      reschedule_count: isClosureWaiver ? currentRescheduleCount : currentRescheduleCount + 1,
+    };
+    if (r.is_closure_impacted) {
+      patchBody.closure_impact_status = isCustomerActor ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED";
+    }
+
     try {
       await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          updated_at: nowIso,
-          reschedule_count: currentRescheduleCount + 1,
-        }),
+        body: JSON.stringify(patchBody),
       });
     } catch (patchErr: any) {
       if (
         patchErr?.message?.includes("reschedule_count") ||
+        patchErr?.message?.includes("closure_impact_status") ||
         patchErr?.message?.includes("PGRST204") ||
         patchErr?.message?.includes("42703")
       ) {
@@ -3788,6 +4177,16 @@ export class ReservationSupabaseRepository
       throw rpcErr;
     }
 
+    if (r.is_closure_impacted) {
+      await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          closure_impact_status: input.actorRole === "CUSTOMER" ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED",
+          updated_at: new Date().toISOString(),
+        }),
+      }).catch(() => {});
+    }
+
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
       throw new Error(`Failed to reload reservation detail for ${r.id}`);
@@ -4042,6 +4441,201 @@ export class ReservationSupabaseRepository
         message: "Customer relocation request was declined",
       };
     }
+  }
+
+  async previewClosureImpact(
+    startAt: string,
+    endAt: string,
+    workspaceInstanceId?: string
+  ): Promise<ClosureImpactPreviewResult> {
+    const reservationRows = await this.request<any[]>(
+      `/reservations?select=id,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,reservation_candidates(id,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(id,display_name,instance_code))&status=in.(CONFIRMED,CHECKED_IN)`
+    ).catch(() => []);
+
+    const colliding: ClosureImpactedReservationSummary[] = [];
+    const blockStartMs = new Date(startAt).getTime();
+    const blockEndMs = new Date(endAt).getTime();
+
+    for (const r of reservationRows ?? []) {
+      const candidates = r.reservation_candidates ?? [];
+      const assigned = candidates.find((c: any) => c.is_assigned) ?? candidates[0];
+      if (!assigned) continue;
+
+      if (workspaceInstanceId && assigned.workspace_instance_id !== workspaceInstanceId) {
+        continue;
+      }
+
+      const candStartMs = new Date(assigned.start_at).getTime();
+      const candEndMs = new Date(assigned.end_at).getTime();
+
+      const overlaps = candStartMs < blockEndMs && candEndMs > blockStartMs;
+      if (overlaps) {
+        const inst = assigned.workspace_instances;
+        colliding.push({
+          reservationId: r.id,
+          referenceCode: r.reference_code,
+          customerName: `${r.customer_first_name || ""} ${r.customer_last_name || ""}`.trim(),
+          customerFirstName: r.customer_first_name,
+          customerLastName: r.customer_last_name,
+          customerEmail: r.customer_email,
+          customerContactNumber: r.customer_contact_number ?? null,
+          workspaceDisplayName: inst?.display_name || inst?.instance_code || assigned.workspace_instance_id,
+          workspaceInstanceCode: inst?.instance_code ?? null,
+          startAt: assigned.start_at,
+          endAt: assigned.end_at,
+          amountDue: Number(r.amount_due ?? 0),
+          currency: r.currency || "PHP",
+          status: r.status,
+          closureImpactStatus: r.closure_impact_status ?? "AFFECTED_PENDING_ACTION",
+        });
+      }
+    }
+
+    return {
+      impactedCount: colliding.length,
+      reservations: colliding,
+    };
+  }
+
+  async markReservationsClosureImpacted(
+    reservationIds: string[],
+    closureExceptionId?: string | null,
+    closureReason?: string | null,
+    closureDate?: string | null
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    for (const id of reservationIds) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const filter = isUuid ? `id=eq.${encodeURIComponent(id)}` : `reference_code=eq.${encodeURIComponent(id)}`;
+
+      await this.request(`/reservations?${filter}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          is_closure_impacted: true,
+          closure_impact_status: "AFFECTED_PENDING_ACTION",
+          closure_exception_id: closureExceptionId ?? null,
+          closure_notified_at: nowIso,
+          updated_at: nowIso,
+        }),
+      }).catch((err) => console.warn(`Failed to mark reservation ${id} as closure impacted:`, err));
+    }
+  }
+
+  async logClosurePhoneCall(input: LogClosurePhoneCallInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const rows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`);
+    const r = rows?.[0];
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const staffName = input.staffName || "Staff Member";
+    const logEntry = `[${nowIso}] Call by ${staffName} (${input.staffUserId}) - Status: ${input.outreachStatus}. Notes: ${input.notes}`;
+    const newNotes = r.manual_resolution_notes ? `${r.manual_resolution_notes}\n${logEntry}` : logEntry;
+
+    await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        manual_resolution_notes: newNotes,
+        updated_at: nowIso,
+      }),
+    });
+
+    await this.request("/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        entity_type: "reservation",
+        entity_id: r.id,
+        action: "CLOSURE_OUTREACH_LOGGED",
+        actor_role: "STAFF",
+        actor_user_id: input.staffUserId,
+        metadata: {
+          outreach_status: input.outreachStatus,
+          notes: input.notes,
+          staff_name: staffName,
+          logged_at: nowIso,
+        },
+      }),
+    }).catch(() => {});
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to load reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      message: "Customer call logged successfully",
+    };
+  }
+
+  async flagClosureManualResolution(input: FlagClosureManualResolutionInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
+    const filter = isUuid
+      ? `id=eq.${encodeURIComponent(input.reservationId)}`
+      : `reference_code=eq.${encodeURIComponent(input.reservationId)}`;
+
+    const rows = await this.request<any[]>(`/reservations?select=*&${filter}&limit=1`);
+    const r = rows?.[0];
+    if (!r) {
+      throw new Error(`Reservation not found: ${input.reservationId}`);
+    }
+
+    const nowIso = new Date().toISOString();
+    let newNotes = r.manual_resolution_notes ?? null;
+    if (input.notes) {
+      const noteEntry = `[${nowIso}] Flagged for Manual Resolution by ${input.actorUserId} (${input.actorRole}): ${input.notes}`;
+      newNotes = newNotes ? `${newNotes}\n${noteEntry}` : noteEntry;
+    }
+
+    await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        closure_impact_status: "MANUAL_RESOLUTION_REQUIRED",
+        manual_resolution_notes: newNotes,
+        updated_at: nowIso,
+      }),
+    });
+
+    await this.request("/audit_logs", {
+      method: "POST",
+      body: JSON.stringify({
+        entity_type: "reservation",
+        entity_id: r.id,
+        action: "CLOSURE_MANUAL_RESOLUTION_FLAGGED",
+        actor_role: input.actorRole || "ADMIN",
+        actor_user_id: input.actorUserId,
+        metadata: {
+          notes: input.notes ?? null,
+          flagged_at: nowIso,
+        },
+      }),
+    }).catch(() => {});
+
+    const detail = await this.getAdminReservationDetail(r.id);
+    if (!detail) {
+      throw new Error("Failed to load reservation detail");
+    }
+
+    return {
+      success: true,
+      reservation: detail,
+      message: "Reservation flagged for manual resolution",
+    };
   }
 }
 

@@ -26,7 +26,6 @@ describe("MF-162: Payment Link Inaccessible After Reservation Expiry", () => {
     const paymentReviewService = createPaymentReviewService(reservationRepo, nowProvider);
     const adminReservationService = createAdminReservationService(
       reservationRepo,
-      workspaceRepo,
       nowProvider
     );
 

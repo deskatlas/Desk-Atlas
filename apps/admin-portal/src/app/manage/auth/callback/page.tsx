@@ -106,40 +106,54 @@ export default function AuthCallbackPage() {
         }
 
         // 5. Successfully authenticated with Google!
-        // Save pending setup state and route to mandatory password creation (MF-67)
         const finalUserId = data.user?.id || userId;
         const finalEmail = data.user?.email || email;
-        const finalDisplayName = data.user?.displayName || displayName;
+        const finalDisplayName = data.user?.displayName || displayName || 'Admin';
         const finalToken = data.token || token;
-
-        if (typeof window !== 'undefined') {
-          try {
-            sessionStorage.setItem(
-              'da_admin_setup_user',
-              JSON.stringify({
-                userId: finalUserId,
-                email: finalEmail,
-                displayName: finalDisplayName,
-                token: finalToken,
-              })
-            );
-          } catch (e) {
-            // ignore session storage error
-          }
-        }
 
         setStatus('success');
 
-        // Redirect to mandatory password creation screen
-        setTimeout(() => {
-          const queryParams = new URLSearchParams();
-          if (finalUserId) queryParams.set('userId', finalUserId);
-          if (finalEmail) queryParams.set('email', finalEmail);
-          router.push(`/manage/setup/password?${queryParams.toString()}`);
-        }, 600);
-      } catch (err: any) {
+        if (data.isPasswordConfigured) {
+          // Administrator already configured password: log in immediately
+          login('admin', finalDisplayName, {
+            id: finalUserId,
+            email: finalEmail,
+            token: finalToken,
+            isSuperAdmin: Boolean(data.user?.isSuperAdmin ?? true),
+          });
+
+          setTimeout(() => {
+            router.push('/manage');
+          }, 600);
+        } else {
+          // Password not yet configured: save pending setup state and route to setup password
+          if (typeof window !== 'undefined') {
+            try {
+              sessionStorage.setItem(
+                'da_admin_setup_user',
+                JSON.stringify({
+                  userId: finalUserId,
+                  email: finalEmail,
+                  displayName: finalDisplayName,
+                  token: finalToken,
+                })
+              );
+            } catch {
+              // ignore session storage error
+            }
+          }
+
+          setTimeout(() => {
+            const queryParams = new URLSearchParams();
+            if (finalUserId) queryParams.set('userId', finalUserId);
+            if (finalEmail) queryParams.set('email', finalEmail);
+            router.push(`/manage/setup/password?${queryParams.toString()}`);
+          }, 600);
+        }
+      } catch (err: unknown) {
         setStatus('error');
-        setErrorMessage(err?.message || 'Unexpected error processing Google OAuth callback.');
+        const msg = err instanceof Error ? err.message : 'Unexpected error processing Google OAuth callback.';
+        setErrorMessage(msg);
       }
     }
 

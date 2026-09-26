@@ -163,7 +163,8 @@ export async function validateMapForPublish(repository: MapRepository, map: Floo
       label: element.label,
       properties: element.properties,
       isLocked: element.isLocked,
-    }))
+    })),
+    true
   );
 }
 
@@ -180,7 +181,8 @@ async function normalizeElements(
   canvasWidth: number,
   canvasHeight: number,
   gridSize: number,
-  elements: MapElementInput[]
+  elements: MapElementInput[],
+  isPublishing = false
 ): Promise<MapElementInput[]> {
   if (!Array.isArray(elements)) {
     throw new MapValidationError('Map elements must be an array');
@@ -235,6 +237,52 @@ async function normalizeElements(
       }
     } else if (element.workspaceInstanceId) {
       throw new MapValidationError('Only bookable workspace elements can link to a workspace instance');
+    }
+  }
+
+  if (isPublishing) {
+    // Spatial collision check: overlapping bookable workspaces
+    for (let i = 0; i < normalized.length; i++) {
+      const a = normalized[i];
+      if (a.elementRole !== BOOKABLE_ROLE) continue;
+
+      for (let j = i + 1; j < normalized.length; j++) {
+        const b = normalized[j];
+        if (b.elementRole !== BOOKABLE_ROLE) continue;
+
+        if (
+          a.x < b.x + b.width &&
+          a.x + a.width > b.x &&
+          a.y < b.y + b.height &&
+          a.y + a.height > b.y
+        ) {
+          throw new MapValidationError('Draft contains overlapping bookable workspaces');
+        }
+      }
+    }
+
+    // Spatial collision check: workspace conflicting with wall/divider
+    for (const ws of normalized) {
+      if (ws.elementRole !== BOOKABLE_ROLE) continue;
+
+      for (const wall of normalized) {
+        if (
+          wall.elementRole === 'STRUCTURE' &&
+          (wall.elementType.toLowerCase() === 'wall' ||
+            wall.elementType.toLowerCase() === 'divider' ||
+            wall.elementType.toLowerCase() === 'thin_wall' ||
+            wall.elementType.toLowerCase() === 'thin-wall')
+        ) {
+          if (
+            ws.x < wall.x + wall.width &&
+            ws.x + ws.width > wall.x &&
+            ws.y < wall.y + wall.height &&
+            ws.y + ws.height > wall.y
+          ) {
+            throw new MapValidationError('Draft contains a workspace conflicting with a wall/divider');
+          }
+        }
+      }
     }
   }
 

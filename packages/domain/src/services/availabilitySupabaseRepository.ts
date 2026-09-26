@@ -15,6 +15,7 @@ import type {
 type BusinessSettingsRow = {
   timezone: string;
   booking_interval_minutes: number;
+  max_advance_booking_days?: number | null;
 };
 
 type OperatingHoursRow = {
@@ -145,19 +146,25 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
 
   async getBusinessSettings(): Promise<BusinessAvailabilitySettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=timezone,booking_interval_minutes&id=eq.1&limit=1'
-    );
+      '/business_settings?select=timezone,booking_interval_minutes,max_advance_booking_days&id=eq.1&limit=1'
+    ).catch(async () => {
+      return this.request<BusinessSettingsRow[]>(
+        '/business_settings?select=timezone,booking_interval_minutes&id=eq.1&limit=1'
+      );
+    });
     const row = rows[0];
     if (!row) {
       return {
         timezone: 'Asia/Manila',
         bookingIntervalMinutes: 30,
+        maxAdvanceBookingDays: 90,
       };
     }
 
     return {
       timezone: row.timezone,
       bookingIntervalMinutes: row.booking_interval_minutes,
+      maxAdvanceBookingDays: row.max_advance_booking_days ?? 90,
     };
   }
 
@@ -250,25 +257,18 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     rangeStartIso: string,
     rangeEndIso: string
   ): Promise<Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>> {
-    const [candidateRows, pendingRows, blockRows] = await Promise.all([
+    const [candidateRows, blockRows] = await Promise.all([
       this.request<Array<{ workspace_instance_id: string; end_at?: string }>>(
-        `/reservation_candidates?select=workspace_instance_id,start_at,end_at,is_assigned,reservation:reservations!inner(id,status)&start_at=lt.${encodeURIComponent(
+        `/reservation_candidates?select=workspace_instance_id,start_at,end_at,is_assigned,reservation:reservations!inner(id,status)&start_at=lte.${encodeURIComponent(
           rangeEndIso
-        )}&end_at=gt.${encodeURIComponent(
+        )}&end_at=gte.${encodeURIComponent(
           rangeStartIso
         )}&is_assigned=eq.true&reservation.status=in.(CONFIRMED,CHECKED_IN)`
       ),
-      this.request<Array<{ workspace_instance_id: string; end_at?: string; reservation?: { id: string; status: string; created_at?: string } }>>(
-        `/reservation_candidates?select=workspace_instance_id,start_at,end_at,reservation:reservations!inner(id,status,created_at)&start_at=lt.${encodeURIComponent(
-          rangeEndIso
-        )}&end_at=gt.${encodeURIComponent(
-          rangeStartIso
-        )}&reservation.status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION)`
-      ).catch(() => []),
       this.request<Array<{ workspace_instance_id: string | null; end_at?: string; scope: string }>>(
-        `/schedule_blocks?select=workspace_instance_id,start_at,end_at,scope&start_at=lt.${encodeURIComponent(
+        `/schedule_blocks?select=workspace_instance_id,start_at,end_at,scope&start_at=lte.${encodeURIComponent(
           rangeEndIso
-        )}&end_at=gt.${encodeURIComponent(
+        )}&end_at=gte.${encodeURIComponent(
           rangeStartIso
         )}`
       ).catch(() => []),
@@ -281,22 +281,6 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
         const endAt = r.end_at || null;
         if (!existingEnd || (endAt && new Date(endAt).getTime() > new Date(existingEnd).getTime())) {
           detailsMap.set(r.workspace_instance_id, endAt);
-        }
-      }
-    }
-    const nowMs = Date.now();
-    for (const p of pendingRows || []) {
-      if (p.workspace_instance_id && p.reservation) {
-        if (p.reservation.status === 'PENDING_PAYMENT' && p.reservation.created_at) {
-          const createdAtMs = new Date(p.reservation.created_at).getTime();
-          if (nowMs - createdAtMs > 60 * 60 * 1000) {
-            continue;
-          }
-        }
-        const existingEnd = detailsMap.get(p.workspace_instance_id);
-        const endAt = p.end_at || null;
-        if (!existingEnd || (endAt && new Date(endAt).getTime() > new Date(existingEnd).getTime())) {
-          detailsMap.set(p.workspace_instance_id, endAt);
         }
       }
     }

@@ -20,11 +20,30 @@ function getClientKey(request: NextRequest) {
 
 function consumeRateLimit(key: string, nowMs: number) {
   const windowStart = nowMs - RATE_LIMIT_WINDOW_MS;
-  const attempts = (requestLog.get(key) ?? []).filter((entry) => entry >= windowStart);
+
+  // Prune expired entries to prevent unbounded memory growth (DEF-API-01)
+  for (const [k, timestamps] of requestLog.entries()) {
+    const validTimestamps = timestamps.filter((entry) => entry >= windowStart);
+    if (validTimestamps.length === 0) {
+      requestLog.delete(k);
+    } else if (validTimestamps.length !== timestamps.length) {
+      requestLog.set(k, validTimestamps);
+    }
+  }
+
+  const attempts = requestLog.get(key) ?? [];
   attempts.push(nowMs);
   requestLog.set(key, attempts);
   return attempts.length <= RATE_LIMIT_MAX_ATTEMPTS;
 }
+
+// Exported for automated unit testing of memory leak remediation
+export const _rateLimiterTesting = {
+  requestLog,
+  consumeRateLimit,
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_MAX_ATTEMPTS,
+};
 
 export async function POST(request: NextRequest) {
   const nowMs = Date.now();

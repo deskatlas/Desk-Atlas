@@ -6,6 +6,7 @@ import type {
 export interface BusinessAvailabilitySettings {
   timezone: string;
   bookingIntervalMinutes: number;
+  maxAdvanceBookingDays?: number;
 }
 
 export interface OperatingHoursInterval {

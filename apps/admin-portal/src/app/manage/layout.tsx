@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from '@/features/auth';
 import { NotificationCenter, UrgentPaymentModal } from '@/features/notifications';
-import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
+import { SearchProvider, useSearch, ProfileDropdown, useActiveTabPolling } from '@deskatlas/ui';
 
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -27,54 +27,23 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [paymentsCount, setPaymentsCount] = useState<number>(0);
   const [kioskCount, setKioskCount] = useState<number>(0);
 
-  useEffect(() => {
+  const fetchBadgeCounts = useCallback(async () => {
     if (!user) return;
-
-    let isCancelled = false;
-
-    async function fetchBadgeCounts() {
-      try {
-        const [resRes, payRes, kioskRes] = await Promise.allSettled([
-          fetch('/api/admin/reservations?filter=awaiting_proof', { cache: 'no-store' }),
-          fetch('/api/admin/payments/reviews', { cache: 'no-store' }),
-          fetch('/api/admin/reservations?filter=counter_queue', { cache: 'no-store' }),
-        ]);
-
-        if (resRes.status === 'fulfilled' && resRes.value.ok) {
-          const resData = await resRes.value.json();
-          if (!isCancelled) {
-            const count = typeof resData.total === 'number' ? resData.total : (Array.isArray(resData.reservations) ? resData.reservations.length : 0);
-            setReservationsCount(count);
-          }
-        }
-
-        if (payRes.status === 'fulfilled' && payRes.value.ok) {
-          const payData = await payRes.value.json();
-          if (!isCancelled) {
-            const count = Array.isArray(payData.queue) ? payData.queue.length : 0;
-            setPaymentsCount(count);
-          }
-        }
-
-        if (kioskRes.status === 'fulfilled' && kioskRes.value.ok) {
-          const kioskData = await kioskRes.value.json();
-          if (!isCancelled) {
-            const count = typeof kioskData.total === 'number' ? kioskData.total : (Array.isArray(kioskData.reservations) ? kioskData.reservations.length : 0);
-            setKioskCount(count);
-          }
-        }
-      } catch {
-        // Silently ignore badge count fetch errors
+    try {
+      // Endpoint /api/admin/badge-counts aggregates counts for reservations, payments, and kiosk (filter=counter_queue)
+      const res = await fetch('/api/admin/badge-counts', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setReservationsCount(typeof data.reservationsCount === 'number' ? data.reservationsCount : 0);
+        setPaymentsCount(typeof data.paymentsCount === 'number' ? data.paymentsCount : 0);
+        setKioskCount(typeof data.kioskCount === 'number' ? data.kioskCount : 0);
       }
+    } catch {
+      // Silently ignore badge count fetch errors
     }
+  }, [user]);
 
-    fetchBadgeCounts();
-    const interval = setInterval(fetchBadgeCounts, 15000);
-    return () => {
-      isCancelled = true;
-      clearInterval(interval);
-    };
-  }, [user, pathname]);
+  useActiveTabPolling(fetchBadgeCounts, 45000, { enabled: Boolean(user) });
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {

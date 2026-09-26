@@ -513,6 +513,23 @@ export function ReservationList() {
                       <span style={{ background: statusDisp.bg, color: statusDisp.color, padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>
                         {statusDisp.label}
                       </span>
+                      {res.isClosureImpacted && (
+                        <div style={{ marginTop: '4px' }}>
+                          <span
+                            style={{
+                              background: res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#FEE2E2' : '#FEF3C7',
+                              color: res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#991B1B' : '#92400E',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              display: 'inline-block',
+                            }}
+                          >
+                            {res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? 'Manual Resolution Required' : 'Closure Impacted'}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                       <button

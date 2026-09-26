@@ -23,10 +23,10 @@ describe('MF-43: Admin Sign-Up Flow (Google OAuth Single-Use Setup)', () => {
     assert.equal(hasAdmin, false);
 
     const status = await staffService.getSetupStatus();
-    assert.deepEqual(status, {
-      hasAdmin: false,
-      setupAllowed: true,
-    });
+    assert.equal(status.hasAdmin, false);
+    assert.equal(status.setupAllowed, true);
+    assert.equal(status.passwordSetupPending, false);
+    assert.equal(status.isPasswordConfigured, false);
   });
 
   it('first-run guard blocks setup when an active admin account already exists', async () => {
@@ -47,10 +47,10 @@ describe('MF-43: Admin Sign-Up Flow (Google OAuth Single-Use Setup)', () => {
     assert.equal(hasAdmin, true);
 
     const status = await staffService.getSetupStatus();
-    assert.deepEqual(status, {
-      hasAdmin: true,
-      setupAllowed: false,
-    });
+    assert.equal(status.hasAdmin, true);
+    assert.equal(status.setupAllowed, false);
+    assert.equal(status.passwordSetupPending, true);
+    assert.equal(status.isPasswordConfigured, false);
 
     await assert.rejects(
       () =>
@@ -59,7 +59,7 @@ describe('MF-43: Admin Sign-Up Flow (Google OAuth Single-Use Setup)', () => {
           email: 'another.admin@gmail.com',
           displayName: 'Second Admin',
         }),
-      (err: any) => {
+      (err: unknown) => {
         assert.ok(err instanceof AdminAlreadyExistsError);
         assert.equal(err.statusCode, 403);
         assert.match(err.message, /already exists/i);
@@ -138,7 +138,7 @@ describe('MF-43: Admin Sign-Up Flow (Google OAuth Single-Use Setup)', () => {
           userId: 'usr-1',
           email: 'not-an-email',
         }),
-      (err: any) => {
+      (err: unknown) => {
         assert.ok(err instanceof AdminSetupError);
         assert.equal(err.statusCode, 400);
         assert.match(err.message, /valid email/i);
@@ -163,7 +163,7 @@ describe('MF-43: Admin Sign-Up Flow (Google OAuth Single-Use Setup)', () => {
           userId: '',
           email: 'valid@gmail.com',
         }),
-      (err: any) => {
+      (err: unknown) => {
         assert.ok(err instanceof AdminSetupError);
         assert.equal(err.statusCode, 400);
         assert.match(err.message, /user id is required/i);

@@ -65,8 +65,9 @@ describe("MF-180: Display Year in Reservation Date Formats Across Admin and Staf
 
   describe("Admin & Staff Reservation Service Integration", () => {
     it("Admin reservation list and detail include 4-digit year in candidate and main schedules", async () => {
-      const repo = new ReservationMemoryRepository();
-      const adminService = createAdminReservationService(repo);
+      const now = new Date("2026-09-23T00:00:00.000Z");
+      const repo = new ReservationMemoryRepository(() => now);
+      const adminService = createAdminReservationService(repo, () => now);
 
       const reservation = await repo.createReservation({
         source: "WEB",

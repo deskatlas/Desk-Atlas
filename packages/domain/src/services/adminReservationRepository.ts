@@ -118,6 +118,36 @@ export interface AdminReservationRepository {
   }>;
   extendReservation?(input: ExtendReservationInput): Promise<ExtendReservationResult>;
   checkExtendAvailability?(input: CheckExtendAvailabilityInput): Promise<ExtendAvailabilityResult>;
+  previewClosureImpact?(
+    inputOrStartAt:
+      | {
+          date: string;
+          endDate?: string | null;
+          closureType?: string;
+          opensAt?: string | null;
+          closesAt?: string | null;
+          timezone?: string;
+        }
+      | string,
+    endAt?: string,
+    workspaceInstanceId?: string
+  ): Promise<import("../models/reservation").ClosureImpactPreviewResult>;
+  markReservationsClosureImpacted?(
+    reservationIds: string[],
+    closureExceptionId?: string | null,
+    closureReason?: string | null,
+    closureDate?: string | null
+  ): Promise<void>;
+  logClosurePhoneCall?(input: import("../models/reservation").LogClosurePhoneCallInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }>;
+  flagClosureManualResolution?(input: import("../models/reservation").FlagClosureManualResolutionInput): Promise<{
+    success: boolean;
+    reservation: AdminReservationDetail;
+    message?: string;
+  }>;
 }
 
 export interface RequestCustomerRelocationInput {

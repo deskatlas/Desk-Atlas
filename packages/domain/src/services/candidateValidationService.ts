@@ -1,5 +1,6 @@
 import { CandidateSubmissionDTO } from "../models/reservation";
 import { WorkspaceInstance, WorkspaceTemplate } from "../models/workspace";
+import { calculateMaxBookingDate } from "./availabilityService";
 
 export class CandidateValidationError extends Error {
   constructor(message: string) {
@@ -11,6 +12,10 @@ export class CandidateValidationError extends Error {
 export interface CandidateValidationContext {
   instances: WorkspaceInstance[];
   templates: WorkspaceTemplate[];
+  maxAdvanceBookingDays?: number;
+  todayDateStr?: string;
+  now?: Date;
+  timezone?: string;
 }
 
 function getDateStringInTimezone(date: Date, timezone = "Asia/Manila"): string {
@@ -93,7 +98,18 @@ export function validateCandidates(
   }
 
   const mainIsoDate = mainStart.toISOString().split("T")[0];
-  const mainZonedDate = getDateStringInTimezone(mainStart);
+  const mainZonedDate = getDateStringInTimezone(mainStart, context.timezone);
+
+  if (context.maxAdvanceBookingDays !== undefined) {
+    const tz = context.timezone || "Asia/Manila";
+    const todayStr = context.todayDateStr || getDateStringInTimezone(context.now || new Date(), tz);
+    const maxAllowedDate = calculateMaxBookingDate(todayStr, context.maxAdvanceBookingDays);
+    if (mainZonedDate > maxAllowedDate) {
+      throw new CandidateValidationError(
+        `Selected booking date (${mainZonedDate}) exceeds the maximum allowable booking window of ${context.maxAdvanceBookingDays} days (latest available date is ${maxAllowedDate}).`
+      );
+    }
+  }
 
   for (const candidate of candidates) {
     if (candidate.rank === 0) continue;

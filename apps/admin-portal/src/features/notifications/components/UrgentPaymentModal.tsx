@@ -22,6 +22,7 @@ import {
   isUrgentAlertDismissed,
   formatCountdown,
 } from "@deskatlas/domain";
+import { useActiveTabPolling } from "@deskatlas/ui";
 
 const STORAGE_KEY_DISMISSED = "deskatlas_urgent_payments_dismissed";
 const STORAGE_KEY_SNOOZED = "deskatlas_urgent_payments_snoozed";
@@ -119,11 +120,7 @@ export function UrgentPaymentModal() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchUrgentAlerts();
-    const interval = setInterval(fetchUrgentAlerts, 15000);
-    return () => clearInterval(interval);
-  }, [fetchUrgentAlerts]);
+  useActiveTabPolling(fetchUrgentAlerts, 30000);
 
   // Filter out dismissed, currently snoozed, or payment that the admin is actively reviewing on page
   const activeAlerts = useMemo(() => {

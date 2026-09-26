@@ -49,6 +49,7 @@ export function WorkspaceDiscoveryPage() {
   const [mapLoadState, setMapLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [mapError, setMapError] = useState("");
   const [mapReloadToken, setMapReloadToken] = useState(0);
+  const [maxAdvanceBookingDays, setMaxAdvanceBookingDays] = useState<number>(90);
 
   const calendarRef = useRef<HTMLDivElement>(null);
   const timeDropdownRef = useRef<HTMLDivElement>(null);
@@ -66,6 +67,23 @@ export function WorkspaceDiscoveryPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && typeof data?.maxAdvanceBookingDays === "number") {
+          setMaxAdvanceBookingDays(data.maxAdvanceBookingDays);
+        }
+      })
+      .catch(() => {
+        // Default to 90 days
+      });
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -279,6 +297,9 @@ export function WorkspaceDiscoveryPage() {
                       const today = new Date();
                       today.setHours(0, 0, 0, 0);
                       if (date < today) return true;
+                      const maxDate = new Date(today);
+                      maxDate.setDate(maxDate.getDate() + (maxAdvanceBookingDays || 90));
+                      if (date > maxDate) return true;
                       if (!selectedWorkspace) return false;
                       return !availableDates.includes(formatDate(date));
                     }}

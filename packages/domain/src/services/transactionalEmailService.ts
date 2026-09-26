@@ -2462,7 +2462,7 @@ export function renderRoleChangeNotificationEmail(input: RoleChangeNotificationE
   const contactNumber = profile.contactPhone || input.contactNumber || '+63 2 8123 4567';
 
   const defaultPortalName = isNewRoleAdmin ? 'Admin Portal' : 'Staff Dashboard';
-  const defaultLoginUrl = isNewRoleAdmin ? 'http://localhost:3000/manage/login' : 'http://localhost:3002/manage/login';
+  const defaultLoginUrl = isNewRoleAdmin ? 'http://localhost:3000/manage/login' : 'http://localhost:3002/manage';
   const portalName = input.portalName || defaultPortalName;
   const loginUrl = input.loginUrl || defaultLoginUrl;
 
@@ -3107,8 +3107,149 @@ export class TransactionalEmailService {
       text: rendered.text,
     });
   }
+
+  async sendClosureImpactNotice(input: ClosureImpactNoticeEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: ClosureImpactNoticeEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderClosureImpactNoticeEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+}
+
+export interface ClosureImpactNoticeEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerName: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  closureDate: string;
+  closureEndDate?: string | null;
+  closureReason?: string | null;
+  workspaceDisplayName?: string;
+  workspaceName?: string;
+  workspaceTemplateName?: string;
+  floorName?: string;
+  startAt?: string;
+  endAt?: string;
+  schedule?: string;
+  trackingUrl?: string;
+  selfServiceUrl?: string;
+  supportPhone?: string;
+}
+
+export function renderClosureImpactNoticeEmail(input: ClosureImpactNoticeEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName = input.customerName || [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Valued Guest';
+  const subject = `Important Notice: Your ${businessName} Reservation [${input.referenceCode}] is Affected by a Facility Closure`;
+  const reasonText = input.closureReason ? input.closureReason.trim() : 'Scheduled Facility Closure / Maintenance';
+
+  const closurePeriod = input.closureEndDate && input.closureEndDate !== input.closureDate
+    ? `${input.closureDate} to ${input.closureEndDate}`
+    : input.closureDate;
+
+  const trackingLink = input.trackingUrl || `http://localhost:3001/track?code=${encodeURIComponent(input.referenceCode)}&remedy=closure`;
+  const scheduleFormatted = input.schedule || (input.startAt && input.endAt ? `${formatEmailTime(input.startAt)} to ${formatEmailTime(input.endAt)}` : 'Booked Time Slot');
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #d97706; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .alert-box { background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin: 18px 0; color: #92400e; }
+    .details-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .btn { display: inline-block; background-color: #d97706; color: #ffffff !important; text-decoration: none; padding: 12px 26px; border-radius: 8px; font-weight: 700; font-size: 14px; margin: 16px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Facility Closure Notice: Action Required</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>We are reaching out to inform you that <strong>${escapeHtml(businessName)}</strong> will be closed or operating under special hours during your upcoming reservation window.</p>
+      
+      <div class="alert-box">
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">Closure Information</div>
+        <div><strong>Date(s):</strong> ${escapeHtml(closurePeriod)}</div>
+        <div><strong>Reason:</strong> ${escapeHtml(reasonText)}</div>
+      </div>
+
+      <div class="details-box">
+        <div style="font-weight: 700; font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 8px;">Your Affected Reservation</div>
+        <div><strong>Reserved Workspace:</strong> ${escapeHtml(input.workspaceDisplayName || 'Workspace Desk')}${input.workspaceTemplateName ? ` (${escapeHtml(input.workspaceTemplateName)})` : ''}</div>
+        <div><strong>Scheduled Time:</strong> ${escapeHtml(scheduleFormatted)}</div>
+      </div>
+
+      <p><strong>Next Steps & Self-Service Remedy:</strong></p>
+      <p>You can relocate to an available workspace on another open floor or reschedule your reservation to any alternative open date without any cutoff restrictions or additional penalty fees.</p>
+
+      <div style="text-align: center;">
+        <a href="${escapeHtml(trackingLink)}" class="btn">Relocate or Reschedule Reservation</a>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b; text-align: center;">
+        Or access directly at: <a href="${escapeHtml(trackingLink)}" style="color: #d97706;">${escapeHtml(trackingLink)}</a>
+      </p>
+
+      <p style="font-size: 13px; color: #64748b;">
+        If you need assistance, our front-desk team will also reach out to help coordinate your booking or arrange a full refund or credit.
+      </p>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Facility Closure Notice: Action Required - ${businessName}
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+We are reaching out to inform you that ${businessName} will be closed or operating under special hours during your upcoming reservation window.
+
+Closure Information:
+- Date(s): ${closurePeriod}
+- Reason: ${reasonText}
+
+Your Affected Reservation:
+- Reserved Workspace: ${input.workspaceDisplayName || 'Workspace Desk'}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}
+- Scheduled Time: ${scheduleFormatted}
+
+Next Steps & Self-Service Remedy:
+You can relocate to an available workspace on another open floor or reschedule your reservation to any alternative open date without any cutoff restrictions or additional penalty fees.
+
+Relocate or Reschedule:
+${trackingLink}
+
+If you need assistance, our front-desk team will also reach out to help coordinate your booking or arrange a full refund or credit.
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
 }
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {
   return new TransactionalEmailService(config);
 }
+

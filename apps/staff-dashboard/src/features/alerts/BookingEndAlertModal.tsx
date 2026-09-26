@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
-  AlertTriangle,
   Clock,
   User,
   Hash,
@@ -15,33 +14,7 @@ import {
   MapPin,
 } from "lucide-react";
 import type { BookingEndAlert } from "@deskatlas/domain";
-import {
-  makeEndAlertDismissKey,
-  isEndAlertDismissed,
-} from "@deskatlas/domain";
-
-const STORAGE_KEY_DISMISSED = "deskatlas_staff_booking_ends_dismissed";
-
-function getStoredDismissedKeys(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY_DISMISSED);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveStoredDismissedKeys(keys: Set<string>) {
-  if (typeof window === "undefined") return;
-  try {
-    sessionStorage.setItem(STORAGE_KEY_DISMISSED, JSON.stringify(Array.from(keys)));
-  } catch {
-    // Ignore storage write errors
-  }
-}
+import { useAlerts } from "./AlertsContext";
 
 function formatBookingTime(isoString: string): string {
   try {
@@ -58,43 +31,12 @@ function formatBookingTime(isoString: string): string {
 
 export function BookingEndAlertModal() {
   const router = useRouter();
-  const pathname = usePathname();
 
-  const [rawAlerts, setRawAlerts] = useState<BookingEndAlert[]>([]);
-  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(getStoredDismissedKeys);
+  const {
+    activeAlerts,
+    markSingleAsDismissed,
+  } = useAlerts();
   const [currentIndex, setCurrentIndex] = useState<number>(0);
-
-  const fetchApproachingAlerts = useCallback(async () => {
-    try {
-      const res = await fetch("/api/operations/approaching-ends", {
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.alerts)) {
-          setRawAlerts(data.alerts);
-        }
-      }
-    } catch {
-      // Silently ignore network failures on background poll
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchApproachingAlerts();
-    const interval = setInterval(fetchApproachingAlerts, 60000);
-    return () => clearInterval(interval);
-  }, [fetchApproachingAlerts]);
-
-  // Filter out dismissed alerts
-  const activeAlerts = useMemo(() => {
-    return rawAlerts.filter((alert) => {
-      if (isEndAlertDismissed(dismissedKeys, alert.reservationId)) {
-        return false;
-      }
-      return true;
-    });
-  }, [rawAlerts, dismissedKeys]);
 
   // Keep index within bounds
   useEffect(() => {
@@ -112,20 +54,11 @@ export function BookingEndAlertModal() {
   if (!alert) return null;
 
   const handleDismiss = () => {
-    const key = makeEndAlertDismissKey(alert.reservationId);
-    const updated = new Set(dismissedKeys);
-    updated.add(key);
-    setDismissedKeys(updated);
-    saveStoredDismissedKeys(updated);
+    markSingleAsDismissed(alert.reservationId);
   };
 
   const handleViewReservation = () => {
-    const key = makeEndAlertDismissKey(alert.reservationId);
-    const updated = new Set(dismissedKeys);
-    updated.add(key);
-    setDismissedKeys(updated);
-    saveStoredDismissedKeys(updated);
-
+    markSingleAsDismissed(alert.reservationId);
     router.push(`/manage/reservations?search=${encodeURIComponent(alert.referenceCode)}`);
   };
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AdminReservationError } from "@deskatlas/domain";
 import { getAdminReservationService } from "../../_lib/reservationService";
 
 export const runtime = "nodejs";
@@ -69,9 +70,30 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof AdminReservationError) {
+      const lower = error.message.toLowerCase();
+      const status = lower.includes("not found")
+        ? 404
+        : lower.includes("already cancelled") || lower.includes("conflict")
+        ? 409
+        : 400;
+      return NextResponse.json({ error: error.message }, { status });
+    }
+
     const message =
       error instanceof Error ? error.message : "Failed to cancel reservation.";
-    const status = message.includes("not found") ? 404 : 500;
+    const lower = message.toLowerCase();
+    const status = lower.includes("not found")
+      ? 404
+      : lower.includes("already cancelled") || lower.includes("conflict")
+      ? 409
+      : lower.includes("cannot cancel") ||
+        lower.includes("not authorized") ||
+        lower.includes("reason is required") ||
+        lower.includes("reservation id is required")
+      ? 400
+      : 500;
+
     return NextResponse.json({ error: message }, { status });
   }
 }

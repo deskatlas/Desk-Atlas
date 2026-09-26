@@ -35,6 +35,18 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
 
     return clonePublishedFloorMap(map, options?.audience);
   }
+
+  async loadAllPublishedFloorMaps(
+    options?: { audience?: PublishedMapAudience }
+  ): Promise<PublishedFloorMap[]> {
+    const floors = await this.listPublishedFloors();
+    const maps: PublishedFloorMap[] = [];
+    for (const floor of floors) {
+      const map = await this.loadPublishedFloorMap(floor.id, options);
+      if (map) maps.push(map);
+    }
+    return maps;
+  }
 }
 
 function clonePublishedFloorMap(map: PublishedFloorMap, audience?: PublishedMapAudience): PublishedFloorMap {

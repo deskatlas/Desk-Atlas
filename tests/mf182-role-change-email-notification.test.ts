@@ -73,7 +73,7 @@ describe("MF-182: Role Change Notification Email for Staff and Admin Accounts", 
         newRole: "STAFF",
         updatedByAdminName: "Super Administrator",
         updatedAt: "2026-09-23T10:00:00.000Z",
-        loginUrl: "http://localhost:3002/manage/login",
+        loginUrl: "http://localhost:3002/manage",
         portalName: "Staff Dashboard",
       };
 
@@ -88,14 +88,16 @@ describe("MF-182: Role Change Notification Email for Staff and Admin Accounts", 
       assert.ok(rendered.html.includes("Staff"));
       assert.ok(rendered.html.includes("Staff Dashboard"));
       assert.ok(rendered.html.includes("Sign In to Staff Dashboard"));
-      assert.ok(rendered.html.includes("http://localhost:3002/manage/login"));
+      assert.ok(rendered.html.includes("http://localhost:3002/manage"));
+      assert.ok(!rendered.html.includes("/manage/login"));
       assert.ok(rendered.html.includes("front-desk operations"));
 
       assert.ok(rendered.text.includes("Marcus Vance"));
       assert.ok(rendered.text.includes("Previous Role: Admin"));
       assert.ok(rendered.text.includes("New Role: Staff"));
       assert.ok(rendered.text.includes("Staff Dashboard Access:"));
-      assert.ok(rendered.text.includes("http://localhost:3002/manage/login"));
+      assert.ok(rendered.text.includes("http://localhost:3002/manage"));
+      assert.ok(!rendered.text.includes("/manage/login"));
     });
 
     it("respects custom business settings profile", () => {
@@ -248,7 +250,8 @@ describe("MF-182: Role Change Notification Email for Staff and Admin Accounts", 
       assert.equal(sentRoleChangeEmails[0].previousRole, "ADMIN");
       assert.equal(sentRoleChangeEmails[0].newRole, "STAFF");
       assert.equal(sentRoleChangeEmails[0].portalName, "Staff Dashboard");
-      assert.ok(sentRoleChangeEmails[0].loginUrl?.includes(":3002") || sentRoleChangeEmails[0].loginUrl?.includes("/manage/login"));
+      assert.equal(sentRoleChangeEmails[0].loginUrl, "http://localhost:3002/manage");
+      assert.ok(!sentRoleChangeEmails[0].loginUrl?.includes("/manage/login"));
     });
 
     it("does NOT dispatch role change email when other fields are updated without role change", async () => {

@@ -12,6 +12,7 @@ import {
   type AdminPaymentMethod,
   type BusinessClosureException,
   type BusinessClosureType,
+  type ClosureImpactPreviewResult,
   type LandingPreviewPhoto,
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
@@ -102,6 +103,7 @@ export function canSaveBusinessProfile(params: {
   bookingEndAlertMinutes?: number | string | null;
   rescheduleMaxAdvanceValue?: number | string | null;
   rescheduleMaxAdvanceUnit?: string | null;
+  maxAdvanceBookingDays?: number | string | null;
 }): { canSave: boolean; reason?: string } {
   if (!params.businessName || !params.businessName.trim()) {
     return { canSave: false, reason: 'Business name is required' };
@@ -172,6 +174,13 @@ export function canSaveBusinessProfile(params: {
     const maxBound = isHours ? 8760 : 365;
     if (isNaN(val) || val < 1 || val > maxBound) {
       return { canSave: false, reason: `Maximum reschedule advance limit must be between 1 and ${maxBound} ${isHours ? 'hours' : 'days'}` };
+    }
+  }
+
+  if (params.maxAdvanceBookingDays !== undefined && params.maxAdvanceBookingDays !== null && (params.maxAdvanceBookingDays as unknown) !== '') {
+    const maxDays = Number(params.maxAdvanceBookingDays);
+    if (isNaN(maxDays) || maxDays < 1 || maxDays > 365) {
+      return { canSave: false, reason: 'Maximum advance booking window must be between 1 and 365 days' };
     }
   }
 
@@ -394,6 +403,9 @@ export function Settings() {
   const [specialClosesAt, setSpecialClosesAt] = useState('14:00');
   const [closureReason, setClosureReason] = useState('');
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [impactPreview, setImpactPreview] = useState<ClosureImpactPreviewResult | null>(null);
+  const [showImpactModal, setShowImpactModal] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -709,6 +721,42 @@ export function Settings() {
     }
 
     try {
+      setPreviewLoading(true);
+      setErrorMsg(null);
+
+      const previewRes = await fetch('/api/admin/settings/closures/preview-impact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: selectedDate,
+          endDate: isMultiDay && closureEndDate ? closureEndDate : null,
+          closureType,
+          opensAt: closureType === 'SPECIAL_HOURS' ? specialOpensAt : null,
+          closesAt: closureType === 'SPECIAL_HOURS' ? specialClosesAt : null,
+          reason: closureReason || null,
+        }),
+      });
+
+      if (previewRes.ok) {
+        const previewJson = await previewRes.json();
+        const previewData: ClosureImpactPreviewResult = previewJson.data;
+        if (previewData && previewData.impactedCount > 0) {
+          setImpactPreview(previewData);
+          setShowImpactModal(true);
+          return;
+        }
+      }
+
+      await executeSaveClosure();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to evaluate closure impact');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function executeSaveClosure() {
+    try {
       setSaving(true);
       setErrorMsg(null);
 
@@ -730,6 +778,8 @@ export function Settings() {
         throw new Error(json.error || 'Failed to save closure exception');
       }
 
+      setShowImpactModal(false);
+      setImpactPreview(null);
       await fetchClosures();
       setClosureReason('');
       showSuccess(`Closure / exception for ${selectedDate} saved!`);
@@ -799,6 +849,7 @@ export function Settings() {
       websiteUrl: businessSettings.websiteUrl,
       bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
       bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
+      maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays,
     });
 
     if (!check.canSave) {
@@ -850,6 +901,9 @@ export function Settings() {
       const normalizedMaxAdvanceVal = !businessSettings.rescheduleMaxAdvanceValue || Number(businessSettings.rescheduleMaxAdvanceValue) < 1
         ? 30
         : Math.min(maxBound, Math.max(1, Number(businessSettings.rescheduleMaxAdvanceValue)));
+      const normalizedMaxAdvanceBookingDays = businessSettings.maxAdvanceBookingDays === undefined || businessSettings.maxAdvanceBookingDays === null || Number(businessSettings.maxAdvanceBookingDays) < 1
+        ? 90
+        : Math.min(365, Math.max(1, Number(businessSettings.maxAdvanceBookingDays)));
 
       const payload = {
         ...businessSettings,
@@ -868,6 +922,7 @@ export function Settings() {
         customerRescheduleCutoffHours: normalizedRescheduleCutoff,
         rescheduleMaxAdvanceValue: normalizedMaxAdvanceVal,
         rescheduleMaxAdvanceUnit: normalizedMaxAdvanceUnit,
+        maxAdvanceBookingDays: normalizedMaxAdvanceBookingDays,
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -1828,6 +1883,59 @@ export function Settings() {
                 </div>
               </div>
 
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Maximum Advance Booking Window (Days)
+                </label>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={365} 
+                  value={businessSettings.maxAdvanceBookingDays === '' as any ? '' : (businessSettings.maxAdvanceBookingDays ?? 90)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setBusinessSettings({
+                      ...businessSettings,
+                      maxAdvanceBookingDays: raw === '' ? ('' as any) : Number(raw),
+                    });
+                  }}
+                  onBlur={() => {
+                    if (businessSettings.maxAdvanceBookingDays === undefined || businessSettings.maxAdvanceBookingDays === null || (businessSettings.maxAdvanceBookingDays as unknown) === '' || Number(businessSettings.maxAdvanceBookingDays) < 1) {
+                      setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: 90 });
+                    } else if (Number(businessSettings.maxAdvanceBookingDays) > 365) {
+                      setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: 365 });
+                    }
+                  }}
+                  onKeyDown={(e) => handleNumericKeyDown(e)}
+                  data-testid="max-advance-booking-days-input"
+                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                />
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                  {[30, 60, 90, 120, 180].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: preset })}
+                      style={{
+                        background: businessSettings.maxAdvanceBookingDays === preset ? 'var(--da-brand-dark)' : '#F1F5F9',
+                        color: businessSettings.maxAdvanceBookingDays === preset ? '#fff' : '#334155',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {preset} Days
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                  Configure how far in advance customers can reserve workspaces (e.g. 50, 80, or 100 days). Dates beyond this horizon are blocked on the public calendar.
+                </div>
+              </div>
+
               {/* Workspace Status Colors Configuration Card */}
               <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '18px', marginTop: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
@@ -1988,6 +2096,7 @@ export function Settings() {
                   bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
                   rescheduleMaxAdvanceValue: businessSettings.rescheduleMaxAdvanceValue,
                   rescheduleMaxAdvanceUnit: businessSettings.rescheduleMaxAdvanceUnit,
+                  maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays,
                 });
                 const isDisabled = saving || !check.canSave;
                 return (
@@ -3130,6 +3239,199 @@ export function Settings() {
                     </div>
                   )}
                 </div>
+
+                {/* Closure Impact Collision Warning Modal */}
+                {showImpactModal && impactPreview && (
+                  <div
+                    style={{
+                      position: 'fixed',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 1000,
+                      padding: '20px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        maxWidth: '640px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                        border: '1px solid var(--da-border)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Modal Header */}
+                      <div
+                        style={{
+                          padding: '20px 24px',
+                          borderBottom: '1px solid var(--da-border-light)',
+                          background: '#FFFBEB',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '10px',
+                            background: '#FDE68A',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '20px',
+                          }}
+                        >
+                          ⚠️
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '16px', fontWeight: 800, color: '#92400E' }}>
+                            Closure Collision Warning: {impactPreview.impactedCount} Reservation(s) Impacted
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#B45309', marginTop: '2px' }}>
+                            Existing bookings overlap with the scheduled closure date ({selectedDate})
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Modal Content */}
+                      <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div style={{ fontSize: '13px', color: '#334155', lineHeight: '1.5' }}>
+                          Saving this closure will automatically flag the <strong>{impactPreview.impactedCount}</strong> colliding reservation(s) as <strong>Closure Impacted</strong> and immediately dispatch customer notice emails with self-service relocation and reschedule links.
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-secondary)', textTransform: 'uppercase' }}>
+                            Impacted Reservations
+                          </div>
+                          <div
+                            style={{
+                              border: '1px solid var(--da-border)',
+                              borderRadius: '8px',
+                              maxHeight: '220px',
+                              overflowY: 'auto',
+                              background: '#F8FAFC',
+                            }}
+                          >
+                            {impactPreview.reservations.map((r) => (
+                              <div
+                                key={r.reservationId}
+                                style={{
+                                  padding: '10px 14px',
+                                  borderBottom: '1px solid var(--da-border-light)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '12px',
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 700, color: 'var(--da-brand-dark)' }}>
+                                    {r.customerName} ({r.referenceCode})
+                                  </div>
+                                  <div style={{ color: 'var(--da-text-secondary)', fontSize: '11px' }}>
+                                    {r.customerEmail} • {r.workspaceDisplayName}
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '10px',
+                                      fontWeight: 800,
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      background: '#FEF3C7',
+                                      color: '#92400E',
+                                    }}
+                                  >
+                                    {r.status}
+                                  </span>
+                                  <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                                    {new Date(r.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(r.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            background: '#EFF6FF',
+                            border: '1px solid #BFDBFE',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            fontSize: '12px',
+                            color: '#1E40AF',
+                            lineHeight: '1.4',
+                          }}
+                        >
+                          ℹ️ Front-desk staff will also see these reservations in their <strong>Closure Impacted</strong> queue for manual phone outreach if customers do not self-serve.
+                        </div>
+                      </div>
+
+                      {/* Modal Footer */}
+                      <div
+                        style={{
+                          padding: '16px 24px',
+                          borderTop: '1px solid var(--da-border-light)',
+                          background: '#F8FAFC',
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          gap: '10px',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setShowImpactModal(false)}
+                          disabled={saving}
+                          style={{
+                            padding: '10px 18px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--da-border)',
+                            background: '#FFFFFF',
+                            color: '#334155',
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => executeSaveClosure()}
+                          disabled={saving}
+                          style={{
+                            padding: '10px 18px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: '#D97706',
+                            color: '#FFFFFF',
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            cursor: saving ? 'not-allowed' : 'pointer',
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          {saving ? 'Processing Closure...' : 'Confirm Closure & Notify Customers'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}

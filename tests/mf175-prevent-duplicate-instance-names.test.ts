@@ -138,18 +138,19 @@ describe('MF-175: Prevent Duplicate Workspace Instance Names', () => {
       defaultShape: 'desk',
     });
 
-    const floor = await service.createFloor({ name: 'Floor 1' });
+    const floorA = await service.createFloor({ name: 'Floor 1' });
+    const floorB = await service.createFloor({ name: 'Floor 2' });
 
     const instA = await service.createInstance({
       templateId: templateA.id,
-      floorId: floor.id,
+      floorId: floorA.id,
       instanceCode: 'DD-01',
       displayName: 'Spot 1',
     });
 
     const instB = await service.createInstance({
       templateId: templateB.id,
-      floorId: floor.id,
+      floorId: floorB.id,
       instanceCode: 'SD-01',
       displayName: 'Spot 1',
     });

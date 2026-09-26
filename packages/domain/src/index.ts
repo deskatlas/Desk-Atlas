@@ -116,6 +116,8 @@ export { InMemoryAvailabilityRepository } from './services/availabilityMemoryRep
 export {
   AvailabilityValidationError,
   createAvailabilityService,
+  calculateMaxBookingDate,
+  validateBookingDateWithinHorizon,
   zonedDateTimeToUtc,
   getTimezoneOffsetMinutes,
 } from './services/availabilityService';

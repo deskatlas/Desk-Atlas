@@ -1,458 +1,88 @@
-# DeskAtlas — Codex Agent Instructions
+<!-- BEGIN:nextjs-agent-rules -->
+# This is NOT the Next.js you know
 
-Before implementation, read:
+This version has breaking changes: APIs, conventions, and file structure may all differ from your training data. Read the relevant Next.js documentation before writing any code. Heed deprecation notices.
+<!-- END:nextjs-agent-rules -->
 
-`docs/INDEX.md`
+# AI Agent Playbook (AGENTS.md)
 
-`docs/IMPLEMENTATION_STATUS.md`
-
-Never assume a milestone is complete solely because code exists.
-Use this ledger plus tests to determine project progress.
-
-After successfully completing a milestone, update only its status and
-verification notes. Do not modify locked specification documents unless
-explicitly instructed.
-
-Always use `docs/INDEX.md` as part of the operating instructions for:
-
-- required preflight reading
-- shared ledger updates after every milestone attempt
-- frontend limitation documentation expectations
-- post-FM milestone-fix (`MF-*`) documentation and execution expectations
-
-Current post-FM customer/kiosk flow change requests are tracked in
-`docs/milestone-fixes/MF-40_KIOSK_FULLSCREEN_WELCOME.md`,
-`docs/milestone-fixes/MF-41_CUSTOMER_TEMPLATE_FIRST_RESERVE_FLOW.md`, and
-`docs/milestone-fixes/MF-42_KIOSK_TEMPLATE_FIRST_NOW_RESERVE_FLOW.md`.
-Read the matching MF file before implementing any of those requested changes.
-
-Current dev-notes bug fixes, feature gaps, and improvements (MF-43 through
-MF-64) are analyzed in `docs/DEV_NOTES_ANALYSIS.md` with phased execution
-order in `docs/DEV_NOTES_MILESTONE_RUNBOOK.md`. Individual MF files are in
-`docs/milestone-fixes/`. Read the matching MF file, the analysis, and the
-runbook before implementing any dev-notes requested change.
-
-
-## 1. Project Documentation Is Mandatory
-
-All authoritative DeskAtlas project documentation lives in:
-
-`/docs`
-
-Before implementing, modifying, debugging, or planning any DeskAtlas feature,
-you MUST inspect the relevant files in `/docs`.
-
-Do not rely only on the current prompt or assumptions from the codebase.
+**Project:** DeskAtlas (Smart Coworking Space Management, On-Site Kiosk, Interactive Map-Builder, and Reservation Platform)  
+**Document Function:** Master Autonomous Agent Instruction & Architectural Contract  
+**Version:** 1.0.0 (Production Release)  
+**Date:** September 23, 2026  
+**Owner:** Reynard John B. Rabanal (Lead Product / Systems Architect) & DeskAtlas Team  
+**Status:** Active  
+**Enforcement:** Mandatory for all AI and LLM code-generation agents  
 
 ---
 
-## 2. Source-of-Truth Priority
+## 1. Primary Operating Directives
 
-Read and obey the project documents in this order:
+You are an autonomous senior software engineering agent working within the DeskAtlas codebase. Your mission is to build, refactor, and maintain production-grade systems while preventing architectural drift, undocumented interface mutations, and regressions across the Next.js frontend applications (`apps/customer-website`, `apps/kiosk`, `apps/staff-dashboard`, `apps/admin-portal`), pure TypeScript domain services (`packages/domain`), validation schemas (`packages/validation`), shared UI primitives (`packages/ui`), and the Supabase PostgreSQL persistence layer.
 
-1. `docs/DeskAtlas_Final_Source_of_Truth_Project_Plan.md`
-   - Highest authority for product behavior and locked project decisions.
-
-2. `docs/prd-deskatlas.md`
-   - Defines features, PRD IDs, user stories, acceptance criteria, screens,
-     navigation, and release requirements.
-
-3. `docs/DeskAtlas_Final_ERD_Specification.md`
-   - Authority for database entities, relationships, keys, constraints,
-     cardinalities, and persistence model.
-
-4. `docs/DeskAtlas_Backend_Integration_Scope_of_Work.md`
-   - Defines what implementation agents are allowed and forbidden to modify.
-
-5. `docs/DeskAtlas_Feature_Milestone_Runbook.md`
-   - Defines implementation order, feature milestones, test gates, and
-     mandatory stopping points.
-
-If code conflicts with these documents, do not silently follow the code.
-Report the conflict and follow the higher-priority project specification unless
-the user explicitly changes the requirement.
-
-If two documents conflict, the document higher in this list wins.
+Every code change must be treated as an immutable transaction against project specifications:
+1. Specification Precedence: Do not write code without an upstream requirement. Features map to PRD-F#, business metrics map to BRD-M#, system components map to SDD-C#, UI components map to DSD-UI#, database entities map to ERD-E#, and tests map to QAD-TC#. Upstream specifications reside in `docs/index.md`.
+2. Deterministic Outputs and Core Invariants:
+   - Strict No-Hold Rule: Selecting a spot, submitting a reservation, receiving a payment link, or awaiting payment review never holds inventory. Inventory is reserved strictly upon authorized payment confirmation or admin approval paired with atomic candidate allocation.
+   - Allocation Priority Sequence: Candidate allocation must strictly follow the priority sequence (Main -> Alt 1 -> Alt 2 -> Manual Resolution). Never automatically assign a fourth unapproved option.
+   - Guest-First Lifecycle: Customer accounts are never required for bookings. Reservations strictly require first name, last name, and email.
+   - Decoupled Booking and Payment QRs: Payment QR and booking QR are strictly separate. Booking QRs encode opaque non-PII tokens and remain active exclusively during the confirmed booking window.
+3. Zero Hallucinated Dependencies: Never introduce new third-party libraries or external dependencies unless explicitly specified in `docs/sdd-deskatlas.md` or root `package.json`, or approved by human maintainers.
+4. UI Component and Style Consistency: When touching the UI (adding new screens or editing existing components), you must strictly reuse and adhere to the current UI components, layouts, design tokens, and visual styling established in this repository (such as Tailwind CSS tokens, shared components in `packages/ui/`, and existing patterns in `apps/*/src/features/`). Never introduce arbitrary ad-hoc styles, conflicting color palettes, or unapproved external UI libraries.
 
 ---
 
-## 3. Required Preflight Before Any Implementation
+## 2. Hard Bans & Quality Constraints
 
-Before editing code:
-
-1. Confirm repository root.
-2. Read this `AGENTS.md`.
-3. Read `docs/INDEX.md`.
-4. Inspect `/docs`.
-5. Read the five authoritative DeskAtlas documents above.
-6. If the request is a post-FM fix or references `MF-*`, read
-   `docs/milestone-fixes/INDEX.md` and the matching MF file.
-7. Identify the exact milestone being requested.
-8. Identify its corresponding PRD feature IDs.
-9. Read the milestone's dependencies and acceptance criteria.
-10. Inspect `git status`.
-11. Inspect the existing implementation related to the feature.
-12. Identify whether the required frontend UI already exists.
-
-Do not write code before completing this preflight.
+| Ban Identifier | Restricted Pattern | Enforcement Rationale | Mandated Alternative |
+|---|---|---|---|
+| BAN-PUNCT-01 | Em-dashes in documentation | Breaks consistency with voice guidelines and text formatting | Use standard hyphens, colons, or parentheses |
+| BAN-SPEC-02 | Writing code with no spec link | Causes requirement leakage and zombie components | Trace commit back to PRD-F#, SDD-C#, ERD-E#, or QAD-TC# ID |
+| BAN-DIAG-03 | Box diagrams or trees in code blocks | Unparseable for agent automated diffs | Use standard Markdown tables and ordered prose |
+| BAN-AUTH-04 | Hardcoded API tokens or secrets | Security risk; credential leakage | Inject via environment variables (`.env`, `.env.example`) |
+| BAN-TYPE-05 | Using any in TypeScript files | Degrades type safety across API contracts | Use explicit schemas, generics, interfaces, or unknown |
+| BAN-MIGR-06 | Manual DB mutations or raw DDL in code | Breaks local vs production state parity | Write reversible migration files in `supabase/` |
+| BAN-RLS-07 | Bypassing Supabase RLS on client calls | Violates tenant isolation and user data privacy | Use authenticated client for user operations; restrict service role key to server actions / route handlers |
+| BAN-HOLD-08 | Violating the No-Hold rule or allocation sequence | Corrupts coworking capacity and allows ghost reservations | Enforce atomic payment confirmation and allocation priority (Main -> Alt 1 -> Alt 2 -> Manual) |
+| BAN-UI-09 | Introducing foreign UI styles or ad-hoc styling | Fragments the user interface and breaks design consistency | Strictly reuse existing repository components and established UI styling patterns |
 
 ---
 
-## 4. One Milestone Per Run
+## 3. System Architecture Boundaries
 
-DeskAtlas uses strict milestone execution.
-
-The required lifecycle is:
-
-`READ → INSPECT → PLAN → IMPLEMENT → TEST → REGRESSION TEST → DIFF AUDIT → REPORT → STOP`
-
-Implement exactly ONE milestone per user request.
-
-This applies to backend milestones (`Mxx`), frontend milestones (`FM-xx`), and
-post-FM fix milestones (`MF-xx`).
-
-Never automatically continue to the next milestone.
-
-Even if the next feature is closely related, STOP after the current milestone
-passes its validation requirements.
-
-The next milestone requires a new explicit user instruction.
+| Directory Path | Architectural Layer | Permitted Operations | Restricted Operations |
+|---|---|---|---|
+| `docs/` | Specification & Governance | Editing markdown specs (`docs/index.md`, PRD, BRD, SDD, DSD, ERD, QAD, BUILD), referencing `docs/archive/` | Adding executable application code |
+| `apps/customer-website/` | Next.js Customer Web Application | Guest reservations, interactive floorplan viewer, reservation tracking, self-service reschedule modal | Direct raw SQL queries; bypassing domain services; exposing service role secrets |
+| `apps/kiosk/` | Next.js On-Site Kiosk Terminal | Touchscreen walk-in booking, on-screen QR/counter payment, staff/admin counter verification | Persisting customer-held payment links; emailing 1-hour payment links |
+| `apps/staff-dashboard/` | Next.js Staff Operations Portal | Real-time active ops, QR check-in/out scanner, manual reference code verification, time extension | Modifying system business settings; approving online payment proofs (admin only) |
+| `apps/admin-portal/` | Next.js Admin Management Suite | Workspace/template CRUD, interactive 2D map builder, payment review, closure dates, staff invitations, analytics | Bypassing audit logs; arbitrary direct schema alterations |
+| `packages/domain/` | Pure TypeScript Domain Layer | Business logic, allocation engine, pricing, reschedule rules, notification services, repository interfaces | React UI components; direct DOM manipulation; framework-specific couplings |
+| `packages/ui/` | Shared Presentation Primitives | Reusable button, modal, input, and layout components | Domain business logic; server-only secrets; database access |
+| `packages/validation/` | Shared Validation Layer | Zod schemas for reservation input, payment proofs, settings, and API request contracts | Direct database access; presentation styling |
+| `packages/config/` | Shared Monorepo Config | Shared tsconfig, tailwind presets, and environment helpers | Runtime business logic |
+| `supabase/` | Relational Persistence & Schema | PostgreSQL 15/16 DDL migrations, RLS policies, trigger functions, seed data | Runtime application code; unversioned schema modifications |
+| `tests/` | Automated Test Suite | Vitest integration, unit, and feature test specifications | Committing mock credentials or mutating production tables |
+| `scripts/` | Bootstrap & Automation | Admin / staff user initialization and bootstrapping | Executing unverified destructive SQL scripts |
 
 ---
 
-## 5. Implementation Order
+## 4. Agent Lifecycle Protocols
 
-Follow:
-
-`docs/DeskAtlas_Feature_Milestone_Runbook.md`
-
-Do not reorder milestones unless explicitly instructed by the user.
-
-Authentication and final authorization integration are LAST.
-
-Do not implement authentication early because another feature would be easier
-with it.
-
-Production release remains blocked until the final authentication/security
-milestone passes.
+1. Planning: Read `docs/index.md` and upstream specification documents (`docs/brd-deskatlas.md`, `docs/prd-deskatlas.md`, `docs/sdd-deskatlas.md`, `docs/dsd-deskatlas.md`, `docs/erd-deskatlas.md`, `docs/qad-deskatlas.md`, `docs/build-deskatlas.md`). Ensure scope boundaries and traceability mapping (PRD-F#, SDD-C#, ERD-E#, QAD-TC#) are respected.
+2. Implementation: Keep diffs focused, maintain domain separation across apps and packages. Enforce schema validation (TypeScript interfaces and Zod schemas). Never use em-dashes in code comments or documentation.
+3. Verification:
+   - Static Typecheck: Execute `pnpm typecheck`
+   - Linter: Execute `pnpm lint`
+   - Quality Assurance: Validate changes against traceable test suites via `pnpm test`
+   - Production Build: Execute `pnpm build`
 
 ---
 
-## 6. Frontend Is Frozen (This is no longer true. See docs/frontend/INDEX.md)
-
-The implementation agent owns:
-
-- backend
-- Supabase/PostgreSQL
-- migrations
-- functions/RPC
-- Edge Functions
-- Storage
-- business logic
-- services
-- repositories
-- API/data adapters
-- frontend-to-backend connection
-- tests
-
-The implementation agent DOES NOT own frontend design.
-
-Do not:
-
-- create UI components
-- redesign screens
-- modify layouts
-- modify styling
-- change colors
-- change spacing
-- change typography
-- add buttons
-- add form fields
-- create modals
-- create pages
-- change navigation
-- rewrite visible copy
-- modify map appearance
-- modify responsive design
-
-Integration-only edits inside existing frontend files are allowed only when
-necessary to connect existing UI to backend behavior.
-
-Prefer service/hook/adapter changes instead.
-
-If required UI does not exist:
-
-1. Do not create it.
-2. Report the missing frontend prerequisite.
-3. Stop if it prevents completion of the milestone.
-
-See:
-`docs/DeskAtlas_Backend_Integration_Scope_of_Work.md`
-
----
-
-## 7. Database Rules
-
-The approved ERD is authoritative for the database.
-
-Before creating a migration:
-
-1. Find the relevant entities in
-   `docs/DeskAtlas_Final_ERD_Specification.md`.
-2. Verify PK/FK relationships.
-3. Verify cardinality.
-4. Verify required constraints.
-5. Verify status/enums.
-6. Verify indexes.
-7. Verify history/deactivation rules.
-
-Do not invent new production tables merely because they make implementation
-convenient.
-
-If the ERD cannot support a required feature, STOP and report an ERD change
-request rather than silently changing the data model.
-
----
-
-## 8. Core DeskAtlas Invariants
-
-Never change these unless explicitly instructed.
-
-### Reservation
-
-- Guest-first; customer account is not required.
-- Required customer data: first name, last name, email.
-- Exactly 1 Main candidate.
-- Maximum 2 alternatives.
-- Priority: Main → Alt 1 → Alt 2.
-- Alternatives use the same workspace template/tier.
-- Alternatives use the same date.
-- Alternatives use the same duration.
-- Alternative start time may differ.
-- Candidates may use different physical workspace instances OR the same physical instance with a different start time (duplicate instance + identical start time is rejected).
-
-### No-Hold Rule
-
-The following DO NOT reserve inventory:
-
-- selecting a spot
-- submitting reservation
-- receiving payment link
-- uploading proof
-- Payment Under Review
-
-Only successful authorized payment approval/confirmation + atomic candidate
-allocation reserves the spot.
-
-### Allocation
-
-First successful approval/allocation wins.
-
-Allocation order:
-
-`Main → Alt 1 → Alt 2 → Manual Resolution`
-
-Never automatically assign a fourth unapproved option.
-
-### Online Payment
-
-- Payment session expires after 1 hour.
-- Payment page contains GCash/bank QR/details.
-- Payment page contains proof upload.
-- Timer stops only after successful server-accepted proof submission.
-- Online payment approval is Admin-only.
-
-### Kiosk
-
-- No emailed one-hour payment page.
-- Counter payment may be cash or counter QR.
-- Staff OR Admin may confirm kiosk payment.
-- Same allocation engine is reused.
-
-### Booking QR
-
-- Payment QR and booking QR are separate.
-- Booking QR is generated only after confirmation.
-- QR contains an opaque token, not customer PII.
-- Active only during confirmed booking time.
-- Admin and Staff may scan it.
-- Re-entry is allowed during booking time.
-
-### Workspace Model
-
-`Workspace Template → Physical Workspace Instance → Map Placement → Reservation`
-
-Instance-level override is limited to approved fields such as:
-
-- name
-- operational status
-
-### Policy Documents
-
-Policy-document functionality is Won't-Have.
-
-Do not implement:
-
-- policy document tables
-- policy upload
-- policy versioning
-- policy document backend
-- policy management UI
-
----
-
-## 9. Testing Is Mandatory
-
-A feature is not complete when it merely compiles.
-
-Run the milestone-specific tests from the milestone runbook.
-
-At minimum verify:
-
-### A. Static checks
-
-- TypeScript/typecheck
-- lint
-- build
-
-Use the repository's actual scripts.
-
-### B. Feature tests
-
-- happy path
-- invalid input
-- boundary conditions
-- error paths
-- transaction rollback where relevant
-- concurrency where relevant
-
-### C. Regression
-
-Run tests for previously completed milestones affected by the change.
-
-### D. Integration
-
-Verify the existing frontend correctly consumes the backend through its
-existing UI.
-
-### E. Diff audit
-
-Inspect all changed files before declaring completion.
-
----
-
-## 10. Frontend Visual-Diff Gate
-
-Before completing any milestone, confirm:
-
-- New UI components: NONE
-- Deleted UI components: NONE
-- Layout changes: NONE
-- Style changes: NONE
-- Typography changes: NONE
-- Visible copy changes: NONE
-- Navigation changes: NONE
-- New visual states: NONE
-- Unrequested frontend redesign: NONE
-
-If any appear unintentionally, revert them.
-
----
-
-## 11. Do Not Perform Unrelated Refactors
-
-Do not:
-
-- mass-format unrelated files
-- restructure unrelated directories
-- migrate state libraries
-- replace routing
-- replace UI libraries
-- upgrade unrelated dependencies
-- rename unrelated components
-- refactor unrelated frontend code
-
-Keep each milestone diff focused.
-
----
-
-## 12. Change-Control Rule
-
-If implementation requires changing:
-
-- product behavior
-- PRD acceptance criteria
-- ERD
-- role permissions
-- reservation states
-- payment behavior
-- allocation behavior
-- frontend design
-
-STOP.
-
-Report:
-
-- current rule
-- discovered conflict
-- affected PRD IDs
-- affected tables/components
-- why current implementation cannot satisfy it
-- proposed options
-
-Wait for user approval.
-
----
-
-## 13. Milestone Completion Report
-
-Before returning the final milestone report, re-check `docs/INDEX.md` and
-update the shared ledger files it requires for every milestone attempt:
-
-- `docs/IMPLEMENTATION_STATUS.md`
-- `docs/frontend-limitation/frontend-limitations.md`
-
-This applies to both PASS and BLOCKED outcomes. Do not skip these updates just
-because a milestone is blocked or partially implemented.
-
-At completion return:
-
-### Milestone
-- ID:
-- Feature:
-- PRD IDs:
-- Status: PASS / BLOCKED
-
-### Implemented
-- Backend:
-- Database:
-- Frontend connection:
-
-### Changed Files
-- ...
-
-### Tests
-- test:
-- result:
-
-### Acceptance Criteria
-- ...
-
-### Regression
-- ...
-
-### Scope Audit
-- Frontend visual changes: NONE
-- Future milestone implementation: NONE
-- Unrelated refactors: NONE
-
-### Known Limitations
-- ...
-
-### Blockers
-- ...
-
-### Stop
-Milestone complete. No next milestone was started.
-
-Then STOP.
+## Self-Check
+
+- [x] Document metadata aligns with DeskAtlas master documentation index (`docs/index.md`)
+- [x] Primary operating directives map to all core specifications (BRD, PRD, SDD, DSD, ERD, QAD, BUILD)
+- [x] Hard bans enforce zero em-dashes, spec traceability, type safety, No-Hold rule, and security policies
+- [x] System architecture boundaries reflect actual DeskAtlas monorepo directory structure (`apps/`, `packages/`, `supabase/`, `tests/`)
+- [x] Agent lifecycle protocols define concrete build, lint, typecheck, and test commands

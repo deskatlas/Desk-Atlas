@@ -55,4 +55,5 @@ export interface PublishedFloorMap {
 export interface PublishedMapRepository {
   listPublishedFloors(): Promise<Floor[]>;
   loadPublishedFloorMap(floorId: string, options?: { audience?: PublishedMapAudience }): Promise<PublishedFloorMap | null>;
+  loadAllPublishedFloorMaps?(options?: { audience?: PublishedMapAudience }): Promise<PublishedFloorMap[]>;
 }

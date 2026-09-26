@@ -16,7 +16,8 @@ import {
   getContrastColor,
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
-import { WorkspaceCountdownBadge, useLiveCountdownClock } from '@deskatlas/ui';
+import { WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling } from '@deskatlas/ui';
+import { useRealtimeTable } from '@/app/lib/useRealtimeTable';
 import { ExtendReservationModal } from '@/features/reservations/components/ExtendReservationModal';
 import { useAuth } from '@/features/auth';
 
@@ -239,9 +240,11 @@ export default function WorkspaceMapPage() {
 
   useEffect(() => {
     loadInitialData();
-    const interval = setInterval(loadOccupancy, 10000);
-    return () => clearInterval(interval);
   }, []);
+
+  useActiveTabPolling(loadOccupancy, 20000, { immediate: false });
+  useRealtimeTable('reservations', loadOccupancy);
+  useRealtimeTable('workspace_instances', loadOccupancy);
 
   useEffect(() => {
     if (!containerRef.current || !selectedFloorId) return;

@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSearch, useLiveCountdownClock, WorkspaceCountdownBadge } from '@deskatlas/ui';
+import { useSearch, useLiveCountdownClock, WorkspaceCountdownBadge, useActiveTabPolling } from '@deskatlas/ui';
+import { useRealtimeTable } from '@/app/lib/useRealtimeTable';
 import {
   filterReservationsBySearch,
   filterReservations,
@@ -126,43 +127,27 @@ export function ReservationList() {
     )
   );
 
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function loadReservations() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/admin/reservations?filter=all`, {
-          cache: 'no-store',
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to load reservations (${response.status})`);
-        }
-        const data = await response.json();
-        if (!isCancelled) {
-          setReservations(data.reservations ?? []);
-          setTotalCount(data.total ?? 0);
-        }
-      } catch (err: any) {
-        if (!isCancelled) {
-          setError(err?.message ?? 'Failed to load reservations');
-        }
-      } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+  const loadReservations = React.useCallback(async () => {
+    try {
+      const response = await fetch(`/api/admin/reservations?filter=all`, {
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to load reservations (${response.status})`);
       }
+      const data = await response.json();
+      setReservations(data.reservations ?? []);
+      setTotalCount(data.total ?? 0);
+      setError(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load reservations');
+    } finally {
+      setLoading(false);
     }
-
-    loadReservations();
-    const interval = setInterval(loadReservations, 15000);
-
-    return () => {
-      isCancelled = true;
-      clearInterval(interval);
-    };
   }, []);
+
+  useActiveTabPolling(loadReservations, 30000, { immediate: true });
+  useRealtimeTable('reservations', loadReservations);
 
   const handleExport = () => {
     try {

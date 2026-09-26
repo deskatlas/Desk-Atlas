@@ -28,4 +28,6 @@ export interface StaffOperationsRepository {
   listAvailableRelocationSpots?(input: { reservationId: string }): Promise<any[]>;
   relocateReservation?(input: any): Promise<any>;
   decideCustomerRelocation?(input: any): Promise<any>;
+  logClosurePhoneCall?(input: import("../models/reservation").LogClosurePhoneCallInput): Promise<any>;
+  flagClosureManualResolution?(input: import("../models/reservation").FlagClosureManualResolutionInput): Promise<any>;
 }

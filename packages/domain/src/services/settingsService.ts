@@ -1,5 +1,8 @@
 import type { DeskAtlasUser } from '../models/user';
 import type { OperatingHoursInterval } from '../models/availability';
+import type { ClosureImpactPreviewResult } from '../models/reservation';
+import type { AdminReservationRepository } from './adminReservationRepository';
+import type { TransactionalEmailService } from './transactionalEmailService';
 import {
   calculateRescheduleMaxAdvanceHours,
   type AdminPaymentMethod,
@@ -29,7 +32,11 @@ export class SettingsValidationError extends Error {
   }
 }
 
-export function createAdminSettingsService(repository: SettingsRepository) {
+export function createAdminSettingsService(
+  repository: SettingsRepository,
+  reservationRepository?: AdminReservationRepository,
+  emailService?: TransactionalEmailService
+) {
   return {
     async getSettingsOverview(): Promise<SettingsOverview> {
       const [businessSettings, rawOperatingHours, paymentMethods] = await Promise.all([
@@ -61,6 +68,7 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       rescheduleMaxAdvanceValue: number;
       rescheduleMaxAdvanceUnit: RescheduleMaxAdvanceUnit;
       rescheduleMaxAdvanceHours: number;
+      maxAdvanceBookingDays: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
       kioskAllowanceMinutes: number;
@@ -89,6 +97,7 @@ export function createAdminSettingsService(repository: SettingsRepository) {
         rescheduleMaxAdvanceValue: maxAdvanceValue,
         rescheduleMaxAdvanceUnit: maxAdvanceUnit,
         rescheduleMaxAdvanceHours: maxAdvanceHours,
+        maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays ?? 90,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
         kioskAllowanceMinutes: getKioskAllowanceMinutes(businessSettings.kioskAllowanceMinutes),
@@ -302,6 +311,46 @@ export function createAdminSettingsService(repository: SettingsRepository) {
           createdByUserId: actor?.id ?? null,
         });
 
+        // Automatically detect colliding active reservations, flag them, and dispatch notice
+        if (reservationRepository?.previewClosureImpact) {
+          try {
+            const preview = await reservationRepository.previewClosureImpact(
+              startUtc.toISOString(),
+              endUtc.toISOString()
+            );
+            if (preview.impactedCount > 0) {
+              const impactedIds = preview.reservations.map((r) => r.reservationId);
+              if (reservationRepository.markReservationsClosureImpacted) {
+                await reservationRepository.markReservationsClosureImpacted(
+                  impactedIds,
+                  block.id,
+                  block.reason || input.reason || 'Facility Closure',
+                  startDate
+                );
+              }
+              if (emailService?.sendClosureImpactNotice) {
+                const publicSettings = await repository.getBusinessSettings().catch(() => null);
+                for (const impacted of preview.reservations) {
+                  await emailService.sendClosureImpactNotice({
+                    to: impacted.customerEmail,
+                    customerName: impacted.customerName,
+                    referenceCode: impacted.referenceCode,
+                    workspaceName: impacted.workspaceDisplayName,
+                    closureDate: startDate + (endDate && endDate !== startDate ? ` to ${endDate}` : ''),
+                    closureReason: block.reason || input.reason || 'Facility Closure / Maintenance',
+                    businessName: publicSettings?.businessName || 'DeskAtlas Coworking',
+                    supportEmail: publicSettings?.contactEmail || undefined,
+                    supportPhone: publicSettings?.contactPhone || undefined,
+                    selfServiceUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/track?code=${impacted.referenceCode}&remedy=closure`,
+                  }).catch((err) => console.warn('Failed to dispatch closure notice email:', err));
+                }
+              }
+            }
+          } catch (impactErr) {
+            console.warn('Failed to process closure collision impact:', impactErr);
+          }
+        }
+
         return {
           id: block.id,
           date: startDate,
@@ -375,6 +424,29 @@ export function createAdminSettingsService(repository: SettingsRepository) {
           blockIds.push(b2.id);
         }
 
+        // Detect colliding active reservations
+        if (reservationRepository?.previewClosureImpact) {
+          try {
+            const preview = await reservationRepository.previewClosureImpact(
+              dayStartUtc.toISOString(),
+              dayEndUtc.toISOString()
+            );
+            if (preview.impactedCount > 0) {
+              const impactedIds = preview.reservations.map((r) => r.reservationId);
+              if (reservationRepository.markReservationsClosureImpacted) {
+                await reservationRepository.markReservationsClosureImpacted(
+                  impactedIds,
+                  blockIds[0] ?? null,
+                  input.reason || 'Special Operating Hours',
+                  input.date
+                );
+              }
+            }
+          } catch (impactErr) {
+            console.warn('Failed to process special hours collision impact:', impactErr);
+          }
+        }
+
         return {
           id: blockIds[0] ?? `special-${input.date}`,
           date: input.date,
@@ -388,6 +460,27 @@ export function createAdminSettingsService(repository: SettingsRepository) {
       }
 
       throw new SettingsValidationError(`Unsupported closure type: ${input.closureType}`);
+    },
+
+    async previewClosureImpact(input: CreateBusinessClosureInput): Promise<ClosureImpactPreviewResult> {
+      if (!input.date || typeof input.date !== 'string' || !isValidDateString(input.date)) {
+        return { impactedCount: 0, reservations: [] };
+      }
+
+      const businessSettings = await repository.getBusinessSettings();
+      const timezone = businessSettings.timezone || 'Asia/Manila';
+
+      const startDate = input.date;
+      const endDate = input.endDate || input.date;
+
+      const startUtc = zonedDateTimeToUtc(startDate, '00:00:00', timezone);
+      const endUtc = zonedDateTimeToUtc(addDays(endDate, 1), '00:00:00', timezone);
+
+      if (reservationRepository?.previewClosureImpact) {
+        return reservationRepository.previewClosureImpact(startUtc.toISOString(), endUtc.toISOString());
+      }
+
+      return { impactedCount: 0, reservations: [] };
     },
 
     async deleteClosure(blockIds: string[], _actor?: DeskAtlasUser | null): Promise<void> {
@@ -620,6 +713,21 @@ function normalizeBusinessSettingsInput(
     }
   }
 
+  if (
+    input.maxAdvanceBookingDays !== undefined &&
+    input.maxAdvanceBookingDays !== null
+  ) {
+    if (
+      !Number.isInteger(input.maxAdvanceBookingDays) ||
+      input.maxAdvanceBookingDays < 1 ||
+      input.maxAdvanceBookingDays > 365
+    ) {
+      throw new SettingsValidationError(
+        'Maximum advance booking days must be an integer between 1 and 365 days'
+      );
+    }
+  }
+
   let normalizedPhotos: LandingPreviewPhoto[] | undefined = undefined;
   if (input.landingPreviewPhotos !== undefined) {
     if (!Array.isArray(input.landingPreviewPhotos)) {
@@ -713,6 +821,10 @@ function normalizeBusinessSettingsInput(
       input.rescheduleMaxAdvanceUnit !== undefined && input.rescheduleMaxAdvanceUnit !== null
         ? input.rescheduleMaxAdvanceUnit
         : 'DAYS',
+    maxAdvanceBookingDays:
+      input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null
+        ? input.maxAdvanceBookingDays
+        : 90,
     landingPreviewPhotos: normalizedPhotos,
     statusColors: normalizedStatusColors,
     cancellationPolicyPdfUrl:

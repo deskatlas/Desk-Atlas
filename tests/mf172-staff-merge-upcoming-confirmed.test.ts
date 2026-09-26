@@ -147,13 +147,14 @@ describe("MF-172: Staff Reservations - Merge Upcoming and Confirmed Filters", ()
       { label: "All", filter: "all" },
       { label: "Upcoming", filter: "upcoming" },
       { label: "Counter Queue", filter: "counter_queue" },
+      { label: "Closure Impacted", filter: "closure_impacted" },
       { label: "Cancelled", filter: "cancelled" },
     ]);
 
     const filters = STAFF_RESERVATIONS_TAB_FILTERS.map((f) => f.filter);
     expect(filters).toContain("upcoming");
     expect(filters).not.toContain("confirmed");
-    expect(filters).toHaveLength(4);
+    expect(filters).toHaveLength(5);
   });
 
   it("confirms filter equivalence: upcoming subfilter returns all upcoming confirmed bookings", () => {

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
 import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
-import { NotificationBell, BookingEndAlertModal } from '@/features/alerts';
+import { NotificationBell, BookingEndAlertModal, AlertsProvider } from '@/features/alerts';
 
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -210,7 +210,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
 export default function ManageLayout({ children }: { children: React.ReactNode }) {
   return (
     <SearchProvider>
-      <StaffShell>{children}</StaffShell>
+      <AlertsProvider>
+        <StaffShell>{children}</StaffShell>
+      </AlertsProvider>
     </SearchProvider>
   );
 }

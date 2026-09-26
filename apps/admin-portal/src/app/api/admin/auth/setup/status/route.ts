@@ -16,10 +16,11 @@ export async function GET(request: NextRequest) {
         'Cache-Control': 'no-store, max-age=0',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Admin Setup Status] Error checking admin status:', error);
+    const msg = error instanceof Error ? error.message : 'Failed to check setup status';
     return NextResponse.json(
-      { error: error?.message || 'Failed to check setup status' },
+      { error: msg },
       { status: 500 }
     );
   }

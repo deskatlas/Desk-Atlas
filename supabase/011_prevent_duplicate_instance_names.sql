@@ -17,7 +17,7 @@ template_max_numbers AS (
     COALESCE(
       MAX(
         CASE
-          WHEN display_name ~ '[0-9]+$' THEN (regexp_matches(display_name, '([0-9]+)$'))[1]::integer
+          WHEN display_name ~ '[0-9]+$' THEN (regexp_match(display_name, '([0-9]+)$'))[1]::integer
           ELSE 0
         END
       ),
@@ -38,10 +38,12 @@ WHERE wi.id = ni.id AND ni.dup_rank > 1;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'uq_workspace_instance_template_display_name'
+    SELECT 1 FROM pg_constraint
+    WHERE conname IN ('uq_workspace_instance_template_display_name', 'workspace_instances_template_display_name_unique')
   ) THEN
     ALTER TABLE public.workspace_instances
       ADD CONSTRAINT uq_workspace_instance_template_display_name
       UNIQUE (template_id, display_name);
   END IF;
 END $$;
+

@@ -27,7 +27,7 @@ import {
   getWorkspacePhotoObjectPosition,
 } from "../../features/reservation/SpotDetailModal";
 import { fetchTemplateAvailability, fetchOccupiedInstances, fetchNextUpcomingBooking } from "../../lib/availabilityApi";
-import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock } from "@deskatlas/ui";
+import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling } from "@deskatlas/ui";
 
 export interface WorkspaceTemplateSummary {
   id: string;
@@ -354,12 +354,15 @@ export default function KioskReservePage() {
     return () => clearInterval(interval);
   }, [step, kioskAllowanceMinutes]);
 
-  const endTimeStr = useMemo(() => {
+  const { endTimeStr, isNextDay } = useMemo(() => {
     const [h, m] = nowTime.split(":").map(Number);
     const totalMinutes = h * 60 + m + durationHours * 60;
     const endH = Math.floor(totalMinutes / 60) % 24;
     const endM = totalMinutes % 60;
-    return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+    return {
+      endTimeStr: `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`,
+      isNextDay: durationHours > 0 && totalMinutes >= 1440,
+    };
   }, [nowTime, durationHours]);
 
   // Form Fields
@@ -382,6 +385,7 @@ export default function KioskReservePage() {
   const [floorId, setFloorId] = useState<string>("");
   const [published, setPublished] = useState<PublishedFloorMap | null>(null);
   const [publishedFloors, setPublishedFloors] = useState<PublishedFloorMap[]>([]);
+  const floorMapCacheRef = useRef<Map<string, PublishedFloorMap>>(new Map());
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
   const [occupiedInstanceIds, setOccupiedInstanceIds] = useState<Set<string>>(new Set());
@@ -397,11 +401,10 @@ export default function KioskReservePage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const fetchOccupiedData = async (durMin?: number) => {
+  const fetchOccupiedData = async () => {
     try {
-      const minutes = durMin ?? Math.max(durationHours || 1, 1) * 60;
       const res = await fetchOccupiedInstances({
-        durationMinutes: minutes,
+        durationMinutes: 0,
         nowIso: getNowWithLeewayDate(kioskAllowanceMinutes).toISOString(),
       });
       if (res?.occupiedInstanceIds) {
@@ -420,10 +423,10 @@ export default function KioskReservePage() {
   };
 
   useEffect(() => {
-    fetchOccupiedData(Math.max(durationHours || 1, 1) * 60);
-    const interval = setInterval(() => fetchOccupiedData(Math.max(durationHours || 1, 1) * 60), 15000);
-    return () => clearInterval(interval);
-  }, [durationHours, kioskAllowanceMinutes]);
+    fetchOccupiedData();
+  }, [kioskAllowanceMinutes]);
+
+  useActiveTabPolling(fetchOccupiedData, 25000, { immediate: false });
 
   // Upcoming booking & availability limits for selected workspace
   const [upcomingBooking, setUpcomingBooking] = useState<NextUpcomingBookingResult | null>(null);
@@ -461,56 +464,50 @@ export default function KioskReservePage() {
     };
 
     loadUpcoming();
-    const interval = setInterval(loadUpcoming, 15000);
+    const interval = setInterval(loadUpcoming, 30000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
   }, [selectedWorkspace?.workspaceInstanceId, step]);
 
-  // Fetch published map
+  // Fetch published map with on-demand lazy loading and memory caching (Phase 4)
   const fetchMapData = async (targetFloorId?: string) => {
     try {
+      fetchOccupiedData();
+
+      // Return cached floor map immediately if available (0ms network latency)
+      if (targetFloorId && floorMapCacheRef.current.has(targetFloorId)) {
+        const cached = floorMapCacheRef.current.get(targetFloorId)!;
+        setPublished(cached);
+        setFloorId(cached.floor.id);
+        setMapLoading(false);
+        setMapError(null);
+        return;
+      }
+
       setMapLoading(true);
       setMapError(null);
-      fetchOccupiedData();
       const url = targetFloorId
         ? `/api/published-map?floorId=${encodeURIComponent(targetFloorId)}`
         : "/api/published-map";
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load published floor map.");
       const data = await res.json();
       const floorList: Floor[] = data.floors || [];
       setFloors(floorList);
-      setPublished(data.published || null);
-      if (data.published?.floor?.id) {
-        setFloorId(data.published.floor.id);
+      const pub: PublishedFloorMap | null = data.published || null;
+      setPublished(pub);
+
+      if (pub?.floor?.id) {
+        setFloorId(pub.floor.id);
+        floorMapCacheRef.current.set(pub.floor.id, pub);
+        setPublishedFloors(Array.from(floorMapCacheRef.current.values()));
       } else if (floorList.length > 0 && !targetFloorId) {
         setFloorId(floorList[0].id);
       }
-
-      if (floorList.length > 0) {
-        const results = await Promise.all(
-          floorList.map(async (f) => {
-            try {
-              const r = await fetch(`/api/published-map?floorId=${encodeURIComponent(f.id)}`, {
-                cache: "no-store",
-              });
-              if (!r.ok) return null;
-              const resData = await r.json();
-              return (resData.published as PublishedFloorMap) || null;
-            } catch {
-              return null;
-            }
-          })
-        );
-        const validFloors = results.filter((p): p is PublishedFloorMap => Boolean(p));
-        setPublishedFloors(validFloors);
-      } else if (data.published) {
-        setPublishedFloors([data.published]);
-      }
-    } catch (err: any) {
-      setMapError(err.message || "Failed to load floor map.");
+    } catch (err: unknown) {
+      setMapError(err instanceof Error ? err.message : "Failed to load floor map.");
     } finally {
       setMapLoading(false);
     }
@@ -1619,7 +1616,9 @@ export default function KioskReservePage() {
                     Step 2 of 3 • Walk-In Duration
                   </span>
                   <h3 className="text-2xl font-extrabold text-[var(--da-brand-dark)]">
-                    How many hours will you stay today?
+                    {durationHours > 0 && isNextDay
+                      ? `Walk-in Stay • Concludes Tomorrow at ${formatTime12Hour(endTimeStr)} (Next Day)`
+                      : "How many hours will you stay today?"}
                   </h3>
                   <p className="text-xs text-[var(--da-text-secondary)] mt-1">
                     Walk-in bookings start right now at <strong>{formatTime12Hour(nowTime)}</strong>. No backup selection required.
@@ -1631,6 +1630,9 @@ export default function KioskReservePage() {
                   {DURATION_OPTIONS.map((hours) => {
                     const isSelected = durationHours === hours;
                     const durMinutes = hours * 60;
+                    const [nowH, nowM] = nowTime.split(":").map(Number);
+                    const tileTotalMinutes = nowH * 60 + nowM + hours * 60;
+                    const tileIsNextDay = tileTotalMinutes >= 1440;
                     const isLocked = Boolean(
                       hours > MAX_KIOSK_DURATION_HOURS ||
                       (upcomingBooking?.maxAvailableMinutes !== null &&
@@ -1675,6 +1677,11 @@ export default function KioskReservePage() {
                         <span className="text-xs font-semibold opacity-90">
                           {hours === 1 ? "Hour" : "Hours"}
                         </span>
+                        {tileIsNextDay && !isLocked && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-full mt-0.5">
+                            Next Day
+                          </span>
+                        )}
                         {isLocked ? (
                           <span className="mt-2 text-[9px] font-bold text-rose-600 truncate max-w-full px-1">
                             {upcomingBooking?.nextBooking
@@ -1768,7 +1775,7 @@ export default function KioskReservePage() {
                           Immediate Walk-In Window:
                         </span>
                         <p className="text-base font-extrabold text-[var(--da-brand-dark)]">
-                          {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)} ({durationHours} {durationHours === 1 ? "hour" : "hours"})
+                          {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} ({durationHours} {durationHours === 1 ? "hour" : "hours"})
                         </p>
                       </div>
                     </div>
@@ -1885,7 +1892,7 @@ export default function KioskReservePage() {
                       Available {selectedTemplate.name} Desks (Starting Now)
                     </h3>
                     <p className="text-xs text-[var(--da-text-secondary)] mt-0.5">
-                      Showing desks available right now from {formatTime12Hour(nowTime)} to {formatTime12Hour(endTimeStr)} ({durationHours}h).
+                      Showing desks available right now from {formatTime12Hour(nowTime)} to {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} ({durationHours}h).
                     </p>
                   </div>
 
@@ -2061,7 +2068,7 @@ export default function KioskReservePage() {
                   <div>
                     <span className="text-[var(--da-text-secondary)] font-bold block">Immediate Schedule:</span>
                     <p className="text-base font-extrabold text-[var(--da-brand-dark)] mt-0.5">
-                      {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)}
+                      {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""}
                     </p>
                     <p className="text-[var(--da-text-secondary)]">{durationHours} {durationHours === 1 ? "Hour" : "Hours"} (Starting Now)</p>
                   </div>

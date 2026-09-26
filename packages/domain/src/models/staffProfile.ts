@@ -12,7 +12,9 @@ export interface StaffProfile {
 export interface AdminSetupStatus {
   hasAdmin: boolean;
   setupAllowed: boolean;
-  isPasswordConfigured?: boolean;
+  passwordSetupPending: boolean;
+  isPasswordConfigured: boolean;
+  adminEmail?: string | null;
 }
 
 export interface AdminSetupInput {

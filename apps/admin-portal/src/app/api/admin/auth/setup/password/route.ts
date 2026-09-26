@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       },
       token: sessionToken,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof PasswordPolicyError) {
       return NextResponse.json(
         { error: error.message, details: error.errors },
@@ -129,9 +129,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('[Admin Setup Password] Error setting initial admin password:', error);
+    const msg = error instanceof Error ? error.message : 'Failed to establish administrator password';
     return NextResponse.json(
-      { error: error?.message || 'Failed to establish administrator password' },
-      { status: error?.statusCode || 500 }
+      { error: msg },
+      { status: 500 }
     );
   }
 }

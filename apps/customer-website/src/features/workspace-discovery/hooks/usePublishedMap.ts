@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Floor, PublishedFloorMap } from "@deskatlas/domain";
 import { readJson } from "@/app/lib/api";
 
@@ -15,9 +15,20 @@ export function usePublishedMap(initialFloorId?: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const cacheRef = useRef<Map<string, PublishedMapResponse>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
+
+    // Return cached map data instantly if available and not explicitly refetching
+    if (floorId && cacheRef.current.has(floorId) && reloadToken === 0) {
+      const cached = cacheRef.current.get(floorId)!;
+      setData(cached);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -28,6 +39,9 @@ export function usePublishedMap(initialFloorId?: string) {
           return;
         }
 
+        if (response?.published?.floor?.id) {
+          cacheRef.current.set(response.published.floor.id, response);
+        }
         setData(response);
         if (!floorId && response.published?.floor?.id) {
           setFloorId(response.published.floor.id);
@@ -57,6 +71,9 @@ export function usePublishedMap(initialFloorId?: string) {
     loading,
     error,
     setFloorId,
-    refetch: () => setReloadToken((current) => current + 1),
+    refetch: () => {
+      cacheRef.current.clear();
+      setReloadToken((current) => current + 1);
+    },
   };
 }

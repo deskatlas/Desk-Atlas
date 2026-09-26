@@ -18,7 +18,7 @@ import {
   type PublishedFloorMap,
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
-import { WorkspaceCountdownBadge, useLiveCountdownClock } from '@deskatlas/ui';
+import { WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling } from '@deskatlas/ui';
 import {
   fetchPublishedMap,
   updateStaffInstanceOperationalStatus,
@@ -192,23 +192,6 @@ export default function WorkspaceMapPage() {
     }
   };
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const [occ, colors] = await Promise.all([
-          fetchStaffOccupancy().catch(() => []),
-          fetchWorkspaceStatusColors().catch(() => null),
-        ]);
-        setOccupancyList(occ);
-        if (colors) {
-          setStatusColors(colors);
-        }
-      } catch {
-        // silent background poll
-      }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Load published map, floors, settings, and real-time occupancy
   const loadMapData = async (floorId?: string) => {
@@ -268,9 +251,9 @@ export default function WorkspaceMapPage() {
 
   useEffect(() => {
     loadMapData();
-    const interval = setInterval(loadOccupancy, 10000);
-    return () => clearInterval(interval);
   }, []);
+
+  useActiveTabPolling(loadOccupancy, 20000, { immediate: false });
 
   useEffect(() => {
     if (!containerRef.current || !selectedFloorId) return;

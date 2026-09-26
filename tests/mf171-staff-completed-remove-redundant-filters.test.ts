@@ -136,6 +136,7 @@ describe("MF-171: Staff Reservations - Remove Redundant All/Completed Filters Un
       "all",
       "upcoming",
       "counter_queue",
+      "closure_impacted",
       "cancelled",
     ]);
 

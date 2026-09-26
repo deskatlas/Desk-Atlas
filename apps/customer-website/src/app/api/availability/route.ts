@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
       ? Number(searchParams.get('minimumLeadMinutes'))
       : (channel === 'ONLINE' ? 30 : 0);
 
+    const CACHE_HEADERS = {
+      'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30',
+    };
+
     if (templateId) {
       const result = await service.listTemplateAvailability({
         templateId,
@@ -31,7 +35,7 @@ export async function GET(request: NextRequest) {
         channel,
         minimumLeadMinutes,
       });
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     if (searchParams.has('date')) {
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest) {
         channel,
         minimumLeadMinutes,
       });
-      return NextResponse.json(result);
+      return NextResponse.json(result, { headers: CACHE_HEADERS });
     }
 
     const result = await service.listDateAvailability({
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
       channel,
       minimumLeadMinutes,
     });
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: CACHE_HEADERS });
   } catch (error) {
     if (error instanceof AvailabilityValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

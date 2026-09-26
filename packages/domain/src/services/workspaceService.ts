@@ -409,6 +409,15 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
       const instanceId = requireNonBlank(id, 'Instance id');
       const normalizedInput = normalizeUpdateInstanceInput(input);
       const existing = await repository.getInstance(instanceId);
+      const isRestoration =
+        existing.operationalStatus === 'INACTIVE' && normalizedInput.operationalStatus === 'ACTIVE';
+
+      if (isRestoration && existing.template && existing.template.isActive === false) {
+        throw new WorkspaceValidationError(
+          `Cannot restore physical workspace '${existing.displayName}' because its parent template '${existing.template.name}' is archived. Please activate the template first.`
+        );
+      }
+
       const updated = await repository.updateInstance(instanceId, normalizedInput);
       const affectedFutureReservations = await getAffectedFutureReservationsIfNeeded(
         repository,
@@ -420,10 +429,11 @@ export function createWorkspaceService(repository: WorkspaceRepository) {
         normalizedInput.displayName !== undefined || normalizedInput.operationalStatus !== undefined;
 
       if (shouldAudit) {
+        const action = isRestoration ? 'workspace_instance_restored' : 'workspace.instance.updated';
         await repository.appendAuditLog({
           actorRole: actor.actorRole,
           actorUserId: actor.actorUserId,
-          action: 'workspace.instance.updated',
+          action,
           entityType: 'workspace_instance',
           entityId: instanceId,
           metadata: buildWorkspaceAuditMetadata(existing, updated, affectedFutureReservations),

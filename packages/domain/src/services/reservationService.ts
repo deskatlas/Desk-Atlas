@@ -25,6 +25,8 @@ export class ReservationService {
     request: CreateReservationRequest,
     options?: {
       paymentLinkBaseUrl?: string;
+      maxAdvanceBookingDays?: number;
+      now?: Date;
     }
   ): Promise<ReservationResponseDTO> {
     const firstNameValidation = validatePersonName(request.customerFirstName, "First name");
@@ -64,6 +66,8 @@ export class ReservationService {
     const context: CandidateValidationContext = {
       instances,
       templates,
+      now: options?.now,
+      maxAdvanceBookingDays: options?.maxAdvanceBookingDays,
     };
 
     if (request.source === "KIOSK") {

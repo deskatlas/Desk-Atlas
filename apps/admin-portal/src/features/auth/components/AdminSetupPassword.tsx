@@ -71,7 +71,7 @@ export function AdminSetupPassword() {
       .then((res) => res.json())
       .then((data) => {
         // If password is already configured or setup is sealed, permanently block access
-        if (data && (data.isPasswordConfigured || (data.hasAdmin && !data.setupAllowed))) {
+        if (data && data.isPasswordConfigured) {
           setIsSealed(true);
           setSessionLoaded(true);
           if (typeof window !== 'undefined') {
@@ -79,6 +79,17 @@ export function AdminSetupPassword() {
               sessionStorage.removeItem('da_admin_setup_user');
             } catch {}
           }
+          return;
+        }
+
+        // If admin exists and password is NOT yet configured, permit Step 2 password creation
+        if (data && data.passwordSetupPending) {
+          setIsSealed(false);
+          setUserId(finalUserId);
+          setEmail(finalEmail || data.adminEmail || '');
+          setDisplayName(sDisplayName);
+          setToken(sToken);
+          setSessionLoaded(true);
           return;
         }
 
@@ -177,8 +188,9 @@ export function AdminSetupPassword() {
       setTimeout(() => {
         router.push('/manage');
       }, 1200);
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Network error occurred while finalizing setup.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error occurred while finalizing setup.';
+      setErrorMsg(msg);
       setLoading(false);
     }
   };

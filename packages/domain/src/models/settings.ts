@@ -64,6 +64,7 @@ export interface BusinessSettings {
   customerRescheduleCutoffHours?: number | null;
   rescheduleMaxAdvanceValue?: number;
   rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit;
+  maxAdvanceBookingDays?: number;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
   cancellationPolicyPdfUrl?: string | null;
@@ -120,6 +121,7 @@ export interface UpdateBusinessSettingsInput {
   customerRescheduleCutoffHours?: number | null;
   rescheduleMaxAdvanceValue?: number | null;
   rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit | null;
+  maxAdvanceBookingDays?: number | null;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
   cancellationPolicyPdfUrl?: string | null;

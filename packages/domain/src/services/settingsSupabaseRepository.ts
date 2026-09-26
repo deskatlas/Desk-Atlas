@@ -30,6 +30,7 @@ type BusinessSettingsRow = {
   customer_reschedule_cutoff_hours?: number | null;
   reschedule_max_advance_value?: number | null;
   reschedule_max_advance_unit?: 'DAYS' | 'HOURS' | null;
+  max_advance_booking_days?: number | null;
   landing_preview_photos?: any;
   status_colors?: any;
   cancellation_policy_pdf_url?: string | null;
@@ -96,28 +97,33 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   async getBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,max_advance_booking_days,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
-      // Fallback if reschedule_max_advance columns are not yet present on remote
+      // Fallback if max_advance_booking_days is not yet present on remote
       return this.request<BusinessSettingsRow[]>(
-        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
       ).catch(async () => {
-        // Fallback if social links columns are not yet present on remote
+        // Fallback if reschedule_max_advance columns are not yet present on remote
         return this.request<BusinessSettingsRow[]>(
-          '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+          '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
         ).catch(async () => {
-          // Fallback if cancellation policy or status_colors columns are not yet present on remote
+          // Fallback if social links columns are not yet present on remote
           return this.request<BusinessSettingsRow[]>(
-            '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,status_colors,updated_at&id=eq.1&limit=1'
+            '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
           ).catch(async () => {
-            // Fallback if status_colors column is not yet present on remote
+            // Fallback if cancellation policy or status_colors columns are not yet present on remote
             return this.request<BusinessSettingsRow[]>(
-              '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,updated_at&id=eq.1&limit=1'
+              '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,status_colors,updated_at&id=eq.1&limit=1'
             ).catch(async () => {
-              // Fallback if landing_preview_photos / customer_session_timeout_minutes column is not yet queried
+              // Fallback if status_colors column is not yet present on remote
               return this.request<BusinessSettingsRow[]>(
-                '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,updated_at&id=eq.1&limit=1'
-              );
+                '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,updated_at&id=eq.1&limit=1'
+              ).catch(async () => {
+                // Fallback if landing_preview_photos / customer_session_timeout_minutes column is not yet queried
+                return this.request<BusinessSettingsRow[]>(
+                  '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,updated_at&id=eq.1&limit=1'
+                );
+              });
             });
           });
         });
@@ -144,6 +150,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         customerRescheduleCutoffHours: 12,
         rescheduleMaxAdvanceValue: 30,
         rescheduleMaxAdvanceUnit: 'DAYS',
+        maxAdvanceBookingDays: 90,
         landingPreviewPhotos: [],
         statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
         cancellationPolicyPdfUrl: null,
@@ -171,6 +178,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? 30,
       rescheduleMaxAdvanceUnit: (row.reschedule_max_advance_unit as 'DAYS' | 'HOURS') ?? 'DAYS',
+      maxAdvanceBookingDays: row.max_advance_booking_days ?? 90,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       cancellationPolicyPdfUrl: row.cancellation_policy_pdf_url ?? null,
@@ -202,6 +210,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customer_reschedule_cutoff_hours: input.customerRescheduleCutoffHours ?? 12,
       reschedule_max_advance_value: input.rescheduleMaxAdvanceValue ?? 30,
       reschedule_max_advance_unit: input.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      max_advance_booking_days: input.maxAdvanceBookingDays ?? 90,
       updated_at: new Date().toISOString(),
     };
 
@@ -239,8 +248,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         body: JSON.stringify(payload),
       });
     } catch {
-      // If reschedule_max_advance, status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes or social links columns don't exist yet in Supabase, retry without them
+      // If max_advance_booking_days, reschedule_max_advance, status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes or social links columns don't exist yet in Supabase, retry without them
       const fallbackPayload = { ...payload };
+      delete fallbackPayload.max_advance_booking_days;
       delete fallbackPayload.reschedule_max_advance_value;
       delete fallbackPayload.reschedule_max_advance_unit;
       delete fallbackPayload.status_colors;
@@ -278,6 +288,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         row = insertRows[0];
       } catch {
         const fallbackInsert = { id: 1, ...payload };
+        delete (fallbackInsert as any).max_advance_booking_days;
         delete (fallbackInsert as any).reschedule_max_advance_value;
         delete (fallbackInsert as any).reschedule_max_advance_unit;
         delete (fallbackInsert as any).status_colors;
@@ -326,6 +337,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? input.customerRescheduleCutoffHours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? input.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: (row.reschedule_max_advance_unit as 'DAYS' | 'HOURS') ?? input.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      maxAdvanceBookingDays: row.max_advance_booking_days ?? input.maxAdvanceBookingDays ?? 90,
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : (input.statusColors ? normalizeWorkspaceStatusColors(input.statusColors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS }),
       cancellationPolicyPdfUrl: row.cancellation_policy_pdf_url !== undefined ? row.cancellation_policy_pdf_url : (input.cancellationPolicyPdfUrl ?? null),
