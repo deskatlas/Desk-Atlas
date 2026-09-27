@@ -32,6 +32,12 @@ export class SettingsValidationError extends Error {
   }
 }
 
+export const createSettingsService = (
+  repository: SettingsRepository,
+  reservationRepository?: AdminReservationRepository,
+  emailService?: TransactionalEmailService
+) => createAdminSettingsService(repository, reservationRepository, emailService);
+
 export function createAdminSettingsService(
   repository: SettingsRepository,
   reservationRepository?: AdminReservationRepository,
@@ -73,7 +79,12 @@ export function createAdminSettingsService(
       paymentExpiryMinutes: number;
       kioskAllowanceMinutes: number;
       bookingEndAlertMinutes: number;
+      nearCheckoutThresholdMinutes: number;
       statusColors: WorkspaceStatusColors;
+      dayPassStartTime: string;
+      dayPassEndTime: string;
+      nightPassStartTime: string;
+      nightPassEndTime: string;
       cancellationPolicyPdfUrl?: string | null;
       cancellationPolicyPdfFilename?: string | null;
       cancellationPolicyUpdatedAt?: string | null;
@@ -102,7 +113,14 @@ export function createAdminSettingsService(
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
         kioskAllowanceMinutes: getKioskAllowanceMinutes(businessSettings.kioskAllowanceMinutes),
         bookingEndAlertMinutes: getBookingEndAlertMinutes(businessSettings.bookingEndAlertMinutes),
+        nearCheckoutThresholdMinutes: getNearCheckoutThresholdMinutes(
+          businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes
+        ),
         statusColors: normalizeWorkspaceStatusColors(businessSettings.statusColors),
+        dayPassStartTime: businessSettings.dayPassStartTime ?? '07:00',
+        dayPassEndTime: businessSettings.dayPassEndTime ?? '23:30',
+        nightPassStartTime: businessSettings.nightPassStartTime ?? '20:00',
+        nightPassEndTime: businessSettings.nightPassEndTime ?? '07:00',
         cancellationPolicyPdfUrl: businessSettings.cancellationPolicyPdfUrl ?? null,
         cancellationPolicyPdfFilename: businessSettings.cancellationPolicyPdfFilename ?? null,
         cancellationPolicyUpdatedAt: businessSettings.cancellationPolicyUpdatedAt ?? null,
@@ -131,7 +149,31 @@ export function createAdminSettingsService(
       input: UpdateBusinessSettingsInput,
       actor?: DeskAtlasUser | null
     ): Promise<BusinessSettings> {
-      const normalized = normalizeBusinessSettingsInput(input);
+      const current = await repository.getBusinessSettings();
+      const mergedInput: UpdateBusinessSettingsInput = {
+        businessName: input.businessName ?? current.businessName,
+        timezone: input.timezone ?? current.timezone,
+        contactEmail: input.contactEmail !== undefined ? input.contactEmail : current.contactEmail,
+        contactPhone: input.contactPhone !== undefined ? input.contactPhone : current.contactPhone,
+        facebookUrl: input.facebookUrl !== undefined ? input.facebookUrl : current.facebookUrl,
+        instagramUrl: input.instagramUrl !== undefined ? input.instagramUrl : current.instagramUrl,
+        twitterUrl: input.twitterUrl !== undefined ? input.twitterUrl : current.twitterUrl,
+        websiteUrl: input.websiteUrl !== undefined ? input.websiteUrl : current.websiteUrl,
+        customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? current.customerSessionTimeoutMinutes,
+        customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? current.customerRescheduleCutoffHours,
+        rescheduleMaxAdvanceValue: input.rescheduleMaxAdvanceValue ?? current.rescheduleMaxAdvanceValue,
+        rescheduleMaxAdvanceUnit: input.rescheduleMaxAdvanceUnit ?? current.rescheduleMaxAdvanceUnit,
+        maxAdvanceBookingDays: input.maxAdvanceBookingDays ?? current.maxAdvanceBookingDays,
+        bookingIntervalMinutes: input.bookingIntervalMinutes ?? current.bookingIntervalMinutes,
+        paymentExpiryMinutes: input.paymentExpiryMinutes ?? current.paymentExpiryMinutes,
+        kioskAllowanceMinutes: input.kioskAllowanceMinutes ?? current.kioskAllowanceMinutes,
+        bookingEndAlertMinutes: input.bookingEndAlertMinutes ?? current.bookingEndAlertMinutes,
+        nearCheckoutThresholdMinutes: input.nearCheckoutThresholdMinutes !== undefined ? input.nearCheckoutThresholdMinutes : current.nearCheckoutThresholdMinutes,
+        statusColors: input.statusColors ?? current.statusColors,
+        cancellationPolicyPdfUrl: input.cancellationPolicyPdfUrl !== undefined ? input.cancellationPolicyPdfUrl : current.cancellationPolicyPdfUrl,
+        ...input,
+      };
+      const normalized = normalizeBusinessSettingsInput(mergedInput);
       return repository.updateBusinessSettings(normalized, actor?.id ?? null);
     },
 
@@ -574,6 +616,20 @@ export function getBookingEndAlertMinutes(configuredMinutes?: number | null): nu
   return configuredMinutes;
 }
 
+export function getNearCheckoutThresholdMinutes(configuredMinutes?: number | null): number {
+  if (
+    configuredMinutes === undefined ||
+    configuredMinutes === null ||
+    isNaN(configuredMinutes) ||
+    !Number.isInteger(configuredMinutes) ||
+    configuredMinutes < 5 ||
+    configuredMinutes > 60
+  ) {
+    return 15;
+  }
+  return configuredMinutes;
+}
+
 function normalizeBusinessSettingsInput(
   input: UpdateBusinessSettingsInput
 ): UpdateBusinessSettingsInput {
@@ -660,6 +716,18 @@ function normalizeBusinessSettingsInput(
   ) {
     throw new SettingsValidationError(
       'Booking end-time alert threshold must be an integer between 1 and 60 minutes'
+    );
+  }
+
+  if (
+    input.nearCheckoutThresholdMinutes !== undefined &&
+    input.nearCheckoutThresholdMinutes !== null &&
+    (!Number.isInteger(input.nearCheckoutThresholdMinutes) ||
+      input.nearCheckoutThresholdMinutes < 5 ||
+      input.nearCheckoutThresholdMinutes > 60)
+  ) {
+    throw new SettingsValidationError(
+      'Near-checkout alert threshold must be an integer between 5 and 60 minutes'
     );
   }
 
@@ -805,6 +873,10 @@ function normalizeBusinessSettingsInput(
       input.bookingEndAlertMinutes !== undefined && input.bookingEndAlertMinutes !== null
         ? input.bookingEndAlertMinutes
         : 5,
+    nearCheckoutThresholdMinutes:
+      input.nearCheckoutThresholdMinutes !== undefined && input.nearCheckoutThresholdMinutes !== null
+        ? input.nearCheckoutThresholdMinutes
+        : (input.bookingEndAlertMinutes ?? 15),
     customerSessionTimeoutMinutes:
       input.customerSessionTimeoutMinutes !== undefined && input.customerSessionTimeoutMinutes !== null
         ? input.customerSessionTimeoutMinutes
@@ -825,6 +897,22 @@ function normalizeBusinessSettingsInput(
       input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null
         ? input.maxAdvanceBookingDays
         : 90,
+    dayPassStartTime:
+      input.dayPassStartTime !== undefined && input.dayPassStartTime !== null
+        ? input.dayPassStartTime.trim()
+        : undefined,
+    dayPassEndTime:
+      input.dayPassEndTime !== undefined && input.dayPassEndTime !== null
+        ? input.dayPassEndTime.trim()
+        : undefined,
+    nightPassStartTime:
+      input.nightPassStartTime !== undefined && input.nightPassStartTime !== null
+        ? input.nightPassStartTime.trim()
+        : undefined,
+    nightPassEndTime:
+      input.nightPassEndTime !== undefined && input.nightPassEndTime !== null
+        ? input.nightPassEndTime.trim()
+        : undefined,
     landingPreviewPhotos: normalizedPhotos,
     statusColors: normalizedStatusColors,
     cancellationPolicyPdfUrl:

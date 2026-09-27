@@ -2,7 +2,7 @@
 -- Traceability: MS-09 (Closure Collision & Customer Relocation Resolution)
 
 ALTER TABLE reservations
-  ADD COLUMN IF NOT EXISTS closure_exception_id UUID REFERENCES closure_exceptions(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS closure_exception_id UUID REFERENCES public.schedule_blocks(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS is_closure_impacted BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS closure_impact_status TEXT CHECK (
     closure_impact_status IN (

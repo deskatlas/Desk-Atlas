@@ -1,11 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useDashboardStats } from "../hooks/useDashboardStats";
+import { useAlerts } from "../../alerts";
 import { format } from "date-fns";
+import { AlertTriangle, Clock, ArrowUpRight, CheckCircle2 } from "lucide-react";
+import { ExtendReservationModal } from "../../reservations/components/ExtendReservationModal";
+import type { BookingEndAlert } from "@deskatlas/domain";
 
 export function DashboardPage() {
   const { data, loading, error, refetch } = useDashboardStats();
+  const { rawAlerts, fetchAlerts } = useAlerts();
+  const [isTriageModalOpen, setIsTriageModalOpen] = useState<boolean>(false);
+  const [selectedExtendAlert, setSelectedExtendAlert] = useState<BookingEndAlert | null>(null);
+  const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+  const [triageFeedback, setTriageFeedback] = useState<string | null>(null);
 
   if (loading && !data) {
     return (
@@ -257,6 +266,69 @@ export function DashboardPage() {
             <div style={{ width: `${occupancyBar.reservedPct}%`, background: "var(--da-soft)" }} title={`Reserved: ${occupancyBar.reservedPct}%`}></div>
             <div style={{ width: `${occupancyBar.maintenancePct}%`, background: "var(--da-brand-dark)" }} title={`Maintenance: ${occupancyBar.maintenancePct}%`}></div>
           </div>
+
+          {/* Near Checkout Status Card (MS-13) */}
+          <div
+            data-testid="near-checkout-overview-card"
+            onClick={() => setIsTriageModalOpen(true)}
+            style={{
+              padding: "12px 14px",
+              borderRadius: "10px",
+              background: "#FFFBEB",
+              border: "1.5px solid #FDE68A",
+              marginBottom: "14px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: "#92400E",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <AlertTriangle size={13} color="#D97706" />
+                Near Checkout
+              </span>
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  color: "#92400E",
+                  background: "#FEF3C7",
+                  padding: "2px 7px",
+                  borderRadius: "9999px",
+                }}
+              >
+                &lt; 15m remaining
+              </span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                <span
+                  data-testid="near-checkout-count-val"
+                  style={{ fontSize: "24px", fontWeight: 800, color: "#92400E", lineHeight: 1 }}
+                >
+                  {rawAlerts.length}
+                </span>
+                <span style={{ fontSize: "11px", color: "#B45309", fontWeight: 600 }}>
+                  {rawAlerts.length === 1 ? "reservation ending soon" : "reservations ending soon"}
+                </span>
+              </div>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#D97706" }}>
+                Triage View &rarr;
+              </span>
+            </div>
+          </div>
+
           {occupancy.map((o, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: i === 0 ? "none" : "1px solid var(--da-border)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
@@ -268,6 +340,309 @@ export function DashboardPage() {
           ))}
         </section>
       </div>
+
+      {/* Near Checkout Triage Modal (MS-13) */}
+      {isTriageModalOpen && (
+        <div
+          data-testid="near-checkout-triage-backdrop"
+          onClick={() => setIsTriageModalOpen(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(4px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+        >
+          <div
+            data-testid="near-checkout-triage-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              width: "100%",
+              maxWidth: "850px",
+              maxHeight: "88vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "20px 24px",
+                borderBottom: "1px solid var(--da-border-light, #E2E8F0)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                background: "#FFFBEB",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <AlertTriangle size={18} color="#D97706" />
+                  <h2 style={{ fontSize: "18px", fontWeight: 800, color: "#92400E", margin: 0 }}>
+                    Near-Checkout Actionable Triage
+                  </h2>
+                </div>
+                <div style={{ fontSize: "12px", color: "#B45309", fontWeight: 600 }}>
+                  Active checked-in sessions nearing checkout window &middot; Front-desk operational triage
+                </div>
+              </div>
+              <button
+                data-testid="near-checkout-triage-close"
+                onClick={() => setIsTriageModalOpen(false)}
+                aria-label="Close"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "#92400E",
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  borderRadius: "6px",
+                  lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {triageFeedback && (
+              <div
+                style={{
+                  margin: "12px 24px 0",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  background: "#ECFDF5",
+                  border: "1px solid #A7F3D0",
+                  color: "#065F46",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <CheckCircle2 size={16} color="#059669" />
+                <span>{triageFeedback}</span>
+              </div>
+            )}
+
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px" }}>
+              {rawAlerts.length === 0 ? (
+                <div style={{ padding: "48px 0", textAlign: "center", color: "var(--da-text-secondary)", fontSize: "13px" }}>
+                  No active reservations currently near checkout.
+                </div>
+              ) : (
+                <table
+                  data-testid="near-checkout-triage-table"
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    textAlign: "left",
+                    fontSize: "13px",
+                    fontFamily: "var(--da-font-family)",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ borderBottom: "1.5px solid var(--da-border, #CBD5E1)" }}>
+                      <th style={{ padding: "10px 8px", fontWeight: 700, color: "var(--da-text-secondary)", fontSize: "11px", textTransform: "uppercase" }}>
+                        Workspace
+                      </th>
+                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--da-text-secondary)", fontSize: "11px", textTransform: "uppercase" }}>
+                        Customer
+                      </th>
+                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--da-text-secondary)", fontSize: "11px", textTransform: "uppercase" }}>
+                        Checkout Time
+                      </th>
+                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--da-text-secondary)", fontSize: "11px", textTransform: "uppercase" }}>
+                        Remaining Time
+                      </th>
+                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--da-text-secondary)", fontSize: "11px", textTransform: "uppercase", textAlign: "right" }}>
+                        Quick Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rawAlerts.map((item) => {
+                      const minutesLeft = Math.max(1, Math.round(item.minutesRemaining));
+                      const endFormatted = item.endAt
+                        ? format(new Date(item.endAt), "h:mm a")
+                        : "—";
+                      const isCheckingOut = checkingOutId === item.reservationId;
+
+                      return (
+                        <tr
+                          key={item.reservationId}
+                          data-testid={`near-checkout-row-${item.reservationId}`}
+                          style={{
+                            borderBottom: "1px solid var(--da-border-light, #E2E8F0)",
+                          }}
+                        >
+                          <td style={{ padding: "12px 8px", fontWeight: 800, color: "var(--da-brand-dark)" }}>
+                            {item.spotName}
+                          </td>
+                          <td style={{ padding: "12px 12px" }}>
+                            <div style={{ fontWeight: 700, color: "var(--da-text-primary)" }}>{item.customerName}</div>
+                            {item.customerEmail && (
+                              <div style={{ fontSize: "11px", color: "var(--da-text-secondary)" }}>{item.customerEmail}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 12px", fontWeight: 600, color: "var(--da-text-primary)" }}>
+                            {endFormatted}
+                          </td>
+                          <td style={{ padding: "12px 12px" }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                padding: "3px 10px",
+                                borderRadius: "9999px",
+                                background: "#FFFBEB",
+                                border: "1px solid #FDE68A",
+                                color: "#B45309",
+                                fontWeight: 800,
+                                fontSize: "12px",
+                              }}
+                            >
+                              <Clock size={12} color="#D97706" />
+                              {minutesLeft}m left
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px 12px", textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: "8px", justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                data-testid={`triage-extend-btn-${item.reservationId}`}
+                                onClick={() => setSelectedExtendAlert(item)}
+                                style={{
+                                  padding: "6px 12px",
+                                  background: "var(--da-brand-dark)",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <span>Extend Time</span>
+                                <ArrowUpRight size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                data-testid={`triage-checkout-btn-${item.reservationId}`}
+                                disabled={isCheckingOut}
+                                onClick={async () => {
+                                  try {
+                                    setCheckingOutId(item.reservationId);
+                                    const res = await fetch(
+                                      `/api/operations/reservations/${encodeURIComponent(item.reservationId)}/checkout`,
+                                      {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ actedAt: new Date().toISOString() }),
+                                      }
+                                    );
+                                    if (!res.ok) {
+                                      const err = await res.json().catch(() => ({}));
+                                      throw new Error(err.error || "Failed to checkout reservation");
+                                    }
+                                    setTriageFeedback(`Successfully checked out ${item.customerName} (${item.spotName})`);
+                                    setTimeout(() => setTriageFeedback(null), 4000);
+                                    await fetchAlerts();
+                                  } catch (err) {
+                                    console.error("Checkout error:", err);
+                                  } finally {
+                                    setCheckingOutId(null);
+                                  }
+                                }}
+                                style={{
+                                  padding: "6px 12px",
+                                  background: "#F1F5F9",
+                                  color: "#334155",
+                                  border: "1px solid #CBD5E1",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  cursor: isCheckingOut ? "not-allowed" : "pointer",
+                                  opacity: isCheckingOut ? 0.6 : 1,
+                                }}
+                              >
+                                {isCheckingOut ? "Checking out..." : "Check Out"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div
+              style={{
+                padding: "14px 24px",
+                borderTop: "1px solid var(--da-border-light, #E2E8F0)",
+                display: "flex",
+                justifyContent: "flex-end",
+                background: "var(--da-canvas, #F8FAFC)",
+              }}
+            >
+              <button
+                data-testid="near-checkout-triage-done"
+                onClick={() => setIsTriageModalOpen(false)}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "8px",
+                  background: "var(--da-brand-dark, #0F172A)",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "var(--da-font-family)",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedExtendAlert && (
+        <ExtendReservationModal
+          isOpen={Boolean(selectedExtendAlert)}
+          onClose={() => setSelectedExtendAlert(null)}
+          onSuccess={() => {
+            setSelectedExtendAlert(null);
+            fetchAlerts();
+          }}
+          reservationId={selectedExtendAlert.reservationId}
+          referenceCode={selectedExtendAlert.referenceCode}
+          customerName={selectedExtendAlert.customerName}
+          spotDisplayName={selectedExtendAlert.spotName}
+          currentEndAt={selectedExtendAlert.endAt}
+          apiPrefix="/api/operations/reservations"
+          actorRole="STAFF"
+        />
+      )}
     </main>
   );
 }

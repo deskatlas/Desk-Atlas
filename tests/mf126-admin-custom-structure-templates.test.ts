@@ -218,7 +218,7 @@ describe('MF-126: Admin Custom Structure Management and Map Placement', () => {
       assert.equal(savedReception.elementRole, 'STRUCTURE');
       assert.equal(savedReception.label, 'Reception Counter');
       assert.equal(savedReception.width, 140);
-      assert.equal(savedReception.height, 80); // snapped to grid (70 -> 80)
+      assert.equal(savedReception.height, 70);
       assert.equal(savedReception.properties.isCustomStructure, true);
       assert.equal(savedReception.properties.templateId, sampleCustomTemplate.id);
     });

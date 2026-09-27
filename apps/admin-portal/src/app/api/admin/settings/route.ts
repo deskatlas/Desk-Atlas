@@ -46,7 +46,15 @@ export async function PATCH(request: NextRequest) {
         bookingEndAlertMinutes:
           body.bookingEndAlertMinutes !== undefined && body.bookingEndAlertMinutes !== null
             ? Number(body.bookingEndAlertMinutes)
-            : 5,
+            : body.nearCheckoutThresholdMinutes !== undefined && body.nearCheckoutThresholdMinutes !== null
+              ? Number(body.nearCheckoutThresholdMinutes)
+              : 15,
+        nearCheckoutThresholdMinutes:
+          body.nearCheckoutThresholdMinutes !== undefined && body.nearCheckoutThresholdMinutes !== null
+            ? Number(body.nearCheckoutThresholdMinutes)
+            : body.bookingEndAlertMinutes !== undefined && body.bookingEndAlertMinutes !== null
+              ? Number(body.bookingEndAlertMinutes)
+              : 15,
         customerSessionTimeoutMinutes:
           body.customerSessionTimeoutMinutes !== undefined && body.customerSessionTimeoutMinutes !== null
             ? Number(body.customerSessionTimeoutMinutes)
@@ -67,6 +75,10 @@ export async function PATCH(request: NextRequest) {
           body.maxAdvanceBookingDays !== undefined && body.maxAdvanceBookingDays !== null
             ? Number(body.maxAdvanceBookingDays)
             : 90,
+        dayPassStartTime: body.dayPassStartTime,
+        dayPassEndTime: body.dayPassEndTime,
+        nightPassStartTime: body.nightPassStartTime,
+        nightPassEndTime: body.nightPassEndTime,
         landingPreviewPhotos: body.landingPreviewPhotos,
         statusColors: body.statusColors,
         cancellationPolicyPdfUrl: body.cancellationPolicyPdfUrl,

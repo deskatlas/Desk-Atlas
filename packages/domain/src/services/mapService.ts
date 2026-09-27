@@ -242,6 +242,7 @@ async function normalizeElements(
 
   if (isPublishing) {
     // Spatial collision check: overlapping bookable workspaces
+    const wsCollidingIds = new Set<string>();
     for (let i = 0; i < normalized.length; i++) {
       const a = normalized[i];
       if (a.elementRole !== BOOKABLE_ROLE) continue;
@@ -256,12 +257,19 @@ async function normalizeElements(
           a.y < b.y + b.height &&
           a.y + a.height > b.y
         ) {
-          throw new MapValidationError('Draft contains overlapping bookable workspaces');
+          if (a.id) wsCollidingIds.add(a.id);
+          if (b.id) wsCollidingIds.add(b.id);
         }
       }
     }
+    if (wsCollidingIds.size > 0) {
+      throw new MapValidationError(
+        `COLLISION_OVERLAP:Draft contains overlapping bookable workspaces: ${Array.from(wsCollidingIds).join(',')}`
+      );
+    }
 
     // Spatial collision check: workspace conflicting with wall/divider
+    const wallCollidingIds = new Set<string>();
     for (const ws of normalized) {
       if (ws.elementRole !== BOOKABLE_ROLE) continue;
 
@@ -271,7 +279,8 @@ async function normalizeElements(
           (wall.elementType.toLowerCase() === 'wall' ||
             wall.elementType.toLowerCase() === 'divider' ||
             wall.elementType.toLowerCase() === 'thin_wall' ||
-            wall.elementType.toLowerCase() === 'thin-wall')
+            wall.elementType.toLowerCase() === 'thin-wall' ||
+            wall.elementType.toLowerCase().includes('glass'))
         ) {
           if (
             ws.x < wall.x + wall.width &&
@@ -279,10 +288,16 @@ async function normalizeElements(
             ws.y < wall.y + wall.height &&
             ws.y + ws.height > wall.y
           ) {
-            throw new MapValidationError('Draft contains a workspace conflicting with a wall/divider');
+            if (ws.id) wallCollidingIds.add(ws.id);
+            if (wall.id) wallCollidingIds.add(wall.id);
           }
         }
       }
+    }
+    if (wallCollidingIds.size > 0) {
+      throw new MapValidationError(
+        `COLLISION_WALL:Draft contains a workspace conflicting with a wall/divider: ${Array.from(wallCollidingIds).join(',')}`
+      );
     }
   }
 
@@ -316,7 +331,7 @@ function normalizeElementGeometry(
   index: number,
   canvasWidth: number,
   canvasHeight: number,
-  gridSize: number
+  _gridSize: number
 ): MapElementInput {
   const label = (element.label && element.label.trim()) || `Map element ${index + 1}`;
   const elementType = requireNonBlank(element.elementType, `${label} type`);
@@ -332,16 +347,16 @@ function normalizeElementGeometry(
   const isThinWall = isThinWallElement(elementType, elementRole);
   const isWindow = isWindowElement(elementType, elementRole);
 
-  const x = snapToGrid(rawX, gridSize, false);
-  const y = snapToGrid(rawY, gridSize, false);
-  const width = snapToGrid(requirePositiveNumber(element.width, `${label} width`), gridSize, true);
+  const x = rawX;
+  const y = rawY;
+  const width = requirePositiveNumber(element.width, `${label} width`);
   const height = isThinWall
     ? 10
     : isWindow
-    ? Math.max(10, Math.round(requirePositiveNumber(element.height ?? 20, `${label} height`)))
-    : (isWall
-      ? snapToGrid(20, gridSize, true)
-      : snapToGrid(requirePositiveNumber(element.height, `${label} height`), gridSize, true));
+      ? Math.max(10, Math.round(requirePositiveNumber(element.height ?? 20, `${label} height`)))
+      : (isWall
+        ? 20
+        : requirePositiveNumber(element.height, `${label} height`));
   const rotation = normalizeRotation(element.rotation ?? 0, label);
   const zIndex = normalizeInteger(element.zIndex ?? index, `${label} z-index`);
 

@@ -212,3 +212,74 @@ export function clampRotatedElementToBounds(
     },
   };
 }
+
+export interface CollidingElementCandidate {
+  id: string;
+  x: number;
+  y: number;
+  w?: number;
+  width?: number;
+  h?: number;
+  height?: number;
+  bookable?: boolean;
+  role?: string;
+  elementRole?: string;
+  category?: string;
+  elementType?: string;
+  name?: string;
+}
+
+export function findCollidingElements(elements: CollidingElementCandidate[]): Set<string> {
+  const colliding = new Set<string>();
+  for (let i = 0; i < elements.length; i++) {
+    for (let j = i + 1; j < elements.length; j++) {
+      const a = elements[i];
+      const b = elements[j];
+      const aw = a.w ?? a.width ?? 0;
+      const ah = a.h ?? a.height ?? 0;
+      const bw = b.w ?? b.width ?? 0;
+      const bh = b.h ?? b.height ?? 0;
+
+      const isAWorkspace = Boolean(a.bookable || a.role === 'WORKSPACE' || a.elementRole === 'WORKSPACE');
+      const isBWorkspace = Boolean(b.bookable || b.role === 'WORKSPACE' || b.elementRole === 'WORKSPACE');
+      const isAWall = !isAWorkspace && Boolean(
+        a.category === 'structure' ||
+        a.role === 'STRUCTURE' ||
+        a.elementRole === 'STRUCTURE' ||
+        a.elementType === 'wall' ||
+        a.elementType === 'divider' ||
+        a.elementType === 'thin_wall' ||
+        a.elementType === 'thin-wall' ||
+        a.elementType === 'glass' ||
+        a.name?.toLowerCase().includes('wall') ||
+        a.name?.toLowerCase().includes('divider')
+      );
+      const isBWall = !isBWorkspace && Boolean(
+        b.category === 'structure' ||
+        b.role === 'STRUCTURE' ||
+        b.elementRole === 'STRUCTURE' ||
+        b.elementType === 'wall' ||
+        b.elementType === 'divider' ||
+        b.elementType === 'thin_wall' ||
+        b.elementType === 'thin-wall' ||
+        b.elementType === 'glass' ||
+        b.name?.toLowerCase().includes('wall') ||
+        b.name?.toLowerCase().includes('divider')
+      );
+
+      if ((isAWorkspace && isBWorkspace) || (isAWorkspace && isBWall) || (isBWorkspace && isAWall)) {
+        const overlaps =
+          a.x < b.x + bw &&
+          a.x + aw > b.x &&
+          a.y < b.y + bh &&
+          a.y + ah > b.y;
+
+        if (overlaps) {
+          colliding.add(a.id);
+          colliding.add(b.id);
+        }
+      }
+    }
+  }
+  return colliding;
+}

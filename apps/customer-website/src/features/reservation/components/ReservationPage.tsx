@@ -34,6 +34,8 @@ import {
   DEFAULT_WORKSPACE_STATUS_COLORS,
   normalizeWorkspaceStatusColors,
   type WorkspaceStatusColors,
+  type PromotionalRate,
+  resolveEffectivePrice,
 } from "@deskatlas/domain";
 import { useRouter } from "next/navigation";
 import { SpotDetailModal } from "./SpotDetailModal";
@@ -46,6 +48,15 @@ import {
 } from "@/app/lib/availabilityApi";
 import { handleNumericKeyDown } from "@deskatlas/ui";
 
+import type { RateType } from "@deskatlas/domain";
+import {
+  getPhtNow,
+  getPhtDateString,
+  getPhtTimeString,
+  setServerTimeSync,
+  resolveTimeBasedHourlyRate,
+} from "@deskatlas/domain";
+
 export interface SelectedCandidate {
   rank: 0 | 1 | 2;
   workspace: WorkspaceMapViewModel;
@@ -53,6 +64,8 @@ export interface SelectedCandidate {
   durationHours: number;
   startTime: string;
   endTime: string;
+  rateType?: RateType;
+  bookedRate?: number;
 }
 
 export interface WorkspaceTemplateSummary {
@@ -64,6 +77,14 @@ export interface WorkspaceTemplateSummary {
   capacity: number;
   rateAmount: number;
   pricingLabel: string;
+  hasDayPass?: boolean;
+  dayPassPrice?: number | null;
+  hasNightPass?: boolean;
+  nightPassPrice?: number | null;
+  hasWholeDayPass?: boolean;
+  wholeDayPassPrice?: number | null;
+  hasHalfDayPass?: boolean;
+  halfDayPassPrice?: number | null;
   tags?: string[];
   instanceCount: number;
   floors: string[];
@@ -125,17 +146,7 @@ function formatDateDisplay(dateStr: string): string {
 }
 
 function getTodayManila(): string {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const year = parts.find((p) => p.type === "year")?.value ?? "2026";
-  const month = parts.find((p) => p.type === "month")?.value ?? "08";
-  const day = parts.find((p) => p.type === "day")?.value ?? "31";
-  return `${year}-${month}-${day}`;
+  return getPhtDateString();
 }
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -366,6 +377,7 @@ export function ReservationPage() {
     DEFAULT_WORKSPACE_STATUS_COLORS
   );
   const [maxAdvanceBookingDays, setMaxAdvanceBookingDays] = useState<number>(90);
+  const [activePromotions, setActivePromotions] = useState<PromotionalRate[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -388,6 +400,16 @@ export function ReservationPage() {
       .catch(() => {
         // Fallback to default
       });
+
+    fetch("/api/public/promotions")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data?.data) {
+          setActivePromotions(data.data);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       isMounted = false;
     };
@@ -502,6 +524,29 @@ export function ReservationPage() {
     [published]
   );
 
+  const [passWindows, setPassWindows] = useState({
+    dayPassStartTime: '07:00',
+    dayPassEndTime: '23:30',
+    nightPassStartTime: '20:00',
+    nightPassEndTime: '07:00',
+  });
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          setPassWindows({
+            dayPassStartTime: data.dayPassStartTime || '07:00',
+            dayPassEndTime: data.dayPassEndTime || '23:30',
+            nightPassStartTime: data.nightPassStartTime || '20:00',
+            nightPassEndTime: data.nightPassEndTime || '07:00',
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const mainCandidate = useMemo(
     () => candidates.find((c) => c.rank === 0) ?? null,
     [candidates]
@@ -516,6 +561,30 @@ export function ReservationPage() {
     () => candidates.find((c) => c.rank === 2) ?? null,
     [candidates]
   );
+
+  const mainPricing = useMemo(() => {
+    if (!mainCandidate) return null;
+    const targetBookingTime = new Date(`${mainCandidate.date}T${mainCandidate.startTime || "09:00"}:00`);
+    const rateType = mainCandidate.rateType || "HOURLY";
+    const baseRate = rateType === "DAY_PASS"
+      ? (mainCandidate.workspace.dayPassPrice ?? mainCandidate.workspace.rateAmount)
+      : rateType === "NIGHT_PASS"
+      ? (mainCandidate.workspace.nightPassPrice ?? mainCandidate.workspace.rateAmount)
+      : rateType === "WHOLE_DAY_PASS"
+      ? (mainCandidate.workspace.wholeDayPassPrice ?? mainCandidate.workspace.rateAmount * 24)
+      : rateType === "HALF_DAY_PASS"
+      ? (mainCandidate.workspace.halfDayPassPrice ?? mainCandidate.workspace.rateAmount * 12)
+      : mainCandidate.workspace.rateAmount;
+
+    return resolveEffectivePrice(
+      mainCandidate.workspace.templateId,
+      rateType,
+      baseRate,
+      targetBookingTime,
+      activePromotions,
+      rateType === "HOURLY" ? mainCandidate.durationHours : 1
+    );
+  }, [mainCandidate, activePromotions]);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.workspaceInstanceId === selectedWorkspaceId) ?? null,
@@ -852,6 +921,7 @@ export function ReservationPage() {
     durationHours: number;
     startTime: string;
     endTime: string;
+    rateType?: RateType;
   }) => {
     if (!selectedWorkspace) return;
 
@@ -862,6 +932,7 @@ export function ReservationPage() {
       durationHours: schedule.durationHours,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
+      rateType: schedule.rateType,
     };
 
     setCandidates((prev) => {
@@ -1033,7 +1104,9 @@ export function ReservationPage() {
           customerLastName: customerLastName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerContactNumber: customerContactNumber.trim() || undefined,
-          bookedRatePerHour: mainCandidate?.workspace.rateAmount,
+          bookedRatePerHour: mainPricing ? mainPricing.effectivePrice : mainCandidate?.workspace.rateAmount,
+          rateSnapshot: mainPricing ? mainPricing.effectivePrice : mainCandidate?.workspace.rateAmount,
+          amountDue: mainPricing ? mainPricing.estimatedTotal : ((mainCandidate?.workspace.rateAmount || 0) * (mainCandidate?.durationHours || 1)),
           candidates: candidatesPayload,
         }),
       });
@@ -2040,37 +2113,59 @@ export function ReservationPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {availableTemplates.map((tpl) => (
-                      <div
-                        key={tpl.id}
-                        onClick={() => handleSelectTemplate(tpl)}
-                        className="group relative flex flex-col justify-between rounded-[24px] border-2 border-[var(--da-border-light)] bg-white hover:border-[var(--da-primary)] hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden p-5"
-                      >
-                        {/* Photo / Visual Area */}
-                        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-[var(--da-border-light)] bg-slate-100 mb-4">
-                          {tpl.photoPath ? (
-                            <img
-                              src={tpl.photoPath}
-                              alt={tpl.name}
-                              className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
-                              style={{
-                                objectPosition: getWorkspacePhotoObjectPosition(tpl.photoPosition),
-                              }}
-                            />
-                          ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#E0EFE4]/60 to-[#F3F7F4]">
-                              <span className="text-4xl">🏢</span>
-                              <span className="mt-2 text-xs font-bold text-[var(--da-brand-dark)]">
-                                DeskAtlas Space
+                    {availableTemplates.map((tpl) => {
+                      const tplPricing = resolveEffectivePrice(
+                        tpl.id,
+                        "HOURLY",
+                        tpl.rateAmount,
+                        new Date(),
+                        activePromotions,
+                        1
+                      );
+
+                      return (
+                        <div
+                          key={tpl.id}
+                          onClick={() => handleSelectTemplate(tpl)}
+                          className="group relative flex flex-col justify-between rounded-[24px] border-2 border-[var(--da-border-light)] bg-white hover:border-[var(--da-primary)] hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden p-5"
+                        >
+                          {/* Photo / Visual Area */}
+                          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-[var(--da-border-light)] bg-slate-100 mb-4">
+                            {tpl.photoPath ? (
+                              <img
+                                src={tpl.photoPath}
+                                alt={tpl.name}
+                                className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
+                                style={{
+                                  objectPosition: getWorkspacePhotoObjectPosition(tpl.photoPosition),
+                                }}
+                              />
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#E0EFE4]/60 to-[#F3F7F4]">
+                                <span className="text-4xl">🏢</span>
+                                <span className="mt-2 text-xs font-bold text-[var(--da-brand-dark)]">
+                                  DeskAtlas Space
+                                </span>
+                              </div>
+                            )}
+                            <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                              {tplPricing.isPromotional && (
+                                <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[10px] font-extrabold shadow-sm">
+                                  Promo Available: {tplPricing.promoName || "Holiday Promo"}
+                                </span>
+                              )}
+                              <span className="rounded-full bg-white/95 backdrop-blur px-3 py-1 text-xs font-extrabold text-[var(--da-brand-dark)] shadow-sm border border-slate-200">
+                                {tplPricing.isPromotional ? (
+                                  <>
+                                    <span className="line-through text-slate-400 font-normal mr-1.5">₱{tpl.rateAmount.toFixed(2)}/hr</span>
+                                    <span className="text-[var(--da-primary)] font-extrabold">₱{tplPricing.effectivePrice.toFixed(2)}/hr</span>
+                                  </>
+                                ) : (
+                                  `₱${tpl.rateAmount.toFixed(2)}/hr`
+                                )}
                               </span>
                             </div>
-                          )}
-                          <div className="absolute top-3 right-3">
-                            <span className="rounded-full bg-white/95 backdrop-blur px-3 py-1 text-xs font-extrabold text-[var(--da-brand-dark)] shadow-sm border border-slate-200">
-                              ₱{tpl.rateAmount.toFixed(2)}/hr
-                            </span>
                           </div>
-                        </div>
 
                         {/* Info Area */}
                         <div className="flex flex-col flex-1">
@@ -2109,7 +2204,8 @@ export function ReservationPage() {
                           Select {tpl.name} →
                         </button>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 )}
               </div>
@@ -3023,7 +3119,13 @@ export function ReservationPage() {
                           <p className="text-xs text-[var(--da-text-secondary)]">
                             {cand.workspace.templateName} •{" "}
                             <span className="font-bold text-[var(--da-brand-dark)]">
-                              ₱{cand.workspace.rateAmount.toFixed(2)}/hr
+                              {(() => {
+                                const rateType = cand.rateType || "HOURLY";
+                                if (rateType === "WHOLE_DAY_PASS") return `₱${(cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24)).toFixed(2)} flat (24-Hour Pass)`;
+                                if (rateType === "HALF_DAY_PASS") return `₱${(cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12)).toFixed(2)} flat (12-Hour Pass)`;
+                                const hourlyInfo = resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00");
+                                return `₱${hourlyInfo.rate.toFixed(2)}/hr (${hourlyInfo.tierLabel})`;
+                              })()}
                             </span>
                           </p>
 
@@ -3045,7 +3147,13 @@ export function ReservationPage() {
                             Candidate Total:
                           </span>
                           <span className="text-base font-extrabold text-[var(--da-brand-dark)]">
-                            ₱{(cand.workspace.rateAmount * cand.durationHours).toFixed(2)}
+                            ₱{(() => {
+                              const rateType = cand.rateType || "HOURLY";
+                              if (rateType === "WHOLE_DAY_PASS") return (cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24)).toFixed(2);
+                              if (rateType === "HALF_DAY_PASS") return (cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12)).toFixed(2);
+                              const hourlyRate = resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00").rate;
+                              return (hourlyRate * cand.durationHours).toFixed(2);
+                            })()}
                           </span>
                         </div>
 
@@ -3087,7 +3195,7 @@ export function ReservationPage() {
                       🔒 No-Hold & Atomic Allocation Guarantee
                     </div>
                     <p className="leading-5">
-                      Your rate of ₱{mainCandidate.workspace.rateAmount.toFixed(2)}/hr for {mainCandidate.durationHours} hours is locked. No upfront payment is charged right now. When proof is approved by admin, the first available candidate (Main → Backup 1 → Backup 2) will be permanently allocated.
+                      Your booking rate and candidate preferences for {mainCandidate.durationHours} hours are locked. No upfront payment is charged right now. When proof is approved by admin, the first available candidate (Main → Backup 1 → Backup 2) will be permanently allocated.
                     </p>
                   </div>
                   <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full w-fit">
@@ -3097,12 +3205,36 @@ export function ReservationPage() {
 
                 <div className="rounded-2xl bg-[var(--da-canvas)] border border-[var(--da-border-light)] p-4 flex flex-col justify-between gap-3 text-xs">
                   <div className="flex flex-col gap-2 text-[var(--da-text-secondary)]">
-                    <div className="flex justify-between">
-                      <span>Rate per Hour:</span>
-                      <span className="font-bold text-[var(--da-brand-dark)]">
-                        ₱{mainCandidate.workspace.rateAmount.toFixed(2)}
-                      </span>
-                    </div>
+                    {mainPricing?.isPromotional ? (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span>Rate ({mainCandidate.rateType === "WHOLE_DAY_PASS" ? "24h Pass" : mainCandidate.rateType === "HALF_DAY_PASS" ? "12h Pass" : "Hourly"}):</span>
+                          <span className="font-bold text-[var(--da-brand-dark)] flex items-center gap-1.5">
+                            <span className="line-through text-slate-400 font-normal">₱{mainPricing.regularPrice.toFixed(2)}</span>
+                            <span className="text-[var(--da-primary)]">₱{mainPricing.effectivePrice.toFixed(2)}</span>
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span>Discount Applied:</span>
+                          <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[11px]">
+                            {mainPricing.promoName} (-₱{(mainPricing.regularPrice - mainPricing.effectivePrice).toFixed(2)})
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between">
+                        <span>Rate ({mainCandidate.rateType === "WHOLE_DAY_PASS" ? "24h Pass" : mainCandidate.rateType === "HALF_DAY_PASS" ? "12h Pass" : "Hourly"}):</span>
+                        <span className="font-bold text-[var(--da-brand-dark)]">
+                          ₱{(() => {
+                            const rateType = mainCandidate.rateType || "HOURLY";
+                            if (rateType === "WHOLE_DAY_PASS") return `${(mainCandidate.workspace.wholeDayPassPrice ?? (mainCandidate.workspace.rateAmount * 24)).toFixed(2)} flat`;
+                            if (rateType === "HALF_DAY_PASS") return `${(mainCandidate.workspace.halfDayPassPrice ?? (mainCandidate.workspace.rateAmount * 12)).toFixed(2)} flat`;
+                            const hourlyRate = resolveTimeBasedHourlyRate(mainCandidate.workspace, mainCandidate.startTime || "09:00").rate;
+                            return `${hourlyRate.toFixed(2)}/hr`;
+                          })()}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span>Duration:</span>
                       <span className="font-bold text-[var(--da-brand-dark)]">
@@ -3114,7 +3246,7 @@ export function ReservationPage() {
                         Amount Due on Confirmation:
                       </span>
                       <span className="font-extrabold text-lg text-[var(--da-primary)]">
-                        ₱{(mainCandidate.workspace.rateAmount * mainCandidate.durationHours).toFixed(2)}
+                        ₱{mainPricing?.estimatedTotal.toFixed(2)}
                       </span>
                     </div>
                   </div>

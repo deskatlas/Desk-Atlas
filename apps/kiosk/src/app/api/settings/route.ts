@@ -31,6 +31,10 @@ export async function GET() {
       statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
       kioskAllowanceMinutes: 5,
       maxAdvanceBookingDays: 90,
+      dayPassStartTime: '07:00',
+      dayPassEndTime: '23:30',
+      nightPassStartTime: '20:00',
+      nightPassEndTime: '07:00',
     });
   }
 }

@@ -42,6 +42,14 @@ type WorkspaceTemplateRow = {
   capacity: number;
   rate_amount: string | number;
   pricing_unit: 'HOURLY';
+  has_day_pass?: boolean;
+  day_pass_price?: string | number | null;
+  has_night_pass?: boolean;
+  night_pass_price?: string | number | null;
+  has_whole_day_pass?: boolean;
+  whole_day_pass_price?: string | number | null;
+  has_half_day_pass?: boolean;
+  half_day_pass_price?: string | number | null;
   default_shape: string;
   default_color: string;
   default_style: Record<string, unknown> | null;
@@ -127,6 +135,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
 
     if (cachedRow?.compiled_map_cache) {
       const compiled = cachedRow.compiled_map_cache;
+      await this.hydrateWorkspaceTemplates(compiled.elements);
       if (!isStaffOrAdmin) {
         return {
           ...compiled,
@@ -159,25 +168,29 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     }
 
     const elementRows = await this.request<PublishedElementRow[]>(
-      `/map_elements?select=id,element_role,element_type,x,y,width,height,rotation,z_index,label,properties,workspace_instance:workspace_instances(id,template_id,floor_id,instance_code,display_name,operational_status,maintenance_note,template:workspace_templates(id,name,description,photo_path,capacity,rate_amount,pricing_unit,default_shape,default_color,default_style,is_active))&map_version_id=eq.${encodeURIComponent(
+      `/map_elements?select=id,element_role,element_type,x,y,width,height,rotation,z_index,label,properties,workspace_instance:workspace_instances(id,template_id,floor_id,instance_code,display_name,operational_status,maintenance_note,template:workspace_templates(id,name,description,photo_path,capacity,rate_amount,pricing_unit,has_day_pass,day_pass_price,has_night_pass,night_pass_price,has_whole_day_pass,whole_day_pass_price,has_half_day_pass,half_day_pass_price,default_shape,default_color,default_style,is_active))&map_version_id=eq.${encodeURIComponent(
         versionRow.id
       )}&order=z_index.asc,id.asc`
     );
 
+    const elements = elementRows
+      .filter((row) => {
+        if (row.element_role === 'EDITOR_AID') return false;
+        if (row.element_role === 'WORKSPACE') {
+          if (!row.workspace_instance || !row.workspace_instance.template) return false;
+          if (row.workspace_instance.template.is_active === false) return false;
+          if (!isStaffOrAdmin && row.workspace_instance.operational_status === 'INACTIVE') return false;
+        }
+        return true;
+      })
+      .map((row) => mapPublishedElement(row, floorRow));
+
+    await this.hydrateWorkspaceTemplates(elements);
+
     return {
       floor: mapFloor(floorRow),
       version: mapPublishedVersion(versionRow),
-      elements: elementRows
-        .filter((row) => {
-          if (row.element_role === 'EDITOR_AID') return false;
-          if (row.element_role === 'WORKSPACE') {
-            if (!row.workspace_instance || !row.workspace_instance.template) return false;
-            if (row.workspace_instance.template.is_active === false) return false;
-            if (!isStaffOrAdmin && row.workspace_instance.operational_status === 'INACTIVE') return false;
-          }
-          return true;
-        })
-        .map((row) => mapPublishedElement(row, floorRow)),
+      elements,
     };
   }
 
@@ -194,6 +207,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     for (const v of publishedVersions) {
       if (v.compiled_map_cache) {
         const compiled = v.compiled_map_cache;
+        await this.hydrateWorkspaceTemplates(compiled.elements);
         maps.push(
           !isStaffOrAdmin
             ? {
@@ -214,6 +228,45 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     }
 
     return maps;
+  }
+
+  private async hydrateWorkspaceTemplates(elements: PublishedMapElement[]): Promise<void> {
+    const templateIds = [
+      ...new Set(
+        elements
+          .map((el) => el.workspace?.templateId)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+    if (templateIds.length === 0) return;
+
+    try {
+      const templates = await this.request<WorkspaceTemplateRow[]>(
+        `/workspace_templates?select=id,name,description,photo_path,capacity,rate_amount,pricing_unit,has_day_pass,day_pass_price,has_night_pass,night_pass_price,has_whole_day_pass,whole_day_pass_price,has_half_day_pass,half_day_pass_price,is_active&id=in.(${templateIds
+          .map(encodeURIComponent)
+          .join(',')})`
+      );
+      const templateMap = new Map<string, WorkspaceTemplateRow>(templates.map((t) => [t.id, t]));
+
+      for (const el of elements) {
+        if (el.workspace && el.workspace.templateId && templateMap.has(el.workspace.templateId)) {
+          const tpl = templateMap.get(el.workspace.templateId)!;
+          el.workspace.hasDayPass = tpl.has_day_pass ?? false;
+          el.workspace.dayPassPrice = tpl.day_pass_price != null ? Number(tpl.day_pass_price) : null;
+          el.workspace.hasNightPass = tpl.has_night_pass ?? false;
+          el.workspace.nightPassPrice = tpl.night_pass_price != null ? Number(tpl.night_pass_price) : null;
+          el.workspace.hasWholeDayPass = tpl.has_whole_day_pass ?? false;
+          el.workspace.wholeDayPassPrice = tpl.whole_day_pass_price != null ? Number(tpl.whole_day_pass_price) : null;
+          el.workspace.hasHalfDayPass = tpl.has_half_day_pass ?? false;
+          el.workspace.halfDayPassPrice = tpl.half_day_pass_price != null ? Number(tpl.half_day_pass_price) : null;
+          if (tpl.rate_amount != null) {
+            el.workspace.rateAmount = Number(tpl.rate_amount);
+          }
+        }
+      }
+    } catch {
+      // Gracefully preserve existing compiled fields if hydration fetch encounters network/DB error
+    }
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -309,6 +362,14 @@ function mapPublishedWorkspace(
     capacity: instance.template.capacity,
     rateAmount: instance.template.rateAmount,
     pricingUnit: instance.template.pricingUnit,
+    hasDayPass: instance.template.hasDayPass,
+    dayPassPrice: instance.template.dayPassPrice,
+    hasNightPass: instance.template.hasNightPass,
+    nightPassPrice: instance.template.nightPassPrice,
+    hasWholeDayPass: instance.template.hasWholeDayPass,
+    wholeDayPassPrice: instance.template.wholeDayPassPrice,
+    hasHalfDayPass: instance.template.hasHalfDayPass,
+    halfDayPassPrice: instance.template.halfDayPassPrice,
     operationalStatus: instance.operationalStatus,
     maintenanceNote: instance.maintenanceNote ?? null,
     isBookable: availability.isBookable,
@@ -378,6 +439,14 @@ function mapWorkspaceTemplate(row: WorkspaceTemplateRow): WorkspaceTemplate {
     capacity: row.capacity,
     rateAmount: Number(row.rate_amount),
     pricingUnit: row.pricing_unit,
+    hasDayPass: Boolean(row.has_day_pass),
+    dayPassPrice: row.day_pass_price !== null && row.day_pass_price !== undefined ? Number(row.day_pass_price) : null,
+    hasNightPass: Boolean(row.has_night_pass),
+    nightPassPrice: row.night_pass_price !== null && row.night_pass_price !== undefined ? Number(row.night_pass_price) : null,
+    hasWholeDayPass: Boolean(row.has_whole_day_pass),
+    wholeDayPassPrice: row.whole_day_pass_price !== null && row.whole_day_pass_price !== undefined ? Number(row.whole_day_pass_price) : null,
+    hasHalfDayPass: Boolean(row.has_half_day_pass),
+    halfDayPassPrice: row.half_day_pass_price !== null && row.half_day_pass_price !== undefined ? Number(row.half_day_pass_price) : null,
     defaultShape: row.default_shape,
     defaultColor: row.default_color,
     defaultStyle: row.default_style ?? {},

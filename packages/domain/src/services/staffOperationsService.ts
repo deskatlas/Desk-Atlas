@@ -18,6 +18,10 @@ import {
   buildReservationTrackingUrl,
   formatDurationFromDates,
 } from "./transactionalEmailService";
+import {
+  BookingEndAlert,
+  evaluateApproachingBookingEnds,
+} from "./bookingEndAlertService";
 
 export class StaffOperationsError extends Error {
   constructor(message: string) {
@@ -54,6 +58,11 @@ export class StaffOperationsService {
       return filterReservationsBySearch(mapped, search);
     }
     return mapped;
+  }
+
+  async getNearCheckoutReservations(thresholdMinutes = 15): Promise<BookingEndAlert[]> {
+    const reservations = await this.listOperationalReservations();
+    return evaluateApproachingBookingEnds(reservations, thresholdMinutes, this.nowProvider());
   }
 
   async getOperationalReservation(
@@ -547,4 +556,17 @@ export function createStaffOperationsService(
   emailService?: TransactionalEmailService
 ) {
   return new StaffOperationsService(staffOperationsRepository, nowProvider, emailService);
+}
+
+export async function getNearCheckoutReservations(
+  thresholdMinutes: number,
+  repository: StaffOperationsRepository,
+  now: Date = new Date()
+): Promise<BookingEndAlert[]> {
+  const activeBookings = typeof repository.listOperationalReservations === 'function'
+    ? await repository.listOperationalReservations(now.toISOString())
+    : typeof (repository as any).listActiveCheckedInReservations === 'function'
+      ? await (repository as any).listActiveCheckedInReservations()
+      : [];
+  return evaluateApproachingBookingEnds(activeBookings, thresholdMinutes, now);
 }

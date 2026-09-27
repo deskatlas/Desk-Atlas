@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/features/auth/components/AuthProvider';
+import { useAuth } from '../../auth/components/AuthProvider';
 import {
   computeFitViewZoom,
   clampMapZoom,
@@ -175,10 +175,96 @@ function getStructureIcon(name: string, color?: string) {
   return <AmenityIcon type={norm} name={name} color={iconColor} />;
 }
 
+export interface BuilderObject {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  bookable?: boolean;
+  role?: string;
+  elementRole?: string;
+  category?: string;
+  elementType?: string;
+  name?: string;
+  rotation?: number;
+  zIndex?: number;
+  status?: string | null;
+  template?: unknown;
+  workspaceInstanceId?: string | null;
+  color?: string;
+  borderStyle?: string;
+  properties?: Record<string, unknown>;
+}
+
+export function findCollidingElements(elements: Array<{
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  bookable?: boolean;
+  role?: string;
+  elementRole?: string;
+  category?: string;
+  elementType?: string;
+  name?: string;
+}>): Set<string> {
+  const colliding = new Set<string>();
+  for (let i = 0; i < elements.length; i++) {
+    for (let j = i + 1; j < elements.length; j++) {
+      const a = elements[i];
+      const b = elements[j];
+      const isAWorkspace = Boolean(a.bookable || a.role === 'WORKSPACE' || a.elementRole === 'WORKSPACE');
+      const isBWorkspace = Boolean(b.bookable || b.role === 'WORKSPACE' || b.elementRole === 'WORKSPACE');
+      const isAWall = !isAWorkspace && Boolean(
+        a.category === 'structure' ||
+        a.role === 'STRUCTURE' ||
+        a.elementRole === 'STRUCTURE' ||
+        a.elementType === 'wall' ||
+        a.elementType === 'divider' ||
+        a.elementType === 'thin_wall' ||
+        a.elementType === 'thin-wall' ||
+        a.elementType === 'glass' ||
+        a.name?.toLowerCase().includes('wall') ||
+        a.name?.toLowerCase().includes('divider')
+      );
+      const isBWall = !isBWorkspace && Boolean(
+        b.category === 'structure' ||
+        b.role === 'STRUCTURE' ||
+        b.elementRole === 'STRUCTURE' ||
+        b.elementType === 'wall' ||
+        b.elementType === 'divider' ||
+        b.elementType === 'thin_wall' ||
+        b.elementType === 'thin-wall' ||
+        b.elementType === 'glass' ||
+        b.name?.toLowerCase().includes('wall') ||
+        b.name?.toLowerCase().includes('divider')
+      );
+
+      if ((isAWorkspace && isBWorkspace) || (isAWorkspace && isBWall) || (isBWorkspace && isAWall)) {
+        const overlaps =
+          a.x < b.x + b.w &&
+          a.x + a.w > b.x &&
+          a.y < b.y + b.h &&
+          a.y + a.h > b.y;
+
+        if (overlaps) {
+          colliding.add(a.id);
+          colliding.add(b.id);
+        }
+      }
+    }
+  }
+  return colliding;
+}
+
 export function MapEditor() {
   const { user } = useAuth();
   const gridOn = true;
-  const snapOn = true;
+  const [snapToGrid, setSnapToGrid] = useState<boolean>(true);
+  const snapOn = snapToGrid;
+  const [collidingElementIds, setCollidingElementIds] = useState<Set<string>>(new Set());
   const [showInspector, setShowInspector] = useState(true);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showFloorModal, setShowFloorModal] = useState(false);
@@ -283,6 +369,26 @@ export function MapEditor() {
     }
   };
 
+  const centerOnElement = (elementId: string) => {
+    const target = builderObjectsRef.current.find((o) => o.id === elementId);
+    if (!target || !containerRef.current) return;
+    const targetCenterX = (target.x + target.w / 2) * builderZoom;
+    const targetCenterY = (target.y + target.h / 2) * builderZoom;
+    const containerW = containerRef.current.clientWidth;
+    const containerH = containerRef.current.clientHeight;
+
+    containerRef.current.scrollTo({
+      left: Math.max(0, targetCenterX - containerW / 2),
+      top: Math.max(0, targetCenterY - containerH / 2),
+      behavior: 'smooth',
+    });
+  };
+
+  useEffect(() => {
+    const liveCollisions = findCollidingElements(builderObjects);
+    setCollidingElementIds(liveCollisions);
+  }, [builderObjects]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -297,9 +403,16 @@ export function MapEditor() {
       }
 
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      if (!isCtrlOrCmd && key === 's') {
+        e.preventDefault();
+        setSnapToGrid((prev) => !prev);
+        return;
+      }
+
       if (!isCtrlOrCmd) return;
 
-      const key = e.key.toLowerCase();
       if (key === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -1133,9 +1246,13 @@ export function MapEditor() {
         let newX = dragState.startObjX + dx;
         let newY = dragState.startObjY + dy;
 
-        if (snapOn) {
+        const effectiveSnap = snapOn && !e.altKey && !e.shiftKey;
+        if (effectiveSnap) {
           newX = Math.round(newX / 20) * 20;
           newY = Math.round(newY / 20) * 20;
+        } else {
+          newX = Math.round(newX);
+          newY = Math.round(newY);
         }
 
         const obj = builderObjectsRef.current.find(o => o.id === dragState.id);
@@ -1217,6 +1334,8 @@ export function MapEditor() {
         ));
         const fixedThickness = isThinWall ? 10 : 20;
 
+        const effectiveSnap = snapOn && !e.altKey && !e.shiftKey;
+
         if (!isWorkspace && (isWall || isWindow) && obj) {
           const rot = ((obj.rotation || 0) % 360 + 360) % 360;
           let dLength = dx;
@@ -1230,8 +1349,10 @@ export function MapEditor() {
 
           const thickness = isWindow ? (resizeState.startObjH || 20) : fixedThickness;
           let newW = resizeState.startObjW + dLength;
-          if (snapOn) {
+          if (effectiveSnap) {
             newW = Math.round(newW / 20) * 20;
+          } else {
+            newW = Math.round(newW);
           }
 
           const canvasW = canvasDimensions.width;
@@ -1300,9 +1421,12 @@ export function MapEditor() {
           let newW = Math.max(20, resizeState.startObjW + dx);
           let newH = Math.max(20, resizeState.startObjH + dy);
 
-          if (snapOn) {
+          if (effectiveSnap) {
             newW = Math.round(newW / 20) * 20;
             newH = Math.round(newH / 20) * 20;
+          } else {
+            newW = Math.round(newW);
+            newH = Math.round(newH);
           }
 
           const objX = obj?.x || 0;
@@ -1362,7 +1486,7 @@ export function MapEditor() {
         window.removeEventListener('pointerup', handlePointerUp);
       };
     }
-  }, [dragState, resizeState, builderZoom, snapOn, canvasDimensions]);
+  }, [dragState, resizeState, builderZoom, snapOn, snapToGrid, canvasDimensions]);
 
   // Save draft
   const handleSaveDraft = async (isAutosave = false) => {
@@ -1539,7 +1663,21 @@ export function MapEditor() {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Publish failed validation');
+        const errorMessage: string = err.error || 'Publish failed validation';
+        const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+        const matches = errorMessage.match(uuidRegex);
+        if (matches && matches.length > 0) {
+          const errorCollisionSet = new Set(matches);
+          setCollidingElementIds((prev) => new Set([...prev, ...errorCollisionSet]));
+          centerOnElement(matches[0]);
+        } else {
+          const localCollisions = findCollidingElements(builderObjects);
+          if (localCollisions.size > 0) {
+            setCollidingElementIds(localCollisions);
+            centerOnElement(Array.from(localCollisions)[0]);
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       setShowPublishModal(false);
@@ -1553,7 +1691,7 @@ export function MapEditor() {
     }
   };
 
-  const handleRemoveObject = async (id: string) => {
+  const handleRemoveObject = (id: string) => {
     const targetIndex = builderObjects.findIndex(o => o.id === id);
     const targetObj = builderObjects[targetIndex];
     if (targetObj && selectedFloorId) {
@@ -1563,18 +1701,6 @@ export function MapEditor() {
         index: targetIndex,
       });
       syncUndoRedoState(selectedFloorId);
-    }
-
-    if (targetObj?.workspaceInstanceId) {
-      const instanceId = targetObj.workspaceInstanceId;
-      try {
-        await fetch(`/api/admin/workspaces/instances/${instanceId}`, {
-          method: 'DELETE',
-        });
-        setInstances(prev => prev.filter(i => i.id !== instanceId));
-      } catch {
-        // Non-blocking
-      }
     }
 
     setBuilderObjects(prev => prev.filter(o => o.id !== id));
@@ -1823,6 +1949,27 @@ export function MapEditor() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setSnapToGrid((prev) => !prev)}
+            title="Toggle Grid Snapping (Shortcut: S)"
+            aria-label="Toggle Snapping"
+            style={{
+              border: '1px solid var(--da-border)',
+              background: snapToGrid ? 'var(--da-soft, #f0fdf4)' : '#fff',
+              borderColor: snapToGrid ? 'var(--da-brand-dark, #009689)' : 'var(--da-border)',
+              color: snapToGrid ? 'var(--da-brand-dark, #009689)' : 'var(--da-text-secondary)',
+              borderRadius: '8px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <span>🧲</span> {snapToGrid ? `Snap: ON (${canvasDimensions.gridSize}px)` : 'Snap: OFF'}
+          </button>
           <button
             onClick={handleUndo}
             disabled={!canUndo}
@@ -2140,6 +2287,7 @@ export function MapEditor() {
                   canvasDimensions.width,
                   canvasDimensions.height
                 );
+                const isColliding = collidingElementIds.has(obj.id);
 
                 return (
                   <div
@@ -2151,7 +2299,7 @@ export function MapEditor() {
                       width: obj.w,
                       height: obj.h,
                       transform: `rotate(${obj.rotation}deg)`,
-                      zIndex: isOutOfBounds ? 60 : (selectedObjId === obj.id ? 40 : (obj.zIndex || 1)),
+                      zIndex: isColliding ? 50 : (isOutOfBounds ? 60 : (selectedObjId === obj.id ? 40 : (obj.zIndex || 1))),
                     }}
                   >
                     <button
@@ -2170,48 +2318,78 @@ export function MapEditor() {
                       }}
                       onClick={() => { setSelectedObjId(obj.id); setShowInspector(true); }}
                       aria-pressed={selectedObjId === obj.id}
-                      title={isOutOfBounds ? `${obj.name || 'This element'} is out of bounds!` : undefined}
+                      title={isColliding ? `${obj.name || 'This element'} has an overlap collision conflict!` : (isOutOfBounds ? `${obj.name || 'This element'} is out of bounds!` : undefined)}
                       style={{
                         width: '100%', height: '100%',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         fontSize: '11px', fontWeight: 700, textAlign: 'center', cursor: 'pointer',
                         fontFamily: 'var(--da-font-family)', padding: '4px', lineHeight: 1.2,
-                        background: isOutOfBounds
-                          ? 'rgba(239, 68, 68, 0.15)'
-                          : (isKioskMarker
-                              ? (obj.color || '#DC2626')
-                              : (isWindow
-                                  ? (obj.color || 'rgba(56, 189, 248, 0.25)')
-                                  : (isStairs
-                                      ? (obj.color || '#E2E8F0')
-                                      : (obj.color || (obj.bookable ? 'rgba(200, 244, 81, 0.4)' : '#F3F7F4'))))),
-                        border: isOutOfBounds
-                          ? '2.5px solid #EF4444'
-                          : (selectedObjId === obj.id
-                              ? '2px solid var(--da-brand-dark)'
+                        background: isColliding
+                          ? 'rgba(239, 68, 68, 0.2)'
+                          : (isOutOfBounds
+                              ? 'rgba(239, 68, 68, 0.15)'
                               : (isKioskMarker
-                                  ? '2px solid #fff'
+                                  ? (obj.color || '#DC2626')
                                   : (isWindow
-                                      ? '1.5px solid #38BDF8'
+                                      ? (obj.color || 'rgba(56, 189, 248, 0.25)')
                                       : (isStairs
-                                          ? '1.5px solid #94A3B8'
-                                          : (obj.borderStyle === 'dashed' || obj.properties?.borderStyle === 'dashed'
-                                              ? '1.5px dashed var(--da-border)'
-                                              : (obj.borderStyle === 'none' || obj.properties?.borderStyle === 'none'
-                                                  ? 'none'
-                                                  : '1px solid var(--da-border)')))))),
+                                          ? (obj.color || '#E2E8F0')
+                                          : (obj.color || (obj.bookable ? 'rgba(200, 244, 81, 0.4)' : '#F3F7F4')))))),
+                        border: isColliding
+                          ? '2.5px solid #EF4444'
+                          : (isOutOfBounds
+                              ? '2.5px solid #EF4444'
+                              : (selectedObjId === obj.id
+                                  ? '2px solid var(--da-brand-dark)'
+                                  : (isKioskMarker
+                                      ? '2px solid #fff'
+                                      : (isWindow
+                                          ? '1.5px solid #38BDF8'
+                                          : (isStairs
+                                              ? '1.5px solid #94A3B8'
+                                              : (obj.borderStyle === 'dashed' || obj.properties?.borderStyle === 'dashed'
+                                                  ? '1.5px dashed var(--da-border)'
+                                                  : (obj.borderStyle === 'none' || obj.properties?.borderStyle === 'none'
+                                                      ? 'none'
+                                                      : '1px solid var(--da-border)'))))))),
                         borderRadius: isKioskMarker ? '14px' : ((isWall || isWindow) ? '2px' : '8px'),
-                        boxShadow: isOutOfBounds
+                        boxShadow: (isColliding || isOutOfBounds)
                           ? '0 0 16px rgba(239, 68, 68, 0.85)'
                           : (isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : 'none'),
-                        animation: isOutOfBounds ? 'da-pulse-red-glow 1.2s infinite ease-in-out' : 'none',
-                        color: isOutOfBounds ? '#DC2626' : (isKioskMarker ? '#ffffff' : contrastColor),
+                        animation: isColliding
+                          ? 'da-pulse-red-glow 1.0s infinite ease-in-out'
+                          : (isOutOfBounds
+                              ? 'da-pulse-red-glow 1.2s infinite ease-in-out'
+                              : 'none'),
+                        color: (isColliding || isOutOfBounds) ? '#DC2626' : (isKioskMarker ? '#ffffff' : contrastColor),
                         opacity: obj.status === 'INACTIVE' ? (selectedObjId === obj.id ? 0.6 : 0.25) : 1,
                         boxSizing: 'border-box',
-                        overflow: 'hidden',
+                        overflow: 'visible',
                         position: 'relative'
                       }}
                     >
+                      {isColliding && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: -20,
+                            left: 0,
+                            background: '#EF4444',
+                            color: '#fff',
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                            zIndex: 60,
+                            pointerEvents: 'none',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                            lineHeight: '14px',
+                          }}
+                        >
+                          Overlap Conflict
+                        </div>
+                      )}
                       {isWorkspace ? (
                         <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {obj.name}

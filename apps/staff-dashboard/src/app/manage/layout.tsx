@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
 import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
-import { NotificationBell, BookingEndAlertModal, AlertsProvider } from '@/features/alerts';
+import { NotificationBell, BookingEndAlertModal, NearCheckoutAlertToasts, AlertsProvider } from '@/features/alerts';
 
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -200,8 +200,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
         {/* PAGE CONTENT */}
         {children}
 
-        {/* BOOKING END-TIME ALERT MODAL */}
+        {/* BOOKING END-TIME ALERT MODAL & NEAR CHECKOUT TOASTS */}
         <BookingEndAlertModal />
+        <NearCheckoutAlertToasts />
       </div>
     </div>
   );

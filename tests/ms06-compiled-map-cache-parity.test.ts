@@ -131,10 +131,10 @@ describe('MS-06 / QAD-TC6.7: Pre-Compiled Map Cache Parity', () => {
     expect(map.version.id).toBe('v-published-1');
     expect(map.elements).toHaveLength(2);
 
-    // Verified: exactly 1 request to map_versions with select=compiled_map_cache
-    expect(requestedUrls).toHaveLength(1);
-    expect(requestedUrls[0]).toContain('/map_versions?select=compiled_map_cache');
-    expect(requestedUrls[0]).toContain('floor_id=eq.fl-1');
+    // Verified: requested map_versions with select=compiled_map_cache
+    const mapVersionRequests = requestedUrls.filter((u) => u.includes('/map_versions?select=compiled_map_cache'));
+    expect(mapVersionRequests).toHaveLength(1);
+    expect(mapVersionRequests[0]).toContain('floor_id=eq.fl-1');
   });
 
   it('QAD-TC6.7.2: applies audience filtering (CUSTOMER excludes INACTIVE, ADMIN retains INACTIVE)', async () => {

@@ -24,6 +24,10 @@ export async function GET() {
         paymentExpiryMinutes: 60,
         kioskAllowanceMinutes: 5,
         statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
+        dayPassStartTime: '07:00',
+        dayPassEndTime: '23:30',
+        nightPassStartTime: '20:00',
+        nightPassEndTime: '07:00',
         cancellationPolicyPdfUrl: null,
         cancellationPolicyPdfFilename: null,
         cancellationPolicyUpdatedAt: null,
@@ -38,7 +42,7 @@ export async function GET() {
       settings,
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          'Cache-Control': 'no-store, max-age=0',
         },
       }
     );
@@ -55,6 +59,10 @@ export async function GET() {
       paymentExpiryMinutes: 60,
       kioskAllowanceMinutes: 5,
       statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
+      dayPassStartTime: '07:00',
+      dayPassEndTime: '23:30',
+      nightPassStartTime: '20:00',
+      nightPassEndTime: '07:00',
       cancellationPolicyPdfUrl: null,
       cancellationPolicyPdfFilename: null,
       cancellationPolicyUpdatedAt: null,

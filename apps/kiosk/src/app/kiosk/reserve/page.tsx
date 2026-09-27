@@ -20,6 +20,17 @@ import {
   DEFAULT_WORKSPACE_STATUS_COLORS,
   normalizeWorkspaceStatusColors,
   type WorkspaceStatusColors,
+  type PromotionalRate,
+  type RateType,
+  resolveEffectivePrice,
+  getPhtNow,
+  getPhtDateString,
+  getPhtTimeString,
+  setServerTimeSync,
+  resolveTimeBasedHourlyRate,
+  isDayTime,
+  isDayPassEligibleAtTime,
+  isNightPassEligibleAtTime,
 } from "@deskatlas/domain";
 import {
   SpotDetailModal,
@@ -38,6 +49,14 @@ export interface WorkspaceTemplateSummary {
   capacity: number;
   rateAmount: number;
   pricingLabel: string;
+  hasDayPass?: boolean;
+  dayPassPrice?: number | null;
+  hasNightPass?: boolean;
+  nightPassPrice?: number | null;
+  hasWholeDayPass?: boolean;
+  wholeDayPassPrice?: number | null;
+  hasHalfDayPass?: boolean;
+  halfDayPassPrice?: number | null;
   tags?: string[];
   instanceCount: number;
   floors: string[];
@@ -86,6 +105,14 @@ function mapPublishedFloorToWorkspaceCards(
         description: workspace.description ?? "Workspace details",
         rateAmount: workspace.rateAmount,
         pricingLabel: `PHP ${workspace.rateAmount}/hour`,
+        hasDayPass: workspace.hasDayPass,
+        dayPassPrice: workspace.dayPassPrice,
+        hasNightPass: workspace.hasNightPass,
+        nightPassPrice: workspace.nightPassPrice,
+        hasWholeDayPass: workspace.hasWholeDayPass,
+        wholeDayPassPrice: workspace.wholeDayPassPrice,
+        hasHalfDayPass: workspace.hasHalfDayPass,
+        halfDayPassPrice: workspace.halfDayPassPrice,
         photoPath: workspace.photoPath,
         photoPosition: workspace.photoPosition,
         capacity: workspace.capacity,
@@ -135,35 +162,18 @@ function formatTime12Hour(time24: string): string {
 }
 
 function getNowWithLeewayDate(allowanceMinutes: number = 5): Date {
-  const now = new Date();
-  return new Date(now.getTime() + allowanceMinutes * 60 * 1000);
+  const phtNow = getPhtNow();
+  return new Date(phtNow.getTime() + allowanceMinutes * 60 * 1000);
 }
 
 function getTodayManila(allowanceMinutes: number = 5): string {
-  const now = getNowWithLeewayDate(allowanceMinutes);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const year = parts.find((p) => p.type === "year")?.value ?? "2026";
-  const month = parts.find((p) => p.type === "month")?.value ?? "08";
-  const day = parts.find((p) => p.type === "day")?.value ?? "31";
-  return `${year}-${month}-${day}`;
+  const dateWithLeeway = getNowWithLeewayDate(allowanceMinutes);
+  return getPhtDateString(dateWithLeeway);
 }
 
 function getCurrentTimeManila(allowanceMinutes: number = 5): string {
-  const now = getNowWithLeewayDate(allowanceMinutes);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const h = parts.find((p) => p.type === "hour")?.value ?? "09";
-  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
-  return `${h}:${m}`;
+  const dateWithLeeway = getNowWithLeewayDate(allowanceMinutes);
+  return getPhtTimeString(dateWithLeeway);
 }
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -304,6 +314,7 @@ export default function KioskReservePage() {
   // Workspace & Template Selection
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceMapViewModel | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<WorkspaceTemplateSummary | null>(null);
+  const [selectedRateType, setSelectedRateType] = useState<RateType>("HOURLY");
   const [durationHours, setDurationHours] = useState<number>(2);
   const [durationInputStr, setDurationInputStr] = useState<string>("2");
 
@@ -321,6 +332,29 @@ export default function KioskReservePage() {
     DEFAULT_WORKSPACE_STATUS_COLORS
   );
   const [kioskAllowanceMinutes, setKioskAllowanceMinutes] = useState<number>(5);
+  const [dayPassWindow, setDayPassWindow] = useState<{ start: string; end: string }>({
+    start: "07:00",
+    end: "23:30",
+  });
+  const [nightPassWindow, setNightPassWindow] = useState<{ start: string; end: string }>({
+    start: "20:00",
+    end: "07:00",
+  });
+  const [activePromotions, setActivePromotions] = useState<PromotionalRate[]>([]);
+
+  // Sync server clock on mount to prevent client clock tampering
+  useEffect(() => {
+    fetch("/api/time")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.serverTimestamp) {
+          setServerTimeSync(data.serverTimestamp);
+          setTodayDate(getTodayManila(kioskAllowanceMinutes));
+          setNowTime(getCurrentTimeManila(kioskAllowanceMinutes));
+        }
+      })
+      .catch(() => {});
+  }, [kioskAllowanceMinutes]);
 
   useEffect(() => {
     let isMounted = true;
@@ -334,11 +368,31 @@ export default function KioskReservePage() {
           if (data?.kioskAllowanceMinutes !== undefined && data.kioskAllowanceMinutes !== null) {
             setKioskAllowanceMinutes(Number(data.kioskAllowanceMinutes));
           }
+          if (data?.dayPassStartTime || data?.dayPassWindow) {
+            setDayPassWindow({
+              start: data.dayPassStartTime || data.dayPassWindow?.startTime || data.dayPassWindow?.start || "07:00",
+              end: data.dayPassEndTime || data.dayPassWindow?.endTime || data.dayPassWindow?.end || "23:30",
+            });
+          }
+          if (data?.nightPassStartTime || data?.nightPassWindow) {
+            setNightPassWindow({
+              start: data.nightPassStartTime || data.nightPassWindow?.startTime || data.nightPassWindow?.start || "20:00",
+              end: data.nightPassEndTime || data.nightPassWindow?.endTime || data.nightPassWindow?.end || "07:00",
+            });
+          }
         }
       })
-      .catch(() => {
-        // Fallback
-      });
+      .catch(() => {});
+
+    fetch("/api/public/promotions")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data?.data) {
+          setActivePromotions(data.data);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       isMounted = false;
     };
@@ -354,16 +408,72 @@ export default function KioskReservePage() {
     return () => clearInterval(interval);
   }, [step, kioskAllowanceMinutes]);
 
-  const { endTimeStr, isNextDay } = useMemo(() => {
+  const { effectiveDurationHours, endTimeStr, isNextDay } = useMemo(() => {
     const [h, m] = nowTime.split(":").map(Number);
-    const totalMinutes = h * 60 + m + durationHours * 60;
+    const nowTotalMinutes = h * 60 + m;
+
+    if (selectedRateType === "DAY_PASS") {
+      const [endH, endM] = dayPassWindow.end.split(":").map(Number);
+      const dayPassEndMinutes = endH * 60 + endM;
+      let durMins = dayPassEndMinutes - nowTotalMinutes;
+      if (durMins <= 0) {
+        const [startH, startM] = dayPassWindow.start.split(":").map(Number);
+        durMins = Math.max(60, dayPassEndMinutes - (startH * 60 + startM));
+      }
+      const durHours = Math.max(1, Math.round((durMins / 60) * 10) / 10);
+      return {
+        effectiveDurationHours: durHours,
+        endTimeStr: dayPassWindow.end,
+        isNextDay: false,
+      };
+    }
+
+    if (selectedRateType === "NIGHT_PASS") {
+      const [endH, endM] = nightPassWindow.end.split(":").map(Number);
+      const nightPassEndMinutes = endH * 60 + endM;
+      let durMins = (nightPassEndMinutes + 1440) - nowTotalMinutes;
+      if (durMins > 1440) durMins -= 1440;
+      if (durMins <= 0) {
+        const [startH, startM] = nightPassWindow.start.split(":").map(Number);
+        durMins = (nightPassEndMinutes + 1440) - (startH * 60 + startM);
+      }
+      const durHours = Math.max(1, Math.round((durMins / 60) * 10) / 10);
+      return {
+        effectiveDurationHours: durHours,
+        endTimeStr: nightPassWindow.end,
+        isNextDay: true,
+      };
+    }
+
+    if (selectedRateType === "WHOLE_DAY_PASS") {
+      return {
+        effectiveDurationHours: 24,
+        endTimeStr: nowTime,
+        isNextDay: true,
+      };
+    }
+
+    if (selectedRateType === "HALF_DAY_PASS") {
+      const totalMinutes = nowTotalMinutes + 12 * 60;
+      const endH = Math.floor(totalMinutes / 60) % 24;
+      const endM = totalMinutes % 60;
+      return {
+        effectiveDurationHours: 12,
+        endTimeStr: `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`,
+        isNextDay: totalMinutes >= 1440,
+      };
+    }
+
+    // HOURLY
+    const totalMinutes = nowTotalMinutes + durationHours * 60;
     const endH = Math.floor(totalMinutes / 60) % 24;
     const endM = totalMinutes % 60;
     return {
+      effectiveDurationHours: durationHours,
       endTimeStr: `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`,
       isNextDay: durationHours > 0 && totalMinutes >= 1440,
     };
-  }, [nowTime, durationHours]);
+  }, [nowTime, durationHours, selectedRateType, dayPassWindow, nightPassWindow]);
 
   // Form Fields
   const [customerFirstName, setCustomerFirstName] = useState("");
@@ -591,6 +701,14 @@ export default function KioskReservePage() {
           capacity: ws.capacity,
           rateAmount: ws.rateAmount,
           pricingLabel: ws.pricingLabel,
+          hasDayPass: ws.hasDayPass,
+          dayPassPrice: ws.dayPassPrice,
+          hasNightPass: ws.hasNightPass,
+          nightPassPrice: ws.nightPassPrice,
+          hasWholeDayPass: ws.hasWholeDayPass,
+          wholeDayPassPrice: ws.wholeDayPassPrice,
+          hasHalfDayPass: ws.hasHalfDayPass,
+          halfDayPassPrice: ws.halfDayPassPrice,
           tags: ws.tags,
           instanceCount: 1,
           floors: [ws.floorName],
@@ -622,7 +740,7 @@ export default function KioskReservePage() {
     fetchTemplateAvailability({
       templateId: selectedTemplate.id,
       date: todayDate,
-      durationMinutes: durationHours * 60,
+      durationMinutes: Math.round(effectiveDurationHours * 60),
       startTime: nowTime,
       nowIso: getNowWithLeewayDate(kioskAllowanceMinutes).toISOString(),
     })
@@ -643,7 +761,7 @@ export default function KioskReservePage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTemplate, durationHours, step, todayDate, nowTime, kioskAllowanceMinutes]);
+  }, [selectedTemplate, effectiveDurationHours, step, todayDate, nowTime, kioskAllowanceMinutes]);
 
   // Spot click on map
   const handleSpotClick = (workspace: WorkspaceMapViewModel) => {
@@ -668,6 +786,7 @@ export default function KioskReservePage() {
     setDiscoveryMode("map");
     setSelectedWorkspace(null);
     setSelectedTemplate(null);
+    setSelectedRateType("HOURLY");
     setDurationHours(2);
     setPaymentMethod("CASH");
     setCustomerFirstName("");
@@ -727,12 +846,16 @@ export default function KioskReservePage() {
           customerEmail: emailVal.toLowerCase(),
           customerContactNumber: customerContactNumber.trim() || undefined,
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
-          durationHours,
-          durationMinutes: durationHours * 60,
+          rateType: selectedRateType,
+          durationHours: effectiveDurationHours,
+          durationMinutes: Math.round(effectiveDurationHours * 60),
           date: todayDate,
           startTime: nowTime,
           startAt: getNowWithLeewayDate(kioskAllowanceMinutes).toISOString(),
           paymentMethod,
+          bookedRatePerHour: resolvedPricing.effectivePrice,
+          rateSnapshot: resolvedPricing.effectivePrice,
+          amountDue: resolvedPricing.estimatedTotal,
         }),
       });
 
@@ -743,15 +866,66 @@ export default function KioskReservePage() {
 
       setReferenceCode(result.referenceCode || "DA-REF");
       setStep("code");
-    } catch (err: any) {
-      setSubmitError(err.message || "An unexpected error occurred. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "An unexpected error occurred. Please try again.";
+      setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const currentRate = selectedWorkspace?.rateAmount || selectedTemplate?.rateAmount || 0;
-  const totalAmount = currentRate * durationHours;
+  const selectedTemplateId = selectedWorkspace?.templateId || selectedTemplate?.id || "";
+  const targetBookingTime = useMemo(() => getNowWithLeewayDate(kioskAllowanceMinutes), [kioskAllowanceMinutes]);
+
+  const targetWorkspace = selectedWorkspace;
+  const targetTemplate = selectedTemplate;
+  const targetWorkspaceOrTemplate = targetWorkspace || targetTemplate;
+
+  const regularRate = targetWorkspace?.rateAmount ?? targetTemplate?.rateAmount ?? 0;
+
+  const baseRateForTier = useMemo(() => {
+    if (selectedRateType === "DAY_PASS") {
+      return targetWorkspace?.dayPassPrice ?? targetTemplate?.dayPassPrice ?? regularRate;
+    }
+    if (selectedRateType === "NIGHT_PASS") {
+      return targetWorkspace?.nightPassPrice ?? targetTemplate?.nightPassPrice ?? regularRate;
+    }
+    if (selectedRateType === "WHOLE_DAY_PASS") {
+      return targetWorkspace?.wholeDayPassPrice ?? targetTemplate?.wholeDayPassPrice ?? (regularRate * 24);
+    }
+    if (selectedRateType === "HALF_DAY_PASS") {
+      return targetWorkspace?.halfDayPassPrice ?? targetTemplate?.halfDayPassPrice ?? (regularRate * 12);
+    }
+    return regularRate;
+  }, [selectedRateType, targetWorkspace, targetTemplate, regularRate]);
+
+  const isPassType = selectedRateType !== "HOURLY";
+  const pricingDuration = isPassType ? 1 : durationHours;
+
+  const resolvedPricing = useMemo(() => {
+    if (!selectedTemplateId) {
+      const isFlat = selectedRateType !== "HOURLY";
+      const total = isFlat ? baseRateForTier : baseRateForTier * durationHours;
+      return {
+        regularPrice: baseRateForTier,
+        effectivePrice: baseRateForTier,
+        isPromotional: false,
+        rateType: selectedRateType,
+        estimatedTotal: total,
+      };
+    }
+    return resolveEffectivePrice(
+      selectedTemplateId,
+      selectedRateType,
+      baseRateForTier,
+      targetBookingTime,
+      activePromotions,
+      pricingDuration
+    );
+  }, [selectedTemplateId, selectedRateType, baseRateForTier, targetBookingTime, activePromotions, pricingDuration, durationHours]);
+
+  const currentRate = resolvedPricing.effectivePrice;
+  const totalAmount = resolvedPricing.estimatedTotal;
 
   return (
     <SessionManager onReset={handleReset} onTimeoutWarning={() => { }}>
@@ -1496,36 +1670,58 @@ export default function KioskReservePage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {availableTemplates.map((tpl) => (
-                      <div
-                        key={tpl.id}
-                        onClick={() => handleSelectTemplate(tpl)}
-                        className="group relative flex flex-col justify-between rounded-[24px] border-2 border-[var(--da-border-light)] bg-white hover:border-[var(--da-primary)] hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden p-5"
-                      >
-                        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-[var(--da-border-light)] bg-slate-100 mb-4">
-                          {tpl.photoPath ? (
-                            <img
-                              src={tpl.photoPath}
-                              alt={tpl.name}
-                              className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
-                              style={{
-                                objectPosition: getWorkspacePhotoObjectPosition(tpl.photoPosition),
-                              }}
-                            />
-                          ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#E0EFE4]/60 to-[#F3F7F4]">
-                              <span className="text-4xl">🏢</span>
-                              <span className="mt-2 text-xs font-bold text-[var(--da-brand-dark)]">
-                                DeskAtlas Space
+                    {availableTemplates.map((tpl) => {
+                      const tplPricing = resolveEffectivePrice(
+                        tpl.id,
+                        "HOURLY",
+                        tpl.rateAmount,
+                        targetBookingTime,
+                        activePromotions,
+                        1
+                      );
+
+                      return (
+                        <div
+                          key={tpl.id}
+                          onClick={() => handleSelectTemplate(tpl)}
+                          className="group relative flex flex-col justify-between rounded-[24px] border-2 border-[var(--da-border-light)] bg-white hover:border-[var(--da-primary)] hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden p-5"
+                        >
+                          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-[var(--da-border-light)] bg-slate-100 mb-4">
+                            {tpl.photoPath ? (
+                              <img
+                                src={tpl.photoPath}
+                                alt={tpl.name}
+                                className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
+                                style={{
+                                  objectPosition: getWorkspacePhotoObjectPosition(tpl.photoPosition),
+                                }}
+                              />
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#E0EFE4]/60 to-[#F3F7F4]">
+                                <span className="text-4xl">🏢</span>
+                                <span className="mt-2 text-xs font-bold text-[var(--da-brand-dark)]">
+                                  DeskAtlas Space
+                                </span>
+                              </div>
+                            )}
+                            <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                              {tplPricing.isPromotional && (
+                                <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[10px] font-extrabold shadow-sm">
+                                  {tplPricing.promoName || "Holiday Promo"}
+                                </span>
+                              )}
+                              <span className="rounded-full bg-white/95 backdrop-blur px-3 py-1 text-xs font-extrabold text-[var(--da-brand-dark)] shadow-sm border border-slate-200">
+                                {tplPricing.isPromotional ? (
+                                  <>
+                                    <span className="line-through text-slate-400 font-normal mr-1.5">₱{tpl.rateAmount.toFixed(2)}/hr</span>
+                                    <span className="text-[var(--da-primary)] font-extrabold">₱{tplPricing.effectivePrice.toFixed(2)}/hr</span>
+                                  </>
+                                ) : (
+                                  `₱${tpl.rateAmount.toFixed(2)}/hr`
+                                )}
                               </span>
                             </div>
-                          )}
-                          <div className="absolute top-3 right-3">
-                            <span className="rounded-full bg-white/95 backdrop-blur px-3 py-1 text-xs font-extrabold text-[var(--da-brand-dark)] shadow-sm border border-slate-200">
-                              ₱{tpl.rateAmount.toFixed(2)}/hr
-                            </span>
                           </div>
-                        </div>
 
                         <div className="flex flex-col flex-1">
                           <div className="flex items-center justify-between gap-2">
@@ -1562,7 +1758,8 @@ export default function KioskReservePage() {
                           Select {tpl.name} →
                         </button>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 </div>
               )}
@@ -1594,7 +1791,16 @@ export default function KioskReservePage() {
                       {selectedWorkspace?.displayName || selectedTemplate?.name}
                     </h2>
                     <p className="text-xs text-[var(--da-text-secondary)] mt-0.5">
-                      {selectedWorkspace?.templateName || selectedTemplate?.name} • ₱{currentRate.toFixed(2)}/hr
+                      {selectedWorkspace?.templateName || selectedTemplate?.name} •{" "}
+                      {selectedRateType === "DAY_PASS"
+                        ? `☀️ Day Pass (₱${currentRate.toFixed(2)} flat)`
+                        : selectedRateType === "NIGHT_PASS"
+                        ? `🌙 Night Pass (₱${currentRate.toFixed(2)} flat)`
+                        : selectedRateType === "WHOLE_DAY_PASS"
+                        ? `⏳ 24-Hour Pass (₱${currentRate.toFixed(2)} flat)`
+                        : selectedRateType === "HALF_DAY_PASS"
+                        ? `🌓 12-Hour Pass (₱${currentRate.toFixed(2)} flat)`
+                        : `₱${currentRate.toFixed(2)}/hr`}
                       {selectedWorkspace ? ` • ${selectedWorkspace.floorName}` : ""}
                     </p>
                   </div>
@@ -1609,138 +1815,415 @@ export default function KioskReservePage() {
                 </button>
               </div>
 
-              {/* Duration Selector Card */}
+              {/* Duration & Tier Selector Card */}
               <div className="rounded-[28px] border border-[var(--da-border)] bg-white p-6 sm:p-8 shadow-[var(--da-shadow-lg)]">
                 <div className="border-b border-[var(--da-border-light)] pb-4 mb-6">
                   <span className="text-xs font-bold uppercase tracking-wider text-[var(--da-primary)]">
-                    Step 2 of 3 • Walk-In Duration
+                    Step 2 of 3 • Booking Tier & Duration
                   </span>
                   <h3 className="text-2xl font-extrabold text-[var(--da-brand-dark)]">
-                    {durationHours > 0 && isNextDay
+                    {selectedRateType === "DAY_PASS"
+                      ? `☀️ Day Pass • Active until ${formatTime12Hour(dayPassWindow.end)} today`
+                      : selectedRateType === "NIGHT_PASS"
+                      ? `🌙 Night Pass • Concludes Tomorrow at ${formatTime12Hour(nightPassWindow.end)} (Overnight)`
+                      : selectedRateType === "WHOLE_DAY_PASS"
+                      ? `⏳ 24-Hour Pass • Full 24 Hours until tomorrow at ${formatTime12Hour(nowTime)}`
+                      : selectedRateType === "HALF_DAY_PASS"
+                      ? `🌓 12-Hour Pass • Full 12 Hours until ${formatTime12Hour(endTimeStr)}${isNextDay ? " (Next Day)" : ""}`
+                      : isNextDay
                       ? `Walk-in Stay • Concludes Tomorrow at ${formatTime12Hour(endTimeStr)} (Next Day)`
-                      : "How many hours will you stay today?"}
+                      : "Choose your booking tier or stay duration"}
                   </h3>
                   <p className="text-xs text-[var(--da-text-secondary)] mt-1">
-                    Walk-in bookings start right now at <strong>{formatTime12Hour(nowTime)}</strong>. No backup selection required.
+                    Walk-in bookings start right now at <strong>{formatTime12Hour(nowTime)}</strong> (Philippine Standard Time). No backup selection required.
                   </p>
                 </div>
 
-                {/* Duration Hour Buttons */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3">
-                  {DURATION_OPTIONS.map((hours) => {
-                    const isSelected = durationHours === hours;
-                    const durMinutes = hours * 60;
-                    const [nowH, nowM] = nowTime.split(":").map(Number);
-                    const tileTotalMinutes = nowH * 60 + nowM + hours * 60;
-                    const tileIsNextDay = tileTotalMinutes >= 1440;
-                    const isLocked = Boolean(
-                      hours > MAX_KIOSK_DURATION_HOURS ||
-                      (upcomingBooking?.maxAvailableMinutes !== null &&
-                        upcomingBooking?.maxAvailableMinutes !== undefined &&
-                        (durMinutes > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60))
-                    );
-
-                    return (
+                {/* Rate Tier Selector Pills (Only if passes are configured) */}
+                {((selectedWorkspace?.hasDayPass || selectedTemplate?.hasDayPass) ||
+                  (selectedWorkspace?.hasNightPass || selectedTemplate?.hasNightPass) ||
+                  (selectedWorkspace?.hasWholeDayPass || selectedTemplate?.hasWholeDayPass) ||
+                  (selectedWorkspace?.hasHalfDayPass || selectedTemplate?.hasHalfDayPass)) && (
+                  <div className="mb-6">
+                    <span className="text-xs font-extrabold text-[var(--da-brand-dark)] uppercase tracking-wider block mb-2.5">
+                      Select Booking Tier
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                       <button
-                        key={hours}
                         type="button"
-                        disabled={isLocked}
-                        title={
-                          isLocked
-                            ? upcomingBooking?.nextBooking
-                              ? `Reserved at ${upcomingBooking.nextBooking.startTimeFormatted}`
-                              : upcomingBooking?.minutesUntilClosing !== null
-                                ? `Space closes at operating hours limit`
-                                : `Unavailable for ${hours} hours`
-                            : undefined
-                        }
                         onClick={() => {
-                          if (isLocked) return;
-                          setDurationHours(hours);
-                          setDurationInputStr(String(hours));
+                          setSelectedRateType("HOURLY");
+                          setDurationHours(2);
+                          setDurationInputStr("2");
                         }}
-                        className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all relative ${isLocked
-                            ? "bg-slate-100/90 text-slate-400 border-slate-200 cursor-not-allowed opacity-60"
-                            : isSelected
-                              ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-md ring-2 ring-[var(--da-accent)]"
-                              : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
-                          }`}
+                        className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition ${
+                          selectedRateType === "HOURLY"
+                            ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
+                            : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
+                        }`}
                       >
-                        {isLocked && (
-                          <span className="absolute top-1.5 right-1.5 text-xs" aria-hidden="true" title="Locked due to upcoming reservation">
-                            🔒
-                          </span>
-                        )}
-                        <span className={`text-2xl font-extrabold ${isLocked ? "line-through opacity-70" : ""}`}>
-                          {hours}
+                        <span className="text-xs font-extrabold">🕒 Hourly</span>
+                        <span className="text-[11px] font-bold mt-0.5 opacity-90">
+                          ₱{regularRate.toFixed(2)}/hr
                         </span>
-                        <span className="text-xs font-semibold opacity-90">
-                          {hours === 1 ? "Hour" : "Hours"}
-                        </span>
-                        {tileIsNextDay && !isLocked && (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-full mt-0.5">
-                            Next Day
-                          </span>
-                        )}
-                        {isLocked ? (
-                          <span className="mt-2 text-[9px] font-bold text-rose-600 truncate max-w-full px-1">
-                            {upcomingBooking?.nextBooking
-                              ? `Booked ${upcomingBooking.nextBooking.startTimeFormatted}`
-                              : "Limit reached"}
-                          </span>
-                        ) : (
-                          <span className="mt-2 text-[10px] font-bold opacity-75">
-                            ₱{(currentRate * hours).toFixed(2)}
-                          </span>
-                        )}
                       </button>
-                    );
-                  })}
-                </div>
 
-                {/* Custom Hour Input */}
-                <div className="mt-6 pt-4 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <span className="text-sm font-bold text-[var(--da-brand-dark)] block">
-                      Custom Duration
-                    </span>
-                    <span className="text-xs text-[var(--da-text-secondary)]">
-                      Or enter the exact number of hours you need:
-                    </span>
+                      {(selectedWorkspace?.hasDayPass || selectedTemplate?.hasDayPass) && (selectedWorkspace?.dayPassPrice != null || selectedTemplate?.dayPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("DAY_PASS")}
+                          className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition ${
+                            selectedRateType === "DAY_PASS"
+                              ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
+                              : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold">☀️ Day Pass</span>
+                          <span className="text-[11px] font-bold mt-0.5 opacity-90">
+                            ₱{(selectedWorkspace?.dayPassPrice ?? selectedTemplate?.dayPassPrice ?? 0).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+
+                      {(selectedWorkspace?.hasNightPass || selectedTemplate?.hasNightPass) && (selectedWorkspace?.nightPassPrice != null || selectedTemplate?.nightPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("NIGHT_PASS")}
+                          className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition ${
+                            selectedRateType === "NIGHT_PASS"
+                              ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
+                              : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold">🌙 Night Pass</span>
+                          <span className="text-[11px] font-bold mt-0.5 opacity-90">
+                            ₱{(selectedWorkspace?.nightPassPrice ?? selectedTemplate?.nightPassPrice ?? 0).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+
+                      {(selectedWorkspace?.hasWholeDayPass || selectedTemplate?.hasWholeDayPass) && (selectedWorkspace?.wholeDayPassPrice != null || selectedTemplate?.wholeDayPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("WHOLE_DAY_PASS")}
+                          className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition ${
+                            selectedRateType === "WHOLE_DAY_PASS"
+                              ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
+                              : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold">⏳ 24-Hour Pass</span>
+                          <span className="text-[11px] font-bold mt-0.5 opacity-90">
+                            ₱{(selectedWorkspace?.wholeDayPassPrice ?? selectedTemplate?.wholeDayPassPrice ?? (regularRate * 24)).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+
+                      {(selectedWorkspace?.hasHalfDayPass || selectedTemplate?.hasHalfDayPass) && (selectedWorkspace?.halfDayPassPrice != null || selectedTemplate?.halfDayPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("HALF_DAY_PASS")}
+                          className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition ${
+                            selectedRateType === "HALF_DAY_PASS"
+                              ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
+                              : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="text-xs font-extrabold">🌓 12-Hour Pass</span>
+                          <span className="text-[11px] font-bold mt-0.5 opacity-90">
+                            ₱{(selectedWorkspace?.halfDayPassPrice ?? selectedTemplate?.halfDayPassPrice ?? (regularRate * 12)).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      aria-label="Custom duration in hours"
-                      value={durationInputStr}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        const sanitized = raw.replace(/\D/g, "").replace(/^0+/, "");
-                        setDurationInputStr(sanitized);
-                        if (sanitized === "") {
-                          setDurationHours(0);
-                        } else {
-                          const parsed = parseInt(sanitized, 10);
-                          setDurationHours(parsed > 0 ? parsed : 0);
-                        }
-                      }}
-                      onKeyDown={handleNumericKeyDown}
-                      placeholder="Hours"
-                      className="w-24 rounded-xl border border-[var(--da-border)] bg-white px-3 py-2 text-center text-base font-extrabold text-[var(--da-brand-dark)] placeholder:text-slate-400 focus:border-[var(--da-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--da-primary)]/20"
-                    />
-                    <span className="text-sm font-bold text-[var(--da-brand-dark)]">
-                      {durationHours === 1 ? "Hour" : "Hours"}
-                    </span>
+                )}
+
+                {/* HOURLY RATE CONTENT */}
+                {selectedRateType === "HOURLY" ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <span className="text-xs font-extrabold text-[var(--da-brand-dark)] uppercase tracking-wider block">
+                        Select Duration (Hours)
+                      </span>
+                      <span className="text-xs font-bold text-[var(--da-primary)] bg-[var(--da-canvas)] border border-[var(--da-border-light)] px-2.5 py-0.5 rounded-full">
+                        Hourly Rate: ₱{regularRate.toFixed(2)}/hr
+                      </span>
+                    </div>
+                    {/* Duration Hour Buttons */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-10 gap-3">
+                      {DURATION_OPTIONS.map((hours) => {
+                        const isSelected = durationHours === hours;
+                        const durMinutes = hours * 60;
+                        const [nowH, nowM] = nowTime.split(":").map(Number);
+                        const tileTotalMinutes = nowH * 60 + nowM + hours * 60;
+                        const tileIsNextDay = tileTotalMinutes >= 1440;
+                        const isLocked = Boolean(
+                          hours > MAX_KIOSK_DURATION_HOURS ||
+                          (upcomingBooking?.maxAvailableMinutes !== null &&
+                            upcomingBooking?.maxAvailableMinutes !== undefined &&
+                            (durMinutes > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60))
+                        );
+
+                        return (
+                          <button
+                            key={hours}
+                            type="button"
+                            disabled={isLocked}
+                            title={
+                              isLocked
+                                ? upcomingBooking?.nextBooking
+                                  ? `Reserved at ${upcomingBooking.nextBooking.startTimeFormatted}`
+                                  : upcomingBooking?.minutesUntilClosing !== null
+                                    ? `Space closes at operating hours limit`
+                                    : `Unavailable for ${hours} hours`
+                                : undefined
+                            }
+                            onClick={() => {
+                              if (isLocked) return;
+                              setDurationHours(hours);
+                              setDurationInputStr(String(hours));
+                            }}
+                            className={`flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all relative ${
+                              isLocked
+                                ? "bg-slate-100/90 text-slate-400 border-slate-200 cursor-not-allowed opacity-60"
+                                : isSelected
+                                  ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-md ring-2 ring-[var(--da-accent)]"
+                                  : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
+                            }`}
+                          >
+                            {isLocked && (
+                              <span className="absolute top-1.5 right-1.5 text-xs" aria-hidden="true" title="Locked due to upcoming reservation">
+                                🔒
+                              </span>
+                            )}
+                            <span className={`text-2xl font-extrabold ${isLocked ? "line-through opacity-70" : ""}`}>
+                              {hours}
+                            </span>
+                            <span className="text-xs font-semibold opacity-90">
+                              {hours === 1 ? "Hour" : "Hours"}
+                            </span>
+                            {tileIsNextDay && !isLocked && (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-full mt-0.5">
+                                Next Day
+                              </span>
+                            )}
+                            {isLocked ? (
+                              <span className="mt-2 text-[9px] font-bold text-rose-600 truncate max-w-full px-1">
+                                {upcomingBooking?.nextBooking
+                                  ? `Booked ${upcomingBooking.nextBooking.startTimeFormatted}`
+                                  : "Limit reached"}
+                              </span>
+                            ) : (
+                              <span className="mt-2 text-[10px] font-bold opacity-75">
+                                ₱{(currentRate * hours).toFixed(2)}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {(selectedWorkspace?.hasDayPass || selectedTemplate?.hasDayPass) && (selectedWorkspace?.dayPassPrice != null || selectedTemplate?.dayPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("DAY_PASS")}
+                          className="col-span-2 sm:col-span-2 md:col-span-1 flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all bg-amber-50 text-amber-950 border-amber-300 hover:bg-amber-100"
+                        >
+                          <span className="text-2xl font-extrabold">☀️</span>
+                          <span className="text-xs font-semibold opacity-90">Day Pass</span>
+                          <span className="mt-2 text-[10px] font-bold text-amber-800">
+                            ₱{(selectedWorkspace?.dayPassPrice ?? selectedTemplate?.dayPassPrice ?? 0).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+
+                      {(selectedWorkspace?.hasNightPass || selectedTemplate?.hasNightPass) && (selectedWorkspace?.nightPassPrice != null || selectedTemplate?.nightPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("NIGHT_PASS")}
+                          className="col-span-2 sm:col-span-2 md:col-span-1 flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all bg-indigo-50 text-indigo-950 border-indigo-300 hover:bg-indigo-100"
+                        >
+                          <span className="text-2xl font-extrabold">🌙</span>
+                          <span className="text-xs font-semibold opacity-90">Night Pass</span>
+                          <span className="mt-2 text-[10px] font-bold text-indigo-800">
+                            ₱{(selectedWorkspace?.nightPassPrice ?? selectedTemplate?.nightPassPrice ?? 0).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+
+                      {(selectedWorkspace?.hasHalfDayPass || selectedTemplate?.hasHalfDayPass) && (selectedWorkspace?.halfDayPassPrice != null || selectedTemplate?.halfDayPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("HALF_DAY_PASS")}
+                          className="col-span-2 sm:col-span-2 md:col-span-1 flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all bg-teal-50 text-teal-950 border-teal-300 hover:bg-teal-100"
+                        >
+                          <span className="text-2xl font-extrabold">12h</span>
+                          <span className="text-xs font-semibold opacity-90">Half Day Pass</span>
+                          <span className="mt-2 text-[10px] font-bold text-teal-700">
+                            ₱{(selectedWorkspace?.halfDayPassPrice ?? selectedTemplate?.halfDayPassPrice ?? 0).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+
+                      {(selectedWorkspace?.hasWholeDayPass || selectedTemplate?.hasWholeDayPass) && (selectedWorkspace?.wholeDayPassPrice != null || selectedTemplate?.wholeDayPassPrice != null) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRateType("WHOLE_DAY_PASS")}
+                          className="col-span-2 sm:col-span-2 md:col-span-1 flex flex-col items-center justify-center py-5 px-3 rounded-2xl border-2 transition-all bg-emerald-50 text-emerald-950 border-emerald-300 hover:bg-emerald-100"
+                        >
+                          <span className="text-2xl font-extrabold">24h</span>
+                          <span className="text-xs font-semibold opacity-90">Whole Day Pass</span>
+                          <span className="mt-2 text-[10px] font-bold text-emerald-700">
+                            ₱{(selectedWorkspace?.wholeDayPassPrice ?? selectedTemplate?.wholeDayPassPrice ?? 0).toFixed(2)} flat
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Custom Hour Input */}
+                    <div className="mt-6 pt-4 border-t border-[var(--da-border-light)] flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <span className="text-sm font-bold text-[var(--da-brand-dark)] block">
+                          Custom Duration
+                        </span>
+                        <span className="text-xs text-[var(--da-text-secondary)]">
+                          Or enter the exact number of hours you need:
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          aria-label="Custom duration in hours"
+                          value={durationInputStr}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const sanitized = raw.replace(/\D/g, "").replace(/^0+/, "");
+                            setDurationInputStr(sanitized);
+                            if (sanitized === "") {
+                              setDurationHours(0);
+                            } else {
+                              const parsed = parseInt(sanitized, 10);
+                              if (parsed === 12 && (selectedWorkspace?.hasHalfDayPass || selectedTemplate?.hasHalfDayPass)) {
+                                setSelectedRateType("HALF_DAY_PASS");
+                              } else if (parsed === 24 && (selectedWorkspace?.hasWholeDayPass || selectedTemplate?.hasWholeDayPass)) {
+                                setSelectedRateType("WHOLE_DAY_PASS");
+                              } else {
+                                setDurationHours(parsed > 0 ? parsed : 0);
+                              }
+                            }
+                          }}
+                          onKeyDown={handleNumericKeyDown}
+                          placeholder="Hours"
+                          className="w-24 rounded-xl border border-[var(--da-border)] bg-white px-3 py-2 text-center text-base font-extrabold text-[var(--da-brand-dark)] placeholder:text-slate-400 focus:border-[var(--da-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--da-primary)]/20"
+                        />
+                        <span className="text-sm font-bold text-[var(--da-brand-dark)]">
+                          {durationHours === 1 ? "Hour" : "Hours"}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : selectedRateType === "DAY_PASS" ? (
+                  /* DAY PASS CARD */
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">☀️</span>
+                      <div>
+                        <h4 className="text-base font-extrabold text-amber-950">
+                          Day Pass Shift Package
+                        </h4>
+                        <p className="text-xs text-amber-900 mt-0.5">
+                          Continuous daytime workspace access until {formatTime12Hour(dayPassWindow.end)} today.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-amber-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950">
+                      <div>
+                        <span className="font-bold">Your Walk-In Window:</span> {formatTime12Hour(nowTime)} until {formatTime12Hour(dayPassWindow.end)} today
+                      </div>
+                      <div className="font-extrabold text-sm text-[var(--da-primary)]">
+                        Flat Total: ₱{totalAmount.toFixed(2)}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : selectedRateType === "NIGHT_PASS" ? (
+                  /* NIGHT PASS CARD */
+                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50/80 p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">🌙</span>
+                      <div>
+                        <h4 className="text-base font-extrabold text-indigo-950">
+                          Night Pass Overnight Shift Package
+                        </h4>
+                        <p className="text-xs text-indigo-900 mt-0.5">
+                          Continuous overnight workspace access until {formatTime12Hour(nightPassWindow.end)} tomorrow morning.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-indigo-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950">
+                      <div>
+                        <span className="font-bold">Your Walk-In Window:</span> {formatTime12Hour(nowTime)} until {formatTime12Hour(nightPassWindow.end)} tomorrow (Next Day • Overnight)
+                      </div>
+                      <div className="font-extrabold text-sm text-[var(--da-primary)]">
+                        Flat Total: ₱{totalAmount.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                ) : selectedRateType === "WHOLE_DAY_PASS" ? (
+                  /* 24-HOUR PASS CARD */
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">⏳</span>
+                      <div>
+                        <h4 className="text-base font-extrabold text-emerald-950">
+                          24-Hour Whole Day Pass Package
+                        </h4>
+                        <p className="text-xs text-emerald-900 mt-0.5">
+                          Continuous 24-hour workspace access starting right now.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950">
+                      <div>
+                        <span className="font-bold">Your Walk-In Window:</span> {formatTime12Hour(nowTime)} today until {formatTime12Hour(nowTime)} tomorrow (Next Day • 24 Hours)
+                      </div>
+                      <div className="font-extrabold text-sm text-[var(--da-primary)]">
+                        Flat Total: ₱{totalAmount.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* 12-HOUR PASS CARD */
+                  <div className="rounded-2xl border border-teal-200 bg-teal-50/60 p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">🌓</span>
+                      <div>
+                        <h4 className="text-base font-extrabold text-teal-950">
+                          12-Hour Half Day Pass Package
+                        </h4>
+                        <p className="text-xs text-teal-900 mt-0.5">
+                          Continuous 12-hour workspace access starting right now.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-teal-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-teal-950">
+                      <div>
+                        <span className="font-bold">Your Walk-In Window:</span> {formatTime12Hour(nowTime)} until {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} (12 Hours)
+                      </div>
+                      <div className="font-extrabold text-sm text-[var(--da-primary)]">
+                        Flat Total: ₱{totalAmount.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Custom Hour Input Warning if Exceeds Availability, 24h Limit, or Spot Unavailable */}
-                {(durationHours > MAX_KIOSK_DURATION_HOURS ||
-                  (upcomingBooking?.maxAvailableMinutes !== null &&
-                    upcomingBooking?.maxAvailableMinutes !== undefined &&
-                    (upcomingBooking.maxAvailableMinutes < 60 || durationHours * 60 > upcomingBooking.maxAvailableMinutes))) && (
+                {selectedRateType === "HOURLY" &&
+                  (durationHours > MAX_KIOSK_DURATION_HOURS ||
+                    (upcomingBooking?.maxAvailableMinutes !== null &&
+                      upcomingBooking?.maxAvailableMinutes !== undefined &&
+                      (upcomingBooking.maxAvailableMinutes < 60 || durationHours * 60 > upcomingBooking.maxAvailableMinutes))) && (
                     <div className="mt-4 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-center gap-2">
                       <span className="text-base">⚠️</span>
                       <span>
@@ -1764,7 +2247,7 @@ export default function KioskReservePage() {
                   )}
 
                 {/* Immediate Schedule Preview */}
-                {durationHours > 0 ? (
+                {effectiveDurationHours > 0 ? (
                   <div className="mt-6 rounded-2xl bg-[var(--da-canvas)] border border-[var(--da-border-light)] p-5 flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white border border-[var(--da-border-light)] text-xl">
@@ -1775,14 +2258,27 @@ export default function KioskReservePage() {
                           Immediate Walk-In Window:
                         </span>
                         <p className="text-base font-extrabold text-[var(--da-brand-dark)]">
-                          {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} ({durationHours} {durationHours === 1 ? "hour" : "hours"})
+                          {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} ({effectiveDurationHours} {effectiveDurationHours === 1 ? "hour" : "hours"})
                         </p>
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end">
+                      {resolvedPricing.isPromotional && (
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="rounded-full bg-amber-500 text-white px-2 py-0.5 text-[10px] font-extrabold shadow-sm">
+                            {resolvedPricing.promoName || "Promo Rate"}
+                          </span>
+                          <span className="text-xs text-slate-400 line-through">
+                            ₱{resolvedPricing.regularPrice.toFixed(2)}{selectedRateType === "HOURLY" ? "/hr" : " flat"}
+                          </span>
+                          <span className="text-xs font-extrabold text-[var(--da-primary)]">
+                            ₱{resolvedPricing.effectivePrice.toFixed(2)}{selectedRateType === "HOURLY" ? "/hr" : " flat"}
+                          </span>
+                        </div>
+                      )}
                       <span className="text-xs font-bold text-[var(--da-text-secondary)] block">
-                        Estimated Total:
+                        {selectedRateType === "HOURLY" ? "Estimated Total:" : "Flat Rate Total:"}
                       </span>
                       <p className="text-xl font-extrabold text-[var(--da-primary)]">
                         ₱{totalAmount.toFixed(2)}
@@ -1807,7 +2303,7 @@ export default function KioskReservePage() {
                   <div className="mt-6 rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs font-bold text-rose-800 flex items-center gap-2">
                     <span className="text-base">⚠️</span>
                     <span>
-                      This desk has an upcoming reservation and cannot accommodate a {durationHours} {durationHours === 1 ? "hour" : "hours"} stay. Please select a shorter duration or pick another desk.
+                      This desk has an upcoming reservation and cannot accommodate this stay. Please select a shorter duration or pick another desk.
                     </span>
                   </div>
                 )}
@@ -1817,21 +2313,23 @@ export default function KioskReservePage() {
                   <button
                     type="button"
                     disabled={
-                      !durationHours ||
-                      durationHours <= 0 ||
-                      durationHours > MAX_KIOSK_DURATION_HOURS ||
+                      !effectiveDurationHours ||
+                      effectiveDurationHours <= 0 ||
+                      (selectedRateType === "HOURLY" && durationHours > MAX_KIOSK_DURATION_HOURS) ||
                       Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
                       Boolean(
+                        selectedRateType === "HOURLY" &&
                         upcomingBooking?.maxAvailableMinutes !== null &&
                         upcomingBooking?.maxAvailableMinutes !== undefined &&
                         (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
                       )
                     }
                     onClick={() => {
-                      if (!durationHours || durationHours <= 0) return;
-                      if (durationHours > MAX_KIOSK_DURATION_HOURS) return;
+                      if (!effectiveDurationHours || effectiveDurationHours <= 0) return;
+                      if (selectedRateType === "HOURLY" && durationHours > MAX_KIOSK_DURATION_HOURS) return;
                       if (selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) return;
                       if (
+                        selectedRateType === "HOURLY" &&
                         upcomingBooking?.maxAvailableMinutes !== null &&
                         upcomingBooking?.maxAvailableMinutes !== undefined &&
                         (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
@@ -1844,22 +2342,25 @@ export default function KioskReservePage() {
                         setStep("category-instances");
                       }
                     }}
-                    className={`da-primary-button text-sm font-extrabold px-8 py-3 ${!durationHours ||
-                        durationHours <= 0 ||
-                        durationHours > MAX_KIOSK_DURATION_HOURS ||
-                        Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
-                        Boolean(
-                          upcomingBooking?.maxAvailableMinutes !== null &&
-                          upcomingBooking?.maxAvailableMinutes !== undefined &&
-                          (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
-                        )
+                    className={`da-primary-button text-sm font-extrabold px-8 py-3 ${
+                      !effectiveDurationHours ||
+                      effectiveDurationHours <= 0 ||
+                      (selectedRateType === "HOURLY" && durationHours > MAX_KIOSK_DURATION_HOURS) ||
+                      Boolean(selectedWorkspace && occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) ||
+                      Boolean(
+                        selectedRateType === "HOURLY" &&
+                        upcomingBooking?.maxAvailableMinutes !== null &&
+                        upcomingBooking?.maxAvailableMinutes !== undefined &&
+                        (durationHours * 60 > upcomingBooking.maxAvailableMinutes || upcomingBooking.maxAvailableMinutes < 60)
+                      )
                         ? "opacity-50 cursor-not-allowed"
                         : ""
-                      }`}
+                    }`}
                   >
-                    {durationHours > MAX_KIOSK_DURATION_HOURS
+                    {selectedRateType === "HOURLY" && durationHours > MAX_KIOSK_DURATION_HOURS
                       ? `Duration Exceeds Maximum (Max ${MAX_KIOSK_DURATION_HOURS}h)`
-                      : upcomingBooking?.maxAvailableMinutes !== null &&
+                      : selectedRateType === "HOURLY" &&
+                        upcomingBooking?.maxAvailableMinutes !== null &&
                         upcomingBooking?.maxAvailableMinutes !== undefined &&
                         upcomingBooking.maxAvailableMinutes < 60
                         ? upcomingBooking.nextBooking
@@ -1867,7 +2368,8 @@ export default function KioskReservePage() {
                             ? `Facility Closed in ${upcomingBooking.maxAvailableMinutes} mins`
                             : `Desk Unavailable: Upcoming Reservation in ${upcomingBooking.maxAvailableMinutes} mins`
                           : `Desk Unavailable: Closing in ${upcomingBooking.maxAvailableMinutes} mins`
-                        : upcomingBooking?.maxAvailableMinutes !== null &&
+                        : selectedRateType === "HOURLY" &&
+                          upcomingBooking?.maxAvailableMinutes !== null &&
                           upcomingBooking?.maxAvailableMinutes !== undefined &&
                           durationHours * 60 > upcomingBooking.maxAvailableMinutes
                           ? `Duration Exceeds Availability (Max ${upcomingBooking.maxAvailableHours ?? Math.floor(upcomingBooking.maxAvailableMinutes / 60)}h)`
@@ -1892,7 +2394,7 @@ export default function KioskReservePage() {
                       Available {selectedTemplate.name} Desks (Starting Now)
                     </h3>
                     <p className="text-xs text-[var(--da-text-secondary)] mt-0.5">
-                      Showing desks available right now from {formatTime12Hour(nowTime)} to {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} ({durationHours}h).
+                      Showing desks available right now from {formatTime12Hour(nowTime)} to {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""} ({effectiveDurationHours}h).
                     </p>
                   </div>
 
@@ -1962,6 +2464,14 @@ export default function KioskReservePage() {
                                   description: selectedTemplate.description || "Workspace details",
                                   rateAmount: inst.rateAmount,
                                   pricingLabel: `PHP ${inst.rateAmount}/hour`,
+                                  hasDayPass: selectedTemplate.hasDayPass,
+                                  dayPassPrice: selectedTemplate.dayPassPrice,
+                                  hasNightPass: selectedTemplate.hasNightPass,
+                                  nightPassPrice: selectedTemplate.nightPassPrice,
+                                  hasWholeDayPass: selectedTemplate.hasWholeDayPass,
+                                  wholeDayPassPrice: selectedTemplate.wholeDayPassPrice,
+                                  hasHalfDayPass: selectedTemplate.hasHalfDayPass,
+                                  halfDayPassPrice: selectedTemplate.halfDayPassPrice,
                                   photoPath: inst.photoPath,
                                   photoPosition: inst.photoPosition,
                                   capacity: inst.capacity,
@@ -1980,10 +2490,11 @@ export default function KioskReservePage() {
                               }
                             }
                           }}
-                          className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition ${isAvailable
+                          className={`rounded-2xl border-2 p-5 flex flex-col justify-between transition ${
+                            isAvailable
                               ? "border-[var(--da-border-light)] hover:border-[var(--da-primary)] bg-white hover:shadow-md cursor-pointer"
                               : "border-slate-200 bg-slate-100/80 opacity-60 cursor-not-allowed"
-                            }`}
+                          }`}
                         >
                           <div>
                             <div className="flex items-center justify-between gap-2">
@@ -1991,12 +2502,13 @@ export default function KioskReservePage() {
                                 {inst.displayName}
                               </h4>
                               <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold border ${isAvailable
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold border ${
+                                  isAvailable
                                     ? "bg-emerald-100 text-emerald-800 border-emerald-200"
                                     : isOccupied
                                       ? "bg-slate-200 text-slate-700 border-slate-300"
                                       : "bg-amber-100 text-amber-800 border-amber-200"
-                                  }`}
+                                }`}
                               >
                                 {isAvailable ? "Available Now" : isOccupied ? "Occupied" : "Unavailable"}
                               </span>
@@ -2010,7 +2522,7 @@ export default function KioskReservePage() {
                             <span className="text-xs font-extrabold text-[var(--da-brand-dark)]">
                               ₱{totalAmount.toFixed(2)}{" "}
                               <span className="text-[10px] font-normal text-[var(--da-text-secondary)]">
-                                ({durationHours}h)
+                                ({effectiveDurationHours}h)
                               </span>
                             </span>
 
@@ -2024,8 +2536,9 @@ export default function KioskReservePage() {
                                   setStep("details");
                                 }
                               }}
-                              className={`da-primary-button text-xs font-bold py-1.5 px-3.5 ${!isAvailable ? "opacity-50 cursor-not-allowed" : ""
-                                }`}
+                              className={`da-primary-button text-xs font-bold py-1.5 px-3.5 ${
+                                !isAvailable ? "opacity-50 cursor-not-allowed" : ""
+                              }`}
                             >
                               {isAvailable ? "Select Desk →" : isOccupied ? "Occupied" : "Unavailable"}
                             </button>
@@ -2070,7 +2583,18 @@ export default function KioskReservePage() {
                     <p className="text-base font-extrabold text-[var(--da-brand-dark)] mt-0.5">
                       {formatTime12Hour(nowTime)} – {formatTime12Hour(endTimeStr)}{isNextDay ? " (Next Day)" : ""}
                     </p>
-                    <p className="text-[var(--da-text-secondary)]">{durationHours} {durationHours === 1 ? "Hour" : "Hours"} (Starting Now)</p>
+                    <p className="text-[var(--da-text-secondary)]">
+                      {selectedRateType === "DAY_PASS"
+                        ? "☀️ Day Pass"
+                        : selectedRateType === "NIGHT_PASS"
+                        ? "🌙 Night Pass"
+                        : selectedRateType === "WHOLE_DAY_PASS"
+                        ? "⏳ 24-Hour Pass"
+                        : selectedRateType === "HALF_DAY_PASS"
+                        ? "🌓 12-Hour Pass"
+                        : `${effectiveDurationHours} ${effectiveDurationHours === 1 ? "Hour" : "Hours"}`}{" "}
+                      (Starting Now)
+                    </p>
                   </div>
 
                   <div className="text-left sm:text-right">
@@ -2078,7 +2602,9 @@ export default function KioskReservePage() {
                     <p className="text-xl font-extrabold text-[var(--da-primary)] mt-0.5">
                       ₱{totalAmount.toFixed(2)}
                     </p>
-                    <p className="text-[10px] text-[var(--da-text-secondary)]">₱{selectedWorkspace.rateAmount.toFixed(2)}/hr</p>
+                    <p className="text-[10px] text-[var(--da-text-secondary)]">
+                      {selectedRateType === "HOURLY" ? `₱${regularRate.toFixed(2)}/hr` : "Flat Pass Rate"}
+                    </p>
                   </div>
                 </div>
 

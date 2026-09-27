@@ -17,7 +17,7 @@ export async function GET() {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     // 1. Fetch configured alert minutes threshold from business settings
-    let alertMinutes = 5;
+    let alertMinutes = 15;
     try {
       const settingsRepo =
         supabaseUrl && serviceRoleKey
@@ -25,9 +25,15 @@ export async function GET() {
           : new InMemorySettingsRepository();
       const settingsService = createAdminSettingsService(settingsRepo);
       const overview = await settingsService.getSettingsOverview();
-      alertMinutes = getBookingEndAlertMinutes(overview?.businessSettings?.bookingEndAlertMinutes);
+      const rawThreshold =
+        overview?.businessSettings?.nearCheckoutThresholdMinutes ??
+        overview?.businessSettings?.bookingEndAlertMinutes;
+      alertMinutes =
+        typeof rawThreshold === 'number' && rawThreshold >= 1 && rawThreshold <= 60
+          ? rawThreshold
+          : 15;
     } catch {
-      alertMinutes = 5;
+      alertMinutes = 15;
     }
 
     // 2. Query active operational reservations
@@ -42,7 +48,9 @@ export async function GET() {
       {
         alerts,
         alertMinutes,
+        thresholdMinutes: alertMinutes,
         approachingEnds: alerts,
+        nearCheckoutCount: alerts.length,
       },
       {
         headers: {
@@ -52,6 +60,6 @@ export async function GET() {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch approaching booking ends';
-    return NextResponse.json({ error: message, alerts: [], alertMinutes: 5 }, { status: 500 });
+    return NextResponse.json({ error: message, alerts: [], alertMinutes: 15, thresholdMinutes: 15, nearCheckoutCount: 0 }, { status: 500 });
   }
 }

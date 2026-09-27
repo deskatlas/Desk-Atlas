@@ -25,7 +25,7 @@ export async function GET(
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { data: template, error } = await supabase
       .from('workspace_templates')
-      .select('id, name, rate_amount, pricing_unit, is_active')
+      .select('id, name, rate_amount, pricing_unit, is_active, has_day_pass, day_pass_price, has_night_pass, night_pass_price, has_whole_day_pass, whole_day_pass_price, has_half_day_pass, half_day_pass_price')
       .eq('id', templateId.trim())
       .single();
 
@@ -43,6 +43,14 @@ export async function GET(
         currency: 'PHP',
         pricingUnit: template.pricing_unit || 'HOURLY',
         isActive: template.is_active,
+        hasDayPass: Boolean(template.has_day_pass),
+        dayPassPrice: template.day_pass_price !== null && template.day_pass_price !== undefined ? Number(template.day_pass_price) : null,
+        hasNightPass: Boolean(template.has_night_pass),
+        nightPassPrice: template.night_pass_price !== null && template.night_pass_price !== undefined ? Number(template.night_pass_price) : null,
+        hasWholeDayPass: Boolean(template.has_whole_day_pass),
+        wholeDayPassPrice: template.whole_day_pass_price !== null && template.whole_day_pass_price !== undefined ? Number(template.whole_day_pass_price) : null,
+        hasHalfDayPass: Boolean(template.has_half_day_pass),
+        halfDayPassPrice: template.half_day_pass_price !== null && template.half_day_pass_price !== undefined ? Number(template.half_day_pass_price) : null,
       },
       {
         headers: {
@@ -50,9 +58,10 @@ export async function GET(
         },
       }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch workspace price';
     return NextResponse.json(
-      { error: err?.message || 'Failed to fetch workspace price' },
+      { error: message },
       { status: 500 }
     );
   }

@@ -114,6 +114,14 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
       capacity: input.capacity,
       rateAmount: input.rateAmount,
       pricingUnit: input.pricingUnit ?? 'HOURLY',
+      hasDayPass: Boolean(input.hasDayPass),
+      dayPassPrice: input.dayPassPrice !== undefined ? input.dayPassPrice : null,
+      hasNightPass: Boolean(input.hasNightPass),
+      nightPassPrice: input.nightPassPrice !== undefined ? input.nightPassPrice : null,
+      hasWholeDayPass: Boolean(input.hasWholeDayPass),
+      wholeDayPassPrice: input.wholeDayPassPrice !== undefined ? input.wholeDayPassPrice : null,
+      hasHalfDayPass: Boolean(input.hasHalfDayPass),
+      halfDayPassPrice: input.halfDayPassPrice !== undefined ? input.halfDayPassPrice : null,
       defaultShape: input.defaultShape ?? 'desk',
       defaultColor: input.defaultColor ?? '#009689',
       defaultStyle: input.defaultStyle ?? {},
@@ -125,7 +133,18 @@ export class InMemoryWorkspaceRepository implements WorkspaceRepository {
 
   async updateTemplate(id: string, input: UpdateWorkspaceTemplateInput): Promise<WorkspaceTemplate> {
     const template = this.requireTemplate(id);
-    const updated: WorkspaceTemplate = { ...template, ...input };
+    const updated: WorkspaceTemplate = {
+      ...template,
+      ...input,
+      hasDayPass: input.hasDayPass !== undefined ? Boolean(input.hasDayPass) : template.hasDayPass,
+      dayPassPrice: input.dayPassPrice !== undefined ? input.dayPassPrice : template.dayPassPrice,
+      hasNightPass: input.hasNightPass !== undefined ? Boolean(input.hasNightPass) : template.hasNightPass,
+      nightPassPrice: input.nightPassPrice !== undefined ? input.nightPassPrice : template.nightPassPrice,
+      hasWholeDayPass: input.hasWholeDayPass !== undefined ? Boolean(input.hasWholeDayPass) : template.hasWholeDayPass,
+      wholeDayPassPrice: input.wholeDayPassPrice !== undefined ? input.wholeDayPassPrice : template.wholeDayPassPrice,
+      hasHalfDayPass: input.hasHalfDayPass !== undefined ? Boolean(input.hasHalfDayPass) : template.hasHalfDayPass,
+      halfDayPassPrice: input.halfDayPassPrice !== undefined ? input.halfDayPassPrice : template.halfDayPassPrice,
+    };
     this.templates.set(id, updated);
     this.refreshInstanceTemplate(id);
     return updated;

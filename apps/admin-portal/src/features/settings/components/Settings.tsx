@@ -101,6 +101,7 @@ export function canSaveBusinessProfile(params: {
   bookingIntervalMinutes?: number | string | null;
   kioskAllowanceMinutes?: number | string | null;
   bookingEndAlertMinutes?: number | string | null;
+  nearCheckoutThresholdMinutes?: number | string | null;
   rescheduleMaxAdvanceValue?: number | string | null;
   rescheduleMaxAdvanceUnit?: string | null;
   maxAdvanceBookingDays?: number | string | null;
@@ -161,7 +162,14 @@ export function canSaveBusinessProfile(params: {
     }
   }
 
-  if (params.bookingEndAlertMinutes !== undefined && params.bookingEndAlertMinutes !== null && params.bookingEndAlertMinutes !== '' as any) {
+  if (params.nearCheckoutThresholdMinutes !== undefined && params.nearCheckoutThresholdMinutes !== null && (params.nearCheckoutThresholdMinutes as unknown) !== '') {
+    const thresholdNum = Number(params.nearCheckoutThresholdMinutes);
+    if (isNaN(thresholdNum) || thresholdNum < 5 || thresholdNum > 60) {
+      return { canSave: false, reason: 'Near-checkout alert threshold must be between 5 and 60 minutes' };
+    }
+  }
+
+  if (params.bookingEndAlertMinutes !== undefined && params.bookingEndAlertMinutes !== null && (params.bookingEndAlertMinutes as unknown) !== '') {
     const alertNum = Number(params.bookingEndAlertMinutes);
     if (isNaN(alertNum) || alertNum < 1 || alertNum > 60) {
       return { canSave: false, reason: 'Booking end-time alert threshold must be between 1 and 60 minutes' };
@@ -319,11 +327,17 @@ export function Settings() {
     paymentExpiryMinutes: 60,
     kioskTimeoutMinutes: 5,
     kioskAllowanceMinutes: 5,
-    bookingEndAlertMinutes: 5,
+    bookingEndAlertMinutes: 15,
+    nearCheckoutThresholdMinutes: 15,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
     rescheduleMaxAdvanceUnit: 'DAYS',
+    maxAdvanceBookingDays: 90,
+    dayPassStartTime: '07:00',
+    dayPassEndTime: '23:30',
+    nightPassStartTime: '20:00',
+    nightPassEndTime: '07:00',
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
   });
@@ -923,6 +937,10 @@ export function Settings() {
         rescheduleMaxAdvanceValue: normalizedMaxAdvanceVal,
         rescheduleMaxAdvanceUnit: normalizedMaxAdvanceUnit,
         maxAdvanceBookingDays: normalizedMaxAdvanceBookingDays,
+        dayPassStartTime: businessSettings.dayPassStartTime || '07:00',
+        dayPassEndTime: businessSettings.dayPassEndTime || '23:30',
+        nightPassStartTime: businessSettings.nightPassStartTime || '20:00',
+        nightPassEndTime: businessSettings.nightPassEndTime || '07:00',
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -1065,7 +1083,18 @@ export function Settings() {
         throw new Error(json.error || 'Failed to save operating hours');
       }
 
-      showSuccess('Business operating hours updated successfully!');
+      await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dayPassStartTime: businessSettings.dayPassStartTime || '07:00',
+          dayPassEndTime: businessSettings.dayPassEndTime || '23:30',
+          nightPassStartTime: businessSettings.nightPassStartTime || '20:00',
+          nightPassEndTime: businessSettings.nightPassEndTime || '07:00',
+        }),
+      });
+
+      showSuccess('Business operating hours and pass shift windows updated successfully!');
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to save operating hours');
     } finally {
@@ -1854,32 +1883,40 @@ export function Settings() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                  Booking End-Time Alert (Minutes Before)
+                  Near-Checkout Proximity Alert Threshold (Minutes Before)
                 </label>
                 <input 
                   type="number" 
-                  min={1} 
+                  min={5} 
                   max={60} 
-                  value={businessSettings.bookingEndAlertMinutes === '' as any ? '' : (businessSettings.bookingEndAlertMinutes ?? 5)}
+                  value={
+                    businessSettings.nearCheckoutThresholdMinutes === '' as any
+                      ? ''
+                      : (businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes ?? 15)
+                  }
                   onChange={(e) => {
                     const raw = e.target.value;
+                    const parsedVal = raw === '' ? ('' as any) : Number(raw);
                     setBusinessSettings({
                       ...businessSettings,
-                      bookingEndAlertMinutes: raw === '' ? ('' as any) : Number(raw),
+                      nearCheckoutThresholdMinutes: parsedVal,
+                      bookingEndAlertMinutes: parsedVal,
                     });
                   }}
                   onBlur={() => {
-                    if (businessSettings.bookingEndAlertMinutes === undefined || businessSettings.bookingEndAlertMinutes === null || businessSettings.bookingEndAlertMinutes === '' as any || Number(businessSettings.bookingEndAlertMinutes) < 1) {
-                      setBusinessSettings({ ...businessSettings, bookingEndAlertMinutes: 5 });
-                    } else if (Number(businessSettings.bookingEndAlertMinutes) > 60) {
-                      setBusinessSettings({ ...businessSettings, bookingEndAlertMinutes: 60 });
+                    const current = businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes;
+                    if (current === undefined || current === null || (current as unknown) === '' || Number(current) < 5) {
+                      setBusinessSettings({ ...businessSettings, nearCheckoutThresholdMinutes: 15, bookingEndAlertMinutes: 15 });
+                    } else if (Number(current) > 60) {
+                      setBusinessSettings({ ...businessSettings, nearCheckoutThresholdMinutes: 60, bookingEndAlertMinutes: 60 });
                     }
                   }}
                   onKeyDown={(e) => handleNumericKeyDown(e)}
+                  data-testid="near-checkout-threshold-input"
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
                 />
                 <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Staff will be alerted this many minutes before a checked-in booking's end time.
+                  Staff and Admin dashboards will trigger proactive alerts and near-checkout triage highlights this many minutes before a checked-in booking end time (default: 15 mins, range: 5-60 mins).
                 </div>
               </div>
 
@@ -2094,6 +2131,7 @@ export function Settings() {
                   phoneDigits,
                   bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
                   bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
+                  nearCheckoutThresholdMinutes: businessSettings.nearCheckoutThresholdMinutes,
                   rescheduleMaxAdvanceValue: businessSettings.rescheduleMaxAdvanceValue,
                   rescheduleMaxAdvanceUnit: businessSettings.rescheduleMaxAdvanceUnit,
                   maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays,
@@ -2318,7 +2356,7 @@ export function Settings() {
                                       backgroundColor: isUnavailable ? '#F8FAFC' : '#FFFFFF',
                                     }}
                                   >
-                                    {getTimeLabel(t)} {isUnavailable ? '— Unavailable' : ''}
+                                    {getTimeLabel(t)} {isUnavailable ? ' - Unavailable' : ''}
                                   </option>
                                 );
                               })}
@@ -2350,6 +2388,100 @@ export function Settings() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Pass Shift Windows Configuration */}
+              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '16px' }}>
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--da-brand-dark)', marginBottom: '2px' }}>
+                    Pass Shift Windows
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                    Configure standard time windows for Day Pass and Night Pass bookings across all workspace templates.
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  {/* Day Pass Window */}
+                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>☀️ Day Pass Window</span>
+                      {(businessSettings.dayPassEndTime || '23:30') <= (businessSettings.dayPassStartTime || '07:00') && (
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#854D0E', background: '#FEF9C3', padding: '2px 8px', borderRadius: '9999px', border: '1px solid #FEF08A' }}>
+                          🌙 Overnight (ends next day)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Start Time</label>
+                        <select
+                          aria-label="Day Pass Start Time"
+                          value={businessSettings.dayPassStartTime || '07:00'}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, dayPassStartTime: e.target.value })}
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 8px', fontSize: '12px', background: '#fff' }}
+                        >
+                          {getTimeOptions(false).map((t) => (
+                            <option key={t} value={t}>{getTimeLabel(t)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>End Time</label>
+                        <select
+                          aria-label="Day Pass End Time"
+                          value={businessSettings.dayPassEndTime || '23:30'}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, dayPassEndTime: e.target.value })}
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 8px', fontSize: '12px', background: '#fff' }}
+                        >
+                          {getTimeOptions(false).map((t) => (
+                            <option key={t} value={t}>{getTimeLabel(t)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Night Pass Window */}
+                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>🌙 Night Pass Window</span>
+                      {(businessSettings.nightPassEndTime || '07:00') <= (businessSettings.nightPassStartTime || '20:00') && (
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#4338CA', background: '#EEF2FF', padding: '2px 8px', borderRadius: '9999px', border: '1px solid #C7D2FE' }}>
+                          🌙 Overnight (ends next day)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Start Time</label>
+                        <select
+                          aria-label="Night Pass Start Time"
+                          value={businessSettings.nightPassStartTime || '20:00'}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, nightPassStartTime: e.target.value })}
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 8px', fontSize: '12px', background: '#fff' }}
+                        >
+                          {getTimeOptions(false).map((t) => (
+                            <option key={t} value={t}>{getTimeLabel(t)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>End Time</label>
+                        <select
+                          aria-label="Night Pass End Time"
+                          value={businessSettings.nightPassEndTime || '07:00'}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, nightPassEndTime: e.target.value })}
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 8px', fontSize: '12px', background: '#fff' }}
+                        >
+                          {getTimeOptions(false).map((t) => (
+                            <option key={t} value={t}>{getTimeLabel(t)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 

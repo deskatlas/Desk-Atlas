@@ -45,6 +45,14 @@ export function WorkspaceList() {
   const [rateAmount, setRateAmount] = useState('');
   const [defaultShape, setDefaultShape] = useState('desk');
   const [defaultColor, setDefaultColor] = useState('#009689');
+  const [hasDayPass, setHasDayPass] = useState(false);
+  const [dayPassPrice, setDayPassPrice] = useState('');
+  const [hasNightPass, setHasNightPass] = useState(false);
+  const [nightPassPrice, setNightPassPrice] = useState('');
+  const [hasWholeDayPass, setHasWholeDayPass] = useState(false);
+  const [wholeDayPassPrice, setWholeDayPassPrice] = useState('');
+  const [hasHalfDayPass, setHasHalfDayPass] = useState(false);
+  const [halfDayPassPrice, setHalfDayPassPrice] = useState('');
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -231,6 +239,14 @@ export function WorkspaceList() {
             rateAmount: parseFloat(rateAmount) || 0,
             defaultShape,
             defaultColor,
+            hasDayPass,
+            dayPassPrice: hasDayPass && dayPassPrice ? parseFloat(dayPassPrice) : null,
+            hasNightPass,
+            nightPassPrice: hasNightPass && nightPassPrice ? parseFloat(nightPassPrice) : null,
+            hasWholeDayPass,
+            wholeDayPassPrice: hasWholeDayPass && wholeDayPassPrice ? parseFloat(wholeDayPassPrice) : null,
+            hasHalfDayPass,
+            halfDayPassPrice: hasHalfDayPass && halfDayPassPrice ? parseFloat(halfDayPassPrice) : null,
             defaultStyle: { 
               photoPosition: photoPosition,
             },
@@ -258,6 +274,14 @@ export function WorkspaceList() {
             rateAmount: parseFloat(rateAmount) || 0,
             defaultShape,
             defaultColor,
+            hasDayPass,
+            dayPassPrice: hasDayPass && dayPassPrice ? parseFloat(dayPassPrice) : null,
+            hasNightPass,
+            nightPassPrice: hasNightPass && nightPassPrice ? parseFloat(nightPassPrice) : null,
+            hasWholeDayPass,
+            wholeDayPassPrice: hasWholeDayPass && wholeDayPassPrice ? parseFloat(wholeDayPassPrice) : null,
+            hasHalfDayPass,
+            halfDayPassPrice: hasHalfDayPass && halfDayPassPrice ? parseFloat(halfDayPassPrice) : null,
             defaultStyle: { 
               photoPosition: photoPosition,
             },
@@ -311,6 +335,14 @@ export function WorkspaceList() {
     setRateAmount('');
     setDefaultShape('desk');
     setDefaultColor('#009689');
+    setHasDayPass(false);
+    setDayPassPrice('');
+    setHasNightPass(false);
+    setNightPassPrice('');
+    setHasWholeDayPass(false);
+    setWholeDayPassPrice('');
+    setHasHalfDayPass(false);
+    setHalfDayPassPrice('');
     setPhotoPath(null);
     setImageFile(null);
     setPreviewUrl(null);
@@ -329,6 +361,14 @@ export function WorkspaceList() {
     setDescription(t.description || '');
     setDefaultShape(t.defaultShape || 'desk');
     setDefaultColor(t.defaultColor || '#009689');
+    setHasDayPass(Boolean(t.hasDayPass));
+    setDayPassPrice(t.dayPassPrice !== undefined && t.dayPassPrice !== null ? String(t.dayPassPrice) : '');
+    setHasNightPass(Boolean(t.hasNightPass));
+    setNightPassPrice(t.nightPassPrice !== undefined && t.nightPassPrice !== null ? String(t.nightPassPrice) : '');
+    setHasWholeDayPass(Boolean(t.hasWholeDayPass));
+    setWholeDayPassPrice(t.wholeDayPassPrice !== undefined && t.wholeDayPassPrice !== null ? String(t.wholeDayPassPrice) : '');
+    setHasHalfDayPass(Boolean(t.hasHalfDayPass));
+    setHalfDayPassPrice(t.halfDayPassPrice !== undefined && t.halfDayPassPrice !== null ? String(t.halfDayPassPrice) : '');
     setPhotoPath(t.photoPath || null);
     setImageFile(null);
     setPreviewUrl(t.photoPath || null);
@@ -570,12 +610,34 @@ export function WorkspaceList() {
                     </div>
                   )}
                   <div style={{ fontWeight: 800, color: 'var(--da-text-primary)', fontSize: '15px' }}>{t.name}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '8px' }}>
                     ₱{t.rateAmount ?? t.rate}/hour &middot; Capacity {t.capacity} &middot; {instanceCount} instances
                   </div>
-                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: 'var(--da-info)', color: 'var(--da-brand-dark)' }}>
-                    Active
-                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: 'var(--da-info)', color: 'var(--da-brand-dark)' }}>
+                      Active
+                    </span>
+                    {t.hasDayPass && t.dayPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#FEF9C3', color: '#854D0E', border: '1px solid #FEF08A' }}>
+                        ☀️ Day: ₱{t.dayPassPrice}
+                      </span>
+                    )}
+                    {t.hasNightPass && t.nightPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE' }}>
+                        🌙 Night: ₱{t.nightPassPrice}
+                      </span>
+                    )}
+                    {t.hasWholeDayPass && t.wholeDayPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0' }}>
+                        24h: ₱{t.wholeDayPassPrice}
+                      </span>
+                    )}
+                    {t.hasHalfDayPass && t.halfDayPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF' }}>
+                        12h: ₱{t.halfDayPassPrice}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
                     <button onClick={() => openEditTemplate(t)} style={{ flex: 1, background: 'var(--da-canvas)', border: 'none', padding: '7px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', color: 'var(--da-text-primary)' }}>Edit</button>
                     <button 
@@ -617,12 +679,34 @@ export function WorkspaceList() {
                     </div>
                   )}
                   <div style={{ fontWeight: 800, color: 'var(--da-text-primary)', fontSize: '15px' }}>{t.name}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '8px' }}>
                     ₱{t.rateAmount ?? t.rate}/hour &middot; Capacity {t.capacity} &middot; {totalInstances} instances
                   </div>
-                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: 'var(--da-soft)', color: 'var(--da-text-secondary)' }}>
-                    Archived
-                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '9999px', whiteSpace: 'nowrap', background: 'var(--da-soft)', color: 'var(--da-text-secondary)' }}>
+                      Archived
+                    </span>
+                    {t.hasDayPass && t.dayPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#FEF9C3', color: '#854D0E', border: '1px solid #FEF08A' }}>
+                        ☀️ Day: ₱{t.dayPassPrice}
+                      </span>
+                    )}
+                    {t.hasNightPass && t.nightPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE' }}>
+                        🌙 Night: ₱{t.nightPassPrice}
+                      </span>
+                    )}
+                    {t.hasWholeDayPass && t.wholeDayPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0' }}>
+                        24h: ₱{t.wholeDayPassPrice}
+                      </span>
+                    )}
+                    {t.hasHalfDayPass && t.halfDayPassPrice !== null && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF' }}>
+                        12h: ₱{t.halfDayPassPrice}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
                     <button 
                       type="button"
@@ -1012,7 +1096,147 @@ export function WorkspaceList() {
                     </div>
                   </div>
 
+                  {/* Pass Pricing (Optional Tiers) */}
+                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '16px', background: '#FAFAFA' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--da-brand-dark)', marginBottom: '2px' }}>
+                        Pass Pricing (Optional Tiers)
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                        Enable fixed-rate passes for this template. Customers can choose between standard hourly booking or available pass tiers.
+                      </div>
+                    </div>
 
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                      {/* Day Pass */}
+                      <div style={{ border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', background: '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: hasDayPass ? '10px' : '0' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>
+                            <input
+                              type="checkbox"
+                              checked={hasDayPass}
+                              onChange={(e) => {
+                                setHasDayPass(e.target.checked);
+                                if (!e.target.checked) setDayPassPrice('');
+                              }}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                            />
+                            ☀️ Day Pass
+                          </label>
+                        </div>
+                        {hasDayPass && (
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Price (₱)</label>
+                            <input
+                              type="number"
+                              value={dayPassPrice}
+                              onChange={(e) => setDayPassPrice(e.target.value)}
+                              onKeyDown={(e) => handleNumericKeyDown(e, { allowDecimal: true })}
+                              placeholder="e.g. 350"
+                              min="0"
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--da-border)', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Night Pass */}
+                      <div style={{ border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', background: '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: hasNightPass ? '10px' : '0' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>
+                            <input
+                              type="checkbox"
+                              checked={hasNightPass}
+                              onChange={(e) => {
+                                setHasNightPass(e.target.checked);
+                                if (!e.target.checked) setNightPassPrice('');
+                              }}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                            />
+                            🌙 Night Pass
+                          </label>
+                        </div>
+                        {hasNightPass && (
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Price (₱)</label>
+                            <input
+                              type="number"
+                              value={nightPassPrice}
+                              onChange={(e) => setNightPassPrice(e.target.value)}
+                              onKeyDown={(e) => handleNumericKeyDown(e, { allowDecimal: true })}
+                              placeholder="e.g. 250"
+                              min="0"
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--da-border)', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 24-Hour Whole Day Pass */}
+                      <div style={{ border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', background: '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: hasWholeDayPass ? '10px' : '0' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>
+                            <input
+                              type="checkbox"
+                              checked={hasWholeDayPass}
+                              onChange={(e) => {
+                                setHasWholeDayPass(e.target.checked);
+                                if (!e.target.checked) setWholeDayPassPrice('');
+                              }}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                            />
+                            ⏰ 24-Hour Whole Day
+                          </label>
+                        </div>
+                        {hasWholeDayPass && (
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Price (₱)</label>
+                            <input
+                              type="number"
+                              value={wholeDayPassPrice}
+                              onChange={(e) => setWholeDayPassPrice(e.target.value)}
+                              onKeyDown={(e) => handleNumericKeyDown(e, { allowDecimal: true })}
+                              placeholder="e.g. 500"
+                              min="0"
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--da-border)', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 12-Hour Half Day Pass */}
+                      <div style={{ border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px', background: '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: hasHalfDayPass ? '10px' : '0' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>
+                            <input
+                              type="checkbox"
+                              checked={hasHalfDayPass}
+                              onChange={(e) => {
+                                setHasHalfDayPass(e.target.checked);
+                                if (!e.target.checked) setHalfDayPassPrice('');
+                              }}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                            />
+                            ⏳ 12-Hour Half Day
+                          </label>
+                        </div>
+                        {hasHalfDayPass && (
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Price (₱)</label>
+                            <input
+                              type="number"
+                              value={halfDayPassPrice}
+                              onChange={(e) => setHalfDayPassPrice(e.target.value)}
+                              onKeyDown={(e) => handleNumericKeyDown(e, { allowDecimal: true })}
+                              placeholder="e.g. 300"
+                              min="0"
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--da-border)', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
 

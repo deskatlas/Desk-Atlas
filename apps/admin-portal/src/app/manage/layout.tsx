@@ -65,6 +65,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     { id: '/manage/scan', label: 'QR Scanner', iconType: 'scan' },
     { id: '/manage/kiosk-confirm', label: 'Kiosk Queue', iconType: 'kiosk', badge: kioskCount > 0 ? kioskCount : undefined },
     { id: '/manage/workspaces', label: 'Workspaces', iconType: 'workspaces' },
+    { id: '/manage/promotions', label: 'Promotions', iconType: 'promotions' },
     { id: '/manage/map', label: 'Map Builder', iconType: 'map' },
     { id: '/manage/staff', label: 'Staff', iconType: 'staff' },
     { id: '/manage/reports', label: 'Reports', iconType: 'reports' },
@@ -110,6 +111,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <div style={{ width: '15px', height: '15px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '2px', flexShrink: 0 }}>
             <div style={{ border: `2px solid ${color}`, borderRadius: '2px' }}></div><div style={{ border: `2px solid ${color}`, borderRadius: '2px' }}></div>
             <div style={{ border: `2px solid ${color}`, borderRadius: '2px' }}></div><div style={{ background: color, borderRadius: '2px' }}></div>
+          </div>
+        );
+      case 'promotions':
+        return (
+          <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="5" x2="5" y2="19"></line>
+              <circle cx="6.5" cy="6.5" r="2.5"></circle>
+              <circle cx="17.5" cy="17.5" r="2.5"></circle>
+            </svg>
           </div>
         );
       case 'map':

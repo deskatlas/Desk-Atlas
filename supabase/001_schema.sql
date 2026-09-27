@@ -534,8 +534,8 @@ CREATE TABLE public.map_elements (
   CONSTRAINT map_elements_workspace_fk
     FOREIGN KEY (workspace_instance_id)
     REFERENCES public.workspace_instances(id)
-    ON UPDATE RESTRICT
-    ON DELETE RESTRICT,
+    ON UPDATE CASCADE
+    ON DELETE SET NULL,
 
   CONSTRAINT map_elements_type_nonblank CHECK (btrim(element_type) <> ''),
   CONSTRAINT map_elements_x_nonnegative CHECK (x >= 0),

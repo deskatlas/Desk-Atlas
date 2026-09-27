@@ -49,6 +49,14 @@ class KioskWorkspaceRepo {
       rateAmount: Number(row.rate_amount),
       pricingUnit: row.pricing_unit,
       isActive: row.is_active,
+      hasDayPass: row.has_day_pass ?? false,
+      dayPassPrice: row.day_pass_price !== null && row.day_pass_price !== undefined ? Number(row.day_pass_price) : null,
+      hasNightPass: row.has_night_pass ?? false,
+      nightPassPrice: row.night_pass_price !== null && row.night_pass_price !== undefined ? Number(row.night_pass_price) : null,
+      hasWholeDayPass: row.has_whole_day_pass ?? false,
+      wholeDayPassPrice: row.whole_day_pass_price !== null && row.whole_day_pass_price !== undefined ? Number(row.whole_day_pass_price) : null,
+      hasHalfDayPass: row.has_half_day_pass ?? false,
+      halfDayPassPrice: row.half_day_pass_price !== null && row.half_day_pass_price !== undefined ? Number(row.half_day_pass_price) : null,
     }));
 
     return { instances, templates, floors: [] };

@@ -203,3 +203,11 @@ export * from './services/activityLogSupabaseRepository';
 export * from './services/reservationTabSegregation';
 export * from './services/paymentProofValidationService';
 export * from './services/kioskInactivityService';
+export * from './models/promotionalRate';
+export * from './services/promotionalPricingService';
+export * from './services/promotionalRateRepository';
+export * from './services/promotionalMemoryRepository';
+export * from './services/promotionalSupabaseRepository';
+export * from './services/promotionalService';
+export * from './services/pricingService';
+

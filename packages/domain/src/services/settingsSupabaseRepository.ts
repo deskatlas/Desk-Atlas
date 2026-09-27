@@ -26,11 +26,16 @@ type BusinessSettingsRow = {
   kiosk_timeout_minutes: number | null;
   kiosk_allowance_minutes?: number | null;
   booking_end_alert_minutes?: number | null;
+  near_checkout_threshold_minutes?: number | null;
   customer_session_timeout_minutes?: number | null;
   customer_reschedule_cutoff_hours?: number | null;
   reschedule_max_advance_value?: number | null;
   reschedule_max_advance_unit?: 'DAYS' | 'HOURS' | null;
   max_advance_booking_days?: number | null;
+  day_pass_start_time?: string | null;
+  day_pass_end_time?: string | null;
+  night_pass_start_time?: string | null;
+  night_pass_end_time?: string | null;
   landing_preview_photos?: any;
   status_colors?: any;
   cancellation_policy_pdf_url?: string | null;
@@ -97,32 +102,37 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   async getBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,max_advance_booking_days,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,near_checkout_threshold_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,max_advance_booking_days,day_pass_start_time,day_pass_end_time,night_pass_start_time,night_pass_end_time,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
-      // Fallback if max_advance_booking_days is not yet present on remote
+      // Fallback if pass windows or max_advance_booking_days are not yet present on remote
       return this.request<BusinessSettingsRow[]>(
-        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+        '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,max_advance_booking_days,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
       ).catch(async () => {
-        // Fallback if reschedule_max_advance columns are not yet present on remote
+        // Fallback if max_advance_booking_days is not yet present on remote
         return this.request<BusinessSettingsRow[]>(
-          '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+          '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
         ).catch(async () => {
-          // Fallback if social links columns are not yet present on remote
+          // Fallback if reschedule_max_advance columns are not yet present on remote
           return this.request<BusinessSettingsRow[]>(
-            '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+            '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
           ).catch(async () => {
-            // Fallback if cancellation policy or status_colors columns are not yet present on remote
+            // Fallback if social links columns are not yet present on remote
             return this.request<BusinessSettingsRow[]>(
-              '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,status_colors,updated_at&id=eq.1&limit=1'
+              '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
             ).catch(async () => {
-              // Fallback if status_colors column is not yet present on remote
+              // Fallback if cancellation policy or status_colors columns are not yet present on remote
               return this.request<BusinessSettingsRow[]>(
-                '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,updated_at&id=eq.1&limit=1'
+                '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,status_colors,updated_at&id=eq.1&limit=1'
               ).catch(async () => {
-                // Fallback if landing_preview_photos / customer_session_timeout_minutes column is not yet queried
+                // Fallback if status_colors column is not yet present on remote
                 return this.request<BusinessSettingsRow[]>(
-                  '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,updated_at&id=eq.1&limit=1'
-                );
+                  '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,customer_session_timeout_minutes,landing_preview_photos,updated_at&id=eq.1&limit=1'
+                ).catch(async () => {
+                  // Fallback if landing_preview_photos / customer_session_timeout_minutes column is not yet queried
+                  return this.request<BusinessSettingsRow[]>(
+                    '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,updated_at&id=eq.1&limit=1'
+                  );
+                });
               });
             });
           });
@@ -146,11 +156,16 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         kioskTimeoutMinutes: 5,
         kioskAllowanceMinutes: 5,
         bookingEndAlertMinutes: 5,
+        nearCheckoutThresholdMinutes: 15,
         customerSessionTimeoutMinutes: 20,
         customerRescheduleCutoffHours: 12,
         rescheduleMaxAdvanceValue: 30,
         rescheduleMaxAdvanceUnit: 'DAYS',
         maxAdvanceBookingDays: 90,
+        dayPassStartTime: '07:00',
+        dayPassEndTime: '23:30',
+        nightPassStartTime: '20:00',
+        nightPassEndTime: '07:00',
         landingPreviewPhotos: [],
         statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
         cancellationPolicyPdfUrl: null,
@@ -174,11 +189,16 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
       kioskAllowanceMinutes: row.kiosk_allowance_minutes ?? 5,
       bookingEndAlertMinutes: row.booking_end_alert_minutes ?? 5,
+      nearCheckoutThresholdMinutes: row.near_checkout_threshold_minutes ?? row.booking_end_alert_minutes ?? 15,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? 20,
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? 30,
       rescheduleMaxAdvanceUnit: (row.reschedule_max_advance_unit as 'DAYS' | 'HOURS') ?? 'DAYS',
       maxAdvanceBookingDays: row.max_advance_booking_days ?? 90,
+      dayPassStartTime: row.day_pass_start_time ?? '07:00',
+      dayPassEndTime: row.day_pass_end_time ?? '23:30',
+      nightPassStartTime: row.night_pass_start_time ?? '20:00',
+      nightPassEndTime: row.night_pass_end_time ?? '07:00',
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       cancellationPolicyPdfUrl: row.cancellation_policy_pdf_url ?? null,
@@ -206,11 +226,16 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       kiosk_timeout_minutes: input.kioskTimeoutMinutes,
       kiosk_allowance_minutes: input.kioskAllowanceMinutes ?? 5,
       booking_end_alert_minutes: input.bookingEndAlertMinutes ?? 5,
+      near_checkout_threshold_minutes: input.nearCheckoutThresholdMinutes ?? input.bookingEndAlertMinutes ?? 15,
       customer_session_timeout_minutes: input.customerSessionTimeoutMinutes ?? 20,
       customer_reschedule_cutoff_hours: input.customerRescheduleCutoffHours ?? 12,
       reschedule_max_advance_value: input.rescheduleMaxAdvanceValue ?? 30,
       reschedule_max_advance_unit: input.rescheduleMaxAdvanceUnit ?? 'DAYS',
       max_advance_booking_days: input.maxAdvanceBookingDays ?? 90,
+      day_pass_start_time: input.dayPassStartTime ?? '07:00',
+      day_pass_end_time: input.dayPassEndTime ?? '23:30',
+      night_pass_start_time: input.nightPassStartTime ?? '20:00',
+      night_pass_end_time: input.nightPassEndTime ?? '07:00',
       updated_at: new Date().toISOString(),
     };
 
@@ -248,8 +273,12 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         body: JSON.stringify(payload),
       });
     } catch {
-      // If max_advance_booking_days, reschedule_max_advance, status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes or social links columns don't exist yet in Supabase, retry without them
+      // If pass windows, max_advance_booking_days, reschedule_max_advance, status_colors or customer_session_timeout_minutes or policy or kiosk_allowance_minutes or booking_end_alert_minutes or social links columns don't exist yet in Supabase, retry without them
       const fallbackPayload = { ...payload };
+      delete fallbackPayload.day_pass_start_time;
+      delete fallbackPayload.day_pass_end_time;
+      delete fallbackPayload.night_pass_start_time;
+      delete fallbackPayload.night_pass_end_time;
       delete fallbackPayload.max_advance_booking_days;
       delete fallbackPayload.reschedule_max_advance_value;
       delete fallbackPayload.reschedule_max_advance_unit;
@@ -258,6 +287,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       delete fallbackPayload.customer_reschedule_cutoff_hours;
       delete fallbackPayload.kiosk_allowance_minutes;
       delete fallbackPayload.booking_end_alert_minutes;
+      delete fallbackPayload.near_checkout_threshold_minutes;
       delete fallbackPayload.cancellation_policy_pdf_url;
       delete fallbackPayload.cancellation_policy_pdf_filename;
       delete fallbackPayload.cancellation_policy_updated_at;
@@ -288,6 +318,10 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         row = insertRows[0];
       } catch {
         const fallbackInsert = { id: 1, ...payload };
+        delete (fallbackInsert as any).day_pass_start_time;
+        delete (fallbackInsert as any).day_pass_end_time;
+        delete (fallbackInsert as any).night_pass_start_time;
+        delete (fallbackInsert as any).night_pass_end_time;
         delete (fallbackInsert as any).max_advance_booking_days;
         delete (fallbackInsert as any).reschedule_max_advance_value;
         delete (fallbackInsert as any).reschedule_max_advance_unit;
@@ -296,6 +330,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         delete (fallbackInsert as any).customer_reschedule_cutoff_hours;
         delete (fallbackInsert as any).kiosk_allowance_minutes;
         delete (fallbackInsert as any).booking_end_alert_minutes;
+        delete (fallbackInsert as any).near_checkout_threshold_minutes;
         delete (fallbackInsert as any).cancellation_policy_pdf_url;
         delete (fallbackInsert as any).cancellation_policy_pdf_filename;
         delete (fallbackInsert as any).cancellation_policy_updated_at;
@@ -333,11 +368,16 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       kioskTimeoutMinutes: row.kiosk_timeout_minutes,
       kioskAllowanceMinutes: row.kiosk_allowance_minutes ?? input.kioskAllowanceMinutes ?? 5,
       bookingEndAlertMinutes: row.booking_end_alert_minutes ?? input.bookingEndAlertMinutes ?? 5,
+      nearCheckoutThresholdMinutes: row.near_checkout_threshold_minutes ?? input.nearCheckoutThresholdMinutes ?? input.bookingEndAlertMinutes ?? 15,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? input.customerRescheduleCutoffHours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? input.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: (row.reschedule_max_advance_unit as 'DAYS' | 'HOURS') ?? input.rescheduleMaxAdvanceUnit ?? 'DAYS',
       maxAdvanceBookingDays: row.max_advance_booking_days ?? input.maxAdvanceBookingDays ?? 90,
+      dayPassStartTime: row.day_pass_start_time ?? input.dayPassStartTime ?? '07:00',
+      dayPassEndTime: row.day_pass_end_time ?? input.dayPassEndTime ?? '23:30',
+      nightPassStartTime: row.night_pass_start_time ?? input.nightPassStartTime ?? '20:00',
+      nightPassEndTime: row.night_pass_end_time ?? input.nightPassEndTime ?? '07:00',
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : (input.statusColors ? normalizeWorkspaceStatusColors(input.statusColors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS }),
       cancellationPolicyPdfUrl: row.cancellation_policy_pdf_url !== undefined ? row.cancellation_policy_pdf_url : (input.cancellationPolicyPdfUrl ?? null),

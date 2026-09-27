@@ -26,6 +26,7 @@ DECLARE
   v_previous_published_ids uuid[];
   v_compiled_map jsonb;
   v_result jsonb;
+  v_colliding_ids uuid[];
 BEGIN
   IF p_published_by_user_id IS NULL THEN
     RAISE EXCEPTION 'published_by_user_id is required when publishing a map';
@@ -112,12 +113,13 @@ BEGIN
     RAISE EXCEPTION 'Draft contains duplicate workspace-instance placements';
   END IF;
 
-  -- GiST Spatial collision detection for overlapping workspaces (O(log N))
-  PERFORM 1
+  -- Overlap Collision Check 1: Workspaces overlapping Workspaces
+  SELECT array_agg(DISTINCT a.id)
+  INTO v_colliding_ids
   FROM public.map_elements a
   JOIN public.map_elements b
     ON a.map_version_id = b.map_version_id
-   AND a.id < b.id
+   AND a.id <> b.id
   WHERE a.map_version_id = v_draft.id
     AND a.element_role = 'WORKSPACE'
     AND b.element_role = 'WORKSPACE'
@@ -126,34 +128,48 @@ BEGIN
     AND a.x < b.x + b.width
     AND a.x + a.width > b.x
     AND a.y < b.y + b.height
-    AND a.y + a.height > b.y
-  LIMIT 1;
+    AND a.y + a.height > b.y;
 
-  IF FOUND THEN
-    RAISE EXCEPTION 'Draft contains overlapping bookable workspaces';
+  IF v_colliding_ids IS NOT NULL AND array_length(v_colliding_ids, 1) > 0 THEN
+    RAISE EXCEPTION 'COLLISION_OVERLAP:Draft contains overlapping bookable workspaces: %', array_to_string(v_colliding_ids, ',');
   END IF;
 
-  -- GiST Spatial collision detection for workspaces conflicting with walls/dividers
-  PERFORM 1
+  -- Overlap Collision Check 2: Workspaces conflicting with Walls/Dividers
+  SELECT array_agg(DISTINCT workspace_element.id)
+  INTO v_colliding_ids
   FROM public.map_elements workspace_element
   JOIN public.map_elements wall_element
     ON workspace_element.map_version_id = wall_element.map_version_id
-   AND workspace_element.id <> wall_element.id
   WHERE workspace_element.map_version_id = v_draft.id
     AND workspace_element.element_role = 'WORKSPACE'
     AND wall_element.element_role = 'STRUCTURE'
-    AND wall_element.element_type IN ('wall', 'divider')
+    AND wall_element.element_type IN ('wall', 'divider', 'thin_wall', 'thin-wall', 'glass')
     AND box(point(workspace_element.x, workspace_element.y), point(workspace_element.x + workspace_element.width, workspace_element.y + workspace_element.height)) &&
         box(point(wall_element.x, wall_element.y), point(wall_element.x + wall_element.width, wall_element.y + wall_element.height))
     AND workspace_element.x < wall_element.x + wall_element.width
     AND workspace_element.x + workspace_element.width > wall_element.x
     AND workspace_element.y < wall_element.y + wall_element.height
-    AND workspace_element.y + workspace_element.height > wall_element.y
-  LIMIT 1;
+    AND workspace_element.y + workspace_element.height > wall_element.y;
 
-  IF FOUND THEN
-    RAISE EXCEPTION 'Draft contains a workspace conflicting with a wall/divider';
+  IF v_colliding_ids IS NOT NULL AND array_length(v_colliding_ids, 1) > 0 THEN
+    RAISE EXCEPTION 'COLLISION_WALL:Draft contains a workspace conflicting with a wall/divider: %', array_to_string(v_colliding_ids, ',');
   END IF;
+
+  -- Detach unmapped instances from older historical map_elements to guarantee FK integrity
+  UPDATE public.map_elements
+  SET workspace_instance_id = NULL
+  WHERE workspace_instance_id IN (
+    SELECT id
+    FROM public.workspace_instances
+    WHERE floor_id = v_draft.floor_id
+      AND id NOT IN (
+        SELECT workspace_instance_id
+        FROM public.map_elements
+        WHERE map_version_id = v_draft.id
+          AND workspace_instance_id IS NOT NULL
+      )
+  )
+  AND map_version_id <> v_draft.id;
 
   -- In-database atomic reconciliation of unmapped instances on the floor (Phase 1)
   -- 1. Deactivate unmapped instances that have active/historical reservations

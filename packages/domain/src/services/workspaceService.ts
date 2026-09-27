@@ -65,6 +65,46 @@ export function normalizeCreateTemplateInput(
   const defaultShape = requireNonBlank(input.defaultShape ?? inferShapeFromName(name), 'Default shape');
   const defaultColor = requireNonBlank(input.defaultColor ?? '#009689', 'Default color');
 
+  const hasDayPass = Boolean(input.hasDayPass);
+  let dayPassPrice = input.dayPassPrice !== undefined && input.dayPassPrice !== null ? Number(input.dayPassPrice) : null;
+  if (hasDayPass) {
+    if (dayPassPrice === null || isNaN(dayPassPrice) || dayPassPrice < 0) {
+      throw new WorkspaceValidationError('Day pass price must be non-negative when day pass is enabled');
+    }
+  } else {
+    dayPassPrice = dayPassPrice !== null && dayPassPrice >= 0 ? dayPassPrice : null;
+  }
+
+  const hasNightPass = Boolean(input.hasNightPass);
+  let nightPassPrice = input.nightPassPrice !== undefined && input.nightPassPrice !== null ? Number(input.nightPassPrice) : null;
+  if (hasNightPass) {
+    if (nightPassPrice === null || isNaN(nightPassPrice) || nightPassPrice < 0) {
+      throw new WorkspaceValidationError('Night pass price must be non-negative when night pass is enabled');
+    }
+  } else {
+    nightPassPrice = nightPassPrice !== null && nightPassPrice >= 0 ? nightPassPrice : null;
+  }
+
+  const hasWholeDayPass = Boolean(input.hasWholeDayPass);
+  let wholeDayPassPrice = input.wholeDayPassPrice !== undefined && input.wholeDayPassPrice !== null ? Number(input.wholeDayPassPrice) : null;
+  if (hasWholeDayPass) {
+    if (wholeDayPassPrice === null || isNaN(wholeDayPassPrice) || wholeDayPassPrice < 0) {
+      throw new WorkspaceValidationError('Whole day pass price must be non-negative when whole day pass is enabled');
+    }
+  } else {
+    wholeDayPassPrice = wholeDayPassPrice !== null && wholeDayPassPrice >= 0 ? wholeDayPassPrice : null;
+  }
+
+  const hasHalfDayPass = Boolean(input.hasHalfDayPass);
+  let halfDayPassPrice = input.halfDayPassPrice !== undefined && input.halfDayPassPrice !== null ? Number(input.halfDayPassPrice) : null;
+  if (hasHalfDayPass) {
+    if (halfDayPassPrice === null || isNaN(halfDayPassPrice) || halfDayPassPrice < 0) {
+      throw new WorkspaceValidationError('Half day pass price must be non-negative when half day pass is enabled');
+    }
+  } else {
+    halfDayPassPrice = halfDayPassPrice !== null && halfDayPassPrice >= 0 ? halfDayPassPrice : null;
+  }
+
   return {
     ...input,
     name,
@@ -73,6 +113,14 @@ export function normalizeCreateTemplateInput(
     capacity,
     rateAmount,
     pricingUnit: 'HOURLY',
+    hasDayPass,
+    dayPassPrice,
+    hasNightPass,
+    nightPassPrice,
+    hasWholeDayPass,
+    wholeDayPassPrice,
+    hasHalfDayPass,
+    halfDayPassPrice,
     defaultShape,
     defaultColor,
     defaultStyle: requirePlainObject(input.defaultStyle ?? {}),
@@ -94,6 +142,55 @@ export function normalizeUpdateTemplateInput(
   if (input.rateAmount !== undefined) {
     normalized.rateAmount = requireNonNegativeNumber(input.rateAmount, 'Template rate');
   }
+
+  if (input.hasDayPass !== undefined) {
+    normalized.hasDayPass = Boolean(input.hasDayPass);
+  }
+  if (input.dayPassPrice !== undefined) {
+    normalized.dayPassPrice = input.dayPassPrice !== null ? requireNonNegativeNumber(input.dayPassPrice, 'Day pass price') : null;
+  }
+  if (normalized.hasDayPass || (input.hasDayPass === undefined && input.dayPassPrice !== undefined)) {
+    if (input.dayPassPrice !== undefined && input.dayPassPrice !== null && (isNaN(Number(input.dayPassPrice)) || Number(input.dayPassPrice) < 0)) {
+      throw new WorkspaceValidationError('Day pass price must be non-negative when day pass is enabled');
+    }
+  }
+
+  if (input.hasNightPass !== undefined) {
+    normalized.hasNightPass = Boolean(input.hasNightPass);
+  }
+  if (input.nightPassPrice !== undefined) {
+    normalized.nightPassPrice = input.nightPassPrice !== null ? requireNonNegativeNumber(input.nightPassPrice, 'Night pass price') : null;
+  }
+  if (normalized.hasNightPass || (input.hasNightPass === undefined && input.nightPassPrice !== undefined)) {
+    if (input.nightPassPrice !== undefined && input.nightPassPrice !== null && (isNaN(Number(input.nightPassPrice)) || Number(input.nightPassPrice) < 0)) {
+      throw new WorkspaceValidationError('Night pass price must be non-negative when night pass is enabled');
+    }
+  }
+
+  if (input.hasWholeDayPass !== undefined) {
+    normalized.hasWholeDayPass = Boolean(input.hasWholeDayPass);
+  }
+  if (input.wholeDayPassPrice !== undefined) {
+    normalized.wholeDayPassPrice = input.wholeDayPassPrice !== null ? requireNonNegativeNumber(input.wholeDayPassPrice, 'Whole day pass price') : null;
+  }
+  if (normalized.hasWholeDayPass || (input.hasWholeDayPass === undefined && input.wholeDayPassPrice !== undefined)) {
+    if (input.wholeDayPassPrice !== undefined && input.wholeDayPassPrice !== null && (isNaN(Number(input.wholeDayPassPrice)) || Number(input.wholeDayPassPrice) < 0)) {
+      throw new WorkspaceValidationError('Whole day pass price must be non-negative when whole day pass is enabled');
+    }
+  }
+
+  if (input.hasHalfDayPass !== undefined) {
+    normalized.hasHalfDayPass = Boolean(input.hasHalfDayPass);
+  }
+  if (input.halfDayPassPrice !== undefined) {
+    normalized.halfDayPassPrice = input.halfDayPassPrice !== null ? requireNonNegativeNumber(input.halfDayPassPrice, 'Half day pass price') : null;
+  }
+  if (normalized.hasHalfDayPass || (input.hasHalfDayPass === undefined && input.halfDayPassPrice !== undefined)) {
+    if (input.halfDayPassPrice !== undefined && input.halfDayPassPrice !== null && (isNaN(Number(input.halfDayPassPrice)) || Number(input.halfDayPassPrice) < 0)) {
+      throw new WorkspaceValidationError('Half day pass price must be non-negative when half day pass is enabled');
+    }
+  }
+
   if (input.defaultShape !== undefined) {
     normalized.defaultShape = requireNonBlank(input.defaultShape, 'Default shape');
   }
@@ -234,7 +331,17 @@ export function mapInstanceToAdminSpace(instance: WorkspaceInstanceDetails): Adm
     zone: instance.floor.name,
     capacity: instance.template.capacity,
     hourlyRate: instance.template.rateAmount,
-    dayRate: instance.template.rateAmount * 8,
+    dayRate: (instance.template.hasDayPass && instance.template.dayPassPrice !== null && instance.template.dayPassPrice !== undefined)
+      ? Number(instance.template.dayPassPrice)
+      : instance.template.rateAmount * 8,
+    hasDayPass: instance.template.hasDayPass,
+    dayPassPrice: instance.template.dayPassPrice,
+    hasNightPass: instance.template.hasNightPass,
+    nightPassPrice: instance.template.nightPassPrice,
+    hasWholeDayPass: instance.template.hasWholeDayPass,
+    wholeDayPassPrice: instance.template.wholeDayPassPrice,
+    hasHalfDayPass: instance.template.hasHalfDayPass,
+    halfDayPassPrice: instance.template.halfDayPassPrice,
     status: mapOperationalStatusToAdminStatus(instance.operationalStatus),
     recommendations: extractRecommendationTags(instance.template.defaultStyle),
   };

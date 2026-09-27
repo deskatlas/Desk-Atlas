@@ -26,11 +26,16 @@ export class InMemorySettingsRepository implements SettingsRepository {
     kioskTimeoutMinutes: 5,
     kioskAllowanceMinutes: 5,
     bookingEndAlertMinutes: 5,
+    nearCheckoutThresholdMinutes: 15,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
     rescheduleMaxAdvanceUnit: 'DAYS',
     maxAdvanceBookingDays: 90,
+    dayPassStartTime: '07:00',
+    dayPassEndTime: '23:30',
+    nightPassStartTime: '20:00',
+    nightPassEndTime: '07:00',
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     cancellationPolicyPdfUrl: null,
@@ -95,6 +100,11 @@ export class InMemorySettingsRepository implements SettingsRepository {
       rescheduleMaxAdvanceValue: this.businessSettings.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS',
       maxAdvanceBookingDays: this.businessSettings.maxAdvanceBookingDays ?? 90,
+      nearCheckoutThresholdMinutes: this.businessSettings.nearCheckoutThresholdMinutes ?? 15,
+      dayPassStartTime: this.businessSettings.dayPassStartTime ?? '07:00',
+      dayPassEndTime: this.businessSettings.dayPassEndTime ?? '23:30',
+      nightPassStartTime: this.businessSettings.nightPassStartTime ?? '20:00',
+      nightPassEndTime: this.businessSettings.nightPassEndTime ?? '07:00',
       facebookUrl: this.businessSettings.facebookUrl ?? null,
       instagramUrl: this.businessSettings.instagramUrl ?? null,
       twitterUrl: this.businessSettings.twitterUrl ?? null,
@@ -130,6 +140,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
       kioskTimeoutMinutes: input.kioskTimeoutMinutes ?? null,
       kioskAllowanceMinutes: input.kioskAllowanceMinutes ?? 5,
       bookingEndAlertMinutes: input.bookingEndAlertMinutes ?? 5,
+      nearCheckoutThresholdMinutes: input.nearCheckoutThresholdMinutes !== undefined && input.nearCheckoutThresholdMinutes !== null
+        ? input.nearCheckoutThresholdMinutes
+        : (this.businessSettings.nearCheckoutThresholdMinutes ?? 15),
       customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? 12,
       rescheduleMaxAdvanceValue: input.rescheduleMaxAdvanceValue !== undefined && input.rescheduleMaxAdvanceValue !== null
@@ -141,6 +154,18 @@ export class InMemorySettingsRepository implements SettingsRepository {
       maxAdvanceBookingDays: input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null
         ? input.maxAdvanceBookingDays
         : (this.businessSettings.maxAdvanceBookingDays ?? 90),
+      dayPassStartTime: input.dayPassStartTime !== undefined && input.dayPassStartTime !== null
+        ? input.dayPassStartTime
+        : (this.businessSettings.dayPassStartTime ?? '07:00'),
+      dayPassEndTime: input.dayPassEndTime !== undefined && input.dayPassEndTime !== null
+        ? input.dayPassEndTime
+        : (this.businessSettings.dayPassEndTime ?? '23:30'),
+      nightPassStartTime: input.nightPassStartTime !== undefined && input.nightPassStartTime !== null
+        ? input.nightPassStartTime
+        : (this.businessSettings.nightPassStartTime ?? '20:00'),
+      nightPassEndTime: input.nightPassEndTime !== undefined && input.nightPassEndTime !== null
+        ? input.nightPassEndTime
+        : (this.businessSettings.nightPassEndTime ?? '07:00'),
       landingPreviewPhotos:
         input.landingPreviewPhotos !== undefined
           ? [...input.landingPreviewPhotos]
@@ -168,6 +193,11 @@ export class InMemorySettingsRepository implements SettingsRepository {
       rescheduleMaxAdvanceValue: this.businessSettings.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS',
       maxAdvanceBookingDays: this.businessSettings.maxAdvanceBookingDays ?? 90,
+      nearCheckoutThresholdMinutes: this.businessSettings.nearCheckoutThresholdMinutes ?? 15,
+      dayPassStartTime: this.businessSettings.dayPassStartTime ?? '07:00',
+      dayPassEndTime: this.businessSettings.dayPassEndTime ?? '23:30',
+      nightPassStartTime: this.businessSettings.nightPassStartTime ?? '20:00',
+      nightPassEndTime: this.businessSettings.nightPassEndTime ?? '07:00',
       facebookUrl: this.businessSettings.facebookUrl ?? null,
       instagramUrl: this.businessSettings.instagramUrl ?? null,
       twitterUrl: this.businessSettings.twitterUrl ?? null,

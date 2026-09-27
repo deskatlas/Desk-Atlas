@@ -22,6 +22,14 @@ export interface PublishedWorkspaceSummary {
   capacity: number;
   rateAmount: number;
   pricingUnit: PricingUnit;
+  hasDayPass?: boolean;
+  dayPassPrice?: number | null;
+  hasNightPass?: boolean;
+  nightPassPrice?: number | null;
+  hasWholeDayPass?: boolean;
+  wholeDayPassPrice?: number | null;
+  hasHalfDayPass?: boolean;
+  halfDayPassPrice?: number | null;
   operationalStatus: WorkspaceOperationalStatus;
   maintenanceNote?: string | null;
   isBookable: boolean;
