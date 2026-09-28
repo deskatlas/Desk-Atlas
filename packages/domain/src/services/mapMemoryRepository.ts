@@ -16,11 +16,19 @@ import type {
 
 export class InMemoryMapRepository implements MapRepository {
   private floors = new Map<string, Floor>();
-  private workspaceInstances = new Map<string, WorkspaceInstancePlacement>();
+  public workspaceInstances = new Map<string, WorkspaceInstancePlacement>();
   private versions = new Map<string, MapVersion>();
   private elements = new Map<string, MapElement[]>();
   private customStructureTemplates = new Map<string, CustomStructureTemplate>();
   private sequence = 1;
+
+  seedWorkspaceInstance(instance: WorkspaceInstancePlacement) {
+    this.workspaceInstances.set(instance.id, { ...instance });
+  }
+
+  getWorkspaceInstances(): WorkspaceInstancePlacement[] {
+    return Array.from(this.workspaceInstances.values());
+  }
 
   constructor(input?: {
     floors?: Floor[];
@@ -144,6 +152,7 @@ export class InMemoryMapRepository implements MapRepository {
       publishedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    this.versions.set(publishedVersion.id, publishedVersion);
     const publishedElements = this.cloneElements(publishedVersion.id);
     const placedIds = new Set(
       publishedElements

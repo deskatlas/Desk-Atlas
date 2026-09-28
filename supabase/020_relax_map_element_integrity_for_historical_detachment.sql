@@ -1,24 +1,92 @@
--- ============================================================================
--- DeskAtlas - 019_fix_map_publish_foreign_key_and_overlaps.sql
--- Milestone 14: Interactive Map Builder Layout Flexibility, Overlap Collision Diagnostics,
--- Placement State Synchronization, and Publishing Foreign Key Integrity (MS-14)
--- Traceability: BRD-M4, PRD-F4, PRD-F5, PRD-F9, SDD-C4, SDD-C7, DSD-UI4, ERD-E8, ERD-E9, QAD-TC4
--- ============================================================================
-
-BEGIN;
-
--- 1. Alter constraint to allow clean historical detachment ON DELETE SET NULL
+-- Migration 020: Relax map element integrity trigger, check constraint, and fix publish_map_version aggregate FOR UPDATE
 ALTER TABLE public.map_elements
-  DROP CONSTRAINT IF EXISTS map_elements_workspace_fk;
+  DROP CONSTRAINT IF EXISTS map_elements_workspace_role_consistency;
 
 ALTER TABLE public.map_elements
-  ADD CONSTRAINT map_elements_workspace_fk
-  FOREIGN KEY (workspace_instance_id)
-  REFERENCES public.workspace_instances(id)
-  ON UPDATE CASCADE
-  ON DELETE SET NULL;
+  ADD CONSTRAINT map_elements_workspace_role_consistency CHECK (
+    element_role = 'WORKSPACE'
+    OR
+    (element_role <> 'WORKSPACE' AND workspace_instance_id IS NULL)
+  );
 
--- 2. Update publish_map_version procedure with collision diagnostics and historical detachment
+CREATE OR REPLACE FUNCTION public.validate_map_element_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_status public.map_version_status;
+  v_floor_id uuid;
+  v_canvas_width integer;
+  v_canvas_height integer;
+  v_workspace_floor uuid;
+  v_version_id uuid;
+BEGIN
+  v_version_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.map_version_id ELSE NEW.map_version_id END;
+
+  SELECT status, floor_id, canvas_width, canvas_height
+    INTO v_status, v_floor_id, v_canvas_width, v_canvas_height
+  FROM public.map_versions
+  WHERE id = v_version_id;
+
+  IF NOT FOUND THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'Map version % does not exist', v_version_id;
+  END IF;
+
+  -- Historical Non-Draft Handling:
+  -- Only DRAFT versions permit element geometry, positioning, or role mutations.
+  -- For PUBLISHED or ARCHIVED versions, permit exclusively the detachment of workspace_instance_id
+  -- (setting workspace_instance_id to NULL) to allow clean foreign key reconciliation upon publishing new versions.
+  IF v_status <> 'DRAFT' THEN
+    IF TG_OP = 'UPDATE'
+       AND NEW.workspace_instance_id IS NULL
+       AND OLD.workspace_instance_id IS NOT NULL
+       AND NEW.map_version_id = OLD.map_version_id
+       AND NEW.x = OLD.x
+       AND NEW.y = OLD.y
+       AND NEW.width = OLD.width
+       AND NEW.height = OLD.height
+       AND NEW.rotation = OLD.rotation
+       AND NEW.z_index = OLD.z_index
+       AND NEW.element_role = OLD.element_role
+       AND NEW.element_type = OLD.element_type
+    THEN
+      RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'Map elements may only be mutated inside a DRAFT map version';
+  END IF;
+
+  IF TG_OP <> 'DELETE' THEN
+    IF NEW.x + NEW.width > v_canvas_width OR NEW.y + NEW.height > v_canvas_height THEN
+      RAISE EXCEPTION 'Map element must remain inside canvas bounds';
+    END IF;
+
+    IF NEW.element_role = 'WORKSPACE' AND NEW.workspace_instance_id IS NOT NULL THEN
+      SELECT floor_id
+        INTO v_workspace_floor
+      FROM public.workspace_instances
+      WHERE id = NEW.workspace_instance_id;
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'Workspace instance % does not exist', NEW.workspace_instance_id;
+      END IF;
+
+      IF v_workspace_floor <> v_floor_id THEN
+        RAISE EXCEPTION 'Workspace instance floor must match map-version floor';
+      END IF;
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
+  RETURN OLD;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.publish_map_version(
   p_draft_version_id uuid,
   p_published_by_user_id uuid
@@ -215,7 +283,7 @@ BEGIN
       FROM public.reservation_candidates
     );
 
-  -- Archive prior published versions
+  -- Archive prior published versions (Phase 3: using CTE to prevent FOR UPDATE on aggregate error)
   WITH locked_published AS (
     SELECT id
     FROM public.map_versions
@@ -376,4 +444,7 @@ BEGIN
 END;
 $$;
 
-COMMIT;
+REVOKE ALL ON FUNCTION public.publish_map_version(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.publish_map_version(uuid, uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.publish_map_version(uuid, uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_map_version(uuid, uuid) TO service_role;

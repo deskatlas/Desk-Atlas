@@ -350,6 +350,8 @@ export function MapEditor() {
   const savedSnapshotRef = useRef<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const isSavingRef = useRef(false);
+  const activeSavePromiseRef = useRef<Promise<boolean> | null>(null);
+  const isPublishingRef = useRef(false);
 
   useNavigationGuard({ isDirty });
 
@@ -1576,17 +1578,33 @@ export function MapEditor() {
   }, [dragState, resizeState, builderZoom, snapOn, snapToGrid, canvasDimensions]);
 
   // Save draft
-  const handleSaveDraft = async (isAutosave = false) => {
+  const handleSaveDraft = async (
+    optionsOrAutosave: boolean | { isAutosave?: boolean; throwOnError?: boolean } = false
+  ): Promise<boolean> => {
+    const isAutosave = typeof optionsOrAutosave === 'boolean' ? optionsOrAutosave : Boolean(optionsOrAutosave.isAutosave);
+    const throwOnError = typeof optionsOrAutosave === 'object' ? Boolean(optionsOrAutosave.throwOnError) : false;
+
+    if (isSavingRef.current && activeSavePromiseRef.current) {
+      try {
+        const result = await activeSavePromiseRef.current;
+        return result;
+      } catch (err) {
+        if (throwOnError) throw err;
+        return false;
+      }
+    }
+
     const floorId = selectedFloorIdRef.current;
-    if (!floorId || isSavingRef.current) return;
+    if (!floorId) return false;
     isSavingRef.current = true;
 
-    try {
-      setSaveState(isAutosave ? 'Saving...' : 'Saving draft...');
-      if (!isAutosave) {
-        setErrorMsg(null);
-        autosaveDebouncerRef.current?.cancel();
-      }
+    const savePromise = (async (): Promise<boolean> => {
+      try {
+        setSaveState(isAutosave ? 'Saving...' : 'Saving draft...');
+        if (!isAutosave) {
+          setErrorMsg(null);
+          autosaveDebouncerRef.current?.cancel();
+        }
 
       const currentObjects = builderObjectsRef.current;
       const elementsPayload = currentObjects.map((obj, index) => {
@@ -1698,20 +1716,32 @@ export function MapEditor() {
         setSaveState('Unsaved changes');
         autosaveDebouncerRef.current?.schedule();
       }
+      return true;
     } catch (err: any) {
       setSaveState('Unsaved changes');
       setErrorMsg(isAutosave ? `Autosave warning: ${err.message || 'Failed to save draft map'}` : (err.message || 'Failed to save draft map'));
+      if (throwOnError) {
+        throw err;
+      }
+      return false;
     } finally {
       isSavingRef.current = false;
+      activeSavePromiseRef.current = null;
     }
-  };
+  })();
 
-  useEffect(() => {
-    autosaveDebouncerRef.current = createAutosaveDebouncer(() => handleSaveDraft(true), AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      autosaveDebouncerRef.current?.cancel();
-    };
-  }, []);
+  activeSavePromiseRef.current = savePromise;
+  return savePromise;
+};
+
+useEffect(() => {
+  autosaveDebouncerRef.current = createAutosaveDebouncer(() => {
+    void handleSaveDraft(true);
+  }, AUTOSAVE_DEBOUNCE_MS);
+  return () => {
+    autosaveDebouncerRef.current?.cancel();
+  };
+}, []);
 
   useEffect(() => {
     if (savedSnapshotRef.current === null || loading) return;
@@ -1735,9 +1765,11 @@ export function MapEditor() {
     try {
       setActionLoading(true);
       setErrorMsg(null);
+      isPublishingRef.current = true;
+      autosaveDebouncerRef.current?.cancel();
 
-      // Save draft first before publishing
-      await handleSaveDraft();
+      // Save draft first before publishing and ensure success
+      await handleSaveDraft({ throwOnError: true });
 
       const res = await fetch('/api/admin/maps/publish', {
         method: 'POST',
@@ -1770,10 +1802,14 @@ export function MapEditor() {
       setShowPublishModal(false);
       setSuccessMsg('Map published successfully! Live customer & kiosk maps updated.');
       setTimeout(() => setSuccessMsg(null), 5000);
+      setIsDirty(false);
       setSaveState('Published');
+      savedSnapshotRef.current = serializeMapElementsForSnapshot(builderObjectsRef.current);
+      setCollidingElementIds(new Set());
     } catch (err: any) {
       setErrorMsg(err.message || 'Publishing error');
     } finally {
+      isPublishingRef.current = false;
       setActionLoading(false);
     }
   };
