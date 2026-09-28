@@ -50,6 +50,46 @@ export class WorkspaceConflictError extends Error {
   }
 }
 
+export function getNextAvailableInstanceNumber(
+  templateName: string,
+  existingNames: string[],
+  strategy: 'GAP_FILL' | 'MAX_PLUS_ONE' = 'GAP_FILL'
+): { sequenceNumber: number; displayName: string } {
+  const escaped = templateName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`^${escaped}\\s+(\\d+)$`, 'i');
+
+  const usedNumbers = new Set<number>();
+  let maxNum = 0;
+
+  for (const rawName of existingNames) {
+    const match = regex.exec((rawName || '').trim());
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > 0) {
+        usedNumbers.add(num);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+  }
+
+  if (strategy === 'GAP_FILL') {
+    let candidate = 1;
+    while (usedNumbers.has(candidate)) {
+      candidate++;
+    }
+    return {
+      sequenceNumber: candidate,
+      displayName: `${templateName.trim()} ${candidate}`,
+    };
+  }
+
+  const nextNum = maxNum + 1;
+  return {
+    sequenceNumber: nextNum,
+    displayName: `${templateName.trim()} ${nextNum}`,
+  };
+}
+
 export function normalizeCreateFloorInput(input: CreateFloorInput): CreateFloorInput {
   return {
     name: requireNonBlank(input.name, 'Floor name'),

@@ -214,9 +214,7 @@ describe("MF-68: Show/Hide Password Eye Toggle Consistency Across All Password I
 
       assert.ok(content.includes("PasswordInput"), "StaffManagement must import and use PasswordInput");
       
-      // Check Add Staff modal
-      assert.ok(content.includes("addPassword"), "Add Staff modal password state must exist");
-      // Check Edit Staff modal
+      // Check Edit Staff modal password state
       assert.ok(content.includes("managePassword"), "Edit Staff modal password state must exist");
 
       // Verify no raw type="password" inputs remain

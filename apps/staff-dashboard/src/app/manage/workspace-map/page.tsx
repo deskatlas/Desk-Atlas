@@ -18,7 +18,7 @@ import {
   type PublishedFloorMap,
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
-import { WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling } from '@deskatlas/ui';
+import { WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling, MarqueeLabel } from '@deskatlas/ui';
 import {
   fetchPublishedMap,
   updateStaffInstanceOperationalStatus,
@@ -726,10 +726,11 @@ export default function WorkspaceMapPage() {
                         }}
                       >
                         {isWorkspace ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', gap: '2px' }}>
-                            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {displayName}
-                            </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', maxWidth: '100%', minWidth: 0, gap: '2px' }}>
+                            <MarqueeLabel
+                              text={displayName}
+                              style={{ maxWidth: '100%', fontSize: '11px', fontWeight: 700 }}
+                            />
                             {isOccupied && (
                               <WorkspaceCountdownBadge
                                 bookingEndAt={occupancy.bookingEndAt}

@@ -1,20 +1,51 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDashboardStats } from "../hooks/useDashboardStats";
 import { useAlerts } from "../../alerts";
 import { format } from "date-fns";
 import { AlertTriangle, Clock, ArrowUpRight, CheckCircle2 } from "lucide-react";
 import { ExtendReservationModal } from "../../reservations/components/ExtendReservationModal";
+import { UrgentClosureImpactBanner } from "@deskatlas/ui";
 import type { BookingEndAlert } from "@deskatlas/domain";
 
 export function DashboardPage() {
   const { data, loading, error, refetch } = useDashboardStats();
-  const { rawAlerts, fetchAlerts } = useAlerts();
+  const { rawAlerts, fetchAlerts, thresholdMinutes } = useAlerts();
   const [isTriageModalOpen, setIsTriageModalOpen] = useState<boolean>(false);
   const [selectedExtendAlert, setSelectedExtendAlert] = useState<BookingEndAlert | null>(null);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
   const [triageFeedback, setTriageFeedback] = useState<string | null>(null);
+  const [closureAlerts, setClosureAlerts] = useState<{
+    impactedCount: number;
+    closureDateRange?: string | null;
+    closureReason?: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchClosureAlerts = async () => {
+      try {
+        const res = await fetch("/api/operations/closure-alerts", { cache: "no-store" });
+        if (res.ok) {
+          const json = await res.json();
+          if (!isCancelled) {
+            setClosureAlerts(json);
+          }
+        }
+      } catch {
+        // silent fail on poll
+      }
+    };
+
+    fetchClosureAlerts();
+    const interval = setInterval(fetchClosureAlerts, 30000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   if (loading && !data) {
     return (
@@ -110,6 +141,15 @@ export function DashboardPage() {
         <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#FFF1F2", border: "1px solid #FECDD3", color: "#9F1239", fontSize: "13px", marginBottom: "18px" }}>
           {error}
         </div>
+      )}
+
+      {closureAlerts && closureAlerts.impactedCount > 0 && (
+        <UrgentClosureImpactBanner
+          impactedCount={closureAlerts.impactedCount}
+          closureDateRange={closureAlerts.closureDateRange}
+          closureReason={closureAlerts.closureReason}
+          reviewUrl="/manage/reservations?filter=closure_impacted"
+        />
       )}
 
       {/* Top 2 Operational Metric Cards */}
@@ -307,7 +347,7 @@ export function DashboardPage() {
                   borderRadius: "9999px",
                 }}
               >
-                &lt; 15m remaining
+                &lt; {thresholdMinutes}m remaining
               </span>
             </div>
 

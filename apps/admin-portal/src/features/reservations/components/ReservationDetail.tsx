@@ -649,6 +649,7 @@ export function ReservationDetail({ id }: { id: string }) {
         body: JSON.stringify({
           actorUserId: user?.id || "admin",
           actorRole: "ADMIN",
+          actorName: user?.email ? user.email.split('@')[0] : "Admin",
           notes: flagManualNotes,
         }),
       });

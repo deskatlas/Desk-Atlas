@@ -285,19 +285,40 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
       const rangeStartIso = now.toISOString();
       const rangeEndIso = endWindow.toISOString();
 
+      let isVenueClosed = false;
+      let closureReason: string | null = null;
+      try {
+        const businessBlocks = await repository.listScheduleBlocks('', rangeStartIso, rangeEndIso);
+        const activeClosure = businessBlocks.find(
+          (b) => b.scope === 'BUSINESS' && (b.blockType === 'CLOSURE' || b.blockType === 'MAINTENANCE')
+        );
+        if (activeClosure) {
+          isVenueClosed = true;
+          closureReason = activeClosure.reason || 'Facility Closure';
+        }
+      } catch {
+        // Safe fallback
+      }
+
+      if (query?.durationMinutes && query.durationMinutes > 0 && isVenueClosed && repository.listOccupiedInstances) {
+        const ids = await repository.listOccupiedInstances(rangeStartIso, rangeEndIso);
+        const details = ids.map((id) => ({ workspaceInstanceId: id, bookingEndAt: null }));
+        return { occupiedInstanceIds: ids, occupiedDetails: details, isVenueClosed, closureReason, asOf: rangeStartIso };
+      }
+
       if (repository.listOccupiedInstanceDetails) {
         const details = await repository.listOccupiedInstanceDetails(rangeStartIso, rangeEndIso);
         const ids = details.map((d) => d.workspaceInstanceId);
-        return { occupiedInstanceIds: ids, occupiedDetails: details, asOf: rangeStartIso };
+        return { occupiedInstanceIds: ids, occupiedDetails: details, isVenueClosed, closureReason, asOf: rangeStartIso };
       }
 
       if (repository.listOccupiedInstances) {
         const ids = await repository.listOccupiedInstances(rangeStartIso, rangeEndIso);
         const details = ids.map((id) => ({ workspaceInstanceId: id, bookingEndAt: null }));
-        return { occupiedInstanceIds: ids, occupiedDetails: details, asOf: rangeStartIso };
+        return { occupiedInstanceIds: ids, occupiedDetails: details, isVenueClosed, closureReason, asOf: rangeStartIso };
       }
 
-      return { occupiedInstanceIds: [], occupiedDetails: [], asOf: rangeStartIso };
+      return { occupiedInstanceIds: [], occupiedDetails: [], isVenueClosed, closureReason, asOf: rangeStartIso };
     },
 
     async getNextUpcomingBooking(

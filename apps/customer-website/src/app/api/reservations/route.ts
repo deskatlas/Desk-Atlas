@@ -45,6 +45,10 @@ class CustomerWorkspaceRepo {
   }
 }
 
+function delayAsync(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: CreateReservationRequest = await request.json();
@@ -131,38 +135,58 @@ export async function POST(request: NextRequest) {
     const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, reservation.referenceCode);
     const emailService = createTransactionalEmailService();
 
+    // 1. Immediately dispatch Payment Link Email
     if (reservation.paymentSession) {
-      await emailService.sendPaymentLinkEmail({
-        to: reservation.customerEmail,
-        customerFirstName: reservation.customerFirstName,
-        customerLastName: reservation.customerLastName,
-        referenceCode: reservation.referenceCode,
-        amountDue: reservation.amountDue,
-        currency: reservation.currency,
-        paymentUrl: reservation.paymentSession.paymentUrl,
-        expiresAt: reservation.paymentSession.expiresAt,
-        expiryMinutes: reservation.paymentSession.expiryMinutes,
-        trackingUrl,
-        workspaceTemplateName: reservation.candidates?.[0]?.workspaceTemplateName,
-        bookingDate: reservation.candidates?.[0]?.startAt,
-      });
+      try {
+        await emailService.sendPaymentLinkEmail({
+          to: reservation.customerEmail,
+          customerFirstName: reservation.customerFirstName,
+          customerLastName: reservation.customerLastName,
+          referenceCode: reservation.referenceCode,
+          amountDue: reservation.amountDue,
+          currency: reservation.currency,
+          paymentUrl: reservation.paymentSession.paymentUrl,
+          expiresAt: reservation.paymentSession.expiresAt,
+          expiryMinutes: reservation.paymentSession.expiryMinutes,
+          trackingUrl,
+          workspaceTemplateName: reservation.candidates?.[0]?.workspaceTemplateName,
+          bookingDate: reservation.candidates?.[0]?.startAt,
+        });
+      } catch (err: unknown) {
+        console.error('[ReservationCreation] Failed to dispatch payment email:', err);
+      }
     }
 
-    await emailService.sendReservationTrackingEmail({
-      to: reservation.customerEmail,
-      customerFirstName: reservation.customerFirstName,
-      customerLastName: reservation.customerLastName,
-      referenceCode: reservation.referenceCode,
-      trackingUrl,
-      candidates: reservation.candidates?.map((c) => ({
-        rank: c.rank,
-        workspaceDisplayName: c.workspaceDisplayName,
-        workspaceTemplateName: c.workspaceTemplateName,
-        floorName: c.floorName,
-        startAt: c.startAt,
-        endAt: c.endAt,
-      })),
-    });
+    // 2. Schedule Reservation Status Email with 5-Second Delay
+    const dispatchTrackingNotice = async () => {
+      try {
+        // 5-second chronological buffer after payment email
+        if (reservation.paymentSession) {
+          await delayAsync(5000);
+        }
+
+        await emailService.sendReservationTrackingEmail({
+          to: reservation.customerEmail,
+          customerFirstName: reservation.customerFirstName,
+          customerLastName: reservation.customerLastName,
+          referenceCode: reservation.referenceCode,
+          trackingUrl,
+          candidates: reservation.candidates?.map((c) => ({
+            rank: c.rank,
+            workspaceDisplayName: c.workspaceDisplayName,
+            workspaceTemplateName: c.workspaceTemplateName,
+            floorName: c.floorName,
+            startAt: c.startAt,
+            endAt: c.endAt,
+          })),
+        });
+      } catch (err: unknown) {
+        console.error('[ReservationCreation] Failed to dispatch delayed tracking email:', err);
+      }
+    };
+
+    // Execute asynchronously in background; do not block HTTP 201 response
+    void dispatchTrackingNotice();
 
     return NextResponse.json(reservation, { status: 201 });
   } catch (error) {

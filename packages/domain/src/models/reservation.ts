@@ -622,7 +622,16 @@ export interface FlagClosureManualResolutionInput {
   reservationId: string;
   actorUserId: string;
   actorRole: string;
+  actorName?: string;
   notes?: string;
 }
+
+export interface ClosureAlertsResult {
+  impactedCount: number;
+  closureDateRange?: string | null;
+  closureReason?: string | null;
+  reservations: ClosureImpactedReservationSummary[];
+}
+
 
 

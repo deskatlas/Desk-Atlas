@@ -91,6 +91,8 @@ export async function fetchOccupiedInstances(input?: {
 }): Promise<{
   occupiedInstanceIds: string[];
   occupiedDetails?: Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>;
+  isVenueClosed?: boolean;
+  closureReason?: string | null;
   asOf: string;
 }> {
   const params = new URLSearchParams({
@@ -114,6 +116,8 @@ export async function fetchOccupiedInstances(input?: {
   return body as {
     occupiedInstanceIds: string[];
     occupiedDetails?: Array<{ workspaceInstanceId: string; bookingEndAt: string | null }>;
+    isVenueClosed?: boolean;
+    closureReason?: string | null;
     asOf: string;
   };
 }

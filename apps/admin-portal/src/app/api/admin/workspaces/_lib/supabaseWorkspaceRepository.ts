@@ -314,7 +314,7 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
     );
     if (!existing) throw new WorkspaceValidationError(`Instance not found: ${id}`);
 
-    const candidates = await this.request<any[]>(
+    const candidates = await this.request<Array<{ id: string }>>(
       `/reservation_candidates?workspace_instance_id=eq.${encodeURIComponent(id)}&select=id&limit=1`
     );
 
@@ -323,15 +323,18 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       return { deleted: false, archived: true, instance: deactivated };
     }
 
-    try {
-      await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
-      return { deleted: true, archived: false };
-    } catch {
-      const deactivated = await this.deactivateInstance(id);
-      return { deleted: false, archived: true, instance: deactivated };
-    }
+    await this.request<unknown>(
+      `/map_elements?workspace_instance_id=eq.${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ workspace_instance_id: null }),
+      }
+    ).catch(() => null);
+
+    await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    return { deleted: true, archived: false };
   }
 
   async getMapPlacedInstanceIds(): Promise<Set<string>> {

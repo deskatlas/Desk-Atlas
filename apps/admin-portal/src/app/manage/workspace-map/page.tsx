@@ -16,7 +16,7 @@ import {
   getContrastColor,
   type WorkspaceStatusColors,
 } from '@deskatlas/domain';
-import { WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling } from '@deskatlas/ui';
+import { WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling, MarqueeLabel } from '@deskatlas/ui';
 import { useRealtimeTable } from '@/app/lib/useRealtimeTable';
 import { ExtendReservationModal } from '@/features/reservations/components/ExtendReservationModal';
 import { useAuth } from '@/features/auth';
@@ -388,6 +388,7 @@ export default function WorkspaceMapPage() {
   const elements = (publishedMap?.elements || []).filter((el: any) => {
     if (el.elementRole === 'WORKSPACE' || el.workspaceInstanceId) {
       const inst = instances.find((ins) => ins.id === el.workspaceInstanceId);
+      if (inst && inst.operationalStatus === 'INACTIVE') return false;
       const tmpl = inst
         ? (inst.template || templates.find((t) => t.id === inst.templateId))
         : templates.find((t) => t.id === el.properties?.templateId || t.name === el.properties?.template);
@@ -661,10 +662,11 @@ export default function WorkspaceMapPage() {
                         }}
                       >
                         {isWorkspace ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', maxWidth: '100%', gap: '2px' }}>
-                            <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {displayName}
-                            </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', maxWidth: '100%', minWidth: 0, gap: '2px' }}>
+                            <MarqueeLabel
+                              text={displayName}
+                              style={{ maxWidth: '100%', fontSize: '11px', fontWeight: 700 }}
+                            />
                             {isOccupied && (
                               <WorkspaceCountdownBadge
                                 bookingEndAt={occupancy.bookingEndAt}

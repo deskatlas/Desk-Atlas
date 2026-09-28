@@ -92,7 +92,8 @@ export class AdminReservationService {
       if (
         r.reservationStatus === "CANCELLED" ||
         r.paymentAttemptStatus === "REJECTED" ||
-        r.status.toLowerCase() === "rejected"
+        r.status.toLowerCase() === "rejected" ||
+        r.reservationStatus === "REJECTED"
       ) {
         return false;
       }
@@ -101,6 +102,10 @@ export class AdminReservationService {
       if (r.endAt) {
         const endMs = new Date(r.endAt).getTime();
         if (!isNaN(endMs) && endMs <= nowMs) {
+          // If customer checked in, session completed upon end time
+          if (r.checkedInAt) {
+            return false;
+          }
           return true;
         }
       }
@@ -123,9 +128,15 @@ export class AdminReservationService {
     };
 
     const mappedList = list.map((r) => {
+      const endMs = r.endAt ? new Date(r.endAt).getTime() : NaN;
+      const hasEnded = !isNaN(endMs) && endMs <= nowMs;
+      const hasCheckedIn = Boolean(r.checkedInAt);
+
       if (
         r.paymentAttemptStatus === "REJECTED" ||
-        (r.reservationStatus === "CANCELLED" && r.paymentAttemptStatus === "REJECTED")
+        (r.reservationStatus === "CANCELLED" && r.paymentAttemptStatus === "REJECTED") ||
+        r.reservationStatus === "REJECTED" ||
+        r.status.toLowerCase() === "rejected"
       ) {
         const pres = mapStatusPresentation(r.reservationStatus, "REJECTED");
         return {
@@ -138,9 +149,25 @@ export class AdminReservationService {
         };
       }
       if (
+        r.reservationStatus === "CANCELLED" ||
+        r.status.toLowerCase() === "cancelled"
+      ) {
+        const pres = mapStatusPresentation("CANCELLED");
+        return {
+          ...r,
+          reservationStatus: "CANCELLED" as ReservationStatus,
+          status: pres.label,
+          statusStyle: pres.style,
+          mark: pres.mark,
+          paymentStatus: pres.payment,
+          paymentColor: pres.paymentColor,
+        };
+      }
+      if (
         r.reservationStatus === "COMPLETED" ||
         r.status.toLowerCase().includes("completed") ||
-        Boolean(r.checkedOutAt)
+        Boolean(r.checkedOutAt) ||
+        (hasCheckedIn && hasEnded)
       ) {
         const pres = mapStatusPresentation("COMPLETED");
         return {
@@ -184,7 +211,9 @@ export class AdminReservationService {
       filtered = filtered.filter(
         (r) =>
           r.reservationStatus !== "EXPIRED" &&
-          (r.reservationStatus === "CHECKED_IN" || (r.checkedInAt !== null && r.checkedOutAt === null))
+          r.reservationStatus !== "COMPLETED" &&
+          r.reservationStatus !== "CANCELLED" &&
+          (r.reservationStatus === "CHECKED_IN" || (r.checkedInAt !== null && r.checkedOutAt === null && (!r.endAt || new Date(r.endAt).getTime() > nowMs)))
       );
     } else if (filter === "upcoming") {
       filtered = filtered.filter((r) => {
@@ -270,16 +299,15 @@ export class AdminReservationService {
       };
     }
 
-    const isCompleted =
-      detail.reservationStatus === "COMPLETED" ||
-      detail.status.toLowerCase().includes("completed") ||
-      Boolean(detail.checkedOutAt);
+    const isCancelled =
+      detail.reservationStatus === "CANCELLED" ||
+      detail.status?.toLowerCase() === "cancelled";
 
-    if (isCompleted) {
-      const pres = mapStatusPresentation("COMPLETED");
+    if (isCancelled) {
+      const pres = mapStatusPresentation("CANCELLED");
       return {
         ...detail,
-        reservationStatus: "COMPLETED",
+        reservationStatus: "CANCELLED",
         status: pres.label,
         statusStyle: pres.style,
         mark: pres.mark,
@@ -296,10 +324,32 @@ export class AdminReservationService {
       detail.candidates?.[0]?.endAt ??
       null;
 
+    const endMs = effectiveEndAt ? new Date(effectiveEndAt).getTime() : NaN;
+    const hasEnded = !isNaN(endMs) && endMs <= nowMs;
+    const hasCheckedIn = Boolean(detail.checkedInAt);
+
+    const isCompleted =
+      detail.reservationStatus === "COMPLETED" ||
+      detail.status.toLowerCase().includes("completed") ||
+      Boolean(detail.checkedOutAt) ||
+      (hasCheckedIn && hasEnded);
+
+    if (isCompleted) {
+      const pres = mapStatusPresentation("COMPLETED");
+      return {
+        ...detail,
+        reservationStatus: "COMPLETED",
+        status: pres.label,
+        statusStyle: pres.style,
+        mark: pres.mark,
+        paymentStatus: `${pres.payment} (${formatAmountWithCurrency(detail.amountDue, detail.currency)})`,
+        paymentColor: pres.paymentColor,
+      };
+    }
+
     const isEndTimeExpired = Boolean(
-      effectiveEndAt &&
-      !isNaN(new Date(effectiveEndAt).getTime()) &&
-      new Date(effectiveEndAt).getTime() <= nowMs &&
+      hasEnded &&
+      !hasCheckedIn &&
       detail.reservationStatus !== "CANCELLED"
     );
 
@@ -829,7 +879,31 @@ export class AdminReservationService {
     if (!this.repository.logClosurePhoneCall) {
       throw new AdminReservationError("Logging closure phone calls is not supported by repository.");
     }
-    return this.repository.logClosurePhoneCall(input);
+    const result = await this.repository.logClosurePhoneCall(input);
+    if (this.emailService && result?.success && result?.reservation?.customerEmail) {
+      try {
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        await this.emailService.sendClosureOutreachEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          closureDate: result.reservation.closureDate,
+          closureReason: result.reservation.closureReason,
+          workspaceDisplayName: assigned?.workspaceDisplayName || undefined,
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          staffNotes: input.notes,
+          staffName: input.staffName,
+          outreachStatus: input.outreachStatus,
+          trackingUrl: result.reservation.referenceCode
+            ? `http://localhost:3001/track?code=${encodeURIComponent(result.reservation.referenceCode)}&remedy=closure`
+            : undefined,
+        });
+      } catch (emailErr) {
+        console.warn("Failed to dispatch closure outreach email:", emailErr);
+      }
+    }
+    return result;
   }
 
   async flagClosureManualResolution(input: FlagClosureManualResolutionInput): Promise<{
@@ -840,7 +914,41 @@ export class AdminReservationService {
     if (!this.repository.flagClosureManualResolution) {
       throw new AdminReservationError("Flagging closure manual resolution is not supported by repository.");
     }
-    return this.repository.flagClosureManualResolution(input);
+    const result = await this.repository.flagClosureManualResolution(input);
+    if (this.emailService && result?.success && result?.reservation?.customerEmail) {
+      try {
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        await this.emailService.sendClosureManualResolutionEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          closureDate: result.reservation.closureDate,
+          closureReason: result.reservation.closureReason,
+          workspaceDisplayName: assigned?.workspaceDisplayName || undefined,
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          notes: input.notes,
+          trackingUrl: result.reservation.referenceCode
+            ? `http://localhost:3001/track?code=${encodeURIComponent(result.reservation.referenceCode)}&remedy=closure`
+            : undefined,
+        });
+      } catch (emailErr) {
+        console.warn("Failed to dispatch closure manual resolution email:", emailErr);
+      }
+    }
+    return result;
+  }
+
+  async getClosureAlerts(): Promise<import("../models/reservation").ClosureAlertsResult> {
+    if (!this.repository.getClosureAlerts) {
+      return {
+        impactedCount: 0,
+        closureDateRange: null,
+        closureReason: null,
+        reservations: [],
+      };
+    }
+    return this.repository.getClosureAlerts();
   }
 }
 

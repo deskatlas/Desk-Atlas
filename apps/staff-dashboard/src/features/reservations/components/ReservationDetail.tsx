@@ -290,6 +290,7 @@ export function ReservationDetail({ id }: { id: string }) {
         body: JSON.stringify({
           actorUserId: user?.id || "staff",
           actorRole: "STAFF",
+          actorName: user?.email ? user.email.split('@')[0] : "Staff",
           notes: flagManualNotes,
         }),
       });

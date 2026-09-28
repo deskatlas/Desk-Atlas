@@ -26,6 +26,7 @@ import {
   ClosureImpactedReservationSummary,
   LogClosurePhoneCallInput,
   FlagClosureManualResolutionInput,
+  ClosureAlertsResult,
 } from "../models/reservation";
 import {
   AdminReservationRepository,
@@ -4597,8 +4598,9 @@ export class ReservationSupabaseRepository
 
     const nowIso = new Date().toISOString();
     let newNotes = r.manual_resolution_notes ?? null;
+    const displayName = input.actorName || (input.actorRole === "SUPERADMIN" ? "Super Admin" : "Staff Member");
     if (input.notes) {
-      const noteEntry = `[${nowIso}] Flagged for Manual Resolution by ${input.actorUserId} (${input.actorRole}): ${input.notes}`;
+      const noteEntry = `[${nowIso}] Flagged for Manual Resolution by ${displayName} (${input.actorRole}): ${input.notes}`;
       newNotes = newNotes ? `${newNotes}\n${noteEntry}` : noteEntry;
     }
 
@@ -4621,6 +4623,7 @@ export class ReservationSupabaseRepository
         actor_user_id: input.actorUserId,
         metadata: {
           notes: input.notes ?? null,
+          staff_name: displayName,
           flagged_at: nowIso,
         },
       }),
@@ -4635,6 +4638,56 @@ export class ReservationSupabaseRepository
       success: true,
       reservation: detail,
       message: "Reservation flagged for manual resolution",
+    };
+  }
+
+  async getClosureAlerts(): Promise<ClosureAlertsResult> {
+    const rows = await this.request<any[]>(
+      `/reservations?select=id,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,closure_reason,closure_date,reservation_candidates(id,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(id,display_name,instance_code))&is_closure_impacted=eq.true&closure_impact_status=in.(AFFECTED_PENDING_ACTION,MANUAL_RESOLUTION_REQUIRED)&status=in.(PENDING,CONFIRMED,CHECKED_IN)`
+    ).catch(() => []);
+
+    if (!rows || rows.length === 0) {
+      return {
+        impactedCount: 0,
+        closureDateRange: null,
+        closureReason: null,
+        reservations: [],
+      };
+    }
+
+    const closureReasons = Array.from(new Set(rows.map((r) => r.closure_reason || "Facility Closure").filter(Boolean)));
+    const closureDates = Array.from(new Set(rows.map((r) => r.closure_date).filter(Boolean)));
+    const closureDateRange = closureDates.length > 0 ? closureDates.join(", ") : "Upcoming Closure";
+    const closureReason = closureReasons.length > 0 ? closureReasons.join(", ") : "Facility Closure";
+
+    const colliding: ClosureImpactedReservationSummary[] = rows.map((r) => {
+      const candidates = r.reservation_candidates ?? [];
+      const assigned = candidates.find((c: any) => c.is_assigned) ?? candidates[0];
+      const inst = assigned?.workspace_instances;
+      return {
+        reservationId: r.id,
+        referenceCode: r.reference_code,
+        customerName: `${r.customer_first_name || ""} ${r.customer_last_name || ""}`.trim(),
+        customerFirstName: r.customer_first_name,
+        customerLastName: r.customer_last_name,
+        customerEmail: r.customer_email,
+        customerContactNumber: r.customer_contact_number ?? null,
+        workspaceDisplayName: inst?.display_name || inst?.instance_code || assigned?.workspace_instance_id || "Workspace",
+        workspaceInstanceCode: inst?.instance_code ?? null,
+        startAt: assigned?.start_at || "",
+        endAt: assigned?.end_at || "",
+        amountDue: Number(r.amount_due ?? 0),
+        currency: r.currency || "PHP",
+        status: r.status,
+        closureImpactStatus: r.closure_impact_status ?? "AFFECTED_PENDING_ACTION",
+      };
+    });
+
+    return {
+      impactedCount: colliding.length,
+      closureDateRange,
+      closureReason,
+      reservations: colliding,
     };
   }
 }

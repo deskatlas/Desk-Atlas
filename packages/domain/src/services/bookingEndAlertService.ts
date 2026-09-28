@@ -43,6 +43,8 @@ export interface ActiveBookingCandidate {
   }> | null;
   endAt?: string | null;
   startAt?: string | null;
+  bookingEndAt?: string | null;
+  bookingStartAt?: string | null;
   schedule?: {
     startAt?: string | null;
     endAt?: string | null;
@@ -54,6 +56,7 @@ export interface ActiveBookingCandidate {
  */
 export function resolveBookingEndTime(booking: ActiveBookingCandidate): string | null {
   if (booking.endAt) return booking.endAt;
+  if (booking.bookingEndAt) return booking.bookingEndAt;
   if (booking.schedule?.endAt) return booking.schedule.endAt;
   if (booking.assignedCandidate?.endAt) return booking.assignedCandidate.endAt;
   if (Array.isArray(booking.candidates) && booking.candidates.length > 0) {
@@ -69,6 +72,7 @@ export function resolveBookingEndTime(booking: ActiveBookingCandidate): string |
  */
 export function resolveBookingStartTime(booking: ActiveBookingCandidate): string | null {
   if (booking.startAt) return booking.startAt;
+  if (booking.bookingStartAt) return booking.bookingStartAt;
   if (booking.schedule?.startAt) return booking.schedule.startAt;
   if (booking.assignedCandidate?.startAt) return booking.assignedCandidate.startAt;
   if (Array.isArray(booking.candidates) && booking.candidates.length > 0) {

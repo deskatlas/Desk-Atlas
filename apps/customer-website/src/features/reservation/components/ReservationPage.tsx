@@ -46,7 +46,7 @@ import {
   fetchTimeAvailability,
   fetchTemplateAvailability,
 } from "@/app/lib/availabilityApi";
-import { handleNumericKeyDown } from "@deskatlas/ui";
+import { handleNumericKeyDown, MarqueeLabel } from "@deskatlas/ui";
 
 import type { RateType } from "@deskatlas/domain";
 import {
@@ -1769,6 +1769,9 @@ export function ReservationPage() {
                                 borderColor = "#cbd5e1";
                                 bg = "#f8fafc";
                                 textColor = "#94a3b8";
+                              } else {
+                                bg = statusColors.available;
+                                textColor = getContrastColor(bg);
                               }
 
                               const wsModel = workspaces.find(
@@ -1808,9 +1811,10 @@ export function ReservationPage() {
                                         : "0 1px 3px rgba(0, 0, 0, 0.05)",
                                     }}
                                   >
-                                    <span className="max-w-full truncate text-[11px] font-bold leading-tight">
-                                      {displayName}
-                                    </span>
+                                    <MarqueeLabel
+                                      text={displayName}
+                                      style={{ fontSize: "11px", fontWeight: 700, lineHeight: 1.2, maxWidth: "100%" }}
+                                    />
                                   </button>
                                 </div>
                               );

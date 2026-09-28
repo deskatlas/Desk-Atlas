@@ -39,7 +39,6 @@ export function StaffManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [addName, setAddName] = useState<string>('');
   const [addEmail, setAddEmail] = useState<string>('');
-  const [addPassword, setAddPassword] = useState<string>('');
   const [addRole, setAddRole] = useState<StaffRole>('STAFF');
   const [addLoading, setAddLoading] = useState<boolean>(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -115,7 +114,6 @@ export function StaffManagement() {
   function openAddModal() {
     setAddName('');
     setAddEmail('');
-    setAddPassword('');
     setAddRole('STAFF');
     setAddError(null);
     setCreatedInvitation(null);
@@ -252,13 +250,6 @@ export function StaffManagement() {
       setAddError('Email is required.');
       return;
     }
-    if (addPassword) {
-      const validation = validatePassword(addPassword);
-      if (!validation.isValid) {
-        setAddError(`Password does not meet requirements: ${validation.errors.join(' ')}`);
-        return;
-      }
-    }
 
     setAddLoading(true);
     setAddError(null);
@@ -269,7 +260,6 @@ export function StaffManagement() {
         body: JSON.stringify({
           displayName: addName.trim(),
           email: addEmail.trim(),
-          password: addPassword || undefined,
           role: isSuperAdmin ? addRole : 'STAFF',
           actorUserId: user?.id,
           actorRole: 'ADMIN',
@@ -594,8 +584,8 @@ export function StaffManagement() {
                 <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>
                   {isSuperAdmin ? 'Invite Team Member (Staff / Admin)' : 'Invite Staff Member'}
                 </h2>
-                <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 18px' }}>
-                  Sends an invitation email with a confirmation link and generates a 2FA activation code.
+                <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '0 0 16px' }}>
+                  Invite a new team member. An invitation link will be sent to their email address where they will securely establish their password.
                 </p>
 
                 {addError && (
@@ -627,17 +617,6 @@ export function StaffManagement() {
                       required
                       style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
                     />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>INITIAL PASSWORD (OPTIONAL)</label>
-                    <PasswordInput
-                      value={addPassword}
-                      onChange={(e) => setAddPassword(e.target.value)}
-                      placeholder="Leave blank or minimum 8 characters"
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                    {addPassword ? <PasswordRequirementsChecklist password={addPassword} /> : null}
                   </div>
 
                   <div>

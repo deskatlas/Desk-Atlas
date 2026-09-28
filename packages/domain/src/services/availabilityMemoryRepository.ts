@@ -78,11 +78,19 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
     this.scheduleBlocks.push({ ...block });
   }
 
+  addScheduleBlock(block: ScheduleBlock) {
+    this.seedScheduleBlock(block);
+  }
+
   seedBlockingReservation(
     workspaceInstanceId: string,
     reservation: BlockingReservationWindow
   ) {
     this.reservations.push({ workspaceInstanceId, ...reservation });
+  }
+
+  addReservation(reservation: BlockingReservationWindow & { workspaceInstanceId: string }) {
+    this.seedBlockingReservation(reservation.workspaceInstanceId, reservation);
   }
 
   async getWorkspaceInstance(instanceId: string): Promise<WorkspaceInstanceDetails | null> {
@@ -157,13 +165,7 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
     }
     for (const block of this.scheduleBlocks) {
       if (overlaps(block.startAt, block.endAt, rangeStartIso, rangeEndIso)) {
-        if (block.scope === 'BUSINESS') {
-          for (const inst of this.instances.values()) {
-            if (!detailsMap.has(inst.id)) {
-              detailsMap.set(inst.id, block.endAt);
-            }
-          }
-        } else if (block.workspaceInstanceId) {
+        if (block.workspaceInstanceId) {
           if (!detailsMap.has(block.workspaceInstanceId)) {
             detailsMap.set(block.workspaceInstanceId, block.endAt);
           }
@@ -181,7 +183,15 @@ export class InMemoryAvailabilityRepository implements AvailabilityRepository {
     rangeEndIso: string
   ): Promise<string[]> {
     const details = await this.listOccupiedInstanceDetails(rangeStartIso, rangeEndIso);
-    return details.map((d) => d.workspaceInstanceId);
+    const ids = new Set(details.map((d) => d.workspaceInstanceId));
+    for (const block of this.scheduleBlocks) {
+      if (block.scope === 'BUSINESS' && overlaps(block.startAt, block.endAt, rangeStartIso, rangeEndIso)) {
+        for (const inst of this.instances.values()) {
+          ids.add(inst.id);
+        }
+      }
+    }
+    return Array.from(ids);
   }
 }
 

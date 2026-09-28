@@ -64,6 +64,8 @@ export interface OccupiedInstanceDetail {
 export interface OccupiedInstancesResult {
   occupiedInstanceIds: string[];
   occupiedDetails?: OccupiedInstanceDetail[];
+  isVenueClosed?: boolean;
+  closureReason?: string | null;
   asOf: string;
 }
 

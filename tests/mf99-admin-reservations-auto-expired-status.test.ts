@@ -143,7 +143,7 @@ describe("MF-99: Admin Reservations Auto-Expired Status Upon End Time", () => {
     assert.ok(detail.timeline.some((t) => t.includes("Booking period ended (Expired)")));
   });
 
-  it("marks checked-in reservation as EXPIRED once end time passes (autocheckout)", async () => {
+  it("marks checked-in reservation as COMPLETED once end time passes (autocheckout)", async () => {
     const ctx = await setupFixture();
 
     const created = await ctx.reservationService.createReservation({
@@ -187,20 +187,24 @@ describe("MF-99: Admin Reservations Auto-Expired Status Upon End Time", () => {
     const checkedInAfter = await ctx.adminReservationService.listReservations("checked_in");
     assert.equal(checkedInAfter.total, 0);
 
-    // Expired filter includes it
+    // Expired filter excludes it (because customer checked in)
     const expiredAfter = await ctx.adminReservationService.listReservations("expired");
-    assert.equal(expiredAfter.total, 1);
-    assert.equal(expiredAfter.reservations[0].referenceCode, created.referenceCode);
-    assert.equal(expiredAfter.reservations[0].reservationStatus, "EXPIRED");
-    assert.equal(expiredAfter.reservations[0].status, "Expired");
+    assert.equal(expiredAfter.total, 0);
 
-    // Detail view reflects EXPIRED
+    // All filter includes it with Completed status
+    const allAfter = await ctx.adminReservationService.listReservations("all");
+    assert.equal(allAfter.total, 1);
+    assert.equal(allAfter.reservations[0].referenceCode, created.referenceCode);
+    assert.equal(allAfter.reservations[0].reservationStatus, "COMPLETED");
+    assert.equal(allAfter.reservations[0].status, "Completed");
+    assert.equal(allAfter.reservations[0].mark, "✓");
+
+    // Detail view reflects COMPLETED
     const detail = await ctx.adminReservationService.getReservationDetail(created.id);
     assert.ok(detail);
-    assert.equal(detail.reservationStatus, "EXPIRED");
-    assert.equal(detail.status, "Expired");
-    assert.equal(detail.expiryReason, "Booking period ended");
-    assert.ok(detail.timeline.some((t) => t.includes("Booking period ended (Expired)")));
+    assert.equal(detail.reservationStatus, "COMPLETED");
+    assert.equal(detail.status, "Completed");
+    assert.equal(detail.mark, "✓");
   });
 
   it("does not expire reservations whose end time is in the future", async () => {

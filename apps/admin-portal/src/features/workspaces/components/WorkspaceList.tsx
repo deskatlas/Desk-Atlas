@@ -1064,7 +1064,7 @@ export function WorkspaceList() {
                     </div>
                   </div>
 
-                  <div className="mobile-grid-1" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div className="mobile-grid-1" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>Default Shape</label>
                       <select 
@@ -1077,24 +1077,16 @@ export function WorkspaceList() {
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '12px 14px', fontSize: '12px', color: 'var(--da-text-secondary)', lineHeight: 1.5, display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <span style={{ fontSize: '16px', lineHeight: 1 }}>🎨</span>
                     <div>
-                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: 'var(--da-text-primary)', marginBottom: '6px' }}>Default Color</label>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <input 
-                          type="color"
-                          value={defaultColor}
-                          onChange={(e) => setDefaultColor(e.target.value)}
-                          style={{ height: '42px', width: '56px', border: '1px solid var(--da-border)', borderRadius: '8px', background: '#fff', cursor: 'pointer', padding: '2px' }}
-                        />
-                        <input 
-                          type="text"
-                          value={defaultColor}
-                          onChange={(e) => setDefaultColor(e.target.value)}
-                          style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--da-border)', fontSize: '14px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
-                        />
-                      </div>
+                      <span style={{ fontWeight: 700, color: 'var(--da-text-primary)' }}>Standardized Operational Status Colors: </span>
+                      Workspace colors are standardized across all floor maps based on real-time operational status (Available, Occupied, Maintenance, Unavailable). Configure these status colors in Settings.
                     </div>
                   </div>
+
 
                   {/* Pass Pricing (Optional Tiers) */}
                   <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '16px', background: '#FAFAFA' }}>

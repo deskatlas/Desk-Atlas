@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminReservationService } from "../../../_lib/reservationService";
+import { getAdminReservationService } from "../../_lib/reservationService";
 
 export const runtime = "nodejs";
 

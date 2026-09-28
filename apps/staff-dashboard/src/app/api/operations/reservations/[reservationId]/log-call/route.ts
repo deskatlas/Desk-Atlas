@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createStaffOperationsService,
   ReservationSupabaseRepository,
+  createTransactionalEmailService,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -22,7 +23,11 @@ export async function POST(
     const outreachStatus = body.outreachStatus || "LEFT_VOICEMAIL";
     const notes = body.notes || "";
 
-    const service = createStaffOperationsService(new ReservationSupabaseRepository());
+    const service = createStaffOperationsService(
+      new ReservationSupabaseRepository(),
+      undefined,
+      createTransactionalEmailService()
+    );
     const result = await service.logClosurePhoneCall({
       reservationId: reservationId.trim(),
       staffUserId,

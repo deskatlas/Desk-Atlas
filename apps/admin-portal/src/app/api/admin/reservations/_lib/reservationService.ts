@@ -1,5 +1,13 @@
-import { createAdminReservationService, ReservationSupabaseRepository } from "@deskatlas/domain";
+import {
+  createAdminReservationService,
+  ReservationSupabaseRepository,
+  createTransactionalEmailService,
+} from "@deskatlas/domain";
 
 export function getAdminReservationService() {
-  return createAdminReservationService(new ReservationSupabaseRepository());
+  return createAdminReservationService(
+    new ReservationSupabaseRepository(),
+    undefined,
+    createTransactionalEmailService()
+  );
 }

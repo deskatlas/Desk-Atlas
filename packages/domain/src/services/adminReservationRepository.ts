@@ -148,6 +148,7 @@ export interface AdminReservationRepository {
     reservation: AdminReservationDetail;
     message?: string;
   }>;
+  getClosureAlerts?(): Promise<import("../models/reservation").ClosureAlertsResult>;
 }
 
 export interface RequestCustomerRelocationInput {

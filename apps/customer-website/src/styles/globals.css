@@ -74,3 +74,21 @@ a:hover {
   font-size: 0.875rem;
   font-weight: 700;
 }
+
+/* Horizontal Continuous Label Marquee (MS-17 / DSD-UI1) */
+@keyframes da-text-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.da-marquee-text {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: da-text-marquee var(--da-marquee-duration, 2s) linear infinite;
+  will-change: transform;
+}

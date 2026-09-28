@@ -163,17 +163,21 @@ export function isAdminExpiredReservation(
   now: Date | number = new Date()
 ): boolean {
   const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
+  const endMs = res.endAt ? new Date(res.endAt).getTime() : NaN;
+  const hasEnded = !isNaN(endMs) && endMs <= nowMs;
+  const hasCheckedIn = Boolean(res.checkedInAt);
 
   if (
     res.reservationStatus === "COMPLETED" ||
     Boolean(res.checkedOutAt) ||
-    (res.status && res.status.toLowerCase().includes("completed")) ||
-    (res.status && res.status.toLowerCase().includes("checked out"))
+    (Boolean(res.status) && res.status.toLowerCase().includes("completed")) ||
+    (Boolean(res.status) && res.status.toLowerCase().includes("checked out")) ||
+    (hasCheckedIn && hasEnded)
   ) {
     return false;
   }
 
-  if (res.reservationStatus === "EXPIRED" || res.status.toLowerCase() === "expired") {
+  if (res.reservationStatus === "EXPIRED" || (Boolean(res.status) && res.status.toLowerCase() === "expired")) {
     return true;
   }
 
@@ -200,25 +204,29 @@ export function isAdminExpiredReservation(
     }
   }
 
-  // End time elapsed without being checked-in or completed
-  if (res.endAt && !res.checkedInAt && (res.reservationStatus as string) !== "COMPLETED") {
-    const endMs = new Date(res.endAt).getTime();
-    if (!isNaN(endMs) && endMs <= nowMs) {
-      return true;
-    }
+  // End time elapsed without being checked-in (No-Show)
+  if (hasEnded && !hasCheckedIn) {
+    return true;
   }
 
   return false;
 }
 
 export function isAdminCompletedReservation(
-  res: AdminReservationSummary
+  res: AdminReservationSummary,
+  now: Date | number = new Date()
 ): boolean {
+  const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
+  const endMs = res.endAt ? new Date(res.endAt).getTime() : NaN;
+  const hasEnded = !isNaN(endMs) && endMs <= nowMs;
+  const hasCheckedIn = Boolean(res.checkedInAt);
+
   return (
     res.reservationStatus === "COMPLETED" ||
     Boolean(res.checkedOutAt) ||
-    res.status.toLowerCase().includes("completed") ||
-    res.status.toLowerCase().includes("checked out")
+    (Boolean(res.status) && res.status.toLowerCase().includes("completed")) ||
+    (Boolean(res.status) && res.status.toLowerCase().includes("checked out")) ||
+    (hasCheckedIn && hasEnded)
   );
 }
 
@@ -234,7 +242,7 @@ export function isAdminOperationsReservation(
   }
 
   // Never show completed / checked out records in Active Operations (they belong in Completed)
-  if (isAdminCompletedReservation(res)) {
+  if (isAdminCompletedReservation(res, nowMs)) {
     return false;
   }
 
@@ -267,7 +275,7 @@ export function isAdminBookingManagementReservation(
     return false;
   }
 
-  if (isAdminCompletedReservation(res)) {
+  if (isAdminCompletedReservation(res, nowMs)) {
     return false;
   }
 
@@ -353,7 +361,7 @@ export function filterAdminReservationsByTab(
         return base;
     }
   } else if (tab === "operations") {
-    // Operations Tab — live occupying / active bookings ONLY
+    // Operations Tab - live occupying / active bookings ONLY
     const base = reservations.filter((r) => isAdminOperationsReservation(r, nowMs));
     const sf = subFilter as AdminOperationsSubFilter;
 
@@ -383,8 +391,8 @@ export function filterAdminReservationsByTab(
         return base;
     }
   } else if (tab === "completed") {
-    // Completed Tab — attended & completed bookings
-    const base = reservations.filter((r) => isAdminCompletedReservation(r));
+    // Completed Tab - attended & completed bookings
+    const base = reservations.filter((r) => isAdminCompletedReservation(r, nowMs));
     return base;
   } else {
     // Expired Tab
@@ -425,13 +433,17 @@ export function isStaffExpiredReservation(
   now: Date | number = new Date()
 ): boolean {
   const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
+  const endMs = res.bookingEndAt ? new Date(res.bookingEndAt).getTime() : NaN;
+  const hasEnded = !isNaN(endMs) && endMs <= nowMs;
+  const hasCheckedIn = Boolean(res.checkedInAt) || res.checkInState === "CHECKED_IN" || res.checkInState === "CHECKED_OUT";
 
   if (
     res.reservationStatus === "COMPLETED" ||
     res.checkInState === "CHECKED_OUT" ||
     Boolean(res.checkedOutAt) ||
-    (res.status && res.status.toLowerCase().includes("completed")) ||
-    (res.status && res.status.toLowerCase().includes("checked out"))
+    (Boolean(res.status) && res.status.toLowerCase().includes("completed")) ||
+    (Boolean(res.status) && res.status.toLowerCase().includes("checked out")) ||
+    (hasCheckedIn && hasEnded)
   ) {
     return false;
   }
@@ -440,35 +452,51 @@ export function isStaffExpiredReservation(
     res.reservationStatus === "EXPIRED" ||
     res.reservationStatus === "REJECTED" ||
     res.reservationStatus === "CANCELLED" ||
-    (res.status && res.status.toLowerCase() === "rejected") ||
-    (res.paymentStatus && res.paymentStatus.toLowerCase().includes("rejected")) ||
-    (res.paymentAttemptStatus && res.paymentAttemptStatus.toLowerCase() === "rejected")
+    (Boolean(res.status) && res.status.toLowerCase() === "rejected") ||
+    (Boolean(res.paymentStatus) && res.paymentStatus.toLowerCase().includes("rejected")) ||
+    (Boolean(res.paymentAttemptStatus) && res.paymentAttemptStatus.toLowerCase() === "rejected")
   ) {
     return true;
   }
 
-  if (
-    res.bookingEndAt &&
-    !res.checkedInAt &&
-    res.checkInState === "NOT_CHECKED_IN" &&
-    (res.reservationStatus as string) !== "COMPLETED"
-  ) {
-    const endMs = new Date(res.bookingEndAt).getTime();
-    if (!isNaN(endMs) && endMs <= nowMs) {
-      return true;
+  // Awaiting proof expired session (1-hour timeout)
+  if (res.reservationStatus === "PENDING_PAYMENT") {
+    if (res.paymentExpiresAt) {
+      const expMs = new Date(res.paymentExpiresAt).getTime();
+      if (!isNaN(expMs) && expMs <= nowMs) {
+        return true;
+      }
+    } else if (res.createdAt) {
+      const createdMs = new Date(res.createdAt).getTime();
+      if (!isNaN(createdMs) && createdMs + 60 * 60 * 1000 <= nowMs) {
+        return true;
+      }
     }
+  }
+
+  if (hasEnded && !hasCheckedIn) {
+    return true;
   }
 
   return false;
 }
 
 export function isStaffCompletedReservation(
-  res: StaffOperationalReservation
+  res: StaffOperationalReservation,
+  now: Date | number = new Date()
 ): boolean {
+  const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
+  const endMs = res.bookingEndAt ? new Date(res.bookingEndAt).getTime() : NaN;
+  const hasEnded = !isNaN(endMs) && endMs <= nowMs;
+  const hasCheckedIn = Boolean(res.checkedInAt) || res.checkInState === "CHECKED_IN" || res.checkInState === "CHECKED_OUT";
+
   return (
     res.reservationStatus === "COMPLETED" ||
     res.checkInState === "CHECKED_OUT" ||
-    Boolean(res.checkedOutAt)
+    Boolean(res.checkedOutAt) ||
+    (Boolean(res.status) && res.status.toLowerCase().includes("completed")) ||
+    (Boolean(res.status) && res.status.toLowerCase().includes("checked out")) ||
+    (hasCheckedIn && hasEnded)
   );
 }
 
@@ -484,7 +512,7 @@ export function isStaffOperationsReservation(
   }
 
   // Never show completed in Active Operations
-  if (isStaffCompletedReservation(res)) {
+  if (isStaffCompletedReservation(res, nowMs)) {
     return false;
   }
 
@@ -517,7 +545,7 @@ export function isStaffBookingManagementReservation(
     return false;
   }
 
-  if (isStaffCompletedReservation(res)) {
+  if (isStaffCompletedReservation(res, nowMs)) {
     return false;
   }
 
@@ -592,7 +620,7 @@ export function filterStaffReservationsByTab(
         return base;
     }
   } else if (tab === "operations") {
-    // Operations Tab — live active / checked in only
+    // Operations Tab - live active / checked in only
     const base = reservations.filter((r) => isStaffOperationsReservation(r, nowMs));
     const sf = subFilter as StaffOperationsSubFilter;
 
@@ -623,7 +651,7 @@ export function filterStaffReservationsByTab(
     }
   } else if (tab === "completed") {
     // Completed Tab
-    const base = reservations.filter((r) => isStaffCompletedReservation(r));
+    const base = reservations.filter((r) => isStaffCompletedReservation(r, nowMs));
     return base;
   } else {
     // Expired Tab
@@ -670,7 +698,7 @@ export function getAdminReservationTabCounts(
   let expiredBadgeCount = 0;
 
   for (const r of reservations) {
-    if (isAdminCompletedReservation(r)) {
+    if (isAdminCompletedReservation(r, nowMs)) {
       completedBadgeCount++;
       continue;
     }
@@ -728,7 +756,7 @@ export function getStaffReservationTabCounts(
   let expiredBadgeCount = 0;
 
   for (const r of reservations) {
-    if (isStaffCompletedReservation(r)) {
+    if (isStaffCompletedReservation(r, nowMs)) {
       completedBadgeCount++;
       continue;
     }

@@ -43,6 +43,7 @@ export interface AlertsContextValue {
   activeAlerts: BookingEndAlert[];
   unreadCount: number;
   loading: boolean;
+  thresholdMinutes: number;
   dismissedKeys: Set<string>;
   fetchAlerts: () => Promise<void>;
   markSingleAsDismissed: (reservationId: string) => void;
@@ -53,6 +54,7 @@ const AlertsContext = createContext<AlertsContextValue | null>(null);
 
 export function AlertsProvider({ children }: { children: ReactNode }) {
   const [rawAlerts, setRawAlerts] = useState<BookingEndAlert[]>([]);
+  const [thresholdMinutes, setThresholdMinutes] = useState<number>(15);
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(getStoredDismissedKeys);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -66,6 +68,10 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
         if (Array.isArray(data.alerts)) {
           setRawAlerts(data.alerts);
+        }
+        const threshold = data.thresholdMinutes ?? data.alertMinutes;
+        if (typeof threshold === "number" && threshold >= 1 && threshold <= 60) {
+          setThresholdMinutes(threshold);
         }
       }
     } catch {
@@ -110,6 +116,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       activeAlerts,
       unreadCount: activeAlerts.length,
       loading,
+      thresholdMinutes,
       dismissedKeys,
       fetchAlerts,
       markSingleAsDismissed,
@@ -119,6 +126,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       rawAlerts,
       activeAlerts,
       loading,
+      thresholdMinutes,
       dismissedKeys,
       fetchAlerts,
       markSingleAsDismissed,
@@ -141,6 +149,7 @@ export function useAlerts(): AlertsContextValue {
       activeAlerts: [],
       unreadCount: 0,
       loading: false,
+      thresholdMinutes: 15,
       dismissedKeys: new Set(),
       fetchAlerts: async () => {},
       markSingleAsDismissed: () => {},

@@ -12,6 +12,12 @@ import {
   DEFAULT_MAP_CANVAS_WIDTH,
   DEFAULT_MAP_CANVAS_HEIGHT,
   DEFAULT_MAP_GRID_SIZE,
+  MIN_MAP_CANVAS_WIDTH,
+  MAX_MAP_CANVAS_WIDTH,
+  MIN_MAP_CANVAS_HEIGHT,
+  MAX_MAP_CANVAS_HEIGHT,
+  CANVAS_SIZE_PRESETS,
+  clampMapCanvasDimensions,
   MapUndoRedoManager,
   type MapCommand,
   serializeMapElementsForSnapshot,
@@ -21,9 +27,15 @@ import {
   NAVIGATION_WARNING_MESSAGE,
   WORKSPACE_AMENITY_CATEGORIES,
   normalizeAmenityTag,
+  getNextAvailableInstanceNumber,
   type CustomStructureTemplate,
+  DEFAULT_WORKSPACE_STATUS_COLORS,
+  type WorkspaceStatusColors,
+  resolveWorkspaceStatusColor,
+  normalizeWorkspaceStatusColors,
 } from '@deskatlas/domain';
 import { useNavigationGuard } from '../hooks/useNavigationGuard';
+import { MarqueeLabel } from '@deskatlas/ui';
 
 function getContrastColor(hexColor?: string): string {
   if (!hexColor || !hexColor.startsWith('#') || hexColor.length < 7) return '#111827';
@@ -306,6 +318,23 @@ export function MapEditor() {
     height: DEFAULT_MAP_CANVAS_HEIGHT,
     gridSize: DEFAULT_MAP_GRID_SIZE,
   });
+  const [showCanvasSizeModal, setShowCanvasSizeModal] = useState(false);
+  const [customCanvasW, setCustomCanvasW] = useState(String(DEFAULT_MAP_CANVAS_WIDTH));
+  const [customCanvasH, setCustomCanvasH] = useState(String(DEFAULT_MAP_CANVAS_HEIGHT));
+
+  const applyCanvasDimensions = (newW: number, newH: number) => {
+    const { width: clampedW, height: clampedH } = clampMapCanvasDimensions(newW, newH);
+    if (clampedW === canvasDimensions.width && clampedH === canvasDimensions.height) {
+      return;
+    }
+    setCanvasDimensions((prev) => ({
+      ...prev,
+      width: clampedW,
+      height: clampedH,
+    }));
+    setIsDirty(true);
+    setSaveState('Unsaved changes');
+  };
   const [dragState, setDragState] = useState<{ id: string; startX: number; startY: number; startObjX: number; startObjY: number } | null>(null);
   const [resizeState, setResizeState] = useState<{ id: string; startX: number; startY: number; startObjW: number; startObjH: number; startObjX: number; startObjY: number } | null>(null);
 
@@ -430,21 +459,34 @@ export function MapEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedFloorId, canUndo, canRedo, selectedObjId]);
 
+  const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(DEFAULT_WORKSPACE_STATUS_COLORS);
+
   // Load floors & workspace catalog
   const loadInitialData = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
 
-      const [wsRes, floorsRes, structuresRes] = await Promise.all([
+      const [wsRes, floorsRes, structuresRes, settingsRes] = await Promise.all([
         fetch('/api/admin/workspaces'),
         fetch('/api/admin/workspaces/floors'),
         fetch('/api/admin/structures'),
+        fetch('/api/admin/settings'),
       ]);
 
       const wsData = wsRes.ok ? await wsRes.json() : {};
       const floorsData = floorsRes.ok ? await floorsRes.json() : {};
       const structuresData = structuresRes.ok ? await structuresRes.json() : {};
+      const settingsData = settingsRes && settingsRes.ok ? await settingsRes.json() : null;
+
+      let currentStatusColors = DEFAULT_WORKSPACE_STATUS_COLORS;
+      if (settingsData?.data?.businessSettings?.statusColors) {
+        currentStatusColors = normalizeWorkspaceStatusColors(settingsData.data.businessSettings.statusColors);
+        setStatusColors(currentStatusColors);
+      } else if (settingsData?.data?.statusColors) {
+        currentStatusColors = normalizeWorkspaceStatusColors(settingsData.data.statusColors);
+        setStatusColors(currentStatusColors);
+      }
 
       const loadedFloors = floorsData.floors || wsData.floors || [];
       const loadedTemplates = wsData.templates || [];
@@ -459,7 +501,7 @@ export function MapEditor() {
       if (loadedFloors.length > 0) {
         const firstFloorId = loadedFloors[0].id;
         setSelectedFloorId(firstFloorId);
-        await loadDraftForFloor(firstFloorId, loadedInstances, loadedTemplates);
+        await loadDraftForFloor(firstFloorId, loadedInstances, loadedTemplates, currentStatusColors);
       } else {
         setBuilderObjects([]);
         savedSnapshotRef.current = serializeMapElementsForSnapshot([]);
@@ -472,7 +514,12 @@ export function MapEditor() {
     }
   };
 
-  const loadDraftForFloor = async (floorId: string, currentInstances = instances, currentTemplates = templates) => {
+  const loadDraftForFloor = async (
+    floorId: string,
+    currentInstances = instances,
+    currentTemplates = templates,
+    currentStatusColors = statusColors
+  ) => {
     try {
       setSaveState('Loading map...');
       // 1. Try draft map first
@@ -582,7 +629,9 @@ export function MapEditor() {
         const isStairs = !isWorkspace && (el.elementType === 'stairs' || el.elementType?.toLowerCase().includes('stairs') || el.elementType?.toLowerCase().includes('staircase') || el.label?.toLowerCase() === 'stairs');
 
         const defaultStructureColor = isWindow ? 'rgba(56, 189, 248, 0.25)' : (isStairs ? '#E2E8F0' : '#F3F7F4');
-        const color = el.properties?.color || tmpl?.defaultColor || (isWorkspace ? '#009689' : (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : defaultStructureColor)));
+        const color = isWorkspace
+          ? resolveWorkspaceStatusColor(inst?.operationalStatus || 'ACTIVE', currentStatusColors)
+          : (el.properties?.color || (isKioskMarker ? '#DC2626' : (isAmenity ? defaultAmenityColor : defaultStructureColor)));
         const displayName = el.label || (isKioskMarker ? 'Kiosk' : (inst?.displayName || tmpl?.name || el.elementType));
 
         const isRect = isWorkspace
@@ -783,33 +832,24 @@ export function MapEditor() {
     try {
       setActionLoading(true);
       const templateName = tpl.name.trim();
-      const activeInstancesForTemplate = instances.filter(
-        (i: any) => (i.templateId === tpl.id || i.template?.id === tpl.id) && i.operationalStatus !== 'INACTIVE'
+      const activeFloorInstancesForTemplate = instances.filter(
+        (i: any) =>
+          i.floorId === selectedFloorId &&
+          (i.templateId === tpl.id || i.template?.id === tpl.id) &&
+          i.operationalStatus !== 'INACTIVE'
       );
-      const existingForTemplate = [
-        ...activeInstancesForTemplate,
-        ...builderObjects.filter((o: any) => o.template === tpl.name),
+      const existingNames = [
+        ...activeFloorInstancesForTemplate.map((i: any) => i.displayName || i.name || ''),
+        ...builderObjects
+          .filter((o: any) => o.template === tpl.name)
+          .map((o: any) => o.name || ''),
       ];
 
-      const escapedTplName = templateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      let maxSequence = 0;
-      for (const item of existingForTemplate) {
-        const name = (item.displayName || item.name || '').trim();
-        const match = new RegExp(`^${escapedTplName}\\s+(\\d+)$`, 'i').exec(name);
-        if (match) {
-          maxSequence = Math.max(maxSequence, parseInt(match[1], 10));
-        }
-      }
-
-      let nextNum = maxSequence + 1;
-      let displayName = `${templateName} ${nextNum}`;
-      const usedNames = new Set(
-        existingForTemplate.map((item: any) => (item.displayName || item.name || '').trim().toLowerCase())
+      const { displayName } = getNextAvailableInstanceNumber(
+        templateName,
+        existingNames,
+        'GAP_FILL'
       );
-      while (usedNames.has(displayName.toLowerCase())) {
-        nextNum += 1;
-        displayName = `${templateName} ${nextNum}`;
-      }
 
       const codePrefix = templateName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'WS';
       const codeSuffix = String(Math.floor(1000 + Math.random() * 9000));
@@ -860,7 +900,7 @@ export function MapEditor() {
         workspaceInstanceId: instanceId,
         elementRole: 'WORKSPACE',
         elementType: shape,
-        color: tpl.defaultColor || 'rgba(200, 244, 81, 0.4)',
+        color: resolveWorkspaceStatusColor('ACTIVE', statusColors),
         recommendationTags: [],
       };
 
@@ -879,6 +919,53 @@ export function MapEditor() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  // Place existing unmapped physical instance onto canvas
+  const handlePlaceExistingInstance = (inst: any) => {
+    if (!selectedFloorId) {
+      setShowFloorModal(true);
+      return;
+    }
+
+    const tpl =
+      inst.template ||
+      templates.find((t: any) => t.id === inst.templateId) ||
+      templates.find((t: any) => t.name === inst.templateName) ||
+      {};
+    const shape = tpl.defaultShape || 'desk';
+    const isRect = shape.toLowerCase() === 'rectangle' || shape.toLowerCase() === 'rect';
+    const initialW = isRect ? 120 : 80;
+    const initialH = 80;
+
+    const newObj = {
+      id: 'el-' + Date.now(),
+      name: inst.displayName || inst.name || 'Workspace',
+      x: 100,
+      y: 100,
+      w: initialW,
+      h: initialH,
+      rotation: 0,
+      bookable: true,
+      template: tpl.name || 'Desk',
+      status: inst.operationalStatus || 'ACTIVE',
+      workspaceInstanceId: inst.id,
+      elementRole: 'WORKSPACE',
+      elementType: shape,
+      color: resolveWorkspaceStatusColor(inst.operationalStatus || 'ACTIVE', statusColors),
+      recommendationTags: [],
+    };
+
+    setBuilderObjects(prev => [...prev, newObj]);
+    setSelectedObjId(newObj.id);
+    setShowInspector(true);
+    setSaveState('Unsaved changes');
+
+    undoManagerRef.current.push(selectedFloorId, {
+      type: 'ADD_OBJECT',
+      object: newObj,
+    });
+    syncUndoRedoState(selectedFloorId);
   };
 
   // Add structural element
@@ -1860,6 +1947,14 @@ export function MapEditor() {
     { text: 'Draft map saved to database', color: 'var(--da-success)', icon: '✓' },
   ];
 
+  const unplacedInstances = instances.filter((inst: any) => {
+    if (inst.floorId !== selectedFloorId) return false;
+    if (inst.operationalStatus === 'INACTIVE') return false;
+    if (inst.template?.isActive === false) return false;
+    const isPlacedOnCanvas = builderObjects.some((o: any) => o.workspaceInstanceId === inst.id);
+    return !isPlacedOnCanvas;
+  });
+
   return (
     <main data-screen-label="Map Builder" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <style>{`
@@ -1947,6 +2042,232 @@ export function MapEditor() {
           <button onClick={handleZoomIn} style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid var(--da-border)', background: '#fff', cursor: 'pointer', fontSize: '15px', fontWeight: 700 }}>+</button>
           <button onClick={handleFitView} style={{ border: '1px solid var(--da-border)', background: '#fff', borderRadius: '6px', padding: '6px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Fit View</button>
         </div>
+
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setCustomCanvasW(String(canvasDimensions.width));
+              setCustomCanvasH(String(canvasDimensions.height));
+              setShowCanvasSizeModal((prev) => !prev);
+            }}
+            title="Configure Canvas Dimensions"
+            aria-label="Canvas Size"
+            style={{
+              border: '1px solid var(--da-border)',
+              background: showCanvasSizeModal ? 'var(--da-soft, #f0fdf4)' : '#fff',
+              borderColor: showCanvasSizeModal ? 'var(--da-brand-dark, #009689)' : 'var(--da-border)',
+              borderRadius: '8px',
+              padding: '7px 12px',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: showCanvasSizeModal ? 'var(--da-brand-dark, #009689)' : 'var(--da-text-primary)',
+            }}
+          >
+            <span>📐</span>
+            <span>Canvas: {canvasDimensions.width} × {canvasDimensions.height}</span>
+          </button>
+
+          {showCanvasSizeModal && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                width: '320px',
+                background: '#ffffff',
+                border: '1px solid var(--da-border)',
+                borderRadius: '12px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                padding: '16px',
+                zIndex: 100,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
+                    Canvas Dimensions
+                  </h4>
+                  <p style={{ margin: '2px 0 0', fontSize: '10px', color: 'var(--da-text-secondary)' }}>
+                    Min: 1200×800 • Max: 4000×3000 px
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCanvasSizeModal(false)}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--da-text-secondary)' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Dimension Presets
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  {CANVAS_SIZE_PRESETS.map((preset) => {
+                    const isCurrent = canvasDimensions.width === preset.width && canvasDimensions.height === preset.height;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          applyCanvasDimensions(preset.width, preset.height);
+                          setCustomCanvasW(String(preset.width));
+                          setCustomCanvasH(String(preset.height));
+                        }}
+                        style={{
+                          border: isCurrent ? '1.5px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
+                          background: isCurrent ? 'var(--da-soft, #f0fdf4)' : '#f8fafc',
+                          color: isCurrent ? 'var(--da-brand-dark)' : 'var(--da-text-primary)',
+                          borderRadius: '6px',
+                          padding: '6px 8px',
+                          fontSize: '11px',
+                          fontWeight: isCurrent ? 800 : 600,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{preset.label.split(' (')[0]}</div>
+                        <div style={{ fontSize: '10px', opacity: 0.75 }}>{preset.width} × {preset.height}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Quick Expand
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextW = Math.min(MAX_MAP_CANVAS_WIDTH, canvasDimensions.width + 200);
+                      applyCanvasDimensions(nextW, canvasDimensions.height);
+                      setCustomCanvasW(String(nextW));
+                    }}
+                    disabled={canvasDimensions.width >= MAX_MAP_CANVAS_WIDTH}
+                    style={{
+                      flex: 1,
+                      border: '1px solid var(--da-border)',
+                      background: '#f8fafc',
+                      borderRadius: '6px',
+                      padding: '6px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: canvasDimensions.width >= MAX_MAP_CANVAS_WIDTH ? 'not-allowed' : 'pointer',
+                      opacity: canvasDimensions.width >= MAX_MAP_CANVAS_WIDTH ? 0.5 : 1,
+                    }}
+                  >
+                    +200px Width
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextH = Math.min(MAX_MAP_CANVAS_HEIGHT, canvasDimensions.height + 200);
+                      applyCanvasDimensions(canvasDimensions.width, nextH);
+                      setCustomCanvasH(String(nextH));
+                    }}
+                    disabled={canvasDimensions.height >= MAX_MAP_CANVAS_HEIGHT}
+                    style={{
+                      flex: 1,
+                      border: '1px solid var(--da-border)',
+                      background: '#f8fafc',
+                      borderRadius: '6px',
+                      padding: '6px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: canvasDimensions.height >= MAX_MAP_CANVAS_HEIGHT ? 'not-allowed' : 'pointer',
+                      opacity: canvasDimensions.height >= MAX_MAP_CANVAS_HEIGHT ? 0.5 : 1,
+                    }}
+                  >
+                    +200px Height
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                  Custom Size (px)
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--da-text-secondary)', marginBottom: '2px' }}>
+                      Width
+                    </label>
+                    <input
+                      type="number"
+                      min={MIN_MAP_CANVAS_WIDTH}
+                      max={MAX_MAP_CANVAS_WIDTH}
+                      step={40}
+                      value={customCanvasW}
+                      onChange={(e) => setCustomCanvasW(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid var(--da-border)',
+                        borderRadius: '6px',
+                        padding: '5px 8px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </div>
+                  <span style={{ marginTop: '14px', fontSize: '12px', color: 'var(--da-text-secondary)' }}>×</span>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--da-text-secondary)', marginBottom: '2px' }}>
+                      Height
+                    </label>
+                    <input
+                      type="number"
+                      min={MIN_MAP_CANVAS_HEIGHT}
+                      max={MAX_MAP_CANVAS_HEIGHT}
+                      step={40}
+                      value={customCanvasH}
+                      onChange={(e) => setCustomCanvasH(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid var(--da-border)',
+                        borderRadius: '6px',
+                        padding: '5px 8px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const w = parseInt(customCanvasW, 10) || DEFAULT_MAP_CANVAS_WIDTH;
+                    const h = parseInt(customCanvasH, 10) || DEFAULT_MAP_CANVAS_HEIGHT;
+                    applyCanvasDimensions(w, h);
+                  }}
+                  style={{
+                    width: '100%',
+                    background: 'var(--da-brand-dark)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 12px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Apply Custom Size
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
@@ -2055,6 +2376,94 @@ export function MapEditor() {
                 </button>
               </div>
             ))
+          )}
+
+          {unplacedInstances.length > 0 && (
+            <div style={{ marginTop: '16px', marginBottom: '8px' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  color: 'var(--da-brand-dark)',
+                  letterSpacing: '.05em',
+                  marginBottom: '8px',
+                  fontFamily: 'var(--da-font-family)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>UNPLACED DESKS</span>
+                <span
+                  style={{
+                    background: 'rgba(0, 150, 137, 0.1)',
+                    color: 'var(--da-brand-dark)',
+                    padding: '1px 6px',
+                    borderRadius: '9999px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                  }}
+                >
+                  {unplacedInstances.length}
+                </span>
+              </div>
+              {unplacedInstances.map((inst: any) => (
+                <div
+                  key={inst.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '7px 0',
+                    borderTop: '1px solid var(--da-border-light)',
+                    gap: '6px',
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: 'var(--da-text-primary)',
+                        fontFamily: 'var(--da-font-family)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={inst.displayName || inst.name}
+                    >
+                      {inst.displayName || inst.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '10px',
+                        color: 'var(--da-text-secondary)',
+                        fontFamily: 'var(--da-font-family)',
+                      }}
+                    >
+                      {inst.instanceCode || 'Unassigned'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handlePlaceExistingInstance(inst)}
+                    style={{
+                      border: '1px solid var(--da-brand-dark)',
+                      background: 'rgba(0, 150, 137, 0.08)',
+                      color: 'var(--da-brand-dark)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    + Place
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 8px' }}>
@@ -2281,7 +2690,10 @@ export function MapEditor() {
                 const isWall = !isWorkspace && (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall'));
                 const isWindow = !isWorkspace && (obj.elementType === 'window' || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase() === 'window');
                 const isStairs = !isWorkspace && (obj.elementType === 'stairs' || obj.elementType?.toLowerCase().includes('stairs') || obj.elementType?.toLowerCase().includes('staircase') || obj.name?.toLowerCase() === 'stairs');
-                const contrastColor = getContrastColor(obj.color);
+                const workspaceStatusColor = isWorkspace ? resolveWorkspaceStatusColor(obj.status || 'ACTIVE', statusColors) : null;
+                const contrastColor = isWorkspace
+                  ? getContrastColor(workspaceStatusColor!)
+                  : (isKioskMarker ? '#ffffff' : getContrastColor(obj.color || '#F3F7F4'));
                 const isOutOfBounds = !isRotatedElementWithinBounds(
                   { x: obj.x, y: obj.y, width: obj.w, height: obj.h, rotation: obj.rotation || 0 },
                   canvasDimensions.width,
@@ -2328,13 +2740,24 @@ export function MapEditor() {
                           ? 'rgba(239, 68, 68, 0.2)'
                           : (isOutOfBounds
                               ? 'rgba(239, 68, 68, 0.15)'
+                              : (isWorkspace
+                                  ? workspaceStatusColor!
+                                  : (isKioskMarker
+                                      ? (obj.color || '#DC2626')
+                                      : (isWindow
+                                          ? (obj.color || 'rgba(56, 189, 248, 0.25)')
+                                          : (isStairs
+                                              ? (obj.color || '#E2E8F0')
+                                              : (obj.color || '#F3F7F4')))))),
+                        color: (isColliding || isOutOfBounds)
+                          ? '#DC2626'
+                          : (isWorkspace
+                              ? contrastColor
                               : (isKioskMarker
-                                  ? (obj.color || '#DC2626')
+                                  ? '#ffffff'
                                   : (isWindow
-                                      ? (obj.color || 'rgba(56, 189, 248, 0.25)')
-                                      : (isStairs
-                                          ? (obj.color || '#E2E8F0')
-                                          : (obj.color || (obj.bookable ? 'rgba(200, 244, 81, 0.4)' : '#F3F7F4')))))),
+                                      ? '#0284C7'
+                                      : (isStairs ? '#334155' : contrastColor)))),
                         border: isColliding
                           ? '2.5px solid #EF4444'
                           : (isOutOfBounds
@@ -2361,7 +2784,6 @@ export function MapEditor() {
                           : (isOutOfBounds
                               ? 'da-pulse-red-glow 1.2s infinite ease-in-out'
                               : 'none'),
-                        color: (isColliding || isOutOfBounds) ? '#DC2626' : (isKioskMarker ? '#ffffff' : contrastColor),
                         opacity: obj.status === 'INACTIVE' ? (selectedObjId === obj.id ? 0.6 : 0.25) : 1,
                         boxSizing: 'border-box',
                         overflow: 'visible',
@@ -2391,9 +2813,10 @@ export function MapEditor() {
                         </div>
                       )}
                       {isWorkspace ? (
-                        <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {obj.name}
-                        </span>
+                        <MarqueeLabel
+                          text={obj.name}
+                          style={{ maxWidth: '100%', fontSize: '11px', fontWeight: 700 }}
+                        />
                       ) : isKioskMarker ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
                           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Kiosk">
@@ -2689,25 +3112,25 @@ export function MapEditor() {
               </>
             )}
 
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '4px' }}>Color</div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  type="color"
-                  value={selectedObj.color && selectedObj.color.startsWith('#') && selectedObj.color.length === 7 ? selectedObj.color : '#009689'}
-                  onInput={(e) => handleColorChange((e.target as HTMLInputElement).value)}
-                  onChange={(e) => handleColorChange(e.target.value)}
-                  style={{ width: '38px', height: '38px', border: '1px solid var(--da-border)', borderRadius: '8px', cursor: 'pointer', padding: '2px', background: '#fff' }}
-                />
-                <input
-                  type="text"
-                  value={selectedObj.color || ''}
-                  placeholder="#009689"
-                  onChange={(e) => handleColorChange(e.target.value)}
-                  style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
-                />
-              </div>
-              {!selectedObj.bookable && (
+            {(!selectedObj.bookable && selectedObj.elementRole !== 'WORKSPACE') && (
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '4px' }}>Color</div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={selectedObj.color && selectedObj.color.startsWith('#') && selectedObj.color.length === 7 ? selectedObj.color : '#64748b'}
+                    onInput={(e) => handleColorChange((e.target as HTMLInputElement).value)}
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    style={{ width: '38px', height: '38px', border: '1px solid var(--da-border)', borderRadius: '8px', cursor: 'pointer', padding: '2px', background: '#fff' }}
+                  />
+                  <input
+                    type="text"
+                    value={selectedObj.color || ''}
+                    placeholder="#64748b"
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+                  />
+                </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--da-text-secondary)', cursor: 'pointer', marginTop: '6px' }}>
                   <input
                     type="checkbox"
@@ -2723,8 +3146,8 @@ export function MapEditor() {
                   />
                   Apply color to all similar structures
                 </label>
-              )}
-            </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
               <button

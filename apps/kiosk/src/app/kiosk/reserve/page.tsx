@@ -38,7 +38,7 @@ import {
   getWorkspacePhotoObjectPosition,
 } from "../../features/reservation/SpotDetailModal";
 import { fetchTemplateAvailability, fetchOccupiedInstances, fetchNextUpcomingBooking } from "../../lib/availabilityApi";
-import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling } from "@deskatlas/ui";
+import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling, MarqueeLabel } from "@deskatlas/ui";
 
 export interface WorkspaceTemplateSummary {
   id: string;
@@ -65,7 +65,9 @@ export interface WorkspaceTemplateSummary {
 
 function mapPublishedFloorToWorkspaceCards(
   published: PublishedFloorMap,
-  occupiedInstanceIds: Set<string> = new Set()
+  occupiedInstanceIds: Set<string> = new Set(),
+  occupiedDetailsMap: Map<string, string | null> = new Map(),
+  isVenueClosed: boolean = false
 ): WorkspaceMapViewModel[] {
   return published.elements
     .filter(
@@ -77,22 +79,37 @@ function mapPublishedFloorToWorkspaceCards(
     .map((element) => {
       const workspace = element.workspace!;
       const isOccupied = occupiedInstanceIds.has(workspace.workspaceInstanceId);
+      const hasActiveSession = isOccupied && occupiedDetailsMap.has(workspace.workspaceInstanceId);
       const isMaintenance = workspace.operationalStatus === "MAINTENANCE";
-      const isAvailable = workspace.isBookable && workspace.operationalStatus === "ACTIVE" && !isOccupied;
-      const status = isOccupied
-        ? "occupied"
-        : isMaintenance
-          ? "maintenance"
-          : isAvailable
-            ? "available"
-            : "unavailable";
-      const statusLabel = isOccupied
-        ? "Occupied"
-        : isMaintenance
-          ? "Maintenance"
-          : isAvailable
-            ? "Available"
-            : "Unavailable";
+
+      let isAvailable = false;
+      let status = "unavailable";
+      let statusLabel = "Unavailable";
+
+      if (isVenueClosed) {
+        status = "unavailable";
+        statusLabel = "Unavailable";
+        isAvailable = false;
+      } else {
+        if (isMaintenance) {
+          status = "maintenance";
+          statusLabel = "Maintenance";
+          isAvailable = false;
+        } else if (isOccupied) {
+          status = "occupied";
+          statusLabel = "Occupied";
+          isAvailable = false;
+        } else if (workspace.isBookable && workspace.operationalStatus === "ACTIVE") {
+          status = "available";
+          statusLabel = "Available";
+          isAvailable = true;
+        } else {
+          status = "unavailable";
+          statusLabel = "Unavailable";
+          isAvailable = false;
+        }
+      }
+
       return {
         id: element.id,
         workspaceInstanceId: workspace.workspaceInstanceId,
@@ -500,6 +517,8 @@ export default function KioskReservePage() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [occupiedInstanceIds, setOccupiedInstanceIds] = useState<Set<string>>(new Set());
   const [occupiedDetailsMap, setOccupiedDetailsMap] = useState<Map<string, string | null>>(new Map());
+  const [isVenueClosed, setIsVenueClosed] = useState<boolean>(false);
+  const [closureReason, setClosureReason] = useState<string | null>(null);
 
   // Real-time instances for category flow
   const [categoryInstances, setCategoryInstances] = useState<AvailableInstanceSummary[]>([]);
@@ -526,6 +545,10 @@ export default function KioskReservePage() {
           detailMap.set(d.workspaceInstanceId, d.bookingEndAt);
         }
         setOccupiedDetailsMap(detailMap);
+      }
+      if (res?.isVenueClosed !== undefined) {
+        setIsVenueClosed(Boolean(res.isVenueClosed));
+        setClosureReason(res.closureReason ?? null);
       }
     } catch {
       // Keep existing occupied list on fetch error
@@ -624,8 +647,10 @@ export default function KioskReservePage() {
   };
 
   const allFloorWorkspaces = useMemo(() => {
-    return publishedFloors.flatMap((pub) => mapPublishedFloorToWorkspaceCards(pub, occupiedInstanceIds));
-  }, [publishedFloors, occupiedInstanceIds]);
+    return publishedFloors.flatMap((pub) =>
+      mapPublishedFloorToWorkspaceCards(pub, occupiedInstanceIds, occupiedDetailsMap, isVenueClosed)
+    );
+  }, [publishedFloors, occupiedInstanceIds, occupiedDetailsMap, isVenueClosed]);
 
   useEffect(() => {
     fetchMapData();
@@ -640,8 +665,8 @@ export default function KioskReservePage() {
   }, [published]);
 
   const workspaces = useMemo(
-    () => (published ? mapPublishedFloorToWorkspaceCards(published, occupiedInstanceIds) : []),
-    [published, occupiedInstanceIds]
+    () => (published ? mapPublishedFloorToWorkspaceCards(published, occupiedInstanceIds, occupiedDetailsMap, isVenueClosed) : []),
+    [published, occupiedInstanceIds, occupiedDetailsMap, isVenueClosed]
   );
 
   const elements = published?.elements || [];
@@ -765,6 +790,8 @@ export default function KioskReservePage() {
 
   // Spot click on map
   const handleSpotClick = (workspace: WorkspaceMapViewModel) => {
+    if (isVenueClosed || occupiedInstanceIds.has(workspace.workspaceInstanceId) || workspace.status === "unavailable" || workspace.status === "maintenance") return;
+    if (isVenueClosed) return;
     if (occupiedInstanceIds.has(workspace.workspaceInstanceId)) return;
     setSelectedWorkspace(workspace);
     const tpl = availableTemplates.find((t) => t.id === workspace.templateId);
@@ -775,6 +802,7 @@ export default function KioskReservePage() {
 
   // Category select
   const handleSelectTemplate = (template: WorkspaceTemplateSummary) => {
+    if (isVenueClosed) return;
     setSelectedTemplate(template);
     setSelectedWorkspace(null);
     setStep("duration");
@@ -1313,28 +1341,38 @@ export default function KioskReservePage() {
                               const status = el.workspace?.operationalStatus || "ACTIVE";
                               const isBookable = el.workspace?.isBookable ?? true;
                               const isOccupied = occupiedInstanceIds.has(el.workspace?.workspaceInstanceId || "");
-                              const isAvailable = isBookable && status === "ACTIVE" && !isOccupied;
+                              const hasActiveSession = isOccupied && occupiedDetailsMap.has(el.workspace?.workspaceInstanceId || "");
 
+                              let isAvailable = false;
                               let borderColor = isSelected ? "var(--da-accent)" : "#DCE6DF";
                               let borderWidth = isSelected ? "3px" : "1.5px";
                               let borderStyle = "solid";
 
-                              if (status === "MAINTENANCE") {
-                                borderStyle = "dashed";
-                                borderColor = statusColors.maintenance;
-                                bg = statusColors.maintenance;
-                                textColor = getContrastColor(bg);
-                              } else if (isOccupied) {
-                                borderStyle = "solid";
-                                borderColor = statusColors.occupied;
-                                bg = statusColors.occupied;
-                                textColor = getContrastColor(bg);
-                              } else if (!isAvailable) {
+                              if (isVenueClosed) {
                                 borderStyle = "dashed";
                                 borderColor = statusColors.unavailable;
                                 bg = statusColors.unavailable;
-                                textColor = getContrastColor(bg);
+                                isAvailable = false;
+                              } else {
+                                if (status === "MAINTENANCE") {
+                                  borderStyle = "dashed";
+                                  borderColor = statusColors.maintenance;
+                                  bg = statusColors.maintenance;
+                                } else if (isOccupied) {
+                                  borderStyle = "solid";
+                                  borderColor = statusColors.occupied;
+                                  bg = statusColors.occupied;
+                                } else if (status === "ACTIVE" && isBookable) {
+                                  isAvailable = true;
+                                  bg = statusColors.available;
+                                } else {
+                                  borderStyle = "dashed";
+                                  borderColor = statusColors.unavailable;
+                                  bg = statusColors.unavailable;
+                                }
                               }
+
+                              textColor = getContrastColor(bg);
 
                               const wsModel = workspaces.find(
                                 (w) => w.workspaceInstanceId === el.workspace?.workspaceInstanceId
@@ -1376,9 +1414,10 @@ export default function KioskReservePage() {
                                         : "0 1px 3px rgba(0, 0, 0, 0.05)",
                                     }}
                                   >
-                                    <span className="max-w-full truncate text-[11px] font-bold leading-tight">
-                                      {displayName}
-                                    </span>
+                                    <MarqueeLabel
+                                      text={displayName}
+                                      style={{ fontSize: "11px", fontWeight: 700, lineHeight: 1.2, maxWidth: "100%" }}
+                                    />
                                     {isOccupied && (
                                       <WorkspaceCountdownBadge
                                         bookingEndAt={occupiedDetailsMap.get(el.workspace?.workspaceInstanceId || "")}
@@ -1634,17 +1673,20 @@ export default function KioskReservePage() {
                         </span>
                         <button
                           type="button"
-                          disabled={occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)}
+                          disabled={isVenueClosed || occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)}
                           onClick={() => {
-                            if (occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) return;
+                            if (isVenueClosed || occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)) return;
                             setStep("duration");
                           }}
-                          className={`da-primary-button text-xs font-bold px-4 py-2 ${occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
-                              ? "opacity-50 cursor-not-allowed"
+                          className={`da-primary-button text-xs font-bold px-4 py-2 ${
+                            isVenueClosed || occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                              ? "opacity-50 cursor-not-allowed bg-slate-300 border-slate-300 text-slate-600"
                               : ""
-                            }`}
+                          }`}
                         >
-                          {occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
+                          {isVenueClosed
+                            ? "Facility Closed"
+                            : occupiedInstanceIds.has(selectedWorkspace.workspaceInstanceId)
                             ? "Spot Occupied"
                             : "Proceed to Duration →"}
                         </button>
@@ -1664,8 +1706,8 @@ export default function KioskReservePage() {
                         Select Workspace Type
                       </h2>
                     </div>
-                    <span className="rounded-full bg-[var(--da-info)] px-3.5 py-1 text-xs font-extrabold text-[var(--da-primary)]">
-                      {availableTemplates.length} Categories Available
+                    <span className={`rounded-full px-3.5 py-1 text-xs font-extrabold ${isVenueClosed ? "bg-amber-100 text-amber-800" : "bg-[var(--da-info)] text-[var(--da-primary)]"}`}>
+                      {isVenueClosed ? "Facility Closed" : `${availableTemplates.length} Categories Available`}
                     </span>
                   </div>
 
@@ -1683,8 +1725,13 @@ export default function KioskReservePage() {
                       return (
                         <div
                           key={tpl.id}
-                          onClick={() => handleSelectTemplate(tpl)}
-                          className="group relative flex flex-col justify-between rounded-[24px] border-2 border-[var(--da-border-light)] bg-white hover:border-[var(--da-primary)] hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden p-5"
+                          onClick={() => {
+                            if (isVenueClosed) return;
+                            handleSelectTemplate(tpl);
+                          }}
+                          className={`group relative flex flex-col justify-between rounded-[24px] border-2 border-[var(--da-border-light)] bg-white transition-all duration-200 overflow-hidden p-5 ${
+                            isVenueClosed ? "opacity-60 cursor-not-allowed" : "hover:border-[var(--da-primary)] hover:shadow-lg cursor-pointer"
+                          }`}
                         >
                           <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-[var(--da-border-light)] bg-slate-100 mb-4">
                             {tpl.photoPath ? (
@@ -1742,20 +1789,24 @@ export default function KioskReservePage() {
                               📍 {tpl.floors.join(", ")}
                             </span>
                             <span className="font-bold text-[var(--da-brand-dark)]">
-                              {tpl.instanceCount} {tpl.instanceCount === 1 ? "spot" : "spots"}
+                              {isVenueClosed ? "Unavailable (Closed)" : `${tpl.instanceCount} ${tpl.instanceCount === 1 ? "spot" : "spots"}`}
                             </span>
                           </div>
                         </div>
 
                         <button
                           type="button"
+                          disabled={isVenueClosed}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isVenueClosed) return;
                             handleSelectTemplate(tpl);
                           }}
-                          className="mt-4 da-primary-button w-full justify-center py-2.5 text-xs font-extrabold"
+                          className={`mt-4 da-primary-button w-full justify-center py-2.5 text-xs font-extrabold ${
+                            isVenueClosed ? "opacity-50 cursor-not-allowed bg-slate-200 text-slate-500 border-slate-300" : ""
+                          }`}
                         >
-                          Select {tpl.name} →
+                          {isVenueClosed ? "Facility Closed" : `Select ${tpl.name} →`}
                         </button>
                       </div>
                     );
@@ -2848,11 +2899,11 @@ export default function KioskReservePage() {
         {/* Spot Detail Modal */}
         <SpotDetailModal
           workspace={modalWorkspace}
-          isOccupied={Boolean(modalWorkspace && occupiedInstanceIds.has(modalWorkspace.workspaceInstanceId))}
+          isOccupied={Boolean(modalWorkspace && (isVenueClosed || occupiedInstanceIds.has(modalWorkspace.workspaceInstanceId)))}
           open={isModalOpen}
           onOpenChange={setIsModalOpen}
           onProceed={(ws) => {
-            if (occupiedInstanceIds.has(ws.workspaceInstanceId)) return;
+            if (isVenueClosed || occupiedInstanceIds.has(ws.workspaceInstanceId)) return;
             setSelectedWorkspace(ws);
             setIsModalOpen(false);
             setStep("duration");

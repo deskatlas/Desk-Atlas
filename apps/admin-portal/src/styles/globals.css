@@ -61,3 +61,21 @@ input::placeholder, textarea::placeholder {
 @media (min-width: 769px) {
   .mobile-only { display: none !important; }
 }
+
+/* Horizontal Continuous Label Marquee (MS-17 / DSD-UI4) */
+@keyframes da-text-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.da-marquee-text {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: da-text-marquee var(--da-marquee-duration, 8s) linear infinite;
+  will-change: transform;
+}
+

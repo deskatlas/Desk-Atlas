@@ -438,7 +438,31 @@ export class StaffOperationsService {
     if (!this.staffOperationsRepository.logClosurePhoneCall) {
       throw new StaffOperationsError("Logging closure phone calls is not supported by repository.");
     }
-    return this.staffOperationsRepository.logClosurePhoneCall(input);
+    const result = await this.staffOperationsRepository.logClosurePhoneCall(input);
+    if (this.emailService && result?.success && result?.reservation?.customerEmail) {
+      try {
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        await this.emailService.sendClosureOutreachEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          closureDate: result.reservation.closureDate,
+          closureReason: result.reservation.closureReason,
+          workspaceDisplayName: assigned?.workspaceDisplayName || undefined,
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          staffNotes: input.notes,
+          staffName: input.staffName,
+          outreachStatus: input.outreachStatus,
+          trackingUrl: result.reservation.referenceCode
+            ? `http://localhost:3001/track?code=${encodeURIComponent(result.reservation.referenceCode)}&remedy=closure`
+            : undefined,
+        });
+      } catch (emailErr) {
+        console.warn("Failed to dispatch closure outreach email:", emailErr);
+      }
+    }
+    return result;
   }
 
   async flagClosureManualResolution(input: FlagClosureManualResolutionInput): Promise<{
@@ -449,7 +473,41 @@ export class StaffOperationsService {
     if (!this.staffOperationsRepository.flagClosureManualResolution) {
       throw new StaffOperationsError("Flagging closure manual resolution is not supported by repository.");
     }
-    return this.staffOperationsRepository.flagClosureManualResolution(input);
+    const result = await this.staffOperationsRepository.flagClosureManualResolution(input);
+    if (this.emailService && result?.success && result?.reservation?.customerEmail) {
+      try {
+        const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        await this.emailService.sendClosureManualResolutionEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          closureDate: result.reservation.closureDate,
+          closureReason: result.reservation.closureReason,
+          workspaceDisplayName: assigned?.workspaceDisplayName || undefined,
+          workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          notes: input.notes,
+          trackingUrl: result.reservation.referenceCode
+            ? `http://localhost:3001/track?code=${encodeURIComponent(result.reservation.referenceCode)}&remedy=closure`
+            : undefined,
+        });
+      } catch (emailErr) {
+        console.warn("Failed to dispatch closure manual resolution email:", emailErr);
+      }
+    }
+    return result;
+  }
+
+  async getClosureAlerts(): Promise<import("../models/reservation").ClosureAlertsResult> {
+    if (!this.staffOperationsRepository.getClosureAlerts) {
+      return {
+        impactedCount: 0,
+        closureDateRange: null,
+        closureReason: null,
+        reservations: [],
+      };
+    }
+    return this.staffOperationsRepository.getClosureAlerts();
   }
 }
 

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createStaffOperationsService,
+  isReservationRejected,
+  isStaffCompletedReservation,
+  isStaffExpiredReservation,
   ReservationSupabaseRepository,
   StaffOperationsConflictError,
   StaffOperationsError,
@@ -24,20 +27,12 @@ export async function GET(request: NextRequest) {
         }
         if (targetStatus === "EXPIRED") {
           return (
-            r.reservationStatus === "EXPIRED" ||
-            r.reservationStatus === "REJECTED" ||
-            r.status?.toUpperCase() === "REJECTED" ||
-            r.paymentStatus?.toUpperCase().includes("REJECTED") ||
-            r.paymentAttemptStatus?.toUpperCase() === "REJECTED"
+            (r.reservationStatus === "EXPIRED" || isStaffExpiredReservation(r)) &&
+            !isReservationRejected(r)
           );
         }
         if (targetStatus === "REJECTED") {
-          return (
-            r.reservationStatus === "REJECTED" ||
-            r.status?.toUpperCase() === "REJECTED" ||
-            r.paymentStatus?.toUpperCase().includes("REJECTED") ||
-            r.paymentAttemptStatus?.toUpperCase() === "REJECTED"
-          );
+          return isReservationRejected(r);
         }
         if (targetStatus === "CONFIRMED") {
           return r.reservationStatus === "CONFIRMED";
@@ -46,7 +41,7 @@ export async function GET(request: NextRequest) {
           return r.reservationStatus === "CHECKED_IN" || r.checkInState === "CHECKED_IN";
         }
         if (targetStatus === "COMPLETED") {
-          return r.reservationStatus === "COMPLETED" || r.checkInState === "CHECKED_OUT";
+          return isStaffCompletedReservation(r) || r.reservationStatus === "COMPLETED" || r.checkInState === "CHECKED_OUT";
         }
         return r.reservationStatus === targetStatus;
       });

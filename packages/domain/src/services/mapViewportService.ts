@@ -4,6 +4,53 @@ export const DEFAULT_MAP_CANVAS_WIDTH = 1600;
 export const DEFAULT_MAP_CANVAS_HEIGHT = 1000;
 export const DEFAULT_MAP_GRID_SIZE = 20;
 
+export const MIN_MAP_CANVAS_WIDTH = 1200;
+export const MIN_MAP_CANVAS_HEIGHT = 800;
+export const MAX_MAP_CANVAS_WIDTH = 4000;
+export const MAX_MAP_CANVAS_HEIGHT = 3000;
+
+export interface CanvasDimensionPreset {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+}
+
+export const CANVAS_SIZE_PRESETS: CanvasDimensionPreset[] = [
+  { id: 'standard', label: 'Standard (1600 x 1000 px)', width: 1600, height: 1000 },
+  { id: 'large', label: 'Large (2000 x 1400 px)', width: 2000, height: 1400 },
+  { id: 'extra-large', label: 'Extra Large (2400 x 1600 px)', width: 2400, height: 1600 },
+  { id: 'ultra-wide', label: 'Ultra-Wide (3200 x 2000 px)', width: 3200, height: 2000 },
+];
+
+/**
+ * Clamps canvas dimensions within safe boundaries (1200x800 to 4000x3000).
+ */
+export function clampMapCanvasDimensions(
+  width: number,
+  height: number
+): { width: number; height: number } {
+  const safeW = Number.isFinite(width) && width > 0 ? Math.round(width) : DEFAULT_MAP_CANVAS_WIDTH;
+  const safeH = Number.isFinite(height) && height > 0 ? Math.round(height) : DEFAULT_MAP_CANVAS_HEIGHT;
+  const clampedW = Math.max(MIN_MAP_CANVAS_WIDTH, Math.min(MAX_MAP_CANVAS_WIDTH, safeW));
+  const clampedH = Math.max(MIN_MAP_CANVAS_HEIGHT, Math.min(MAX_MAP_CANVAS_HEIGHT, safeH));
+  return { width: clampedW, height: clampedH };
+}
+
+/**
+ * Checks whether canvas dimensions reside within valid bounds.
+ */
+export function isCanvasDimensionValid(width: number, height: number): boolean {
+  return (
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width >= MIN_MAP_CANVAS_WIDTH &&
+    width <= MAX_MAP_CANVAS_WIDTH &&
+    height >= MIN_MAP_CANVAS_HEIGHT &&
+    height <= MAX_MAP_CANVAS_HEIGHT
+  );
+}
+
 export interface MapViewportBounds {
   canvasWidth: number;
   canvasHeight: number;

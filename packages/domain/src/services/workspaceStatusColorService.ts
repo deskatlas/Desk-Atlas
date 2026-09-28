@@ -61,39 +61,48 @@ export function getStatusPillStyle(
   status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'UNAVAILABLE' | string,
   customColors?: Partial<WorkspaceStatusColors> | null
 ): { backgroundColor: string; color: string; borderColor: string } {
-  const colors = normalizeWorkspaceStatusColors(customColors);
-  const norm = (status || '').toUpperCase().trim();
-  let bg = colors.available;
-
-  if (
-    norm === 'OCCUPIED' ||
-    norm === 'IN_USE' ||
-    norm === 'ACTIVE_BOOKING' ||
-    norm === 'CHECKED_IN'
-  ) {
-    bg = colors.occupied;
-  } else if (
-    norm === 'MAINTENANCE' ||
-    norm === 'UNDER_REPAIR' ||
-    norm === 'BROKEN'
-  ) {
-    bg = colors.maintenance;
-  } else if (
-    norm === 'UNAVAILABLE' ||
-    norm === 'DISABLED' ||
-    norm === 'INACTIVE' ||
-    norm === 'BLOCKED' ||
-    norm === 'RESERVED'
-  ) {
-    bg = colors.unavailable;
-  }
-
+  const bg = resolveWorkspaceStatusColor(status, customColors);
   const textColor = getContrastColor(bg);
   return {
     backgroundColor: bg,
     color: textColor,
     borderColor: bg,
   };
+}
+
+export type WorkspaceOperationalState = 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'UNAVAILABLE';
+
+/**
+ * Resolves the operational status color for a workspace element according to centralized venue settings
+ */
+export function resolveWorkspaceStatusColor(
+  status: WorkspaceOperationalState | string,
+  configuredColors?: Partial<WorkspaceStatusColors> | null
+): string {
+  const colors = normalizeWorkspaceStatusColors(configuredColors);
+  const normalized = (status || '').toUpperCase().trim();
+
+  switch (normalized) {
+    case 'OCCUPIED':
+    case 'CHECKED_IN':
+    case 'IN_USE':
+    case 'ACTIVE_BOOKING':
+      return colors.occupied;
+    case 'MAINTENANCE':
+    case 'UNDER_REPAIR':
+    case 'BROKEN':
+      return colors.maintenance;
+    case 'UNAVAILABLE':
+    case 'DISABLED':
+    case 'INACTIVE':
+    case 'BLOCKED':
+    case 'RESERVED':
+    case 'CLOSED':
+      return colors.unavailable;
+    case 'AVAILABLE':
+    default:
+      return colors.available;
+  }
 }
 
 /**
@@ -103,6 +112,6 @@ export function getWorkspaceSpotColor(
   status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'UNAVAILABLE' | string,
   customColors?: Partial<WorkspaceStatusColors> | null
 ): string {
-  const pillStyle = getStatusPillStyle(status, customColors);
-  return pillStyle.backgroundColor;
+  return resolveWorkspaceStatusColor(status, customColors);
 }
+

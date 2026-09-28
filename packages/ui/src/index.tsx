@@ -31,6 +31,22 @@ export { useActiveTabPolling } from './hooks/useActiveTabPolling';
 export type { UseActiveTabPollingOptions } from './hooks/useActiveTabPolling';
 export { useVisibilityInterval } from './hooks/useVisibilityInterval';
 export type { UseVisibilityIntervalOptions } from './hooks/useVisibilityInterval';
+export {
+  MarqueeLabel,
+  computeMarqueeState,
+  getMarqueeKeyframesCss,
+} from './components/MarqueeLabel';
+export type {
+  MarqueeLabelProps,
+  MarqueeStateCalculation,
+} from './components/MarqueeLabel';
+export {
+  UrgentClosureImpactBanner,
+} from './components/UrgentClosureImpactBanner';
+export type {
+  UrgentClosureImpactBannerProps,
+} from './components/UrgentClosureImpactBanner';
 export const appShellClassName = 'min-h-screen bg-slate-950 text-slate-100';
+
 
 

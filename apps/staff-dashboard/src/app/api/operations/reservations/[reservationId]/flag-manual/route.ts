@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createStaffOperationsService,
   ReservationSupabaseRepository,
+  createTransactionalEmailService,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -19,13 +20,19 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const actorUserId = body.actorUserId || request.headers.get("x-user-id") || "staff";
     const actorRole = body.actorRole || request.headers.get("x-user-role") || "STAFF";
+    const actorName = body.actorName || body.staffName || (actorRole === "SUPERADMIN" ? "Super Admin" : "Staff Member");
     const notes = body.notes || "";
 
-    const service = createStaffOperationsService(new ReservationSupabaseRepository());
+    const service = createStaffOperationsService(
+      new ReservationSupabaseRepository(),
+      undefined,
+      createTransactionalEmailService()
+    );
     const result = await service.flagClosureManualResolution({
       reservationId: reservationId.trim(),
       actorUserId,
       actorRole,
+      actorName,
       notes,
     });
 

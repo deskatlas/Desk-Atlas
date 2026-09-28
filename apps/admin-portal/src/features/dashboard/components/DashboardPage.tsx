@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import type { AdminDashboardRange, AdminDashboardSnapshot, OccupancySummary } from "@deskatlas/domain";
+import { UrgentClosureImpactBanner } from "@deskatlas/ui";
 import { WorkspaceOverview } from "./WorkspaceOverview";
 import { MaintenanceOverview } from "./MaintenanceOverview";
 
@@ -9,6 +10,11 @@ export function DashboardPage() {
   const [range, setRange] = useState<AdminDashboardRange>("today");
   const [data, setData] = useState<AdminDashboardSnapshot | null>(null);
   const [occupancySummary, setOccupancySummary] = useState<OccupancySummary | null>(null);
+  const [closureAlerts, setClosureAlerts] = useState<{
+    impactedCount: number;
+    closureDateRange?: string | null;
+    closureReason?: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +71,31 @@ export function DashboardPage() {
 
     fetchOccupancy();
     const interval = setInterval(fetchOccupancy, 60000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchClosureAlerts = async () => {
+      try {
+        const res = await fetch("/api/operations/closure-alerts", { cache: "no-store" });
+        if (res.ok) {
+          const json = await res.json();
+          if (!isCancelled) {
+            setClosureAlerts(json);
+          }
+        }
+      } catch {
+        // silent fail on poll
+      }
+    };
+
+    fetchClosureAlerts();
+    const interval = setInterval(fetchClosureAlerts, 30000);
 
     return () => {
       isCancelled = true;
@@ -217,6 +248,15 @@ export function DashboardPage() {
         <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#FFF1F2", border: "1px solid #FECDD3", color: "#9F1239", fontSize: "13px", fontFamily: "var(--da-font-family)", marginBottom: "18px" }}>
           {error}
         </div>
+      )}
+
+      {closureAlerts && closureAlerts.impactedCount > 0 && (
+        <UrgentClosureImpactBanner
+          impactedCount={closureAlerts.impactedCount}
+          closureDateRange={closureAlerts.closureDateRange}
+          closureReason={closureAlerts.closureReason}
+          reviewUrl="/admin/reservations?filter=closure_impacted"
+        />
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: "14px", marginBottom: "22px" }}>

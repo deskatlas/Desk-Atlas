@@ -284,19 +284,6 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
         }
       }
     }
-    const hasBusinessClosure = (blockRows || []).some((b) => b.scope === 'BUSINESS');
-    if (hasBusinessClosure) {
-      const allInstances = await this.request<Array<{ id: string }>>(
-        `/workspace_instances?select=id&operational_status=neq.INACTIVE`
-      ).catch(() => []);
-      const closureBlock = (blockRows || []).find((b) => b.scope === 'BUSINESS');
-      const closureEnd = closureBlock?.end_at || null;
-      for (const inst of allInstances) {
-        if (!detailsMap.has(inst.id)) {
-          detailsMap.set(inst.id, closureEnd);
-        }
-      }
-    }
     for (const b of blockRows || []) {
       if (b.workspace_instance_id) {
         if (!detailsMap.has(b.workspace_instance_id)) {

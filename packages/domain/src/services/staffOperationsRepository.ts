@@ -30,4 +30,5 @@ export interface StaffOperationsRepository {
   decideCustomerRelocation?(input: any): Promise<any>;
   logClosurePhoneCall?(input: import("../models/reservation").LogClosurePhoneCallInput): Promise<any>;
   flagClosureManualResolution?(input: import("../models/reservation").FlagClosureManualResolutionInput): Promise<any>;
+  getClosureAlerts?(): Promise<import("../models/reservation").ClosureAlertsResult>;
 }
