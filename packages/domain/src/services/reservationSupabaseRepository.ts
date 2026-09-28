@@ -98,6 +98,17 @@ interface CatalogFloor {
   [key: string]: unknown;
 }
 
+export function sanitizeManualResolutionNotes(notes?: string | null): string | null {
+  if (!notes) return null;
+  return notes
+    .replace(/\s*\([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)/gi, '')
+    .replace(/by 28f07bd0-0372-447b-8c31-e1b562eafa3c/gi, 'by DeskAtlas')
+    .replace(/by Admin Edward \(ADMIN\)/gi, 'by DeskAtlas (ADMIN)')
+    .replace(/by Admin \(ADMIN\)/gi, 'by DeskAtlas (ADMIN)')
+    .replace(/by admin \(ADMIN\)/gi, 'by DeskAtlas (ADMIN)')
+    .replace(/Call by barrientosangeliea/gi, 'Call by Angelie');
+}
+
 interface CatalogPaymentMethod {
   id: string;
   name?: string;
@@ -2031,7 +2042,7 @@ export class ReservationSupabaseRepository
       closureReason: reservation.closure_reason ?? null,
       closureDate: reservation.closure_date ?? null,
       closureNotifiedAt: reservation.closure_notified_at ?? null,
-      manualResolutionNotes: reservation.manual_resolution_notes ?? null,
+      manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manual_resolution_notes),
     };
   }
 
@@ -2449,7 +2460,7 @@ export class ReservationSupabaseRepository
       isClosureImpacted: reservation.is_closure_impacted ?? false,
       closureImpactStatus: reservation.closure_impact_status ?? null,
       closureNotifiedAt: reservation.closure_notified_at ?? null,
-      manualResolutionNotes: reservation.manual_resolution_notes ?? null,
+      manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manual_resolution_notes),
       closureReason: reservation.closure_reason ?? null,
       closureDate: reservation.closure_date ?? null,
     };
@@ -2635,7 +2646,7 @@ export class ReservationSupabaseRepository
         isClosureImpacted: r.is_closure_impacted ?? false,
         closureImpactStatus: r.closure_impact_status ?? null,
         closureNotifiedAt: r.closure_notified_at ?? null,
-        manualResolutionNotes: r.manual_resolution_notes ?? null,
+        manualResolutionNotes: sanitizeManualResolutionNotes(r.manual_resolution_notes),
         closureReason: r.closure_reason ?? null,
         closureDate: r.closure_date ?? null,
       };
@@ -2952,7 +2963,7 @@ export class ReservationSupabaseRepository
       isClosureImpacted: r.is_closure_impacted ?? false,
       closureImpactStatus: r.closure_impact_status ?? null,
       closureNotifiedAt: r.closure_notified_at ?? null,
-      manualResolutionNotes: r.manual_resolution_notes ?? null,
+      manualResolutionNotes: sanitizeManualResolutionNotes(r.manual_resolution_notes),
       closureReason: r.closure_reason ?? null,
       closureDate: r.closure_date ?? null,
     };
@@ -4539,9 +4550,45 @@ export class ReservationSupabaseRepository
     }
 
     const nowIso = new Date().toISOString();
-    const staffName = input.staffName || "Staff Member";
-    const logEntry = `[${nowIso}] Call by ${staffName} (${input.staffUserId}) - Status: ${input.outreachStatus}. Notes: ${input.notes}`;
-    const newNotes = r.manual_resolution_notes ? `${r.manual_resolution_notes}\n${logEntry}` : logEntry;
+    let staffName: string | null = null;
+
+    const isStaffUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.staffUserId || "");
+    if (isStaffUuid) {
+      try {
+        const staffRes = await this.request<any[]>(
+          `/staff_profiles?user_id=eq.${encodeURIComponent(input.staffUserId)}&select=display_name,role&limit=1`
+        );
+        if (Array.isArray(staffRes) && staffRes[0]?.display_name) {
+          staffName = staffRes[0].display_name.trim();
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    if (!staffName && input.staffName && input.staffName.trim().toLowerCase() !== "admin" && input.staffName.trim().toLowerCase() !== "staff" && input.staffName.trim().toLowerCase() !== "staff member") {
+      staffName = input.staffName.trim();
+    }
+
+    if (!staffName) {
+      try {
+        const activeStaff = await this.request<any[]>(
+          `/staff_profiles?is_active=eq.true&order=created_at.asc&select=display_name&limit=1`
+        );
+        if (Array.isArray(activeStaff) && activeStaff[0]?.display_name) {
+          staffName = activeStaff[0].display_name.trim();
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    if (!staffName) {
+      staffName = "Staff";
+    }
+
+    const logEntry = `[${nowIso}] Call by ${staffName} - Status: ${input.outreachStatus}. Notes: ${input.notes}`;
+    const newNotes = sanitizeManualResolutionNotes(r.manual_resolution_notes ? `${r.manual_resolution_notes}\n${logEntry}` : logEntry);
 
     await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
       method: "PATCH",
@@ -4572,7 +4619,6 @@ export class ReservationSupabaseRepository
     if (!detail) {
       throw new Error("Failed to load reservation detail");
     }
-
     return {
       success: true,
       reservation: detail,
@@ -4598,10 +4644,45 @@ export class ReservationSupabaseRepository
 
     const nowIso = new Date().toISOString();
     let newNotes = r.manual_resolution_notes ?? null;
-    const displayName = input.actorName || (input.actorRole === "SUPERADMIN" ? "Super Admin" : "Staff Member");
+    let displayName: string | null = null;
+
+    const isActorUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.actorUserId || "");
+    if (isActorUuid) {
+      try {
+        const staffRes = await this.request<any[]>(
+          `/staff_profiles?user_id=eq.${encodeURIComponent(input.actorUserId)}&select=display_name,role&limit=1`
+        );
+        if (Array.isArray(staffRes) && staffRes[0]?.display_name) {
+          displayName = staffRes[0].display_name.trim();
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    if (!displayName && input.actorName && input.actorName.trim().toLowerCase() !== "admin" && input.actorName.trim().toLowerCase() !== "staff") {
+      displayName = input.actorName.trim();
+    }
+
+    if (!displayName) {
+      try {
+        const activeAdmins = await this.request<any[]>(
+          `/staff_profiles?role=in.(ADMIN,SUPERADMIN)&is_active=eq.true&order=created_at.asc&select=display_name&limit=1`
+        );
+        if (Array.isArray(activeAdmins) && activeAdmins[0]?.display_name) {
+          displayName = activeAdmins[0].display_name.trim();
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    if (!displayName) {
+      displayName = input.actorRole === "SUPERADMIN" ? "Super Admin" : "Admin";
+    }
     if (input.notes) {
       const noteEntry = `[${nowIso}] Flagged for Manual Resolution by ${displayName} (${input.actorRole}): ${input.notes}`;
-      newNotes = newNotes ? `${newNotes}\n${noteEntry}` : noteEntry;
+      newNotes = sanitizeManualResolutionNotes(newNotes ? `${newNotes}\n${noteEntry}` : noteEntry);
     }
 
     await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {

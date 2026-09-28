@@ -103,6 +103,14 @@ export function ScheduleCalendarStep({
     lockedSchedule?.rateType || 'HOURLY'
   );
 
+  const handleRateTypeChange = (newType: RateType) => {
+    if (lockedSchedule) return;
+    setSelectedRateType(newType);
+    if (newType !== 'HOURLY') {
+      setSelectedStartTime(null);
+    }
+  };
+
   const [passWindows, setPassWindows] = useState({
     dayPassStartTime: '07:00',
     dayPassEndTime: '23:30',
@@ -368,6 +376,16 @@ export function ScheduleCalendarStep({
 
   const totalPrice = resolvedPricing.estimatedTotal;
 
+  const isPassPackage = selectedRateType !== 'HOURLY';
+
+  const canProceed = useMemo(() => {
+    if (!selectedDate) return false;
+    if (isPassPackage) {
+      return true;
+    }
+    return Boolean(selectedSlot && selectedDurationHours && selectedDurationHours > 0);
+  }, [selectedDate, isPassPackage, selectedSlot, selectedDurationHours]);
+
   const handleContinue = () => {
     if (!selectedDate) return;
 
@@ -403,13 +421,20 @@ export function ScheduleCalendarStep({
       return;
     }
 
-    if (!selectedSlot || !selectedDurationHours || selectedDurationHours <= 0) return;
-    const effectiveStartTime = selectedSlot.startTime;
+    const effectiveStartTime = selectedSlot?.startTime || selectedStartTime || "09:00";
+    const [h, m] = effectiveStartTime.split(":").map(Number);
+    const endMinutes = h * 60 + m + selectedDurationHours * 60;
+    const endH = Math.floor(endMinutes / 60) % 24;
+    const endM = endMinutes % 60;
+    const effectiveEndTime = selectedSlot?.endTime || `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+    if (!isPassPackage && (!selectedSlot || !selectedDurationHours || selectedDurationHours <= 0)) return;
+
     onContinue({
       date: selectedDate,
       durationHours: selectedDurationHours,
       startTime: effectiveStartTime,
-      endTime: selectedSlot.endTime,
+      endTime: effectiveEndTime,
       rateType: selectedRateType,
     });
   };
@@ -632,7 +657,7 @@ export function ScheduleCalendarStep({
                 disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'HOURLY'}
                 onClick={() => {
                   if (!lockedSchedule) {
-                    setSelectedRateType('HOURLY');
+                    handleRateTypeChange('HOURLY');
                     setSelectedDurationHours(2);
                     setDurationInputStr("2");
                   }
@@ -655,7 +680,7 @@ export function ScheduleCalendarStep({
                   disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'DAY_PASS'}
                   onClick={() => {
                     if (!lockedSchedule) {
-                      setSelectedRateType('DAY_PASS');
+                      handleRateTypeChange('DAY_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
@@ -677,7 +702,7 @@ export function ScheduleCalendarStep({
                   disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'NIGHT_PASS'}
                   onClick={() => {
                     if (!lockedSchedule) {
-                      setSelectedRateType('NIGHT_PASS');
+                      handleRateTypeChange('NIGHT_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
@@ -699,7 +724,7 @@ export function ScheduleCalendarStep({
                   disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'WHOLE_DAY_PASS'}
                   onClick={() => {
                     if (!lockedSchedule) {
-                      setSelectedRateType('WHOLE_DAY_PASS');
+                      handleRateTypeChange('WHOLE_DAY_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
@@ -721,7 +746,7 @@ export function ScheduleCalendarStep({
                   disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'HALF_DAY_PASS'}
                   onClick={() => {
                     if (!lockedSchedule) {
-                      setSelectedRateType('HALF_DAY_PASS');
+                      handleRateTypeChange('HALF_DAY_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
@@ -796,9 +821,9 @@ export function ScheduleCalendarStep({
                         } else {
                           const parsed = parseInt(sanitized, 10);
                           if (parsed === 12 && workspace.hasHalfDayPass && workspace.halfDayPassPrice != null) {
-                            setSelectedRateType('HALF_DAY_PASS');
+                            handleRateTypeChange('HALF_DAY_PASS');
                           } else if (parsed === 24 && workspace.hasWholeDayPass && workspace.wholeDayPassPrice != null) {
-                            setSelectedRateType('WHOLE_DAY_PASS');
+                            handleRateTypeChange('WHOLE_DAY_PASS');
                           } else {
                             setSelectedDurationHours(parsed > 0 ? parsed : 0);
                           }
@@ -818,7 +843,7 @@ export function ScheduleCalendarStep({
               <div className="rounded-2xl bg-amber-50/90 border border-amber-200/90 p-4 text-xs text-amber-950 leading-relaxed flex flex-col gap-2">
                 <div className="font-extrabold flex items-center gap-2 text-sm text-amber-900">
                   <span>☀️</span>
-                  <span>Day Pass Selected — Active Shift Window</span>
+                  <span>Day Pass Selected - Active Shift Window</span>
                 </div>
                 <p>
                   Day Pass covers the daytime operating window from <strong>{formatTime12Hour(passWindows.dayPassStartTime)}</strong> until <strong>{formatTime12Hour(passWindows.dayPassEndTime)}</strong> for a fixed price of <strong>₱{workspace.dayPassPrice}</strong>.
@@ -828,7 +853,7 @@ export function ScheduleCalendarStep({
               <div className="rounded-2xl bg-indigo-50/90 border border-indigo-200/90 p-4 text-xs text-indigo-950 leading-relaxed flex flex-col gap-2">
                 <div className="font-extrabold flex items-center gap-2 text-sm text-indigo-900">
                   <span>🌙</span>
-                  <span>Night Pass Selected — Overnight Shift Window</span>
+                  <span>Night Pass Selected - Overnight Shift Window</span>
                 </div>
                 <p>
                   Night Pass covers the overnight window from <strong>{formatTime12Hour(passWindows.nightPassStartTime)}</strong> until <strong>{formatTime12Hour(passWindows.nightPassEndTime)}</strong> the next morning for a fixed price of <strong>₱{workspace.nightPassPrice}</strong>.
@@ -1104,16 +1129,18 @@ export function ScheduleCalendarStep({
             {/* Continue Button */}
             <button
               type="button"
-              disabled={!selectedDate || !selectedSlot || !selectedDurationHours || selectedDurationHours <= 0}
+              disabled={!canProceed}
               onClick={handleContinue}
               className={`da-primary-button w-full justify-center py-3 text-sm font-bold ${
-                !selectedDate || !selectedSlot || !selectedDurationHours || selectedDurationHours <= 0 ? "opacity-50 cursor-not-allowed" : ""
+                !canProceed ? "opacity-50 cursor-not-allowed" : ""
               }`}
             >
-              {selectedSlot
+              {canProceed
                 ? candidateRank > 0
-                  ? `Confirm Backup Spot ${candidateRank} Schedule →`
-                  : "Proceed with this Schedule →"
+                  ? `Confirm Backup Spot ${candidateRank} Schedule ->`
+                  : "Proceed with this Schedule ->"
+                : isPassPackage
+                ? "Select a Booking Date to Proceed"
                 : "Select a Start Time to Proceed"}
             </button>
           </div>

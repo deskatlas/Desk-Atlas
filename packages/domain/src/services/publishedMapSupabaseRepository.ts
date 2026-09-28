@@ -136,6 +136,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     if (cachedRow?.compiled_map_cache) {
       const compiled = cachedRow.compiled_map_cache;
       await this.hydrateWorkspaceTemplates(compiled.elements);
+      await this.hydrateWorkspaceOperationalStatuses(compiled.elements);
       if (!isStaffOrAdmin) {
         return {
           ...compiled,
@@ -186,6 +187,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
       .map((row) => mapPublishedElement(row, floorRow));
 
     await this.hydrateWorkspaceTemplates(elements);
+    await this.hydrateWorkspaceOperationalStatuses(elements);
 
     return {
       floor: mapFloor(floorRow),
@@ -208,6 +210,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
       if (v.compiled_map_cache) {
         const compiled = v.compiled_map_cache;
         await this.hydrateWorkspaceTemplates(compiled.elements);
+        await this.hydrateWorkspaceOperationalStatuses(compiled.elements);
         maps.push(
           !isStaffOrAdmin
             ? {
@@ -228,6 +231,54 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     }
 
     return maps;
+  }
+
+  private async hydrateWorkspaceOperationalStatuses(elements: PublishedMapElement[]): Promise<void> {
+    const instanceIds = [
+      ...new Set(
+        elements
+          .map((el) => el.workspace?.workspaceInstanceId)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+
+    if (instanceIds.length === 0) return;
+
+    try {
+      const rows = await this.request<
+        Array<{
+          id: string;
+          operational_status: WorkspaceOperationalStatus;
+          maintenance_note?: string | null;
+        }>
+      >(
+        `/workspace_instances?select=id,operational_status,maintenance_note&id=in.(${instanceIds
+          .map(encodeURIComponent)
+          .join(',')})`
+      );
+
+      const statusMap = new Map<
+        string,
+        { status: WorkspaceOperationalStatus; maintenanceNote?: string | null }
+      >(rows.map((r) => [r.id, { status: r.operational_status, maintenanceNote: r.maintenance_note }]));
+
+      for (const el of elements) {
+        if (el.workspace?.workspaceInstanceId) {
+          const live = statusMap.get(el.workspace.workspaceInstanceId);
+          if (live) {
+            el.workspace.operationalStatus = live.status;
+            if (live.maintenanceNote !== undefined) {
+              el.workspace.maintenanceNote = live.maintenanceNote;
+            }
+            if (el.style) {
+              el.style.operationalStatus = live.status;
+            }
+          }
+        }
+      }
+    } catch {
+      // Gracefully preserve compiled status on network or DB error
+    }
   }
 
   private async hydrateWorkspaceTemplates(elements: PublishedMapElement[]): Promise<void> {

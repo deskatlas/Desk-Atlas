@@ -149,6 +149,41 @@ function getTodayManila(): string {
   return getPhtDateString();
 }
 
+function calculateDisplayTotal(cand: SelectedCandidate | null): number {
+  if (!cand) return 0;
+  if (cand.rateType === "DAY_PASS") {
+    return cand.workspace.dayPassPrice ?? cand.workspace.rateAmount;
+  }
+  if (cand.rateType === "NIGHT_PASS") {
+    return cand.workspace.nightPassPrice ?? cand.workspace.rateAmount;
+  }
+  if (cand.rateType === "WHOLE_DAY_PASS") {
+    return cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24);
+  }
+  if (cand.rateType === "HALF_DAY_PASS") {
+    return cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12);
+  }
+  const hourlyRate = resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00").rate;
+  return hourlyRate * (cand.durationHours || 1);
+}
+
+function calculateDisplayRate(cand: SelectedCandidate | null): number {
+  if (!cand) return 0;
+  if (cand.rateType === "DAY_PASS") {
+    return cand.workspace.dayPassPrice ?? cand.workspace.rateAmount;
+  }
+  if (cand.rateType === "NIGHT_PASS") {
+    return cand.workspace.nightPassPrice ?? cand.workspace.rateAmount;
+  }
+  if (cand.rateType === "WHOLE_DAY_PASS") {
+    return cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24);
+  }
+  if (cand.rateType === "HALF_DAY_PASS") {
+    return cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12);
+  }
+  return resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00").rate;
+}
+
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 function AmenityIcon({ type, name, color }: { type?: string; name?: string; color?: string }) {
@@ -1092,8 +1127,12 @@ export function ReservationPage() {
           workspaceInstanceId: c.workspace.workspaceInstanceId,
           startAt: startUtc.toISOString(),
           endAt: endUtc.toISOString(),
+          rateType: c.rateType || "HOURLY",
         };
       });
+
+      const effectiveMainTotal = mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate);
+      const effectiveRateSnapshot = mainPricing ? mainPricing.effectivePrice : calculateDisplayRate(mainCandidate);
 
       const response = await fetch("/api/reservations", {
         method: "POST",
@@ -1104,9 +1143,10 @@ export function ReservationPage() {
           customerLastName: customerLastName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerContactNumber: customerContactNumber.trim() || undefined,
-          bookedRatePerHour: mainPricing ? mainPricing.effectivePrice : mainCandidate?.workspace.rateAmount,
-          rateSnapshot: mainPricing ? mainPricing.effectivePrice : mainCandidate?.workspace.rateAmount,
-          amountDue: mainPricing ? mainPricing.estimatedTotal : ((mainCandidate?.workspace.rateAmount || 0) * (mainCandidate?.durationHours || 1)),
+          rateType: mainCandidate?.rateType || "HOURLY",
+          bookedRatePerHour: effectiveRateSnapshot,
+          rateSnapshot: effectiveRateSnapshot,
+          amountDue: effectiveMainTotal,
           candidates: candidatesPayload,
         }),
       });
@@ -3152,11 +3192,10 @@ export function ReservationPage() {
                           </span>
                           <span className="text-base font-extrabold text-[var(--da-brand-dark)]">
                             ₱{(() => {
-                              const rateType = cand.rateType || "HOURLY";
-                              if (rateType === "WHOLE_DAY_PASS") return (cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24)).toFixed(2);
-                              if (rateType === "HALF_DAY_PASS") return (cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12)).toFixed(2);
-                              const hourlyRate = resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00").rate;
-                              return (hourlyRate * cand.durationHours).toFixed(2);
+                              if (isMain && mainPricing) {
+                                return mainPricing.estimatedTotal.toFixed(2);
+                              }
+                              return calculateDisplayTotal(cand).toFixed(2);
                             })()}
                           </span>
                         </div>
@@ -3212,7 +3251,17 @@ export function ReservationPage() {
                     {mainPricing?.isPromotional ? (
                       <>
                         <div className="flex justify-between items-center">
-                          <span>Rate ({mainCandidate.rateType === "WHOLE_DAY_PASS" ? "24h Pass" : mainCandidate.rateType === "HALF_DAY_PASS" ? "12h Pass" : "Hourly"}):</span>
+                          <span>Rate ({
+                            mainCandidate.rateType === "DAY_PASS"
+                              ? "Day Pass"
+                              : mainCandidate.rateType === "NIGHT_PASS"
+                              ? "Night Pass"
+                              : mainCandidate.rateType === "WHOLE_DAY_PASS"
+                              ? "24h Pass"
+                              : mainCandidate.rateType === "HALF_DAY_PASS"
+                              ? "12h Pass"
+                              : "Hourly"
+                          }):</span>
                           <span className="font-bold text-[var(--da-brand-dark)] flex items-center gap-1.5">
                             <span className="line-through text-slate-400 font-normal">₱{mainPricing.regularPrice.toFixed(2)}</span>
                             <span className="text-[var(--da-primary)]">₱{mainPricing.effectivePrice.toFixed(2)}</span>
@@ -3227,10 +3276,22 @@ export function ReservationPage() {
                       </>
                     ) : (
                       <div className="flex justify-between">
-                        <span>Rate ({mainCandidate.rateType === "WHOLE_DAY_PASS" ? "24h Pass" : mainCandidate.rateType === "HALF_DAY_PASS" ? "12h Pass" : "Hourly"}):</span>
+                        <span>Rate ({
+                          mainCandidate.rateType === "DAY_PASS"
+                            ? "Day Pass"
+                            : mainCandidate.rateType === "NIGHT_PASS"
+                            ? "Night Pass"
+                            : mainCandidate.rateType === "WHOLE_DAY_PASS"
+                            ? "24h Pass"
+                            : mainCandidate.rateType === "HALF_DAY_PASS"
+                            ? "12h Pass"
+                            : "Hourly"
+                        }):</span>
                         <span className="font-bold text-[var(--da-brand-dark)]">
                           ₱{(() => {
                             const rateType = mainCandidate.rateType || "HOURLY";
+                            if (rateType === "DAY_PASS") return `${(mainCandidate.workspace.dayPassPrice ?? mainCandidate.workspace.rateAmount).toFixed(2)} flat`;
+                            if (rateType === "NIGHT_PASS") return `${(mainCandidate.workspace.nightPassPrice ?? mainCandidate.workspace.rateAmount).toFixed(2)} flat`;
                             if (rateType === "WHOLE_DAY_PASS") return `${(mainCandidate.workspace.wholeDayPassPrice ?? (mainCandidate.workspace.rateAmount * 24)).toFixed(2)} flat`;
                             if (rateType === "HALF_DAY_PASS") return `${(mainCandidate.workspace.halfDayPassPrice ?? (mainCandidate.workspace.rateAmount * 12)).toFixed(2)} flat`;
                             const hourlyRate = resolveTimeBasedHourlyRate(mainCandidate.workspace, mainCandidate.startTime || "09:00").rate;
@@ -3271,7 +3332,7 @@ export function ReservationPage() {
                     Customer Details
                   </h3>
                   <p className="mt-1 text-xs text-[var(--da-text-secondary)]">
-                    Please provide your contact information to receive your reservation tracking and payment link. DeskAtlas is guest-first — no password, membership, or account registration required.
+                    Please provide your contact information to receive your reservation tracking and payment link. DeskAtlas is guest-first - no password, membership, or account registration required.
                   </p>
                 </div>
 
@@ -3409,7 +3470,7 @@ export function ReservationPage() {
                       ) : (
                         <span>
                           Submit Reservation & Pay (₱
-                          {(mainCandidate.workspace.rateAmount * mainCandidate.durationHours).toFixed(2)}) →
+                          {(mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate)).toFixed(2)}) →
                         </span>
                       )}
                     </button>
@@ -3447,7 +3508,7 @@ export function ReservationPage() {
           templateName={mainCandidate.workspace.templateName}
           durationHours={mainCandidate.durationHours}
           date={mainCandidate.date}
-          totalAmount={mainCandidate.workspace.rateAmount * mainCandidate.durationHours}
+          totalAmount={mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate)}
           isSubmitting={isSubmitting}
           onConfirm={handleConfirmSubmit}
         />

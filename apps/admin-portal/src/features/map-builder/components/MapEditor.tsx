@@ -322,6 +322,8 @@ export function MapEditor() {
   const [customCanvasW, setCustomCanvasW] = useState(String(DEFAULT_MAP_CANVAS_WIDTH));
   const [customCanvasH, setCustomCanvasH] = useState(String(DEFAULT_MAP_CANVAS_HEIGHT));
 
+  const [canvasToast, setCanvasToast] = useState<string | null>(null);
+
   const applyCanvasDimensions = (newW: number, newH: number) => {
     const { width: clampedW, height: clampedH } = clampMapCanvasDimensions(newW, newH);
     if (clampedW === canvasDimensions.width && clampedH === canvasDimensions.height) {
@@ -334,6 +336,12 @@ export function MapEditor() {
     }));
     setIsDirty(true);
     setSaveState('Unsaved changes');
+
+    const msg = `Canvas resized to ${clampedW} x ${clampedH} px`;
+    setCanvasToast(msg);
+    setTimeout(() => {
+      setCanvasToast((curr) => (curr === msg ? null : curr));
+    }, 3500);
   };
   const [dragState, setDragState] = useState<{ id: string; startX: number; startY: number; startObjX: number; startObjY: number } | null>(null);
   const [resizeState, setResizeState] = useState<{ id: string; startX: number; startY: number; startObjW: number; startObjH: number; startObjX: number; startObjY: number } | null>(null);
@@ -1687,6 +1695,48 @@ export function MapEditor() {
         };
       });
 
+      const validElementsPayload = elementsPayload.map((el) => {
+        if (el.elementRole === 'WORKSPACE') {
+          const isMissingInstance = !el.workspaceInstanceId || (instances.length > 0 && !instances.some((i: { id: string }) => i.id === el.workspaceInstanceId));
+          if (isMissingInstance) {
+            // Attempt to re-link to unmapped instance matching element label
+            const matchingUnmapped = instances.find(
+              (i: { id: string; displayName?: string; name?: string }) =>
+                (i.displayName === el.label || i.name === el.label) &&
+                !elementsPayload.some((e) => e.workspaceInstanceId === i.id)
+            );
+            if (matchingUnmapped) {
+              return { ...el, workspaceInstanceId: matchingUnmapped.id };
+            }
+            // Fallback: convert orphaned element to non-bookable structure to preserve geometry
+            return {
+              ...el,
+              elementRole: 'STRUCTURE' as const,
+              elementType: 'desk',
+              workspaceInstanceId: null,
+            };
+          }
+        }
+        return el;
+      });
+
+      if (validElementsPayload.some((el, idx) => el.workspaceInstanceId !== elementsPayload[idx].workspaceInstanceId || el.elementRole !== elementsPayload[idx].elementRole)) {
+        setBuilderObjects((prev) =>
+          prev.map((obj, idx) => {
+            const valid = validElementsPayload[idx];
+            if (valid && (valid.workspaceInstanceId !== obj.workspaceInstanceId || valid.elementRole !== obj.elementRole)) {
+              return {
+                ...obj,
+                workspaceInstanceId: valid.workspaceInstanceId ?? undefined,
+                elementRole: valid.elementRole,
+                bookable: valid.elementRole === 'WORKSPACE',
+              };
+            }
+            return obj;
+          })
+        );
+      }
+
       const res = await fetch('/api/admin/maps/draft', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1695,7 +1745,7 @@ export function MapEditor() {
           canvasWidth: canvasDimensionsRef.current.width,
           canvasHeight: canvasDimensionsRef.current.height,
           gridSize: canvasDimensionsRef.current.gridSize,
-          elements: elementsPayload,
+          elements: validElementsPayload,
           actorUserId: user?.id ?? null,
         }),
       });
@@ -1717,11 +1767,12 @@ export function MapEditor() {
         autosaveDebouncerRef.current?.schedule();
       }
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
       setSaveState('Unsaved changes');
-      setErrorMsg(isAutosave ? `Autosave warning: ${err.message || 'Failed to save draft map'}` : (err.message || 'Failed to save draft map'));
+      setErrorMsg(isAutosave ? `Autosave warning: ${errorObj.message || 'Failed to save draft map'}` : (errorObj.message || 'Failed to save draft map'));
       if (throwOnError) {
-        throw err;
+        throw errorObj;
       }
       return false;
     } finally {
@@ -3501,6 +3552,33 @@ useEffect(() => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {canvasToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'var(--da-brand-dark, #009689)',
+            color: '#ffffff',
+            padding: '10px 18px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: 700,
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            zIndex: 1000,
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <span>📐</span>
+          <span>{canvasToast}</span>
         </div>
       )}
     </main>

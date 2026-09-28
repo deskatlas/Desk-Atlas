@@ -12,7 +12,12 @@ import { QRCodeSVG } from 'qrcode.react';
 import {
   type AdminReservationDetail as AdminReservationDetailType,
   formatTimelineDate,
+  sanitizeManualResolutionNotes,
 } from '@deskatlas/domain';
+
+export function formatOutreachNotes(notes?: string | null): string {
+  return sanitizeManualResolutionNotes(notes) || '';
+}
 
 export function canViewBookingQr(detail: AdminReservationDetailType | any | null): boolean {
   if (!detail) return false;
@@ -254,12 +259,20 @@ export function ReservationDetail({ id }: { id: string }) {
     setIsLoggingCall(true);
     setCallLogError(null);
     try {
+      const staffName =
+        user?.name ||
+        (user?.email && !user.email.toLowerCase().startsWith("staff@") && !user.email.toLowerCase().startsWith("admin@")
+          ? user.email.split('@')[0]
+          : "");
       const response = await fetch(`/api/operations/reservations/${encodeURIComponent(resId)}/log-call`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
-          staffUserId: user?.id || "staff",
-          staffName: user?.email ? user.email.split('@')[0] : "Staff",
+          staffUserId: user?.id || undefined,
+          staffName,
           outreachStatus,
           notes: callNotes,
         }),
@@ -284,13 +297,21 @@ export function ReservationDetail({ id }: { id: string }) {
     setIsFlaggingManual(true);
     setFlagManualError(null);
     try {
+      const actorName =
+        user?.name ||
+        (user?.email && !user.email.toLowerCase().startsWith("staff@") && !user.email.toLowerCase().startsWith("admin@")
+          ? user.email.split('@')[0]
+          : "");
       const response = await fetch(`/api/operations/reservations/${encodeURIComponent(resId)}/flag-manual`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
-          actorUserId: user?.id || "staff",
-          actorRole: "STAFF",
-          actorName: user?.email ? user.email.split('@')[0] : "Staff",
+          actorUserId: user?.id || undefined,
+          actorRole: (user?.role || "STAFF").toUpperCase(),
+          actorName,
           notes: flagManualNotes,
         }),
       });
@@ -531,7 +552,7 @@ export function ReservationDetail({ id }: { id: string }) {
               {reservation.manualResolutionNotes && (
                 <div style={{ marginTop: '8px', padding: '8px 12px', background: '#FEF3C7', borderRadius: '6px', fontSize: '12px', color: '#78350F', whiteSpace: 'pre-wrap' }}>
                   <strong>Outreach & Resolution Notes:</strong>
-                  <div>{reservation.manualResolutionNotes}</div>
+                  <div>{formatOutreachNotes(reservation.manualResolutionNotes)}</div>
                 </div>
               )}
             </div>

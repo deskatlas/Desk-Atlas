@@ -72,6 +72,7 @@ import { PaymentReviewRepository } from "./paymentReviewRepository";
 import { ReportsRepository } from "./reportsRepository";
 import { StaffOperationsRepository } from "./staffOperationsRepository";
 import { StaffOperationsError, StaffOperationsConflictError } from "./staffOperationsService";
+import { sanitizeManualResolutionNotes } from "./reservationSupabaseRepository";
 import { randomUUID } from "crypto";
 
 interface StoredPaymentAttempt {
@@ -211,6 +212,7 @@ export class ReservationMemoryRepository
       startAt: c.startAt,
       endAt: c.endAt,
       isAssigned: false,
+      rateType: c.rateType,
     }));
 
     const reservation: ReservationResponseDTO = {
@@ -222,6 +224,7 @@ export class ReservationMemoryRepository
       customerEmail: request.customerEmail,
       customerContactNumber: request.customerContactNumber ?? null,
       status: request.source === "WEB" ? "PENDING_PAYMENT" : "PENDING_COUNTER_CONFIRMATION",
+      rateType: request.rateType || request.candidates.find((c) => c.rank === 0)?.rateType || "HOURLY",
       rateSnapshot,
       bookedRatePerHour: rateSnapshot,
       amountDue,
@@ -1111,7 +1114,7 @@ export class ReservationMemoryRepository
       closureReason: (reservation as any).closureReason ?? null,
       closureDate: (reservation as any).closureDate ?? null,
       closureNotifiedAt: reservation.closureNotifiedAt ?? null,
-      manualResolutionNotes: reservation.manualResolutionNotes ?? null,
+      manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manualResolutionNotes),
     };
   }
 
@@ -1416,7 +1419,7 @@ export class ReservationMemoryRepository
       isClosureImpacted: reservation.isClosureImpacted ?? false,
       closureImpactStatus: reservation.closureImpactStatus ?? null,
       closureNotifiedAt: reservation.closureNotifiedAt ?? null,
-      manualResolutionNotes: reservation.manualResolutionNotes ?? null,
+      manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manualResolutionNotes),
       closureReason: (reservation as any).closureReason ?? null,
       closureDate: (reservation as any).closureDate ?? null,
     };
@@ -1526,7 +1529,7 @@ export class ReservationMemoryRepository
         isClosureImpacted: r.isClosureImpacted ?? false,
         closureImpactStatus: r.closureImpactStatus ?? null,
         closureNotifiedAt: r.closureNotifiedAt ?? null,
-        manualResolutionNotes: r.manualResolutionNotes ?? null,
+        manualResolutionNotes: sanitizeManualResolutionNotes(r.manualResolutionNotes),
         closureReason: (r as any).closureReason ?? null,
         closureDate: (r as any).closureDate ?? null,
       };
@@ -1812,7 +1815,7 @@ export class ReservationMemoryRepository
       isClosureImpacted: r.isClosureImpacted ?? false,
       closureImpactStatus: r.closureImpactStatus ?? null,
       closureNotifiedAt: r.closureNotifiedAt ?? null,
-      manualResolutionNotes: r.manualResolutionNotes ?? null,
+      manualResolutionNotes: sanitizeManualResolutionNotes(r.manualResolutionNotes),
       closureReason: (r as any).closureReason ?? null,
       closureDate: (r as any).closureDate ?? null,
     };
@@ -3265,9 +3268,12 @@ export class ReservationMemoryRepository
       throw new Error(`Reservation not found: ${input.reservationId}`);
     }
     const nowIso = this.nowProvider().toISOString();
-    const staffName = input.staffName || "Staff Member";
-    const logEntry = `[${nowIso}] Call by ${staffName} (${input.staffUserId}) - Status: ${input.outreachStatus}. Notes: ${input.notes}`;
-    r.manualResolutionNotes = r.manualResolutionNotes ? `${r.manualResolutionNotes}\n${logEntry}` : logEntry;
+    let staffName = input.staffName;
+    if (!staffName || staffName.trim().toLowerCase() === "admin" || staffName.trim().toLowerCase() === "staff" || staffName.trim().toLowerCase() === "staff member") {
+      staffName = "Staff";
+    }
+    const logEntry = `[${nowIso}] Call by ${staffName} - Status: ${input.outreachStatus}. Notes: ${input.notes}`;
+    r.manualResolutionNotes = sanitizeManualResolutionNotes(r.manualResolutionNotes ? `${r.manualResolutionNotes}\n${logEntry}` : logEntry);
 
     this.recordOperationalAudit({
       reservation: r,
@@ -3299,11 +3305,15 @@ export class ReservationMemoryRepository
       throw new Error(`Reservation not found: ${input.reservationId}`);
     }
     const nowIso = this.nowProvider().toISOString();
+    let displayName = input.actorName;
+    if (!displayName || displayName.trim().toLowerCase() === "admin" || displayName.trim().toLowerCase() === "staff") {
+      displayName = input.actorRole === "SUPERADMIN" ? "Super Admin" : "Admin";
+    }
     r.closureImpactStatus = "MANUAL_RESOLUTION_REQUIRED";
-    const displayName = input.actorName || (input.actorRole === "SUPERADMIN" ? "Super Admin" : "Staff Member");
+    r.updatedAt = nowIso;
     if (input.notes) {
       const noteEntry = `[${nowIso}] Flagged for Manual Resolution by ${displayName} (${input.actorRole}): ${input.notes}`;
-      r.manualResolutionNotes = r.manualResolutionNotes ? `${r.manualResolutionNotes}\n${noteEntry}` : noteEntry;
+      r.manualResolutionNotes = sanitizeManualResolutionNotes(r.manualResolutionNotes ? `${r.manualResolutionNotes}\n${noteEntry}` : noteEntry);
     }
 
     this.recordOperationalAudit({

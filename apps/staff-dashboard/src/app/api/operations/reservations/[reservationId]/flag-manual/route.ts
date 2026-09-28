@@ -18,9 +18,9 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => ({}));
-    const actorUserId = body.actorUserId || request.headers.get("x-user-id") || "staff";
+    const actorUserId = body.actorUserId || request.headers.get("x-user-id") || undefined;
     const actorRole = body.actorRole || request.headers.get("x-user-role") || "STAFF";
-    const actorName = body.actorName || body.staffName || (actorRole === "SUPERADMIN" ? "Super Admin" : "Staff Member");
+    const actorName = body.actorName || body.staffName || undefined;
     const notes = body.notes || "";
 
     const service = createStaffOperationsService(

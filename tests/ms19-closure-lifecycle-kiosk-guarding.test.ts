@@ -251,13 +251,13 @@ describe("MS-19: Venue Closure Operational Alerting, Customer Outreach, Identity
       reservationId: res.id,
       actorUserId: "7d25e0a0-6f01-447a-8fbb-b3b3bf827438",
       actorRole: "ADMIN",
-      actorName: "Admin Edward",
+      actorName: "DeskAtlas",
       notes: "Relocating to Hot Desk Zone A upon customer confirmation.",
     });
 
     expect(flagResult.success).toBe(true);
     const notes = flagResult.reservation.manualResolutionNotes ?? "";
-    expect(notes).toContain("Flagged for Manual Resolution by Admin Edward (ADMIN)");
+    expect(notes).toContain("Flagged for Manual Resolution by DeskAtlas (ADMIN)");
     // Must NOT display raw UUID as the primary actor identity name
     expect(notes).not.toContain("by 7d25e0a0-6f01-447a-8fbb-b3b3bf827438 (ADMIN)");
   });

@@ -8,7 +8,12 @@ import {
   formatTimelineDate,
   formatSchedule,
   zonedDateTimeToUtc,
+  sanitizeManualResolutionNotes,
 } from '@deskatlas/domain';
+
+export function formatOutreachNotes(notes?: string | null): string {
+  return sanitizeManualResolutionNotes(notes) || '';
+}
 import { ProofImageViewer } from '../../payments/components/ProofImageViewer';
 import { ExtendReservationModal } from './ExtendReservationModal';
 import { useAuth } from '../../auth/components/AuthProvider';
@@ -610,12 +615,21 @@ export function ReservationDetail({ id }: { id: string }) {
     setIsLoggingCall(true);
     setCallLogError(null);
     try {
+      const staffName =
+        user?.name ||
+        (user?.email && !user.email.toLowerCase().startsWith("admin@")
+          ? user.email.split('@')[0]
+          : "");
+
       const response = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/closure/log-call`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
-          staffUserId: user?.id || "admin",
-          staffName: user?.email ? user.email.split('@')[0] : "Admin",
+          staffUserId: user?.id || undefined,
+          staffName,
           outreachStatus,
           notes: callNotes,
         }),
@@ -632,8 +646,9 @@ export function ReservationDetail({ id }: { id: string }) {
       setShowLogCallModal(false);
       setCallNotes("");
       setToastMessage({ text: "Phone call outreach logged successfully.", type: "success" });
-    } catch (err: any) {
-      setCallLogError(err?.message || "Failed to log call outreach");
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      setCallLogError(errorObj.message || "Failed to log call outreach");
     } finally {
       setIsLoggingCall(false);
     }
@@ -643,13 +658,22 @@ export function ReservationDetail({ id }: { id: string }) {
     setIsFlaggingManual(true);
     setFlagManualError(null);
     try {
+      const actorName =
+        user?.name ||
+        (user?.email && !user.email.toLowerCase().startsWith("admin@")
+          ? user.email.split('@')[0]
+          : "");
+
       const response = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/closure/flag-manual`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
-          actorUserId: user?.id || "admin",
-          actorRole: "ADMIN",
-          actorName: user?.email ? user.email.split('@')[0] : "Admin",
+          actorUserId: user?.id || undefined,
+          actorRole: (user?.role || "ADMIN").toUpperCase(),
+          actorName,
           notes: flagManualNotes,
         }),
       });
@@ -665,8 +689,9 @@ export function ReservationDetail({ id }: { id: string }) {
       setShowFlagManualModal(false);
       setFlagManualNotes("");
       setToastMessage({ text: "Reservation flagged for manual resolution.", type: "success" });
-    } catch (err: any) {
-      setFlagManualError(err?.message || "Failed to flag for manual resolution");
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      setFlagManualError(errorObj.message || "Failed to flag for manual resolution");
     } finally {
       setIsFlaggingManual(false);
     }
@@ -929,7 +954,7 @@ export function ReservationDetail({ id }: { id: string }) {
               {detail.manualResolutionNotes && (
                 <div style={{ marginTop: '8px', padding: '8px 12px', background: '#FEF3C7', borderRadius: '6px', fontSize: '12px', color: '#78350F', whiteSpace: 'pre-wrap' }}>
                   <strong>Outreach & Resolution Notes:</strong>
-                  <div>{detail.manualResolutionNotes}</div>
+                  <div>{formatOutreachNotes(detail.manualResolutionNotes)}</div>
                 </div>
               )}
             </div>

@@ -136,6 +136,10 @@ export async function POST(request: NextRequest) {
         customerEmail: body.customerEmail ?? body.customer?.email,
         customerContactNumber: contactNumber,
         paymentMethodId,
+        rateType: body.rateType,
+        bookedRatePerHour: body.bookedRatePerHour ?? null,
+        rateSnapshot: body.rateSnapshot ?? null,
+        amountDue: body.amountDue ?? null,
         candidates: body.candidates,
       };
     } else {
@@ -173,12 +177,17 @@ export async function POST(request: NextRequest) {
         customerEmail: body.customerEmail ?? body.customer?.email,
         customerContactNumber: contactNumber,
         paymentMethodId,
+        rateType: body.rateType,
+        bookedRatePerHour: body.bookedRatePerHour ?? null,
+        rateSnapshot: body.rateSnapshot ?? null,
+        amountDue: body.amountDue ?? null,
         candidates: [
           {
             rank: 0,
             workspaceInstanceId: body.workspaceInstanceId,
             startAt,
             endAt,
+            rateType: body.rateType,
           },
         ],
       };

@@ -220,7 +220,14 @@ async function normalizeElements(
       }
     } else if (element.elementRole === BOOKABLE_ROLE) {
       if (!element.workspaceInstanceId) {
-        throw new MapValidationError('Bookable workspace map elements must link to a workspace instance');
+        if (!isPublishing) {
+          // Auto-convert orphaned unlinked element to structure in draft mode rather than bricking draft save
+          element.elementRole = 'STRUCTURE';
+          continue;
+        }
+        throw new MapValidationError(
+          `Bookable workspace "${element.label || 'Unnamed'}" must link to a workspace instance before publishing`
+        );
       }
 
       if (seenInstanceIds.has(element.workspaceInstanceId)) {

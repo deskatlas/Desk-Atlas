@@ -39,6 +39,14 @@ class CustomerWorkspaceRepo {
       rateAmount: Number(d.rate_amount),
       pricingUnit: d.pricing_unit,
       isActive: d.is_active,
+      hasDayPass: d.has_day_pass ?? false,
+      dayPassPrice: d.day_pass_price !== null && d.day_pass_price !== undefined ? Number(d.day_pass_price) : null,
+      hasNightPass: d.has_night_pass ?? false,
+      nightPassPrice: d.night_pass_price !== null && d.night_pass_price !== undefined ? Number(d.night_pass_price) : null,
+      hasWholeDayPass: d.has_whole_day_pass ?? false,
+      wholeDayPassPrice: d.whole_day_pass_price !== null && d.whole_day_pass_price !== undefined ? Number(d.whole_day_pass_price) : null,
+      hasHalfDayPass: d.has_half_day_pass ?? false,
+      halfDayPassPrice: d.half_day_pass_price !== null && d.half_day_pass_price !== undefined ? Number(d.half_day_pass_price) : null,
     }));
 
     return { instances, templates, floors: [] };
@@ -124,8 +132,11 @@ export async function POST(request: NextRequest) {
 
     const payload: CreateReservationRequest = {
       ...body,
-      customerContactNumber: body.customerContactNumber ?? (body as any).contactNumber ?? null,
+      rateType: body.rateType,
       bookedRatePerHour: body.bookedRatePerHour ?? null,
+      rateSnapshot: body.rateSnapshot ?? null,
+      amountDue: body.amountDue ?? null,
+      customerContactNumber: body.customerContactNumber ?? (body as any).contactNumber ?? null,
     };
 
     const reservation = await service.createReservation(payload, {

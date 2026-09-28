@@ -5,6 +5,9 @@ import { validateCandidates, CandidateValidationContext } from "./candidateValid
 import { createPaymentSessionService, PaymentSessionService } from "./paymentSessionService";
 import { ReservationPaymentRepository } from "./paymentSessionRepository";
 import { validatePersonName } from "./personNameValidationService";
+import { RateType } from "./pricingService";
+import { resolveEffectivePrice } from "./promotionalPricingService";
+import { PromotionalRate } from "../models/promotionalRate";
 
 export class ReservationError extends Error {
   constructor(message: string) {
@@ -27,6 +30,7 @@ export class ReservationService {
       paymentLinkBaseUrl?: string;
       maxAdvanceBookingDays?: number;
       now?: Date;
+      promotions?: PromotionalRate[];
     }
   ): Promise<ReservationResponseDTO> {
     const firstNameValidation = validatePersonName(request.customerFirstName, "First name");
@@ -79,8 +83,9 @@ export class ReservationService {
     // Use CandidateValidationService
     try {
       validateCandidates(request.candidates, context);
-    } catch (error: any) {
-      throw new ReservationError(error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Validation failed";
+      throw new ReservationError(msg);
     }
 
     // Extract Main candidate (rank 0) to compute price
@@ -96,12 +101,75 @@ export class ReservationService {
       throw new ReservationError("Template for main candidate not found.");
     }
 
-    const start = new Date(mainCandidate.startAt);
-    const end = new Date(mainCandidate.endAt);
-    const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    const rateType: RateType = mainCandidate.rateType || request.rateType || "HOURLY";
 
-    const rateSnapshot = mainTemplate.rateAmount;
-    const amountDue = Math.round(rateSnapshot * durationHours * 100) / 100; // Because pricing_unit is HOURLY
+    let basePrice = mainTemplate.rateAmount;
+    if (rateType === "DAY_PASS") {
+      basePrice = mainTemplate.dayPassPrice ?? mainTemplate.rateAmount;
+    } else if (rateType === "NIGHT_PASS") {
+      basePrice = mainTemplate.nightPassPrice ?? mainTemplate.rateAmount;
+    } else if (rateType === "WHOLE_DAY_PASS") {
+      basePrice = mainTemplate.wholeDayPassPrice ?? (mainTemplate.rateAmount * 24);
+    } else if (rateType === "HALF_DAY_PASS") {
+      basePrice = mainTemplate.halfDayPassPrice ?? (mainTemplate.rateAmount * 12);
+    }
+
+    let rateSnapshot = basePrice;
+    let amountDue = basePrice;
+
+    if (rateType === "HOURLY") {
+      const start = new Date(mainCandidate.startAt);
+      const end = new Date(mainCandidate.endAt);
+      const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      amountDue = Math.round(rateSnapshot * durationHours * 100) / 100;
+    } else {
+      // Flat pass package: amountDue is the flat price, not multiplied by operating window duration
+      amountDue = Math.round(rateSnapshot * 100) / 100;
+    }
+
+    // Resolve promotional discounts if promotions are provided in options
+    if (options?.promotions && options.promotions.length > 0) {
+      const targetTime = new Date(mainCandidate.startAt);
+      const start = new Date(mainCandidate.startAt);
+      const end = new Date(mainCandidate.endAt);
+      const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      const resolved = resolveEffectivePrice(
+        mainTemplate.id,
+        rateType,
+        basePrice,
+        targetTime,
+        options.promotions,
+        rateType === "HOURLY" ? durationHours : 1
+      );
+      rateSnapshot = resolved.effectivePrice;
+      amountDue = resolved.estimatedTotal;
+    }
+
+    // If client passed validated promo pricing, accept effective rate within limits
+    if (request.amountDue !== undefined && request.amountDue !== null && request.amountDue > 0) {
+      if (request.amountDue <= amountDue) {
+        amountDue = request.amountDue;
+        if (request.rateSnapshot !== undefined && request.rateSnapshot !== null) {
+          rateSnapshot = request.rateSnapshot;
+        } else if (request.bookedRatePerHour !== undefined && request.bookedRatePerHour !== null) {
+          rateSnapshot = request.bookedRatePerHour;
+        }
+      }
+    } else if (request.rateSnapshot !== undefined && request.rateSnapshot !== null && request.rateSnapshot > 0) {
+      if (request.rateSnapshot <= basePrice) {
+        rateSnapshot = request.rateSnapshot;
+        if (rateType !== "HOURLY") {
+          amountDue = rateSnapshot;
+        }
+      }
+    } else if (request.bookedRatePerHour !== undefined && request.bookedRatePerHour !== null && request.bookedRatePerHour > 0) {
+      if (request.bookedRatePerHour <= basePrice) {
+        rateSnapshot = request.bookedRatePerHour;
+        if (rateType !== "HOURLY") {
+          amountDue = rateSnapshot;
+        }
+      }
+    }
 
     if (request.source === "WEB") {
       if (!this.paymentRepository) {

@@ -1,9 +1,10 @@
-import type { Floor } from '../models/workspace';
+import type { Floor, WorkspaceOperationalStatus } from '../models/workspace';
 import type { PublishedFloorMap, PublishedMapAudience, PublishedMapRepository } from '../models/publishedMap';
 
 export class InMemoryPublishedMapRepository implements PublishedMapRepository {
   private floors = new Map<string, Floor>();
   private publishedMaps = new Map<string, PublishedFloorMap>();
+  private instanceStatuses = new Map<string, WorkspaceOperationalStatus>();
 
   seedFloor(floor: Floor) {
     this.floors.set(floor.id, { ...floor });
@@ -11,7 +12,11 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
 
   seedPublishedFloorMap(map: PublishedFloorMap) {
     this.seedFloor(map.floor);
-    this.publishedMaps.set(map.floor.id, clonePublishedFloorMap(map, 'ADMIN'));
+    this.publishedMaps.set(map.floor.id, clonePublishedFloorMap(map, 'ADMIN', this.instanceStatuses));
+  }
+
+  setInstanceStatus(instanceId: string, status: WorkspaceOperationalStatus) {
+    this.instanceStatuses.set(instanceId, status);
   }
 
   async listPublishedFloors(): Promise<Floor[]> {
@@ -33,7 +38,7 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
     const map = this.publishedMaps.get(floorId);
     if (!map) return null;
 
-    return clonePublishedFloorMap(map, options?.audience);
+    return clonePublishedFloorMap(map, options?.audience, this.instanceStatuses);
   }
 
   async loadAllPublishedFloorMaps(
@@ -49,22 +54,35 @@ export class InMemoryPublishedMapRepository implements PublishedMapRepository {
   }
 }
 
-function clonePublishedFloorMap(map: PublishedFloorMap, audience?: PublishedMapAudience): PublishedFloorMap {
+function clonePublishedFloorMap(
+  map: PublishedFloorMap,
+  audience?: PublishedMapAudience,
+  instanceStatuses?: Map<string, WorkspaceOperationalStatus>
+): PublishedFloorMap {
   const isStaffOrAdmin = audience === 'STAFF' || audience === 'ADMIN';
   return {
     floor: { ...map.floor },
     version: { ...map.version },
     elements: map.elements
+      .map((element) => {
+        let ws = element.workspace ? { ...element.workspace } : null;
+        let style = { ...element.style };
+        if (ws && instanceStatuses && instanceStatuses.has(ws.workspaceInstanceId)) {
+          const liveStatus = instanceStatuses.get(ws.workspaceInstanceId)!;
+          ws = { ...ws, operationalStatus: liveStatus };
+          style = { ...style, operationalStatus: liveStatus };
+        }
+        return {
+          ...element,
+          style,
+          workspace: ws,
+        };
+      })
       .filter((element) => {
         if (element.elementRole === 'WORKSPACE') {
           if (!isStaffOrAdmin && element.workspace?.operationalStatus === 'INACTIVE') return false;
         }
         return true;
-      })
-      .map((element) => ({
-        ...element,
-        style: { ...element.style },
-        workspace: element.workspace ? { ...element.workspace } : null,
-      })),
+      }),
   };
 }

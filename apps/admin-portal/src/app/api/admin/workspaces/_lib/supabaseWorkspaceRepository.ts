@@ -323,13 +323,39 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       return { deleted: false, archived: true, instance: deactivated };
     }
 
-    await this.request<unknown>(
-      `/map_elements?workspace_instance_id=eq.${encodeURIComponent(id)}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ workspace_instance_id: null }),
+    // Detach or sanitize draft map elements when deleting physical instance
+    const elementsToDetach = await this.request<Array<{ id: string; map_version_id: string }>>(
+      `/map_elements?workspace_instance_id=eq.${encodeURIComponent(id)}&select=id,map_version_id`
+    ).catch(() => []);
+
+    if (elementsToDetach && elementsToDetach.length > 0) {
+      for (const el of elementsToDetach) {
+        const versions = await this.request<Array<{ id: string; status: string }>>(
+          `/map_versions?id=eq.${encodeURIComponent(el.map_version_id)}&select=id,status&limit=1`
+        ).catch(() => []);
+        if (versions?.[0]?.status === 'DRAFT') {
+          // Convert draft elements to STRUCTURE so the draft remains valid and editable
+          await this.request(`/map_elements?id=eq.${encodeURIComponent(el.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ workspace_instance_id: null, element_role: 'STRUCTURE' }),
+          }).catch(() => null);
+        } else {
+          // In published/archived versions, only nullify workspace_instance_id to honor immutable triggers
+          await this.request(`/map_elements?id=eq.${encodeURIComponent(el.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ workspace_instance_id: null }),
+          }).catch(() => null);
+        }
       }
-    ).catch(() => null);
+    } else {
+      await this.request<unknown>(
+        `/map_elements?workspace_instance_id=eq.${encodeURIComponent(id)}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ workspace_instance_id: null }),
+        }
+      ).catch(() => null);
+    }
 
     await this.request<unknown>(`/workspace_instances?id=eq.${encodeURIComponent(id)}`, {
       method: 'DELETE',

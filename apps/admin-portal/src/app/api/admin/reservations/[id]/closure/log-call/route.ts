@@ -12,8 +12,8 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const service = getAdminReservationService();
 
-    const staffUserId = body.staffUserId || request.headers.get("x-user-id") || "admin";
-    const staffName = body.staffName || "Admin User";
+    const staffUserId = body.staffUserId || request.headers.get("x-user-id") || undefined;
+    const staffName = body.staffName || undefined;
     const outreachStatus = body.outreachStatus || "LEFT_VOICEMAIL";
     const notes = body.notes || "";
 

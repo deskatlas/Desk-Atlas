@@ -1,3 +1,5 @@
+import type { RateType } from "../services/pricingService";
+
 export type ReservationSource = "WEB" | "KIOSK";
 
 export type ReservationStatus = 
@@ -27,6 +29,7 @@ export interface Reservation {
   customerEmail: string;
   customerContactNumber?: string | null;
   status: ReservationStatus;
+  rateType?: RateType | null;
   rateSnapshot: number;
   bookedRatePerHour?: number | null;
   amountDue: number;
@@ -61,6 +64,7 @@ export interface ReservationCandidate {
   startAt: string;
   endAt: string;
   isAssigned: boolean;
+  rateType?: RateType;
   workspaceDisplayName?: string;
   workspaceInstanceCode?: string;
   workspaceTemplateName?: string;
@@ -72,7 +76,10 @@ export interface CandidateSubmissionDTO {
   workspaceInstanceId: string;
   startAt: string;
   endAt: string;
+  rateType?: RateType;
 }
+
+export type CandidateReservationInput = CandidateSubmissionDTO;
 
 export interface CreateReservationRequest {
   source: ReservationSource;
@@ -82,7 +89,10 @@ export interface CreateReservationRequest {
   customerContactNumber?: string | null;
   candidates: CandidateSubmissionDTO[];
   paymentMethodId?: string;
+  rateType?: RateType;
   bookedRatePerHour?: number | null;
+  rateSnapshot?: number | null;
+  amountDue?: number | null;
 }
 
 export type PaymentChannel = "WEB" | "KIOSK";
