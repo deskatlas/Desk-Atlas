@@ -65,8 +65,8 @@ export function CancellationPolicyUploader({
         cancellationPolicyUpdatedAt: json.data.updatedAt,
       });
       showSuccess(`Policy PDF "${file.name}" uploaded successfully!`);
-    } catch (err: any) {
-      showError(err.message || 'Failed to upload PDF policy');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to upload PDF policy');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -123,8 +123,8 @@ export function CancellationPolicyUploader({
         cancellationPolicyUpdatedAt: null,
       });
       showSuccess('Custom cancellation & rescheduling policy PDF removed.');
-    } catch (err: any) {
-      showError(err.message || 'Failed to remove policy PDF');
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to remove policy PDF');
     } finally {
       setUploading(false);
     }
@@ -148,7 +148,7 @@ export function CancellationPolicyUploader({
     : null;
 
   return (
-    <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '20px', marginTop: '10px' }}>
+    <div>
       <div style={{ marginBottom: '14px' }}>
         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px' }}>
           Cancellation & Rescheduling Policy

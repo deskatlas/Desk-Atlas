@@ -43,6 +43,14 @@ export async function GET(request: NextRequest) {
         if (targetStatus === "COMPLETED") {
           return isStaffCompletedReservation(r) || r.reservationStatus === "COMPLETED" || r.checkInState === "CHECKED_OUT";
         }
+        if (targetStatus === "CLOSURE_IMPACTED") {
+          return (
+            r.isClosureImpacted === true ||
+            (Boolean(r.closureImpactStatus) &&
+              r.closureImpactStatus !== "CUSTOMER_RESOLVED" &&
+              r.closureImpactStatus !== "STAFF_RESOLVED")
+          );
+        }
         return r.reservationStatus === targetStatus;
       });
     }

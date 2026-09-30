@@ -212,4 +212,5 @@ export * from './services/promotionalSupabaseRepository';
 export * from './services/promotionalService';
 export * from './services/pricingService';
 export * from './services/reservationStatusService';
+export * from './services/promotionalFilterService';
 

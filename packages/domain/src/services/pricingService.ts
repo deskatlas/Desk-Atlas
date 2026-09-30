@@ -245,6 +245,8 @@ export interface PassShiftWindowConfig {
   dayPassEndTime?: string;
   nightPassStartTime?: string;
   nightPassEndTime?: string;
+  wholeDayPassStartTime?: string;
+  wholeDayPassEndTime?: string;
 }
 
 /**
@@ -297,9 +299,9 @@ export function isNightTime(
 }
 
 /**
- * Resolves the dynamic hourly rate based on whether the booking time is Day or Night.
- * If day time, uses configured Day Pass price if available, otherwise base rate.
- * If night time, uses configured Night Pass price if available, otherwise base rate.
+ * Resolves the base hourly rate and whether the booking time is Day or Night window.
+ * Day pass and night pass are fixed pass promo tiers, not hourly rates.
+ * Hourly bookings always use the workspace template base rate.
  */
 export function resolveTimeBasedHourlyRate(
   config: WorkspacePassPricingConfig,
@@ -337,25 +339,12 @@ export function resolveTimeBasedHourlyRate(
 
   const baseRate = Number(config.hourlyRate ?? config.rateAmount ?? 0);
 
-  if (!isNight) {
-    const hasDayPrice = Boolean(config.hasDayPass && config.dayPassPrice !== null && config.dayPassPrice !== undefined && !isNaN(Number(config.dayPassPrice)));
-    const rate = hasDayPrice ? Number(config.dayPassPrice) : baseRate;
-    return {
-      rate,
-      isNight: false,
-      tierLabel: 'Day Rate',
-      hasConfiguredRate: hasDayPrice,
-    };
-  } else {
-    const hasNightPrice = Boolean(config.hasNightPass && config.nightPassPrice !== null && config.nightPassPrice !== undefined && !isNaN(Number(config.nightPassPrice)));
-    const rate = hasNightPrice ? Number(config.nightPassPrice) : baseRate;
-    return {
-      rate,
-      isNight: true,
-      tierLabel: 'Night Rate',
-      hasConfiguredRate: hasNightPrice,
-    };
-  }
+  return {
+    rate: baseRate,
+    isNight,
+    tierLabel: isNight ? 'Night' : 'Day',
+    hasConfiguredRate: baseRate > 0,
+  };
 }
 
 /**

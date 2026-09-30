@@ -6,14 +6,20 @@ import { WelcomeScreen } from "../features/welcome/WelcomeScreen";
 import { KioskScanner } from "../features/qr-scanner/KioskScanner";
 import { KioskReferenceEntry } from "../features/qr-scanner/KioskReferenceEntry";
 import { SessionManager } from "../features/session/SessionManager";
+import { useKioskSettings } from "../../hooks/useKioskSettings";
 
 export default function KioskStartPage() {
   const router = useRouter();
   const [activeView, setActiveView] = useState<"WELCOME" | "SCANNER" | "REFERENCE">("WELCOME");
+  const { kioskTimeoutMs, warningTimeoutMs } = useKioskSettings();
 
   if (activeView === "SCANNER") {
     return (
-      <SessionManager onReset={() => setActiveView("WELCOME")}>
+      <SessionManager 
+        timeoutMs={kioskTimeoutMs}
+        warningTimeoutMs={warningTimeoutMs}
+        onReset={() => setActiveView("WELCOME")}
+      >
         <KioskScanner
           onCancel={() => setActiveView("WELCOME")}
           onSwitchToReference={() => setActiveView("REFERENCE")}
@@ -24,7 +30,11 @@ export default function KioskStartPage() {
 
   if (activeView === "REFERENCE") {
     return (
-      <SessionManager onReset={() => setActiveView("WELCOME")}>
+      <SessionManager 
+        timeoutMs={kioskTimeoutMs}
+        warningTimeoutMs={warningTimeoutMs}
+        onReset={() => setActiveView("WELCOME")}
+      >
         <KioskReferenceEntry
           onCancel={() => setActiveView("WELCOME")}
           onSwitchToScanner={() => setActiveView("SCANNER")}

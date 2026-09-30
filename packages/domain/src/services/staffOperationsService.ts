@@ -442,6 +442,16 @@ export class StaffOperationsService {
     if (this.emailService && result?.success && result?.reservation?.customerEmail) {
       try {
         const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        const publicAppUrl =
+          process.env.DESKATLAS_PUBLIC_APP_URL ||
+          process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "https://deskatlas.test";
+        const baseTrackingUrl = result.reservation.referenceCode
+          ? buildReservationTrackingUrl(publicAppUrl, result.reservation.referenceCode)
+          : undefined;
+        const trackingUrl = baseTrackingUrl ? `${baseTrackingUrl}&remedy=closure` : undefined;
+
         await this.emailService.sendClosureOutreachEmail({
           to: result.reservation.customerEmail,
           customerFirstName: result.reservation.customerFirstName,
@@ -454,9 +464,7 @@ export class StaffOperationsService {
           staffNotes: input.notes,
           staffName: input.staffName,
           outreachStatus: input.outreachStatus,
-          trackingUrl: result.reservation.referenceCode
-            ? `http://localhost:3001/track?code=${encodeURIComponent(result.reservation.referenceCode)}&remedy=closure`
-            : undefined,
+          trackingUrl,
         });
       } catch (emailErr) {
         console.warn("Failed to dispatch closure outreach email:", emailErr);
@@ -477,6 +485,16 @@ export class StaffOperationsService {
     if (this.emailService && result?.success && result?.reservation?.customerEmail) {
       try {
         const assigned = result.reservation.assignedCandidate || result.reservation.candidates?.[0];
+        const publicAppUrl =
+          process.env.DESKATLAS_PUBLIC_APP_URL ||
+          process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "https://deskatlas.test";
+        const baseTrackingUrl = result.reservation.referenceCode
+          ? buildReservationTrackingUrl(publicAppUrl, result.reservation.referenceCode)
+          : undefined;
+        const trackingUrl = baseTrackingUrl ? `${baseTrackingUrl}&remedy=closure` : undefined;
+
         await this.emailService.sendClosureManualResolutionEmail({
           to: result.reservation.customerEmail,
           customerFirstName: result.reservation.customerFirstName,
@@ -487,9 +505,7 @@ export class StaffOperationsService {
           workspaceDisplayName: assigned?.workspaceDisplayName || undefined,
           workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
           notes: input.notes,
-          trackingUrl: result.reservation.referenceCode
-            ? `http://localhost:3001/track?code=${encodeURIComponent(result.reservation.referenceCode)}&remedy=closure`
-            : undefined,
+          trackingUrl,
         });
       } catch (emailErr) {
         console.warn("Failed to dispatch closure manual resolution email:", emailErr);

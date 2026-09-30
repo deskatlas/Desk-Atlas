@@ -77,6 +77,7 @@ export function createAdminSettingsService(
       maxAdvanceBookingDays: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
+      kioskTimeoutMinutes: number;
       kioskAllowanceMinutes: number;
       bookingEndAlertMinutes: number;
       nearCheckoutThresholdMinutes: number;
@@ -85,6 +86,8 @@ export function createAdminSettingsService(
       dayPassEndTime: string;
       nightPassStartTime: string;
       nightPassEndTime: string;
+      wholeDayPassStartTime: string;
+      wholeDayPassEndTime: string;
       cancellationPolicyPdfUrl?: string | null;
       cancellationPolicyPdfFilename?: string | null;
       cancellationPolicyUpdatedAt?: string | null;
@@ -111,6 +114,7 @@ export function createAdminSettingsService(
         maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays ?? 90,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
+        kioskTimeoutMinutes: businessSettings.kioskTimeoutMinutes ?? 60,
         kioskAllowanceMinutes: getKioskAllowanceMinutes(businessSettings.kioskAllowanceMinutes),
         bookingEndAlertMinutes: getBookingEndAlertMinutes(businessSettings.bookingEndAlertMinutes),
         nearCheckoutThresholdMinutes: getNearCheckoutThresholdMinutes(
@@ -121,6 +125,8 @@ export function createAdminSettingsService(
         dayPassEndTime: businessSettings.dayPassEndTime ?? '23:30',
         nightPassStartTime: businessSettings.nightPassStartTime ?? '20:00',
         nightPassEndTime: businessSettings.nightPassEndTime ?? '07:00',
+        wholeDayPassStartTime: businessSettings.wholeDayPassStartTime ?? '08:00',
+        wholeDayPassEndTime: businessSettings.wholeDayPassEndTime ?? '08:00',
         cancellationPolicyPdfUrl: businessSettings.cancellationPolicyPdfUrl ?? null,
         cancellationPolicyPdfFilename: businessSettings.cancellationPolicyPdfFilename ?? null,
         cancellationPolicyUpdatedAt: businessSettings.cancellationPolicyUpdatedAt ?? null,
@@ -529,7 +535,29 @@ export function createAdminSettingsService(
       if (!Array.isArray(blockIds) || blockIds.length === 0) {
         throw new SettingsValidationError('At least one block ID is required');
       }
+
+      const existingBlocks = await repository.listBusinessScheduleBlocks();
+      const targetBlocks = existingBlocks.filter((b) => blockIds.includes(b.id));
+      const deletedIntervals = targetBlocks.map((b) => ({ startAt: b.startAt, endAt: b.endAt }));
+
       await repository.deleteScheduleBlocks(blockIds);
+
+      if (reservationRepository?.reconcileClearedClosureImpact) {
+        const remainingBlocks = await repository.listBusinessScheduleBlocks();
+        const remainingClosures = remainingBlocks
+          .filter((b) => b.blockType === 'CLOSURE')
+          .map((b) => ({ startAt: b.startAt, endAt: b.endAt }));
+
+        try {
+          await reservationRepository.reconcileClearedClosureImpact(
+            deletedIntervals,
+            remainingClosures,
+            blockIds
+          );
+        } catch (reconcileErr) {
+          console.warn('Failed to reconcile cleared closure impact:', reconcileErr);
+        }
+      }
     },
   };
 }
@@ -912,6 +940,14 @@ function normalizeBusinessSettingsInput(
     nightPassEndTime:
       input.nightPassEndTime !== undefined && input.nightPassEndTime !== null
         ? input.nightPassEndTime.trim()
+        : undefined,
+    wholeDayPassStartTime:
+      input.wholeDayPassStartTime !== undefined && input.wholeDayPassStartTime !== null
+        ? input.wholeDayPassStartTime.trim()
+        : undefined,
+    wholeDayPassEndTime:
+      input.wholeDayPassEndTime !== undefined && input.wholeDayPassEndTime !== null
+        ? input.wholeDayPassEndTime.trim()
         : undefined,
     landingPreviewPhotos: normalizedPhotos,
     statusColors: normalizedStatusColors,

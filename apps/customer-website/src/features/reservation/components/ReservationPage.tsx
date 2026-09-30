@@ -54,7 +54,6 @@ import {
   getPhtDateString,
   getPhtTimeString,
   setServerTimeSync,
-  resolveTimeBasedHourlyRate,
 } from "@deskatlas/domain";
 
 export interface SelectedCandidate {
@@ -163,8 +162,7 @@ function calculateDisplayTotal(cand: SelectedCandidate | null): number {
   if (cand.rateType === "HALF_DAY_PASS") {
     return cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12);
   }
-  const hourlyRate = resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00").rate;
-  return hourlyRate * (cand.durationHours || 1);
+  return cand.workspace.rateAmount * (cand.durationHours || 1);
 }
 
 function calculateDisplayRate(cand: SelectedCandidate | null): number {
@@ -181,7 +179,7 @@ function calculateDisplayRate(cand: SelectedCandidate | null): number {
   if (cand.rateType === "HALF_DAY_PASS") {
     return cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12);
   }
-  return resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00").rate;
+  return cand.workspace.rateAmount;
 }
 
 const DURATION_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -626,6 +624,34 @@ export function ReservationPage() {
     [workspaces, selectedWorkspaceId]
   );
 
+  const lockedScheduleConfig = useMemo(() => {
+    if (activeRank <= 0 || !mainCandidate || !selectedWorkspace) return undefined;
+
+    const excluded = candidates
+      .filter(
+        (c) =>
+          c.workspace.workspaceInstanceId === selectedWorkspace.workspaceInstanceId &&
+          c.rank !== activeRank
+      )
+      .map((c) => c.startTime);
+
+    return {
+      date: mainCandidate.date,
+      durationHours: mainCandidate.durationHours,
+      initialStartTime: mainCandidate.startTime,
+      excludedStartTimes: excluded,
+      rateType: mainCandidate.rateType || "HOURLY",
+    };
+  }, [
+    activeRank,
+    mainCandidate?.date,
+    mainCandidate?.durationHours,
+    mainCandidate?.startTime,
+    mainCandidate?.rateType,
+    selectedWorkspace?.workspaceInstanceId,
+    candidates,
+  ]);
+
   const elements = published?.elements || [];
 
   // Parity with customer viewports: default to 100% zoom (1.0) or restore saved zoom
@@ -940,6 +966,7 @@ export function ReservationPage() {
       durationHours: catDurationHours,
       startTime: catStartTime,
       endTime: catEndTime,
+      rateType: activeRank > 0 && mainCandidate ? mainCandidate.rateType || "HOURLY" : "HOURLY",
     };
 
     setCandidates((prev) => {
@@ -967,7 +994,7 @@ export function ReservationPage() {
       durationHours: schedule.durationHours,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
-      rateType: schedule.rateType,
+      rateType: schedule.rateType || (activeRank > 0 && mainCandidate ? mainCandidate.rateType : "HOURLY") || "HOURLY",
     };
 
     setCandidates((prev) => {
@@ -2265,22 +2292,7 @@ export function ReservationPage() {
               setStep("map");
             }}
             onContinue={handleContinueSchedule}
-            lockedSchedule={
-              activeRank > 0 && mainCandidate
-                ? {
-                  date: mainCandidate.date,
-                  durationHours: mainCandidate.durationHours,
-                  initialStartTime: mainCandidate.startTime,
-                  excludedStartTimes: candidates
-                    .filter(
-                      (c) =>
-                        c.workspace.workspaceInstanceId === selectedWorkspace.workspaceInstanceId &&
-                        c.rank !== activeRank
-                    )
-                    .map((c) => c.startTime),
-                }
-                : undefined
-            }
+            lockedSchedule={lockedScheduleConfig}
           />
         ) : step === "category-schedule" && selectedTemplate ? (
           /* 2b. Category Flow Schedule Step */
@@ -3161,16 +3173,29 @@ export function ReservationPage() {
                             {cand.workspace.displayName}
                           </h3>
                           <p className="text-xs text-[var(--da-text-secondary)]">
-                            {cand.workspace.templateName} •{" "}
-                            <span className="font-bold text-[var(--da-brand-dark)]">
-                              {(() => {
-                                const rateType = cand.rateType || "HOURLY";
-                                if (rateType === "WHOLE_DAY_PASS") return `₱${(cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24)).toFixed(2)} flat (24-Hour Pass)`;
-                                if (rateType === "HALF_DAY_PASS") return `₱${(cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12)).toFixed(2)} flat (12-Hour Pass)`;
-                                const hourlyInfo = resolveTimeBasedHourlyRate(cand.workspace, cand.startTime || "09:00");
-                                return `₱${hourlyInfo.rate.toFixed(2)}/hr (${hourlyInfo.tierLabel})`;
-                              })()}
-                            </span>
+                            {cand.workspace.templateName}
+                            {isMain ? (
+                              <>
+                                {" • "}
+                                <span className="font-bold text-[var(--da-brand-dark)]">
+                                  {(() => {
+                                    const rateType = cand.rateType || "HOURLY";
+                                    if (rateType === "DAY_PASS") return `₱${(cand.workspace.dayPassPrice ?? cand.workspace.rateAmount).toFixed(2)} flat (Day Pass)`;
+                                    if (rateType === "NIGHT_PASS") return `₱${(cand.workspace.nightPassPrice ?? cand.workspace.rateAmount).toFixed(2)} flat (Night Pass)`;
+                                    if (rateType === "WHOLE_DAY_PASS") return `₱${(cand.workspace.wholeDayPassPrice ?? (cand.workspace.rateAmount * 24)).toFixed(2)} flat (24-Hour Pass)`;
+                                    if (rateType === "HALF_DAY_PASS") return `₱${(cand.workspace.halfDayPassPrice ?? (cand.workspace.rateAmount * 12)).toFixed(2)} flat (12-Hour Pass)`;
+                                    return `₱${cand.workspace.rateAmount.toFixed(2)}/hr`;
+                                  })()}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                {" • "}
+                                <span className="font-semibold text-slate-500">
+                                  Fallback Preference
+                                </span>
+                              </>
+                            )}
                           </p>
 
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--da-text-secondary)]">
@@ -3186,19 +3211,22 @@ export function ReservationPage() {
                       </div>
 
                       <div className="flex md:flex-col items-center md:items-end justify-between w-full md:w-auto gap-3 border-t md:border-t-0 border-[var(--da-border-light)] pt-3 md:pt-0">
-                        <div className="text-left md:text-right">
-                          <span className="text-[11px] font-bold text-[var(--da-text-secondary)] block">
-                            Candidate Total:
-                          </span>
-                          <span className="text-base font-extrabold text-[var(--da-brand-dark)]">
-                            ₱{(() => {
-                              if (isMain && mainPricing) {
-                                return mainPricing.estimatedTotal.toFixed(2);
-                              }
-                              return calculateDisplayTotal(cand).toFixed(2);
-                            })()}
-                          </span>
-                        </div>
+                        {isMain ? (
+                          <div className="text-left md:text-right">
+                            <span className="text-[11px] font-bold text-[var(--da-text-secondary)] block">
+                              Reservation Total:
+                            </span>
+                            <span className="text-base font-extrabold text-[var(--da-brand-dark)]">
+                              ₱{mainPricing ? mainPricing.estimatedTotal.toFixed(2) : calculateDisplayTotal(cand).toFixed(2)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="text-left md:text-right">
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full block">
+                              Included (Same Rate)
+                            </span>
+                          </div>
+                        )}
 
                         {!isMain ? (
                           <button
@@ -3294,8 +3322,7 @@ export function ReservationPage() {
                             if (rateType === "NIGHT_PASS") return `${(mainCandidate.workspace.nightPassPrice ?? mainCandidate.workspace.rateAmount).toFixed(2)} flat`;
                             if (rateType === "WHOLE_DAY_PASS") return `${(mainCandidate.workspace.wholeDayPassPrice ?? (mainCandidate.workspace.rateAmount * 24)).toFixed(2)} flat`;
                             if (rateType === "HALF_DAY_PASS") return `${(mainCandidate.workspace.halfDayPassPrice ?? (mainCandidate.workspace.rateAmount * 12)).toFixed(2)} flat`;
-                            const hourlyRate = resolveTimeBasedHourlyRate(mainCandidate.workspace, mainCandidate.startTime || "09:00").rate;
-                            return `${hourlyRate.toFixed(2)}/hr`;
+                            return `${mainCandidate.workspace.rateAmount.toFixed(2)}/hr`;
                           })()}
                         </span>
                       </div>

@@ -158,6 +158,7 @@ export interface AvailableInstanceSummary {
   capacity: number;
   photoPath: string | null;
   photoPosition?: { x: number; y: number };
+  tags?: string[];
   operationalStatus: string;
   isAvailable: boolean;
   blockingReason: string | null;

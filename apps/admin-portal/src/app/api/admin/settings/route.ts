@@ -79,6 +79,8 @@ export async function PATCH(request: NextRequest) {
         dayPassEndTime: body.dayPassEndTime,
         nightPassStartTime: body.nightPassStartTime,
         nightPassEndTime: body.nightPassEndTime,
+        wholeDayPassStartTime: body.wholeDayPassStartTime,
+        wholeDayPassEndTime: body.wholeDayPassEndTime,
         landingPreviewPhotos: body.landingPreviewPhotos,
         statusColors: body.statusColors,
         cancellationPolicyPdfUrl: body.cancellationPolicyPdfUrl,

@@ -53,9 +53,12 @@ export async function fetchPublishedMap(
   const params = new URLSearchParams();
   if (floorId) params.set('floorId', floorId);
   if (includeAllFloors) params.set('includeAllFloors', 'true');
-  const query = params.toString() ? `?${params.toString()}` : '';
+  params.set('_t', String(Date.now()));
+  const query = `?${params.toString()}`;
 
-  const response = await fetch(`/api/published-map${query}`);
+  const response = await fetch(`/api/published-map${query}`, {
+    cache: 'no-store',
+  });
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {

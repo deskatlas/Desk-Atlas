@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { useKioskInactivityTimer } from "../../../hooks/useKioskInactivityTimer";
 import { InactivityWarningModal } from "../../../components/InactivityWarningModal";
 
+import {
+  resolveKioskTimeoutMs,
+  resolveKioskWarningTimeoutMs,
+} from "@deskatlas/domain";
+
 interface SessionManagerProps {
   children: ReactNode;
   timeoutMs?: number;
@@ -15,12 +20,13 @@ interface SessionManagerProps {
 
 export function SessionManager({ 
   children, 
-  timeoutMs = 60000, // 1 minute for kiosk inactivity
-  warningTimeoutMs = 15000, // 15 seconds warning threshold
+  timeoutMs = resolveKioskTimeoutMs(null),
+  warningTimeoutMs,
   onTimeoutWarning,
   onReset
 }: SessionManagerProps) {
   const router = useRouter();
+  const effectiveWarningTimeoutMs = warningTimeoutMs ?? resolveKioskWarningTimeoutMs(timeoutMs);
 
   const handleReset = () => {
     onReset();
@@ -29,7 +35,7 @@ export function SessionManager({
 
   const { isWarningActive, remainingSeconds, resetTimer } = useKioskInactivityTimer({
     totalTimeoutMs: timeoutMs,
-    warningTimeoutMs,
+    warningTimeoutMs: effectiveWarningTimeoutMs,
     onWarning: onTimeoutWarning,
     onReset: handleReset,
     enabled: true,

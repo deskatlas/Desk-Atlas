@@ -338,6 +338,8 @@ export function Settings() {
     dayPassEndTime: '23:30',
     nightPassStartTime: '20:00',
     nightPassEndTime: '07:00',
+    wholeDayPassStartTime: '08:00',
+    wholeDayPassEndTime: '08:00',
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
   });
@@ -478,8 +480,8 @@ export function Settings() {
       if (overview?.paymentMethods) {
         setPaymentMethods(overview.paymentMethods);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to fetch settings');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to fetch settings');
     } finally {
       setLoading(false);
     }
@@ -621,8 +623,8 @@ export function Settings() {
 
       setAdjustingSlot(slotIndex);
       showSuccess(`Photo uploaded to Slot ${slotIndex + 1}! Drag to reposition and click Done.`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to upload preview photo');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to upload preview photo');
     } finally {
       setUploadingSlot(null);
     }
@@ -670,8 +672,8 @@ export function Settings() {
       }
       setAdjustingSlot(null);
       showSuccess('Landing preview photos saved successfully!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save landing preview photos');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save landing preview photos');
     } finally {
       setSaving(false);
     }
@@ -688,7 +690,7 @@ export function Settings() {
       if (Array.isArray(json.data)) {
         setClosures(json.data);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to fetch closures:', err);
     } finally {
       setClosuresLoading(false);
@@ -762,8 +764,8 @@ export function Settings() {
       }
 
       await executeSaveClosure();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to evaluate closure impact');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to evaluate closure impact');
     } finally {
       setPreviewLoading(false);
     }
@@ -797,8 +799,8 @@ export function Settings() {
       await fetchClosures();
       setClosureReason('');
       showSuccess(`Closure / exception for ${selectedDate} saved!`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save closure exception');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save closure exception');
     } finally {
       setSaving(false);
     }
@@ -824,9 +826,9 @@ export function Settings() {
       }
 
       await fetchClosures();
-      showSuccess(`Closure for ${exception.date} removed!`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to delete closure');
+      showSuccess(`Closure for ${exception.date} removed and reservation conflicts reconciled.`);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete closure');
     } finally {
       setSaving(false);
     }
@@ -941,6 +943,8 @@ export function Settings() {
         dayPassEndTime: businessSettings.dayPassEndTime || '23:30',
         nightPassStartTime: businessSettings.nightPassStartTime || '20:00',
         nightPassEndTime: businessSettings.nightPassEndTime || '07:00',
+        wholeDayPassStartTime: businessSettings.wholeDayPassStartTime || '08:00',
+        wholeDayPassEndTime: businessSettings.wholeDayPassEndTime || businessSettings.wholeDayPassStartTime || '08:00',
       };
 
       const res = await fetch('/api/admin/settings', {
@@ -962,8 +966,8 @@ export function Settings() {
       }
       setMissingContactModal({ isOpen: false, missingType: null });
       showSuccess('Business settings updated successfully!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save business settings');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save business settings');
     } finally {
       setSaving(false);
     }
@@ -1091,12 +1095,14 @@ export function Settings() {
           dayPassEndTime: businessSettings.dayPassEndTime || '23:30',
           nightPassStartTime: businessSettings.nightPassStartTime || '20:00',
           nightPassEndTime: businessSettings.nightPassEndTime || '07:00',
+          wholeDayPassStartTime: businessSettings.wholeDayPassStartTime || '08:00',
+          wholeDayPassEndTime: businessSettings.wholeDayPassEndTime || businessSettings.wholeDayPassStartTime || '08:00',
         }),
       });
 
       showSuccess('Business operating hours and pass shift windows updated successfully!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save operating hours');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save operating hours');
     } finally {
       setSaving(false);
     }
@@ -1307,8 +1313,8 @@ export function Settings() {
         }
       }
       showSuccess('Receiving QR code uploaded successfully!');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to upload QR code');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to upload QR code');
     } finally {
       setUploadingQrId(null);
     }
@@ -1368,8 +1374,8 @@ export function Settings() {
         isActive: true,
       });
       showSuccess(`Payment method "${json.data.displayName}" added successfully!`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to create payment method');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to create payment method');
     } finally {
       setSaving(false);
     }
@@ -1395,8 +1401,8 @@ export function Settings() {
 
       setPaymentMethods((prev) => prev.filter((m) => m.id !== id));
       showSuccess(`Payment method "${displayName}" deleted!`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to delete payment method');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete payment method');
     } finally {
       setSaving(false);
     }
@@ -1430,8 +1436,8 @@ export function Settings() {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error || 'Failed to reorder payment methods');
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save reordered list');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save reordered list');
       fetchSettings();
     }
   }
@@ -1472,18 +1478,18 @@ export function Settings() {
         prev.map((m) => (m.id === json.data.id ? json.data : m))
       );
       showSuccess(`Payment method "${method.displayName}" updated!`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to save payment method');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to save payment method');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <main data-screen-label="Settings" style={{ padding: '26px 28px 40px' }}>
+    <main data-screen-label="Settings" className="max-w-[1400px] w-full mx-auto" style={{ padding: '28px 32px 48px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '22px' }}>
         <div>
-          <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
             System Settings
           </h1>
           <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
@@ -1506,7 +1512,7 @@ export function Settings() {
       )}
 
       {/* Navigation Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--da-border-light)', marginBottom: '24px', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--da-border-light)', marginBottom: '24px', overflowX: 'auto', gap: '4px' }}>
         {tabs.map((t, i) => (
           <button 
             key={i}
@@ -1527,644 +1533,676 @@ export function Settings() {
       </div>
 
       {loading ? (
-        <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px', textAlign: 'center', color: 'var(--da-text-secondary)' }}>
+        <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px', textAlign: 'center', color: 'var(--da-text-secondary)', boxShadow: 'var(--da-shadow-sm)' }}>
           Loading system settings...
         </div>
       ) : (
-        <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '26px', maxWidth: '750px', boxShadow: 'var(--da-shadow-sm)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 18px' }}>
-            {activeTab}
-          </h3>
-
+        <div style={{ width: '100%' }}>
           {/* TAB 1: Business Profile */}
           {activeTab === 'Business Profile' && (
-            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Business Name</label>
-                <input 
-                  type="text" 
-                  value={businessSettings.businessName}
-                  onChange={(e) => setBusinessSettings({ ...businessSettings, businessName: e.target.value })}
-                  required
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Email</label>
-                  <input 
-                    type="email" 
-                    value={businessSettings.contactEmail || ''}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, contactEmail: e.target.value || null })}
-                    placeholder="contact@example.com"
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
-                  {businessSettings.contactEmail && !isValidEmail(businessSettings.contactEmail) && (
-                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Please enter a valid email address (e.g., contact@example.com).
+            <form onSubmit={handleSaveProfile} className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '24px', alignItems: 'start' }}>
+                {/* Left Column: Facility Information, Cancellation Policy & Status Colors */}
+                <div className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* Facility Information & Contact Card */}
+                  <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    <div style={{ borderBottom: '1px solid var(--da-border-light)', paddingBottom: '12px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
+                        Facility Information
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '4px 0 0' }}>
+                        Core workspace details and public customer contact channels
+                      </p>
                     </div>
-                  )}
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Number</label>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      border: '1px solid var(--da-border)', 
-                      borderRadius: '8px', 
-                      overflow: 'hidden', 
-                      background: '#fff',
-                    }}
-                  >
-                    <span 
-                      style={{ 
-                        padding: '10px 12px 10px 14px', 
-                        fontSize: '13px', 
-                        fontWeight: 600, 
-                        color: 'var(--da-text-secondary)', 
-                        background: '#f8fafc', 
-                        borderRight: '1px solid var(--da-border)', 
-                        userSelect: 'none',
-                        lineHeight: 1,
-                      }}
-                    >
-                      +63
-                    </span>
-                    <input 
-                      type="tel" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={10}
-                      value={phoneDigits}
-                      onChange={(e) => handlePhoneChange(e.target.value)}
-                      onKeyDown={(e) => handleNumericKeyDown(e)}
-                      placeholder="9171234567"
-                      style={{ 
-                        width: '100%', 
-                        border: 'none', 
-                        outline: 'none', 
-                        padding: '10px 14px', 
-                        fontSize: '13px', 
-                        fontFamily: 'var(--da-font-family)', 
-                        background: 'transparent',
-                      }} 
-                    />
-                  </div>
-                  <div style={{ fontSize: '11px', color: phoneDigits && phoneDigits.length !== 10 ? '#ef4444' : 'var(--da-text-secondary)', marginTop: '4px' }}>
-                    10-digit mobile number (e.g., 9171234567)
-                  </div>
-                </div>
-              </div>
 
-              {!businessSettings.contactEmail?.trim() && !phoneDigits && (
-                <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '-6px' }}>
-                  * At least one contact method (contact email or contact number) is required.
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Facebook Page URL (Optional)</label>
-                  <input 
-                    type="url" 
-                    value={businessSettings.facebookUrl || ''}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, facebookUrl: e.target.value || null })}
-                    placeholder="https://facebook.com/yourbusiness"
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
-                  {businessSettings.facebookUrl && !isValidUrl(businessSettings.facebookUrl) && (
-                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Please enter a valid URL starting with http:// or https://
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Business Name</label>
+                      <input 
+                        type="text" 
+                        value={businessSettings.businessName}
+                        onChange={(e) => setBusinessSettings({ ...businessSettings, businessName: e.target.value })}
+                        required
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      />
                     </div>
-                  )}
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Instagram URL (Optional)</label>
-                  <input 
-                    type="url" 
-                    value={businessSettings.instagramUrl || ''}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, instagramUrl: e.target.value || null })}
-                    placeholder="https://instagram.com/yourbusiness"
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
-                  {businessSettings.instagramUrl && !isValidUrl(businessSettings.instagramUrl) && (
-                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Please enter a valid URL starting with http:// or https://
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Twitter / X URL (Optional)</label>
-                  <input 
-                    type="url" 
-                    value={businessSettings.twitterUrl || ''}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, twitterUrl: e.target.value || null })}
-                    placeholder="https://x.com/yourbusiness"
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
-                  {businessSettings.twitterUrl && !isValidUrl(businessSettings.twitterUrl) && (
-                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Please enter a valid URL starting with http:// or https://
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Website URL (Optional)</label>
-                  <input 
-                    type="url" 
-                    value={businessSettings.websiteUrl || ''}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, websiteUrl: e.target.value || null })}
-                    placeholder="https://yourbusiness.com"
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
-                  {businessSettings.websiteUrl && !isValidUrl(businessSettings.websiteUrl) && (
-                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Please enter a valid URL starting with http:// or https://
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Timezone</label>
-                  <select 
-                    value={businessSettings.timezone}
-                    onChange={(e) => setBusinessSettings({ ...businessSettings, timezone: e.target.value })}
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
-                  >
-                    {TIMEZONES.map((tz) => (
-                      <option key={tz.value} value={tz.value}>{tz.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                    Booking Slot Interval (Minutes)
-                  </label>
-                  <input 
-                    type="number" 
-                    min={1} 
-                    max={240} 
-                    value={businessSettings.bookingIntervalMinutes === '' as any ? '' : (businessSettings.bookingIntervalMinutes ?? '')}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setBusinessSettings({
-                        ...businessSettings,
-                        bookingIntervalMinutes: raw === '' ? ('' as any) : Number(raw),
-                      });
-                    }}
-                    onBlur={() => {
-                      const val = Number(businessSettings.bookingIntervalMinutes);
-                      if (!val || val < 1) {
-                        setBusinessSettings({ ...businessSettings, bookingIntervalMinutes: 15 });
-                      }
-                    }}
-                    onKeyDown={(e) => handleNumericKeyDown(e)}
-                    style={{ 
-                      width: '100%', 
-                      border: businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) < 1 ? '1px solid #ef4444' : '1px solid var(--da-border)', 
-                      borderRadius: '8px', 
-                      padding: '10px 14px', 
-                      fontSize: '13px', 
-                      fontFamily: 'var(--da-font-family)' 
-                    }} 
-                  />
-                  {businessSettings.bookingIntervalMinutes !== '' as any && Number(businessSettings.bookingIntervalMinutes) < 1 && (
-                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
-                      Interval must be at least 1 minute.
-                    </div>
-                  )}
-                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                    Minimum 1 minute. Determines time slot increments on customer and kiosk calendars.
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Online Payment Session Expiry (Minutes)</label>
-                <input 
-                  type="number" 
-                  min={5}
-                  max={1440}
-                  value={businessSettings.paymentExpiryMinutes === '' as any ? '' : (businessSettings.paymentExpiryMinutes ?? '')}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setBusinessSettings({
-                      ...businessSettings,
-                      paymentExpiryMinutes: raw === '' ? ('' as any) : Number(raw),
-                    });
-                  }}
-                  onBlur={() => {
-                    if (!businessSettings.paymentExpiryMinutes || Number(businessSettings.paymentExpiryMinutes) < 5) {
-                      setBusinessSettings({ ...businessSettings, paymentExpiryMinutes: 60 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Default is 60 minutes for online GCash/bank transfer proof submission.
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Reservation Session Reset Timer (Minutes)</label>
-                <input 
-                  type="number" 
-                  min={1} 
-                  max={180} 
-                  value={businessSettings.customerSessionTimeoutMinutes === '' as any ? '' : (businessSettings.customerSessionTimeoutMinutes ?? 20)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setBusinessSettings({
-                      ...businessSettings,
-                      customerSessionTimeoutMinutes: raw === '' ? ('' as any) : Number(raw),
-                    });
-                  }}
-                  onBlur={() => {
-                    if (!businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1) {
-                      setBusinessSettings({ ...businessSettings, customerSessionTimeoutMinutes: 20 });
-                    } else if (Number(businessSettings.customerSessionTimeoutMinutes) > 180) {
-                      setBusinessSettings({ ...businessSettings, customerSessionTimeoutMinutes: 180 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Default is 20 minutes. Determines when an inactive customer booking session on /reserve automatically resets.
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Self-Service Reschedule Notice Cutoff (Hours)</label>
-                <input 
-                  type="number" 
-                  min={0} 
-                  max={720} 
-                  value={businessSettings.customerRescheduleCutoffHours === '' as any ? '' : (businessSettings.customerRescheduleCutoffHours ?? 12)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setBusinessSettings({
-                      ...businessSettings,
-                      customerRescheduleCutoffHours: raw === '' ? ('' as any) : Number(raw),
-                    });
-                  }}
-                  onBlur={() => {
-                    if (businessSettings.customerRescheduleCutoffHours === undefined || businessSettings.customerRescheduleCutoffHours === null || Number(businessSettings.customerRescheduleCutoffHours) < 0) {
-                      setBusinessSettings({ ...businessSettings, customerRescheduleCutoffHours: 12 });
-                    } else if (Number(businessSettings.customerRescheduleCutoffHours) > 720) {
-                      setBusinessSettings({ ...businessSettings, customerRescheduleCutoffHours: 720 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Default is 12 hours. Minimum notice in hours before original start time required for customer self-service rescheduling on Track Reservation.
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                  Maximum Reschedule Advance Limit
-                </label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input 
-                    type="number" 
-                    min={1} 
-                    max={businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365} 
-                    value={businessSettings.rescheduleMaxAdvanceValue === '' as any ? '' : (businessSettings.rescheduleMaxAdvanceValue ?? 30)}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setBusinessSettings({
-                        ...businessSettings,
-                        rescheduleMaxAdvanceValue: raw === '' ? ('' as any) : Number(raw),
-                      });
-                    }}
-                    onBlur={() => {
-                      const maxLimit = businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365;
-                      if (!businessSettings.rescheduleMaxAdvanceValue || Number(businessSettings.rescheduleMaxAdvanceValue) < 1) {
-                        setBusinessSettings({ ...businessSettings, rescheduleMaxAdvanceValue: 30 });
-                      } else if (Number(businessSettings.rescheduleMaxAdvanceValue) > maxLimit) {
-                        setBusinessSettings({ ...businessSettings, rescheduleMaxAdvanceValue: maxLimit });
-                      }
-                    }}
-                    onKeyDown={(e) => handleNumericKeyDown(e)}
-                    data-testid="reschedule-max-advance-value-input"
-                    style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                  />
-                  <select
-                    value={businessSettings.rescheduleMaxAdvanceUnit || 'DAYS'}
-                    onChange={(e) => {
-                      const newUnit = e.target.value as 'DAYS' | 'HOURS';
-                      setBusinessSettings({
-                        ...businessSettings,
-                        rescheduleMaxAdvanceUnit: newUnit,
-                      });
-                    }}
-                    data-testid="reschedule-max-advance-unit-select"
-                    style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
-                  >
-                    <option value="DAYS">Days</option>
-                    <option value="HOURS">Hours</option>
-                  </select>
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Maximum distance into the future a customer or staff may reschedule a booking.
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                  Near-Checkout Proximity Alert Threshold (Minutes Before)
-                </label>
-                <input 
-                  type="number" 
-                  min={5} 
-                  max={60} 
-                  value={
-                    businessSettings.nearCheckoutThresholdMinutes === '' as any
-                      ? ''
-                      : (businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes ?? 15)
-                  }
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const parsedVal = raw === '' ? ('' as any) : Number(raw);
-                    setBusinessSettings({
-                      ...businessSettings,
-                      nearCheckoutThresholdMinutes: parsedVal,
-                      bookingEndAlertMinutes: parsedVal,
-                    });
-                  }}
-                  onBlur={() => {
-                    const current = businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes;
-                    if (current === undefined || current === null || (current as unknown) === '' || Number(current) < 5) {
-                      setBusinessSettings({ ...businessSettings, nearCheckoutThresholdMinutes: 15, bookingEndAlertMinutes: 15 });
-                    } else if (Number(current) > 60) {
-                      setBusinessSettings({ ...businessSettings, nearCheckoutThresholdMinutes: 60, bookingEndAlertMinutes: 60 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  data-testid="near-checkout-threshold-input"
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Staff and Admin dashboards will trigger proactive alerts and near-checkout triage highlights this many minutes before a checked-in booking end time (default: 15 mins, range: 5-60 mins).
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                  Maximum Advance Booking Window (Days)
-                </label>
-                <input 
-                  type="number" 
-                  min={1} 
-                  max={365} 
-                  value={businessSettings.maxAdvanceBookingDays === '' as any ? '' : (businessSettings.maxAdvanceBookingDays ?? 90)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setBusinessSettings({
-                      ...businessSettings,
-                      maxAdvanceBookingDays: raw === '' ? ('' as any) : Number(raw),
-                    });
-                  }}
-                  onBlur={() => {
-                    if (businessSettings.maxAdvanceBookingDays === undefined || businessSettings.maxAdvanceBookingDays === null || (businessSettings.maxAdvanceBookingDays as unknown) === '' || Number(businessSettings.maxAdvanceBookingDays) < 1) {
-                      setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: 90 });
-                    } else if (Number(businessSettings.maxAdvanceBookingDays) > 365) {
-                      setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: 365 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  data-testid="max-advance-booking-days-input"
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
-                  {[30, 60, 90, 120, 180].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: preset })}
-                      style={{
-                        background: businessSettings.maxAdvanceBookingDays === preset ? 'var(--da-brand-dark)' : '#F1F5F9',
-                        color: businessSettings.maxAdvanceBookingDays === preset ? '#fff' : '#334155',
-                        border: '1px solid #CBD5E1',
-                        borderRadius: '6px',
-                        padding: '4px 10px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {preset} Days
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Configure how far in advance customers can reserve workspaces (e.g. 50, 80, or 100 days). Dates beyond this horizon are blocked on the public calendar.
-                </div>
-              </div>
-
-              {/* Workspace Status Colors Configuration Card */}
-              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '18px', marginTop: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
-                      Workspace Status Colors
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
-                      Configure badge pills and interactive floor map spot colors for all operational states.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatusColors({ ...DEFAULT_WORKSPACE_STATUS_COLORS });
-                      setBusinessSettings((prev) => ({
-                        ...prev,
-                        statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
-                      }));
-                    }}
-                    style={{
-                      background: '#F1F5F9',
-                      border: '1px solid #CBD5E1',
-                      borderRadius: '6px',
-                      padding: '5px 10px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: '#334155',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Reset to Defaults
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-                  {[
-                    { key: 'available', label: 'Available (Bookable)', desc: 'Free & ready to reserve' },
-                    { key: 'occupied', label: 'Occupied (In Use)', desc: 'Active booking or checked-in' },
-                    { key: 'maintenance', label: 'Maintenance', desc: 'Repairs or temporarily out of order' },
-                    { key: 'unavailable', label: 'Unavailable / Reserved', desc: 'Blocked or upcoming reservation' },
-                  ].map(({ key, label, desc }) => {
-                    const colorVal = statusColors[key as keyof WorkspaceStatusColors] || DEFAULT_WORKSPACE_STATUS_COLORS[key as keyof WorkspaceStatusColors];
-                    const contrastText = getContrastColor(colorVal);
-
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          border: '1px solid var(--da-border)',
-                          borderRadius: '10px',
-                          padding: '12px 14px',
-                          background: '#FAFAFA',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '10px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>{label}</div>
-                            <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)' }}>{desc}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Email</label>
+                        <input 
+                          type="email" 
+                          value={businessSettings.contactEmail || ''}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, contactEmail: e.target.value || null })}
+                          placeholder="contact@example.com"
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        {businessSettings.contactEmail && !isValidEmail(businessSettings.contactEmail) && (
+                          <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                            Please enter a valid email address (e.g., contact@example.com).
                           </div>
-                          {/* Live Preview Badge */}
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              padding: '3px 10px',
-                              borderRadius: '9999px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              backgroundColor: colorVal,
-                              color: contrastText,
-                              border: `1px solid ${colorVal}`,
-                              boxShadow: 'var(--da-shadow-sm)',
-                              transition: 'all 0.15s ease',
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Number</label>
+                        <div 
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            border: '1px solid var(--da-border)', 
+                            borderRadius: '8px', 
+                            overflow: 'hidden', 
+                            background: '#fff',
+                          }}
+                        >
+                          <span 
+                            style={{ 
+                              padding: '10px 12px 10px 14px', 
+                              fontSize: '13px', 
+                              fontWeight: 600, 
+                              color: 'var(--da-text-secondary)', 
+                              background: '#f8fafc', 
+                              borderRight: '1px solid var(--da-border)', 
+                              userSelect: 'none',
+                              lineHeight: 1,
                             }}
                           >
-                            {key.toUpperCase()}
+                            +63
                           </span>
+                          <input 
+                            type="tel" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={10}
+                            value={phoneDigits}
+                            onChange={(e) => handlePhoneChange(e.target.value)}
+                            onKeyDown={(e) => handleNumericKeyDown(e)}
+                            placeholder="9171234567"
+                            style={{ 
+                              width: '100%', 
+                              border: 'none', 
+                              outline: 'none', 
+                              padding: '10px 14px', 
+                              fontSize: '13px', 
+                              fontFamily: 'var(--da-font-family)', 
+                              background: 'transparent',
+                            }} 
+                          />
                         </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input
-                            type="color"
-                            aria-label={`${label} color picker`}
-                            value={isValidHexColor(colorVal) ? colorVal : DEFAULT_WORKSPACE_STATUS_COLORS[key as keyof WorkspaceStatusColors]}
-                            onChange={(e) => {
-                              const newColor = e.target.value.toUpperCase();
-                              const updated = { ...statusColors, [key]: newColor };
-                              setStatusColors(updated);
-                              setBusinessSettings((prev) => ({ ...prev, statusColors: updated }));
-                            }}
-                            style={{
-                              width: '36px',
-                              height: '36px',
-                              padding: '0',
-                              border: '1px solid var(--da-border)',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              background: 'none',
-                            }}
-                          />
-                          <input
-                            type="text"
-                            aria-label={`${label} hex code`}
-                            value={colorVal}
-                            maxLength={7}
-                            placeholder="#10B981"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const updated = { ...statusColors, [key]: val };
-                              setStatusColors(updated);
-                              setBusinessSettings((prev) => ({ ...prev, statusColors: updated }));
-                            }}
-                            style={{
-                              flex: 1,
-                              border: '1px solid var(--da-border)',
-                              borderRadius: '6px',
-                              padding: '8px 10px',
-                              fontSize: '12px',
-                              fontFamily: 'monospace',
-                              fontWeight: 600,
-                              background: '#fff',
-                            }}
-                          />
+                        <div style={{ fontSize: '11px', color: phoneDigits && phoneDigits.length !== 10 ? '#ef4444' : 'var(--da-text-secondary)', marginTop: '4px' }}>
+                          10-digit mobile number (e.g., 9171234567)
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    {!businessSettings.contactEmail?.trim() && !phoneDigits && (
+                      <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '-6px' }}>
+                        * At least one contact method (contact email or contact number) is required.
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Facebook Page URL (Optional)</label>
+                        <input 
+                          type="url" 
+                          value={businessSettings.facebookUrl || ''}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, facebookUrl: e.target.value || null })}
+                          placeholder="https://facebook.com/yourbusiness"
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        {businessSettings.facebookUrl && !isValidUrl(businessSettings.facebookUrl) && (
+                          <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                            Please enter a valid URL starting with http:// or https://
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Instagram URL (Optional)</label>
+                        <input 
+                          type="url" 
+                          value={businessSettings.instagramUrl || ''}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, instagramUrl: e.target.value || null })}
+                          placeholder="https://instagram.com/yourbusiness"
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        {businessSettings.instagramUrl && !isValidUrl(businessSettings.instagramUrl) && (
+                          <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                            Please enter a valid URL starting with http:// or https://
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Twitter / X URL (Optional)</label>
+                        <input 
+                          type="url" 
+                          value={businessSettings.twitterUrl || ''}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, twitterUrl: e.target.value || null })}
+                          placeholder="https://x.com/yourbusiness"
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        {businessSettings.twitterUrl && !isValidUrl(businessSettings.twitterUrl) && (
+                          <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                            Please enter a valid URL starting with http:// or https://
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Website URL (Optional)</label>
+                        <input 
+                          type="url" 
+                          value={businessSettings.websiteUrl || ''}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, websiteUrl: e.target.value || null })}
+                          placeholder="https://yourbusiness.com"
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        {businessSettings.websiteUrl && !isValidUrl(businessSettings.websiteUrl) && (
+                          <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                            Please enter a valid URL starting with http:// or https://
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cancellation & Rescheduling Policy Card */}
+                  <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)' }}>
+                    <CancellationPolicyUploader
+                      policyPdfUrl={businessSettings.cancellationPolicyPdfUrl}
+                      policyPdfFilename={businessSettings.cancellationPolicyPdfFilename}
+                      policyUpdatedAt={businessSettings.cancellationPolicyUpdatedAt}
+                      onPolicyUpdated={(data) => {
+                        setBusinessSettings((prev) => ({
+                          ...prev,
+                          cancellationPolicyPdfUrl: data.cancellationPolicyPdfUrl,
+                          cancellationPolicyPdfFilename: data.cancellationPolicyPdfFilename,
+                          cancellationPolicyUpdatedAt: data.cancellationPolicyUpdatedAt,
+                        }));
+                      }}
+                      showSuccess={showSuccess}
+                      showError={(msg) => setErrorMsg(msg)}
+                    />
+                  </div>
+
+                  {/* Workspace Status Colors Configuration Card */}
+                  <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
+                          Workspace Status Colors
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                          Configure badge pills and interactive floor map spot colors for all operational states.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusColors({ ...DEFAULT_WORKSPACE_STATUS_COLORS });
+                          setBusinessSettings((prev) => ({
+                            ...prev,
+                            statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
+                          }));
+                        }}
+                        style={{
+                          background: '#F1F5F9',
+                          border: '1px solid #CBD5E1',
+                          borderRadius: '6px',
+                          padding: '5px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#334155',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Reset to Defaults
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                      {[
+                        { key: 'available', label: 'Available (Bookable)', desc: 'Free & ready to reserve' },
+                        { key: 'occupied', label: 'Occupied (In Use)', desc: 'Active booking or checked-in' },
+                        { key: 'maintenance', label: 'Maintenance', desc: 'Repairs or temporarily out of order' },
+                        { key: 'unavailable', label: 'Unavailable / Reserved', desc: 'Blocked or upcoming reservation' },
+                      ].map(({ key, label, desc }) => {
+                        const colorVal = statusColors[key as keyof WorkspaceStatusColors] || DEFAULT_WORKSPACE_STATUS_COLORS[key as keyof WorkspaceStatusColors];
+                        const contrastText = getContrastColor(colorVal);
+
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              border: '1px solid var(--da-border)',
+                              borderRadius: '10px',
+                              padding: '12px 14px',
+                              background: '#FAFAFA',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>{label}</div>
+                                <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)' }}>{desc}</div>
+                              </div>
+                              {/* Live Preview Badge */}
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '3px 10px',
+                                  borderRadius: '9999px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  backgroundColor: colorVal,
+                                  color: contrastText,
+                                  border: `1px solid ${colorVal}`,
+                                  boxShadow: 'var(--da-shadow-sm)',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                {key.toUpperCase()}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input
+                                type="color"
+                                aria-label={`${label} color picker`}
+                                value={isValidHexColor(colorVal) ? colorVal : DEFAULT_WORKSPACE_STATUS_COLORS[key as keyof WorkspaceStatusColors]}
+                                onChange={(e) => {
+                                  const newColor = e.target.value.toUpperCase();
+                                  const updated = { ...statusColors, [key]: newColor };
+                                  setStatusColors(updated);
+                                  setBusinessSettings((prev) => ({ ...prev, statusColors: updated }));
+                                }}
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  padding: '0',
+                                  border: '1px solid var(--da-border)',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: 'none',
+                                }}
+                              />
+                              <input
+                                type="text"
+                                aria-label={`${label} hex code`}
+                                value={colorVal}
+                                maxLength={7}
+                                placeholder="#10B981"
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  const updated = { ...statusColors, [key]: val };
+                                  setStatusColors(updated);
+                                  setBusinessSettings((prev) => ({ ...prev, statusColors: updated }));
+                                }}
+                                style={{
+                                  flex: 1,
+                                  border: '1px solid var(--da-border)',
+                                  borderRadius: '6px',
+                                  padding: '8px 10px',
+                                  fontSize: '12px',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 600,
+                                  background: '#fff',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Booking & Operational Rules */}
+                <div className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* Operational Rules Card */}
+                  <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    <div style={{ borderBottom: '1px solid var(--da-border-light)', paddingBottom: '12px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
+                        Booking & Operational Rules
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '4px 0 0' }}>
+                        Timing thresholds, booking intervals, and scheduling limits
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Timezone</label>
+                        <select 
+                          value={businessSettings.timezone}
+                          onChange={(e) => setBusinessSettings({ ...businessSettings, timezone: e.target.value })}
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
+                        >
+                          {TIMEZONES.map((tz) => (
+                            <option key={tz.value} value={tz.value}>{tz.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                          Booking Slot Interval (Minutes)
+                        </label>
+                        <input 
+                          type="number" 
+                          min={1} 
+                          max={240} 
+                          value={businessSettings.bookingIntervalMinutes === '' as unknown ? '' : (businessSettings.bookingIntervalMinutes ?? '')}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setBusinessSettings({
+                              ...businessSettings,
+                              bookingIntervalMinutes: raw === '' ? ('' as unknown as number) : Number(raw),
+                            });
+                          }}
+                          onBlur={() => {
+                            const val = Number(businessSettings.bookingIntervalMinutes);
+                            if (!val || val < 1) {
+                              setBusinessSettings({ ...businessSettings, bookingIntervalMinutes: 15 });
+                            }
+                          }}
+                          onKeyDown={(e) => handleNumericKeyDown(e)}
+                          style={{ 
+                            width: '100%', 
+                            border: (businessSettings.bookingIntervalMinutes as unknown) !== '' && Number(businessSettings.bookingIntervalMinutes) < 1 ? '1px solid #ef4444' : '1px solid var(--da-border)', 
+                            borderRadius: '8px', 
+                            padding: '10px 14px', 
+                            fontSize: '13px', 
+                            fontFamily: 'var(--da-font-family)' 
+                          }} 
+                        />
+                        {(businessSettings.bookingIntervalMinutes as unknown) !== '' && Number(businessSettings.bookingIntervalMinutes) < 1 && (
+                          <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
+                            Interval must be at least 1 minute.
+                          </div>
+                        )}
+                        <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                          Minimum 1 minute. Determines time slot increments on calendars.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Online Payment Session Expiry (Minutes)</label>
+                      <input 
+                        type="number" 
+                        min={5} 
+                        max={1440} 
+                        value={(businessSettings.paymentExpiryMinutes as unknown) === '' ? '' : (businessSettings.paymentExpiryMinutes ?? '')}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setBusinessSettings({
+                            ...businessSettings,
+                            paymentExpiryMinutes: raw === '' ? ('' as unknown as number) : Number(raw),
+                          });
+                        }}
+                        onBlur={() => {
+                          if (!businessSettings.paymentExpiryMinutes || Number(businessSettings.paymentExpiryMinutes) < 5) {
+                            setBusinessSettings({ ...businessSettings, paymentExpiryMinutes: 60 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      />
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Default is 60 minutes for online GCash/bank transfer proof submission.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Reservation Session Reset Timer (Minutes)</label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        max={180} 
+                        value={(businessSettings.customerSessionTimeoutMinutes as unknown) === '' ? '' : (businessSettings.customerSessionTimeoutMinutes ?? 20)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setBusinessSettings({
+                            ...businessSettings,
+                            customerSessionTimeoutMinutes: raw === '' ? ('' as unknown as number) : Number(raw),
+                          });
+                        }}
+                        onBlur={() => {
+                          if (!businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1) {
+                            setBusinessSettings({ ...businessSettings, customerSessionTimeoutMinutes: 20 });
+                          } else if (Number(businessSettings.customerSessionTimeoutMinutes) > 180) {
+                            setBusinessSettings({ ...businessSettings, customerSessionTimeoutMinutes: 180 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      />
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Default is 20 minutes. Determines when an inactive customer booking session on /reserve automatically resets.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Self-Service Reschedule Notice Cutoff (Hours)</label>
+                      <input 
+                        type="number" 
+                        min={0} 
+                        max={720} 
+                        value={(businessSettings.customerRescheduleCutoffHours as unknown) === '' ? '' : (businessSettings.customerRescheduleCutoffHours ?? 12)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setBusinessSettings({
+                            ...businessSettings,
+                            customerRescheduleCutoffHours: raw === '' ? ('' as unknown as number) : Number(raw),
+                          });
+                        }}
+                        onBlur={() => {
+                          if (businessSettings.customerRescheduleCutoffHours === undefined || businessSettings.customerRescheduleCutoffHours === null || Number(businessSettings.customerRescheduleCutoffHours) < 0) {
+                            setBusinessSettings({ ...businessSettings, customerRescheduleCutoffHours: 12 });
+                          } else if (Number(businessSettings.customerRescheduleCutoffHours) > 720) {
+                            setBusinessSettings({ ...businessSettings, customerRescheduleCutoffHours: 720 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      />
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Default is 12 hours. Minimum notice in hours before original start time required for customer self-service rescheduling on Track Reservation.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                        Maximum Reschedule Advance Limit
+                      </label>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input 
+                          type="number" 
+                          min={1} 
+                          max={businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365} 
+                          value={(businessSettings.rescheduleMaxAdvanceValue as unknown) === '' ? '' : (businessSettings.rescheduleMaxAdvanceValue ?? 30)}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setBusinessSettings({
+                              ...businessSettings,
+                              rescheduleMaxAdvanceValue: raw === '' ? ('' as unknown as number) : Number(raw),
+                            });
+                          }}
+                          onBlur={() => {
+                            const maxLimit = businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365;
+                            if (!businessSettings.rescheduleMaxAdvanceValue || Number(businessSettings.rescheduleMaxAdvanceValue) < 1) {
+                              setBusinessSettings({ ...businessSettings, rescheduleMaxAdvanceValue: 30 });
+                            } else if (Number(businessSettings.rescheduleMaxAdvanceValue) > maxLimit) {
+                              setBusinessSettings({ ...businessSettings, rescheduleMaxAdvanceValue: maxLimit });
+                            }
+                          }}
+                          onKeyDown={(e) => handleNumericKeyDown(e)}
+                          data-testid="reschedule-max-advance-value-input"
+                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        <select 
+                          value={businessSettings.rescheduleMaxAdvanceUnit || 'DAYS'}
+                          onChange={(e) => {
+                            const newUnit = e.target.value as 'DAYS' | 'HOURS';
+                            setBusinessSettings({
+                              ...businessSettings,
+                              rescheduleMaxAdvanceUnit: newUnit,
+                            });
+                          }}
+                          data-testid="reschedule-max-advance-unit-select"
+                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }} 
+                        >
+                          <option value="DAYS">Days</option>
+                          <option value="HOURS">Hours</option>
+                        </select>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Maximum distance into the future a customer or staff may reschedule a booking.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                        Near-Checkout Proximity Alert Threshold (Minutes Before)
+                      </label>
+                      <input 
+                        type="number" 
+                        min={5} 
+                        max={60} 
+                        value={
+                          (businessSettings.nearCheckoutThresholdMinutes as unknown) === ''
+                            ? ''
+                            : (businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes ?? 15)
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const parsedVal = raw === '' ? ('' as unknown as number) : Number(raw);
+                          setBusinessSettings({
+                            ...businessSettings,
+                            nearCheckoutThresholdMinutes: parsedVal,
+                            bookingEndAlertMinutes: parsedVal,
+                          });
+                        }}
+                        onBlur={() => {
+                          const current = businessSettings.nearCheckoutThresholdMinutes ?? businessSettings.bookingEndAlertMinutes;
+                          if (current === undefined || current === null || (current as unknown) === '' || Number(current) < 5) {
+                            setBusinessSettings({ ...businessSettings, nearCheckoutThresholdMinutes: 15, bookingEndAlertMinutes: 15 });
+                          } else if (Number(current) > 60) {
+                            setBusinessSettings({ ...businessSettings, nearCheckoutThresholdMinutes: 60, bookingEndAlertMinutes: 60 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
+                        data-testid="near-checkout-threshold-input"
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      />
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Staff and Admin dashboards will trigger proactive alerts and near-checkout triage highlights this many minutes before a checked-in booking end time (default: 15 mins, range: 5-60 mins).
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                        Maximum Advance Booking Window (Days)
+                      </label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        max={365} 
+                        value={(businessSettings.maxAdvanceBookingDays as unknown) === '' ? '' : (businessSettings.maxAdvanceBookingDays ?? 90)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setBusinessSettings({
+                            ...businessSettings,
+                            maxAdvanceBookingDays: raw === '' ? ('' as unknown as number) : Number(raw),
+                          });
+                        }}
+                        onBlur={() => {
+                          if (businessSettings.maxAdvanceBookingDays === undefined || businessSettings.maxAdvanceBookingDays === null || (businessSettings.maxAdvanceBookingDays as unknown) === '' || Number(businessSettings.maxAdvanceBookingDays) < 1) {
+                            setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: 90 });
+                          } else if (Number(businessSettings.maxAdvanceBookingDays) > 365) {
+                            setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: 365 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
+                        data-testid="max-advance-booking-days-input"
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      />
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                        {[30, 60, 90, 120, 180].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setBusinessSettings({ ...businessSettings, maxAdvanceBookingDays: preset })}
+                            style={{
+                              background: businessSettings.maxAdvanceBookingDays === preset ? 'var(--da-brand-dark)' : '#F1F5F9',
+                              color: businessSettings.maxAdvanceBookingDays === preset ? '#fff' : '#334155',
+                              border: '1px solid #CBD5E1',
+                              borderRadius: '6px',
+                              padding: '4px 10px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {preset} Days
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Configure how far in advance customers can reserve workspaces (e.g. 50, 80, or 100 days). Dates beyond this horizon are blocked on the public calendar.
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Cancellation & Rescheduling Policy Upload Card */}
-              <CancellationPolicyUploader
-                policyPdfUrl={businessSettings.cancellationPolicyPdfUrl}
-                policyPdfFilename={businessSettings.cancellationPolicyPdfFilename}
-                policyUpdatedAt={businessSettings.cancellationPolicyUpdatedAt}
-                onPolicyUpdated={(data) => {
-                  setBusinessSettings((prev) => ({
-                    ...prev,
-                    cancellationPolicyPdfUrl: data.cancellationPolicyPdfUrl,
-                    cancellationPolicyPdfFilename: data.cancellationPolicyPdfFilename,
-                    cancellationPolicyUpdatedAt: data.cancellationPolicyUpdatedAt,
-                  }));
-                }}
-                showSuccess={showSuccess}
-                showError={(msg) => setErrorMsg(msg)}
-              />
-
-              {(() => {
-                const check = canSaveBusinessProfile({
-                  businessName: businessSettings.businessName,
-                  contactEmail: businessSettings.contactEmail,
-                  phoneDigits,
-                  bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
-                  bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
-                  nearCheckoutThresholdMinutes: businessSettings.nearCheckoutThresholdMinutes,
-                  rescheduleMaxAdvanceValue: businessSettings.rescheduleMaxAdvanceValue,
-                  rescheduleMaxAdvanceUnit: businessSettings.rescheduleMaxAdvanceUnit,
-                  maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays,
-                });
-                const isDisabled = saving || !check.canSave;
-                return (
-                  <button 
-                    type="submit"
-                    disabled={isDisabled}
-                    title={!check.canSave ? check.reason : undefined}
-                    style={{ 
-                      background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px', 
-                      borderRadius: '8px', fontWeight: 700, fontSize: '13px', 
-                      cursor: isDisabled ? 'not-allowed' : 'pointer', 
-                      marginTop: '8px', 
-                      opacity: isDisabled ? 0.6 : 1 
-                    }}
-                  >
-                    {saving ? 'Saving...' : 'Save Business Profile'}
-                  </button>
-                );
-              })()}
+              {/* Form Actions Footer */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--da-border-light)' }}>
+                {(() => {
+                  const check = canSaveBusinessProfile({
+                    businessName: businessSettings.businessName,
+                    contactEmail: businessSettings.contactEmail,
+                    phoneDigits,
+                    bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
+                    bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
+                    nearCheckoutThresholdMinutes: businessSettings.nearCheckoutThresholdMinutes,
+                    rescheduleMaxAdvanceValue: businessSettings.rescheduleMaxAdvanceValue,
+                    rescheduleMaxAdvanceUnit: businessSettings.rescheduleMaxAdvanceUnit,
+                    maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays,
+                  });
+                  const isDisabled = saving || !check.canSave;
+                  return (
+                    <button 
+                      type="submit"
+                      disabled={isDisabled}
+                      title={!check.canSave ? check.reason : undefined}
+                      style={{ 
+                        background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px', 
+                        borderRadius: '8px', fontWeight: 700, fontSize: '13px', 
+                        cursor: isDisabled ? 'not-allowed' : 'pointer', 
+                        opacity: isDisabled ? 0.6 : 1 
+                      }}
+                    >
+                      {saving ? 'Saving...' : 'Save Business Profile'}
+                    </button>
+                  );
+                })()}
+              </div>
             </form>
           )}
 
           {/* TAB 2: Business Hours (Adaptable Business Model) */}
           {activeTab === 'Business Hours' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '26px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--da-brand-dark)', marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '8px' }}>
                   Operating Hours Preset & Mode
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
                   {[
                     { id: '24_7', title: '24 / 7', desc: 'Open 24 hours every day' },
                     { id: '24_HOURS_SELECTED_DAYS', title: '24h on Selected Days', desc: 'Open 24h on specific days only' },
@@ -2177,7 +2215,7 @@ export function Settings() {
                         type="button"
                         onClick={() => handleModeChange(m.id as BusinessOperatingHoursMode)}
                         style={{
-                          padding: '12px 14px',
+                          padding: '14px 16px',
                           border: isSelected ? '2px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
                           borderRadius: '10px',
                           background: isSelected ? '#F0FDFA' : '#fff',
@@ -2198,10 +2236,15 @@ export function Settings() {
               </div>
 
               {/* Day by Day Schedule Grid */}
-              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--da-brand-dark)' }}>
-                    Weekly Schedule
+              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
+                      Weekly Schedule
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                      Configure operational open/closed status and schedule windows for each day of the week.
+                    </div>
                   </div>
                   {hoursMode === 'CUSTOM_HOURS' && (
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -2210,7 +2253,7 @@ export function Settings() {
                         onClick={() => handleApplyHoursToAll(1, true)}
                         style={{
                           background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                          padding: '4px 10px', fontSize: '11px', fontWeight: 600, color: '#334155', cursor: 'pointer'
+                          padding: '5px 12px', fontSize: '11px', fontWeight: 600, color: '#334155', cursor: 'pointer'
                         }}
                       >
                         Copy Mon to all open days
@@ -2220,7 +2263,7 @@ export function Settings() {
                         onClick={() => handleApplyHoursToAll(1, false)}
                         style={{
                           background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                          padding: '4px 10px', fontSize: '11px', fontWeight: 600, color: '#334155', cursor: 'pointer'
+                          padding: '5px 12px', fontSize: '11px', fontWeight: 600, color: '#334155', cursor: 'pointer'
                         }}
                       >
                         Copy Mon to all 7 days
@@ -2235,12 +2278,13 @@ export function Settings() {
                       key={schedule.dayOfWeek}
                       style={{ 
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '12px 14px', background: schedule.isOpen ? '#FAFAFA' : '#F1F5F9',
-                        border: '1px solid var(--da-border-light)', borderRadius: '8px'
+                        padding: '12px 16px', background: schedule.isOpen ? '#FAFAFA' : '#F1F5F9',
+                        border: '1px solid var(--da-border-light)', borderRadius: '10px',
+                        flexWrap: 'wrap', gap: '12px'
                       }}
                     >
                       {/* Day Label & Toggle */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '130px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '140px' }}>
                         <input 
                           type="checkbox"
                           id={`day-toggle-${schedule.dayOfWeek}`}
@@ -2266,9 +2310,9 @@ export function Settings() {
                       </div>
 
                       {/* Hours Display / Inputs */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         {!schedule.isOpen ? (
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#94A3B8', padding: '4px 10px', background: '#E2E8F0', borderRadius: '6px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#94A3B8', padding: '4px 12px', background: '#E2E8F0', borderRadius: '6px' }}>
                             Closed
                           </span>
                         ) : hoursMode === '24_7' || hoursMode === '24_HOURS_SELECTED_DAYS' || schedule.is24Hours ? (
@@ -2291,7 +2335,7 @@ export function Settings() {
                             )}
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <select 
                               aria-label={`${DAY_NAMES[schedule.dayOfWeek]} Opening Time`}
                               value={schedule.opensAt}
@@ -2392,19 +2436,19 @@ export function Settings() {
               </div>
 
               {/* Pass Shift Windows Configuration */}
-              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '16px' }}>
+              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '20px' }}>
                 <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--da-brand-dark)', marginBottom: '2px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '2px' }}>
                     Pass Shift Windows
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>
-                    Configure standard time windows for Day Pass and Night Pass bookings across all workspace templates.
+                    Configure standard time windows for Day Pass, Night Pass, and 24-Hour Pass bookings across all workspace templates.
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
                   {/* Day Pass Window */}
-                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
+                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '16px', background: '#FAFAFA' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>☀️ Day Pass Window</span>
                       {(businessSettings.dayPassEndTime || '23:30') <= (businessSettings.dayPassStartTime || '07:00') && (
@@ -2444,7 +2488,7 @@ export function Settings() {
                   </div>
 
                   {/* Night Pass Window */}
-                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
+                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '16px', background: '#FAFAFA' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>🌙 Night Pass Window</span>
                       {(businessSettings.nightPassEndTime || '07:00') <= (businessSettings.nightPassStartTime || '20:00') && (
@@ -2482,30 +2526,73 @@ export function Settings() {
                       </div>
                     </div>
                   </div>
+
+                  {/* 24-Hour Pass Window */}
+                  <div style={{ border: '1px solid var(--da-border-light)', borderRadius: '10px', padding: '16px', background: '#FAFAFA' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#1E293B' }}>⏳ 24-Hour Pass Window</span>
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#0F766E', background: '#CCFBF1', padding: '2px 8px', borderRadius: '9999px', border: '1px solid #99F6E4' }}>
+                        24-Hour Cycle
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>Start Time</label>
+                        <select
+                          aria-label="24-Hour Pass Start Time"
+                          value={businessSettings.wholeDayPassStartTime || '08:00'}
+                          onChange={(e) => setBusinessSettings({
+                            ...businessSettings,
+                            wholeDayPassStartTime: e.target.value,
+                            wholeDayPassEndTime: e.target.value,
+                          })}
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 8px', fontSize: '12px', background: '#fff' }}
+                        >
+                          {getTimeOptions(false).map((t) => (
+                            <option key={t} value={t}>{getTimeLabel(t)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>End Time (Next Day)</label>
+                        <div style={{ width: '100%', border: '1px solid var(--da-border-light)', borderRadius: '6px', padding: '6px 8px', fontSize: '12px', background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>
+                          {getTimeLabel(businessSettings.wholeDayPassStartTime || '08:00')} (+24h)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <button 
-                type="button"
-                onClick={handleSaveOperatingHours}
-                disabled={saving}
-                style={{ 
-                  background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px', 
-                  borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
-                  marginTop: '8px', opacity: saving ? 0.7 : 1 
-                }}
-              >
-                {saving ? 'Saving...' : 'Save Business Hours'}
-              </button>
+              {/* Save Business Hours Button */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--da-border-light)' }}>
+                <button 
+                  type="button"
+                  onClick={handleSaveOperatingHours}
+                  disabled={saving}
+                  style={{ 
+                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px', 
+                    borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
+                    opacity: saving ? 0.7 : 1 
+                  }}
+                >
+                  {saving ? 'Saving...' : 'Save Business Hours'}
+                </button>
+              </div>
             </div>
           )}
 
           {/* TAB 3: Payment Methods */}
           {activeTab === 'Payment Methods' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', maxWidth: '520px' }}>
-                  Configure online and in-person payment channels. Online methods support 1-hour proof uploads; counter payment methods are used for kiosk and desk transactions.
+              <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '20px 24px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 2px' }}>
+                    Configured Payment Channels
+                  </h3>
+                  <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)' }}>
+                    Online methods support 1-hour proof uploads; counter payment methods are used for kiosk and desk transactions.
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -2517,14 +2604,15 @@ export function Settings() {
                     background: 'var(--da-brand-dark)',
                     color: '#fff',
                     border: 'none',
-                    padding: '8px 16px',
+                    padding: '10px 18px',
                     borderRadius: '8px',
-                    fontSize: '12px',
+                    fontSize: '13px',
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
+                    boxShadow: 'var(--da-shadow-sm)',
                   }}
                 >
                   <span>+</span> Add Payment Method
@@ -2532,212 +2620,257 @@ export function Settings() {
               </div>
 
               {paymentMethods.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '30px 20px', color: '#94A3B8', border: '1px dashed var(--da-border)', borderRadius: '10px' }}>
+                <div style={{ background: '#fff', border: '1px dashed var(--da-border)', borderRadius: '14px', padding: '48px 24px', textAlign: 'center', color: '#94A3B8' }}>
                   No payment methods configured yet. Click <strong>+ Add Payment Method</strong> above to add GCash or Bank options.
                 </div>
               ) : (
-                paymentMethods.map((method, idx) => {
-                  const providerInfo = getMethodProviderInfo(method);
-                  const isFirst = idx === 0;
-                  const isLast = idx === paymentMethods.length - 1;
-                  const isUploadingQr = uploadingQrId === method.id;
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px' }}>
+                  {paymentMethods.map((method, idx) => {
+                    const providerInfo = getMethodProviderInfo(method);
+                    const isFirst = idx === 0;
+                    const isLast = idx === paymentMethods.length - 1;
+                    const isUploadingQr = uploadingQrId === method.id;
 
-                  return (
-                    <div 
-                      key={method.id}
-                      style={{ 
-                        border: '1px solid var(--da-border)', borderRadius: '12px', padding: '20px',
-                        background: method.isActive ? '#FFFFFF' : '#F8FAFC',
-                        boxShadow: 'var(--da-shadow-sm)',
-                      }}
-                    >
-                      {/* Top bar: Provider Badge, Display Name, Move Up/Down, Active Toggle, Delete */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '240px' }}>
-                          <span style={{ 
-                            fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '6px',
-                            background: providerInfo.badgeBg,
-                            color: providerInfo.badgeColor,
-                            border: `1px solid ${providerInfo.badgeBorder}`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}>
-                            <span>{providerInfo.icon}</span>
-                            <span>{providerInfo.label}</span>
-                          </span>
-                          <input 
-                            type="text"
-                            value={method.displayName}
-                            onChange={(e) => {
-                              const updated = [...paymentMethods];
-                              updated[idx] = { ...method, displayName: e.target.value };
-                              setPaymentMethods(updated);
-                            }}
-                            placeholder="Display Name"
-                            style={{ fontWeight: 700, fontSize: '14px', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', flex: 1, minWidth: '160px' }}
-                          />
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {/* Reordering Buttons */}
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleMovePaymentMethod(idx, 'up')}
-                              disabled={isFirst}
-                              title="Move Up"
-                              style={{
-                                padding: '4px 8px', fontSize: '11px', fontWeight: 700,
-                                background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                cursor: isFirst ? 'not-allowed' : 'pointer',
-                                opacity: isFirst ? 0.4 : 1,
-                              }}
-                            >
-                              ▲
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleMovePaymentMethod(idx, 'down')}
-                              disabled={isLast}
-                              title="Move Down"
-                              style={{
-                                padding: '4px 8px', fontSize: '11px', fontWeight: 700,
-                                background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                cursor: isLast ? 'not-allowed' : 'pointer',
-                                opacity: isLast ? 0.4 : 1,
-                              }}
-                            >
-                              ▼
-                            </button>
-                          </div>
-
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', margin: '0 6px' }}>
-                            <input 
-                              type="checkbox"
-                              checked={method.isActive}
-                              onChange={(e) => {
-                                const updated = [...paymentMethods];
-                                updated[idx] = { ...method, isActive: e.target.checked };
-                                setPaymentMethods(updated);
-                              }}
-                              style={{ cursor: 'pointer' }}
-                            />
-                            {method.isActive ? 'Active' : 'Inactive'}
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeletePaymentMethod(method.id, method.displayName)}
-                            title="Delete Payment Method"
-                            style={{
-                              background: '#FEE2E2', border: '1px solid #F87171', color: '#991B1B',
-                              padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Account Details */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                    return (
+                      <div 
+                        key={method.id}
+                        style={{ 
+                          border: '1px solid var(--da-border)', borderRadius: '14px', padding: '22px',
+                          background: method.isActive ? '#FFFFFF' : '#F8FAFC',
+                          boxShadow: 'var(--da-shadow-sm)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: '16px',
+                        }}
+                      >
                         <div>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                            Account / Receiver Name <span style={{ color: '#EF4444' }}>*</span>
-                          </label>
-                          <input 
-                            type="text"
-                            value={method.accountName || ''}
-                            onChange={(e) => {
-                              const updated = [...paymentMethods];
-                              updated[idx] = { ...method, accountName: e.target.value };
-                              setPaymentMethods(updated);
-                            }}
-                            placeholder="e.g. DeskAtlas Manila Inc."
-                            required={method.methodType !== 'CASH'}
-                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                            Account / Mobile Number <span style={{ color: '#EF4444' }}>*</span>
-                          </label>
-                          <input 
-                            type="text"
-                            value={method.accountNumber || ''}
-                            onKeyDown={(e) => handleNumericKeyDown(e, { allowDash: true })}
-                            onChange={(e) => {
-                              const sanitized = sanitizeAccountNumber(e.target.value);
-                              const updated = [...paymentMethods];
-                              updated[idx] = { ...method, accountNumber: sanitized };
-                              setPaymentMethods(updated);
-                            }}
-                            placeholder="e.g. 09171234567 or 1234-5678-9012"
-                            required={method.methodType !== 'CASH'}
-                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}
-                          />
-                        </div>
-                      </div>
+                          {/* Top bar: Provider Badge, Display Name, Move Up/Down, Active Toggle, Delete */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '220px' }}>
+                              <span style={{ 
+                                fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '6px',
+                                background: providerInfo.badgeBg,
+                                color: providerInfo.badgeColor,
+                                border: `1px solid ${providerInfo.badgeBorder}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                flexShrink: 0,
+                              }}>
+                                <span>{providerInfo.icon}</span>
+                                <span>{providerInfo.label}</span>
+                              </span>
+                              <input 
+                                type="text"
+                                value={method.displayName}
+                                onChange={(e) => {
+                                  const updated = [...paymentMethods];
+                                  updated[idx] = { ...method, displayName: e.target.value };
+                                  setPaymentMethods(updated);
+                                }}
+                                placeholder="Display Name"
+                                style={{ fontWeight: 700, fontSize: '13px', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', flex: 1, minWidth: '140px' }}
+                              />
+                            </div>
 
-                      {/* Customer Instructions */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                          Customer Instructions
-                        </label>
-                        <textarea 
-                          rows={2}
-                          value={method.instructions || ''}
-                          onChange={(e) => {
-                            const updated = [...paymentMethods];
-                            updated[idx] = { ...method, instructions: e.target.value || null };
-                            setPaymentMethods(updated);
-                          }}
-                          placeholder="Instructions displayed on customer payment screen..."
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontFamily: 'var(--da-font-family)' }}
-                        />
-                      </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {/* Reordering Buttons */}
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePaymentMethod(idx, 'up')}
+                                  disabled={isFirst}
+                                  title="Move Up"
+                                  style={{
+                                    padding: '4px 8px', fontSize: '11px', fontWeight: 700,
+                                    background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                    cursor: isFirst ? 'not-allowed' : 'pointer',
+                                    opacity: isFirst ? 0.4 : 1,
+                                  }}
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePaymentMethod(idx, 'down')}
+                                  disabled={isLast}
+                                  title="Move Down"
+                                  style={{
+                                    padding: '4px 8px', fontSize: '11px', fontWeight: 700,
+                                    background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '6px',
+                                    cursor: isLast ? 'not-allowed' : 'pointer',
+                                    opacity: isLast ? 0.4 : 1,
+                                  }}
+                                >
+                                  ▼
+                                </button>
+                              </div>
 
-                      {/* Receiving QR Code Asset */}
-                      <div style={{ background: '#F8FAFC', border: '1px solid var(--da-border-light)', borderRadius: '8px', padding: '12px 14px', marginBottom: '14px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '8px' }}>
-                          Receiving QR Code Asset
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                          {method.qrImagePath ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div
-                                onClick={() => setViewingQrUrl(method.qrImagePath)}
-                                title="Click to enlarge"
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', margin: '0 4px' }}>
+                                <input 
+                                  type="checkbox"
+                                  checked={method.isActive}
+                                  onChange={(e) => {
+                                    const updated = [...paymentMethods];
+                                    updated[idx] = { ...method, isActive: e.target.checked };
+                                    setPaymentMethods(updated);
+                                  }}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                {method.isActive ? 'Active' : 'Inactive'}
+                              </label>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePaymentMethod(method.id, method.displayName)}
+                                title="Delete Payment Method"
                                 style={{
-                                  width: '56px',
-                                  height: '56px',
-                                  borderRadius: '6px',
-                                  border: '1px solid var(--da-border)',
-                                  background: '#fff',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  overflow: 'hidden',
-                                  cursor: 'pointer',
+                                  background: '#FEE2E2', border: '1px solid #F87171', color: '#991B1B',
+                                  padding: '5px 9px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
                                 }}
                               >
-                                <img
-                                  src={method.qrImagePath}
-                                  alt={`${method.displayName} QR`}
-                                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                                />
-                              </div>
-                              <div>
-                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '4px' }}>
-                                  QR Code Uploaded
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Account Details */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
+                                Account / Receiver Name <span style={{ color: '#EF4444' }}>*</span>
+                              </label>
+                              <input 
+                                type="text"
+                                value={method.accountName || ''}
+                                onChange={(e) => {
+                                  const updated = [...paymentMethods];
+                                  updated[idx] = { ...method, accountName: e.target.value };
+                                  setPaymentMethods(updated);
+                                }}
+                                placeholder="e.g. DeskAtlas Manila Inc."
+                                required={method.methodType !== 'CASH'}
+                                style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
+                                Account / Mobile Number <span style={{ color: '#EF4444' }}>*</span>
+                              </label>
+                              <input 
+                                type="text"
+                                value={method.accountNumber || ''}
+                                onKeyDown={(e) => handleNumericKeyDown(e, { allowDash: true })}
+                                onChange={(e) => {
+                                  const sanitized = sanitizeAccountNumber(e.target.value);
+                                  const updated = [...paymentMethods];
+                                  updated[idx] = { ...method, accountNumber: sanitized };
+                                  setPaymentMethods(updated);
+                                }}
+                                placeholder="e.g. 09171234567 or 1234-5678-9012"
+                                required={method.methodType !== 'CASH'}
+                                style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Customer Instructions */}
+                          <div style={{ marginBottom: '14px' }}>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
+                              Customer Instructions
+                            </label>
+                            <textarea 
+                              rows={2}
+                              value={method.instructions || ''}
+                              onChange={(e) => {
+                                const updated = [...paymentMethods];
+                                updated[idx] = { ...method, instructions: e.target.value || null };
+                                setPaymentMethods(updated);
+                              }}
+                              placeholder="Instructions displayed on customer payment screen..."
+                              style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontFamily: 'var(--da-font-family)' }}
+                            />
+                          </div>
+
+                          {/* Receiving QR Code Asset */}
+                          <div style={{ background: '#F8FAFC', border: '1px solid var(--da-border-light)', borderRadius: '8px', padding: '12px 14px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '8px' }}>
+                              Receiving QR Code Asset
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                              {method.qrImagePath ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div
+                                    onClick={() => setViewingQrUrl(method.qrImagePath)}
+                                    title="Click to enlarge"
+                                    style={{
+                                      width: '56px',
+                                      height: '56px',
+                                      borderRadius: '6px',
+                                      border: '1px solid var(--da-border)',
+                                      background: '#fff',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      overflow: 'hidden',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <img
+                                      src={method.qrImagePath}
+                                      alt={`${method.displayName} QR`}
+                                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '4px' }}>
+                                      QR Code Uploaded
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      <label style={{
+                                        fontSize: '11px', fontWeight: 600, color: '#0284C7', cursor: isUploadingQr ? 'wait' : 'pointer',
+                                        background: '#E0F2FE', padding: '3px 8px', borderRadius: '4px', border: '1px solid #BAE6FD'
+                                      }}>
+                                        {isUploadingQr ? 'Uploading...' : 'Replace QR'}
+                                        <input
+                                          type="file"
+                                          accept="image/png,image/jpeg,image/jpg,image/webp"
+                                          disabled={isUploadingQr}
+                                          onChange={(e) => {
+                                            const f = e.target.files?.[0];
+                                            if (f) handleUploadPaymentQr(method.id, f);
+                                          }}
+                                          style={{ display: 'none' }}
+                                        />
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = [...paymentMethods];
+                                          updated[idx] = { ...method, qrImagePath: null };
+                                          setPaymentMethods(updated);
+                                        }}
+                                        style={{
+                                          fontSize: '11px', fontWeight: 600, color: '#991B1B',
+                                          background: '#FEE2E2', padding: '3px 8px', borderRadius: '4px', border: '1px solid #FECACA',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <label style={{
-                                    fontSize: '11px', fontWeight: 600, color: '#0284C7', cursor: isUploadingQr ? 'wait' : 'pointer',
-                                    background: '#E0F2FE', padding: '3px 8px', borderRadius: '4px', border: '1px solid #BAE6FD'
+                                    fontSize: '12px', fontWeight: 700, color: 'var(--da-brand-dark)',
+                                    background: '#FFFFFF', border: '1px solid var(--da-border)', borderRadius: '6px',
+                                    padding: '6px 12px', cursor: isUploadingQr ? 'wait' : 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px'
                                   }}>
-                                    {isUploadingQr ? 'Uploading...' : 'Replace QR'}
+                                    <span>📷</span> {isUploadingQr ? 'Uploading...' : 'Upload Receiving QR'}
                                     <input
                                       type="file"
                                       accept="image/png,image/jpeg,image/jpg,image/webp"
@@ -2749,77 +2882,41 @@ export function Settings() {
                                       style={{ display: 'none' }}
                                     />
                                   </label>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...paymentMethods];
-                                      updated[idx] = { ...method, qrImagePath: null };
-                                      setPaymentMethods(updated);
-                                    }}
-                                    style={{
-                                      fontSize: '11px', fontWeight: 600, color: '#991B1B',
-                                      background: '#FEE2E2', padding: '3px 8px', borderRadius: '4px', border: '1px solid #FECACA',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    Remove
-                                  </button>
+                                  <span style={{ fontSize: '11px', color: '#94A3B8' }}>
+                                    Optional QR image
+                                  </span>
                                 </div>
-                              </div>
+                              )}
                             </div>
-                          ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <label style={{
-                                fontSize: '12px', fontWeight: 700, color: 'var(--da-brand-dark)',
-                                background: '#FFFFFF', border: '1px solid var(--da-border)', borderRadius: '6px',
-                                padding: '6px 12px', cursor: isUploadingQr ? 'wait' : 'pointer',
-                                display: 'inline-flex', alignItems: 'center', gap: '6px'
-                              }}>
-                                <span>📷</span> {isUploadingQr ? 'Uploading...' : 'Upload Receiving QR'}
-                                <input
-                                  type="file"
-                                  accept="image/png,image/jpeg,image/jpg,image/webp"
-                                  disabled={isUploadingQr}
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (f) handleUploadPaymentQr(method.id, f);
-                                  }}
-                                  style={{ display: 'none' }}
-                                />
-                              </label>
-                              <span style={{ fontSize: '11px', color: '#94A3B8' }}>
-                                Optional receiving QR for customers to scan (PNG, JPG, WebP up to 5MB)
-                              </span>
-                            </div>
-                          )}
+                          </div>
+                        </div>
+
+                        {/* Bottom bar: Save button */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderTop: '1px solid var(--da-border-light)', paddingTop: '12px' }}>
+                          {(() => {
+                            const isInvalid = !validatePaymentMethodRequiredFields(method).isValid;
+                            const isDisabled = saving || isInvalid;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleSavePaymentMethod(method)}
+                                disabled={isDisabled}
+                                title={isInvalid ? 'Account/Receiver name and Account/Mobile number are required' : undefined}
+                                style={{ 
+                                  background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '8px 18px', 
+                                  borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                  opacity: isDisabled ? 0.6 : 1,
+                                }}
+                              >
+                                {saving ? 'Saving...' : 'Save Changes'}
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
-
-                      {/* Bottom bar: Save button */}
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderTop: '1px solid var(--da-border-light)', paddingTop: '12px', flexWrap: 'wrap', gap: '10px' }}>
-                        {(() => {
-                          const isInvalid = !validatePaymentMethodRequiredFields(method).isValid;
-                          const isDisabled = saving || isInvalid;
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => handleSavePaymentMethod(method)}
-                              disabled={isDisabled}
-                              title={isInvalid ? 'Account/Receiver name and Account/Mobile number are required' : undefined}
-                              style={{ 
-                                background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '7px 18px', 
-                                borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                opacity: isDisabled ? 0.6 : 1,
-                              }}
-                            >
-                              {saving ? 'Saving...' : 'Save Method'}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}
@@ -2875,501 +2972,522 @@ export function Settings() {
             const isSelectedDatePast = isPastDate(selectedDate, businessSettings.timezone);
 
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', lineHeight: '1.5' }}>
                   Select a date on the calendar to mark whole-facility closures or adjust opening hours for specific holidays and maintenance events.
                 </div>
 
-                {/* Calendar Header & Grid */}
-                <div style={{ border: '1px solid var(--da-border)', borderRadius: '12px', padding: '18px', background: '#FAFAFA' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                    <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
-                      {monthName}
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setCalendarMonth(new Date(currentYear, currentMonth - 1, 1))}
-                        style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
-                      >
-                        ← Prev
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCalendarMonth(new Date())}
-                        style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
-                      >
-                        Today
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCalendarMonth(new Date(currentYear, currentMonth + 1, 1))}
-                        style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
-                      >
-                        Next →
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Days of week header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '6px' }}>
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dw, i) => (
-                      <div key={i} style={{ fontSize: '11px', fontWeight: 700, color: '#64748B', padding: '4px 0' }}>
-                        {dw}
+                {/* 2-Column Responsive Layout for Calendar & Exceptions Form */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px', alignItems: 'start' }}>
+                  {/* Left Column: Interactive Calendar Card */}
+                  <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
+                        {monthName}
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Month grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-                    {calendarDays.map((cell, idx) => {
-                      const isSelected = cell.dateStr === selectedDate;
-                      const todayStr = getTodayDateString(businessSettings.timezone);
-                      const isToday = cell.dateStr === todayStr;
-                      const isPast = cell.dateStr < todayStr;
-                      const hasClosure = Boolean(cell.exception);
-                      const isFullDay = cell.exception?.closureType === 'FULL_DAY';
-                      const isCellDisabled = isPast && !hasClosure;
-
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={isCellDisabled}
-                          title={isCellDisabled ? 'Past dates cannot be selected for closures or holidays' : undefined}
-                          onClick={() => {
-                            setSelectedDate(cell.dateStr);
-                            if (cell.exception) {
-                              setClosureType(cell.exception.closureType);
-                              if (cell.exception.opensAt) setSpecialOpensAt(cell.exception.opensAt);
-                              if (cell.exception.closesAt) setSpecialClosesAt(cell.exception.closesAt);
-                              setClosureReason(cell.exception.reason || '');
-                              setIsMultiDay(Boolean(cell.exception.endDate));
-                              setClosureEndDate(cell.exception.endDate || '');
-                            }
-                          }}
-                          style={{
-                            height: '70px',
-                            padding: '6px',
-                            background: isSelected
-                              ? '#F0FDFA'
-                              : hasClosure
-                              ? isFullDay
-                                ? '#FEF2F2'
-                                : '#FFFBEB'
-                              : isPast
-                              ? '#F1F5F9'
-                              : cell.isCurrentMonth
-                              ? '#FFFFFF'
-                              : '#F8FAFC',
-                            border: isSelected
-                              ? '2px solid var(--da-brand-dark)'
-                              : hasClosure
-                              ? isFullDay
-                                ? '1px solid #FECACA'
-                                : '1px solid #FDE68A'
-                              : '1px solid var(--da-border-light)',
-                            borderRadius: '8px',
-                            textAlign: 'left',
-                            cursor: isCellDisabled ? 'not-allowed' : 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            opacity: isCellDisabled ? 0.35 : cell.isCurrentMonth ? 1 : 0.45,
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{
-                              fontSize: '12px',
-                              fontWeight: isToday || isSelected ? 800 : 600,
-                              color: isToday ? '#0284C7' : '#1E293B',
-                            }}>
-                              {cell.dayNum}
-                            </span>
-                            {isToday && (
-                              <span style={{ fontSize: '9px', fontWeight: 800, color: '#0284C7', background: '#E0F2FE', padding: '1px 4px', borderRadius: '4px' }}>
-                                TODAY
-                              </span>
-                            )}
-                          </div>
-
-                          {cell.exception && (
-                            <div style={{
-                              fontSize: '9px',
-                              fontWeight: 700,
-                              padding: '2px 4px',
-                              borderRadius: '4px',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              background: isFullDay ? '#EF4444' : '#F59E0B',
-                              color: '#fff',
-                            }}>
-                              {isFullDay ? 'Closed' : `${cell.exception.opensAt}-${cell.exception.closesAt}`}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Date Exception Action Card */}
-                <div style={{ border: '1px solid var(--da-border)', borderRadius: '12px', padding: '20px', background: '#FFFFFF' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
-                        Configure Date Exception
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)' }}>
-                        Selected Date: <strong style={{ color: '#0F172A' }}>{selectedDate}</strong>
-                        {selectedException && (
-                          <span style={{ marginLeft: '8px', color: selectedException.closureType === 'FULL_DAY' ? '#DC2626' : '#D97706', fontWeight: 700 }}>
-                            (Currently: {selectedException.closureType === 'FULL_DAY' ? 'Closed Full Day' : `Special Hours ${selectedException.opensAt}-${selectedException.closesAt}`})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleSaveClosure} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {isSelectedDatePast && (
-                      <div
-                        style={{
-                          background: '#FEF2F2',
-                          border: '1px solid #FECACA',
-                          borderRadius: '8px',
-                          padding: '10px 14px',
-                          color: '#991B1B',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                        }}
-                      >
-                        <span>⚠️</span>
-                        <span>Closures and holidays cannot be set or modified for past dates.</span>
-                      </div>
-                    )}
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                          Selected Date
-                        </label>
-                        <input
-                          type="date"
-                          min={todayStr}
-                          value={selectedDate}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val && val < todayStr) {
-                              setErrorMsg('Closures and holidays cannot be set for past dates.');
-                              return;
-                            }
-                            setSelectedDate(val);
-                          }}
-                          required
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                          Exception Mode
-                        </label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setClosureType('FULL_DAY')}
-                            style={{
-                              flex: 1,
-                              padding: '8px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              border: closureType === 'FULL_DAY' ? '2px solid #EF4444' : '1px solid var(--da-border)',
-                              background: closureType === 'FULL_DAY' ? '#FEF2F2' : '#fff',
-                              color: closureType === 'FULL_DAY' ? '#991B1B' : '#475569',
-                            }}
-                          >
-                            🚫 Closed Full Day
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setClosureType('SPECIAL_HOURS')}
-                            style={{
-                              flex: 1,
-                              padding: '8px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              border: closureType === 'SPECIAL_HOURS' ? '2px solid #F59E0B' : '1px solid var(--da-border)',
-                              background: closureType === 'SPECIAL_HOURS' ? '#FFFBEB' : '#fff',
-                              color: closureType === 'SPECIAL_HOURS' ? '#92400E' : '#475569',
-                            }}
-                          >
-                            ⏱️ Special Opening Hours
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Conditional Controls for Full Day / Special Hours */}
-                    {closureType === 'FULL_DAY' ? (
-                      <div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', marginBottom: '8px' }}>
-                          <input
-                            type="checkbox"
-                            checked={isMultiDay}
-                            onChange={(e) => setIsMultiDay(e.target.checked)}
-                          />
-                          Multi-day closure period
-                        </label>
-                        {isMultiDay && (
-                          <div>
-                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
-                              End Date (Inclusive)
-                            </label>
-                            <input
-                              type="date"
-                              min={selectedDate && selectedDate > todayStr ? selectedDate : todayStr}
-                              value={closureEndDate}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const minAllowed = selectedDate && selectedDate > todayStr ? selectedDate : todayStr;
-                                if (val && val < minAllowed) {
-                                  setErrorMsg('Closure end date cannot be in the past or before the start date.');
-                                  return;
-                                }
-                                setClosureEndDate(val);
-                              }}
-                              required={isMultiDay}
-                              style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                            Opening Time on this Date
-                          </label>
-                          <select
-                            value={specialOpensAt}
-                            onChange={(e) => {
-                              const newOpensAt = e.target.value;
-                              setSpecialOpensAt(newOpensAt);
-                              if (newOpensAt && specialClosesAt && specialClosesAt <= newOpensAt) {
-                                setSpecialClosesAt(getDefaultClosingTime(newOpensAt));
-                              }
-                            }}
-                            required
-                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
-                          >
-                            {getTimeOptions(false, specialOpensAt).map((t) => (
-                              <option key={t} value={t}>
-                                {getTimeLabel(t)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                            Closing Time on this Date
-                          </label>
-                          <select
-                            value={specialClosesAt}
-                            onChange={(e) => {
-                              const newClosesAt = e.target.value;
-                              if (newClosesAt && specialOpensAt && newClosesAt <= specialOpensAt) {
-                                return;
-                              }
-                              setSpecialClosesAt(newClosesAt);
-                            }}
-                            required
-                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
-                          >
-                            {getTimeOptions(true, specialClosesAt).map((t) => {
-                              const isUnavailable = specialOpensAt ? t <= specialOpensAt : false;
-                              return (
-                                <option
-                                  key={t}
-                                  value={t}
-                                  disabled={isUnavailable}
-                                  style={{
-                                    color: isUnavailable ? '#94A3B8' : '#0F172A',
-                                    backgroundColor: isUnavailable ? '#F8FAFC' : '#FFFFFF',
-                                  }}
-                                >
-                                  {getTimeLabel(t)} {isUnavailable ? '— Unavailable' : ''}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                        Reason / Holiday Name (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Christmas Day, New Year Holiday, Planned Facility Maintenance..."
-                        value={closureReason}
-                        onChange={(e) => setClosureReason(e.target.value)}
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                      <button
-                        type="submit"
-                        disabled={saving || isSelectedDatePast}
-                        style={{
-                          background: isSelectedDatePast ? '#94A3B8' : 'var(--da-brand-dark)',
-                          color: '#fff',
-                          border: 'none',
-                          padding: '10px 18px',
-                          borderRadius: '8px',
-                          fontWeight: 700,
-                          fontSize: '13px',
-                          cursor: (saving || isSelectedDatePast) ? 'not-allowed' : 'pointer',
-                          opacity: (saving || isSelectedDatePast) ? 0.6 : 1,
-                        }}
-                      >
-                        {isSelectedDatePast ? 'Cannot Set Past Date' : saving ? 'Saving...' : 'Save Date Exception'}
-                      </button>
-                      {selectedException && (
+                      <div style={{ display: 'flex', gap: '6px' }}>
                         <button
                           type="button"
-                          onClick={() => handleDeleteClosure(selectedException)}
-                          disabled={saving}
-                          style={{
-                            background: '#FEE2E2',
-                            color: '#991B1B',
-                            border: '1px solid #FECACA',
-                            padding: '10px 16px',
-                            borderRadius: '8px',
-                            fontWeight: 700,
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                          }}
+                          onClick={() => setCalendarMonth(new Date(currentYear, currentMonth - 1, 1))}
+                          style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
                         >
-                          Delete Exception for this Date
+                          ← Prev
                         </button>
-                      )}
-                    </div>
-                  </form>
-                </div>
-
-                {/* Scheduled Closures & Holidays List */}
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '10px' }}>
-                    Active & Upcoming Closures ({closures.length})
-                  </div>
-
-                  {closuresLoading ? (
-                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '12px' }}>
-                      Loading closures...
-                    </div>
-                  ) : closures.length === 0 ? (
-                    <div style={{ padding: '24px', textAlign: 'center', color: '#94A3B8', border: '1px dashed var(--da-border)', borderRadius: '8px', fontSize: '12px' }}>
-                      No closures or holiday exceptions scheduled. Select a date above to schedule one.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {closures.map((exc) => (
-                        <div
-                          key={exc.id}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '12px 16px',
-                            border: '1px solid var(--da-border-light)',
-                            borderRadius: '8px',
-                            background: exc.closureType === 'FULL_DAY' ? '#FEF2F2' : '#FFFBEB',
-                          }}
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth(new Date())}
+                          style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: 800,
-                                padding: '3px 8px',
-                                borderRadius: '4px',
-                                background: exc.closureType === 'FULL_DAY' ? '#EF4444' : '#F59E0B',
-                                color: '#fff',
-                              }}
-                            >
-                              {exc.closureType === 'FULL_DAY' ? 'CLOSED' : 'SPECIAL HOURS'}
-                            </span>
-                            <div>
-                              <div style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B' }}>
-                                {exc.date}{exc.endDate ? ` → ${exc.endDate}` : ''}
-                                {exc.closureType === 'SPECIAL_HOURS' && ` (${exc.opensAt} - ${exc.closesAt})`}
-                              </div>
-                              {exc.reason && (
-                                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>
-                                  {exc.reason}
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                          Today
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth(new Date(currentYear, currentMonth + 1, 1))}
+                          style={{ padding: '6px 12px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12px' }}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    </div>
 
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedDate(exc.date);
-                                setClosureType(exc.closureType);
-                                if (exc.opensAt) setSpecialOpensAt(exc.opensAt);
-                                if (exc.closesAt) setSpecialClosesAt(exc.closesAt);
-                                setClosureReason(exc.reason || '');
-                                setIsMultiDay(Boolean(exc.endDate));
-                                setClosureEndDate(exc.endDate || '');
-                              }}
-                              style={{
-                                background: '#fff',
-                                border: '1px solid var(--da-border)',
-                                borderRadius: '6px',
-                                padding: '4px 10px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                color: '#334155',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteClosure(exc)}
-                              style={{
-                                background: '#fff',
-                                border: '1px solid #FECACA',
-                                borderRadius: '6px',
-                                padding: '4px 10px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                color: '#DC2626',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Remove
-                            </button>
-                          </div>
+                    {/* Days of week header */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center' }}>
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dw, i) => (
+                        <div key={i} style={{ fontSize: '11px', fontWeight: 700, color: '#64748B', padding: '4px 0' }}>
+                          {dw}
                         </div>
                       ))}
                     </div>
-                  )}
+
+                    {/* Month grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                      {calendarDays.map((cell, idx) => {
+                        const isSelected = cell.dateStr === selectedDate;
+                        const isToday = cell.dateStr === todayStr;
+                        const isPast = cell.dateStr < todayStr;
+                        const hasClosure = Boolean(cell.exception);
+                        const isFullDay = cell.exception?.closureType === 'FULL_DAY';
+                        const isCellDisabled = isPast && !hasClosure;
+
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            disabled={isCellDisabled}
+                            title={isCellDisabled ? 'Past dates cannot be selected for closures or holidays' : undefined}
+                            onClick={() => {
+                              setSelectedDate(cell.dateStr);
+                              if (cell.exception) {
+                                setClosureType(cell.exception.closureType);
+                                if (cell.exception.opensAt) setSpecialOpensAt(cell.exception.opensAt);
+                                if (cell.exception.closesAt) setSpecialClosesAt(cell.exception.closesAt);
+                                setClosureReason(cell.exception.reason || '');
+                                setIsMultiDay(Boolean(cell.exception.endDate));
+                                setClosureEndDate(cell.exception.endDate || '');
+                              }
+                            }}
+                            style={{
+                              height: '70px',
+                              padding: '6px',
+                              background: isSelected
+                                ? '#F0FDFA'
+                                : hasClosure
+                                ? isFullDay
+                                  ? '#FEF2F2'
+                                  : '#FFFBEB'
+                                : isPast
+                                ? '#F1F5F9'
+                                : cell.isCurrentMonth
+                                ? '#FFFFFF'
+                                : '#F8FAFC',
+                              border: isSelected
+                                ? '2px solid var(--da-brand-dark)'
+                                : hasClosure
+                                ? isFullDay
+                                  ? '1px solid #FECACA'
+                                  : '1px solid #FDE68A'
+                                : '1px solid var(--da-border-light)',
+                              borderRadius: '8px',
+                              textAlign: 'left',
+                              cursor: isCellDisabled ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              opacity: isCellDisabled ? 0.35 : cell.isCurrentMonth ? 1 : 0.45,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: isToday || isSelected ? 800 : 600,
+                                color: isToday ? '#0284C7' : '#1E293B',
+                              }}>
+                                {cell.dayNum}
+                              </span>
+                              {isToday && (
+                                <span style={{ fontSize: '9px', fontWeight: 800, color: '#0284C7', background: '#E0F2FE', padding: '1px 4px', borderRadius: '4px' }}>
+                                  TODAY
+                                </span>
+                              )}
+                            </div>
+
+                            {cell.exception && (
+                              <div style={{
+                                fontSize: '9px',
+                                fontWeight: 700,
+                                padding: '2px 4px',
+                                borderRadius: '4px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                background: isFullDay ? '#EF4444' : '#F59E0B',
+                                color: '#fff',
+                              }}>
+                                {isFullDay ? 'Closed' : `${cell.exception.opensAt}-${cell.exception.closesAt}`}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Calendar Legend */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', borderTop: '1px solid var(--da-border-light)', paddingTop: '12px', fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#EF4444', display: 'inline-block' }} />
+                        <span>Closed Full Day</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#F59E0B', display: 'inline-block' }} />
+                        <span>Special Hours</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#0284C7', display: 'inline-block' }} />
+                        <span>Today</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Form & Active Closures List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {/* Date Exception Action Card */}
+                    <div style={{ background: '#FFFFFF', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div>
+                          <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>
+                            Configure Date Exception
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                            Selected Date: <strong style={{ color: '#0F172A' }}>{selectedDate}</strong>
+                            {selectedException && (
+                              <span style={{ marginLeft: '8px', color: selectedException.closureType === 'FULL_DAY' ? '#DC2626' : '#D97706', fontWeight: 700 }}>
+                                (Currently: {selectedException.closureType === 'FULL_DAY' ? 'Closed Full Day' : `Special Hours ${selectedException.opensAt}-${selectedException.closesAt}`})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <form onSubmit={handleSaveClosure} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {isSelectedDatePast && (
+                          <div
+                            style={{
+                              background: '#FEF2F2',
+                              border: '1px solid #FECACA',
+                              borderRadius: '8px',
+                              padding: '10px 14px',
+                              color: '#991B1B',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}
+                          >
+                            <span>⚠️</span>
+                            <span>Closures and holidays cannot be set or modified for past dates.</span>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                              Selected Date
+                            </label>
+                            <input
+                              type="date"
+                              min={todayStr}
+                              value={selectedDate}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val && val < todayStr) {
+                                  setErrorMsg('Closures and holidays cannot be set for past dates.');
+                                  return;
+                                }
+                                setSelectedDate(val);
+                              }}
+                              required
+                              style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                              Exception Mode
+                            </label>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setClosureType('FULL_DAY')}
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  border: closureType === 'FULL_DAY' ? '2px solid #EF4444' : '1px solid var(--da-border)',
+                                  background: closureType === 'FULL_DAY' ? '#FEF2F2' : '#fff',
+                                  color: closureType === 'FULL_DAY' ? '#991B1B' : '#475569',
+                                }}
+                              >
+                                🚫 Closed Full Day
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setClosureType('SPECIAL_HOURS')}
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  border: closureType === 'SPECIAL_HOURS' ? '2px solid #F59E0B' : '1px solid var(--da-border)',
+                                  background: closureType === 'SPECIAL_HOURS' ? '#FFFBEB' : '#fff',
+                                  color: closureType === 'SPECIAL_HOURS' ? '#92400E' : '#475569',
+                                }}
+                              >
+                                ⏱️ Special Opening Hours
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Conditional Controls for Full Day / Special Hours */}
+                        {closureType === 'FULL_DAY' ? (
+                          <div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', marginBottom: '8px' }}>
+                              <input
+                                type="checkbox"
+                                checked={isMultiDay}
+                                onChange={(e) => setIsMultiDay(e.target.checked)}
+                              />
+                              Multi-day closure period
+                            </label>
+                            {isMultiDay && (
+                              <div>
+                                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
+                                  End Date (Inclusive)
+                                </label>
+                                <input
+                                  type="date"
+                                  min={selectedDate && selectedDate > todayStr ? selectedDate : todayStr}
+                                  value={closureEndDate}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const minAllowed = selectedDate && selectedDate > todayStr ? selectedDate : todayStr;
+                                    if (val && val < minAllowed) {
+                                      setErrorMsg('Closure end date cannot be in the past or before the start date.');
+                                      return;
+                                    }
+                                    setClosureEndDate(val);
+                                  }}
+                                  required={isMultiDay}
+                                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                                Opening Time on this Date
+                              </label>
+                              <select
+                                value={specialOpensAt}
+                                onChange={(e) => {
+                                  const newOpensAt = e.target.value;
+                                  setSpecialOpensAt(newOpensAt);
+                                  if (newOpensAt && specialClosesAt && specialClosesAt <= newOpensAt) {
+                                    setSpecialClosesAt(getDefaultClosingTime(newOpensAt));
+                                  }
+                                }}
+                                required
+                                style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
+                              >
+                                {getTimeOptions(false, specialOpensAt).map((t) => (
+                                  <option key={t} value={t}>
+                                    {getTimeLabel(t)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                                Closing Time on this Date
+                              </label>
+                              <select
+                                value={specialClosesAt}
+                                onChange={(e) => {
+                                  const newClosesAt = e.target.value;
+                                  if (newClosesAt && specialOpensAt && newClosesAt <= specialOpensAt) {
+                                    return;
+                                  }
+                                  setSpecialClosesAt(newClosesAt);
+                                }}
+                                required
+                                style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
+                              >
+                                {getTimeOptions(true, specialClosesAt).map((t) => {
+                                  const isUnavailable = specialOpensAt ? t <= specialOpensAt : false;
+                                  return (
+                                    <option
+                                      key={t}
+                                      value={t}
+                                      disabled={isUnavailable}
+                                      style={{
+                                        color: isUnavailable ? '#94A3B8' : '#0F172A',
+                                        backgroundColor: isUnavailable ? '#F8FAFC' : '#FFFFFF',
+                                      }}
+                                    >
+                                      {getTimeLabel(t)} {isUnavailable ? ' - Unavailable' : ''}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                            Reason / Holiday Name (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Christmas Day, New Year Holiday, Planned Facility Maintenance..."
+                            value={closureReason}
+                            onChange={(e) => setClosureReason(e.target.value)}
+                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                          <button
+                            type="submit"
+                            disabled={saving || isSelectedDatePast}
+                            style={{
+                              background: isSelectedDatePast ? '#94A3B8' : 'var(--da-brand-dark)',
+                              color: '#fff',
+                              border: 'none',
+                              padding: '10px 18px',
+                              borderRadius: '8px',
+                              fontWeight: 700,
+                              fontSize: '13px',
+                              cursor: (saving || isSelectedDatePast) ? 'not-allowed' : 'pointer',
+                              opacity: (saving || isSelectedDatePast) ? 0.6 : 1,
+                            }}
+                          >
+                            {isSelectedDatePast ? 'Cannot Set Past Date' : saving ? 'Saving...' : 'Save Date Exception'}
+                          </button>
+                          {selectedException && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClosure(selectedException)}
+                              disabled={saving}
+                              style={{
+                                background: '#FEE2E2',
+                                color: '#991B1B',
+                                border: '1px solid #FECACA',
+                                padding: '10px 16px',
+                                borderRadius: '8px',
+                                fontWeight: 700,
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Delete Exception for this Date
+                            </button>
+                          )}
+                        </div>
+                      </form>
+                    </div>
+
+                    {/* Scheduled Closures & Holidays List Card */}
+                    <div style={{ background: '#FFFFFF', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)' }}>
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '12px' }}>
+                        Active & Upcoming Closures ({closures.length})
+                      </div>
+
+                      {closuresLoading ? (
+                        <div style={{ padding: '16px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '12px' }}>
+                          Loading closures...
+                        </div>
+                      ) : closures.length === 0 ? (
+                        <div style={{ padding: '24px', textAlign: 'center', color: '#94A3B8', border: '1px dashed var(--da-border)', borderRadius: '8px', fontSize: '12px' }}>
+                          No closures or holiday exceptions scheduled. Select a date on the calendar to schedule one.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '380px', overflowY: 'auto' }}>
+                          {closures.map((exc) => (
+                            <div
+                              key={exc.id}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px 16px',
+                                border: '1px solid var(--da-border-light)',
+                                borderRadius: '8px',
+                                background: exc.closureType === 'FULL_DAY' ? '#FEF2F2' : '#FFFBEB',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    background: exc.closureType === 'FULL_DAY' ? '#EF4444' : '#F59E0B',
+                                    color: '#fff',
+                                  }}
+                                >
+                                  {exc.closureType === 'FULL_DAY' ? 'CLOSED' : 'SPECIAL HOURS'}
+                                </span>
+                                <div>
+                                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B' }}>
+                                    {exc.date}{exc.endDate ? ` → ${exc.endDate}` : ''}
+                                    {exc.closureType === 'SPECIAL_HOURS' && ` (${exc.opensAt} - ${exc.closesAt})`}
+                                  </div>
+                                  {exc.reason && (
+                                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>
+                                      {exc.reason}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedDate(exc.date);
+                                    setClosureType(exc.closureType);
+                                    if (exc.opensAt) setSpecialOpensAt(exc.opensAt);
+                                    if (exc.closesAt) setSpecialClosesAt(exc.closesAt);
+                                    setClosureReason(exc.reason || '');
+                                    setIsMultiDay(Boolean(exc.endDate));
+                                    setClosureEndDate(exc.endDate || '');
+                                  }}
+                                  style={{
+                                    background: '#fff',
+                                    border: '1px solid var(--da-border)',
+                                    borderRadius: '6px',
+                                    padding: '4px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: '#334155',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteClosure(exc)}
+                                  style={{
+                                    background: '#fff',
+                                    border: '1px solid #FECACA',
+                                    borderRadius: '6px',
+                                    padding: '4px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: '#DC2626',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Closure Impact Collision Warning Modal */}
@@ -3568,19 +3686,21 @@ export function Settings() {
             );
           })()}
 
-
           {/* TAB 5: Landing Preview Photos */}
           {activeTab === 'Landing Preview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-              <div>
+              <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '20px 24px', boxShadow: 'var(--da-shadow-sm)' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 2px' }}>
+                  Landing Page Preview Carousel
+                </h3>
                 <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', lineHeight: '1.5' }}>
                   Upload and configure up to 3 preview photos displayed in the customer landing page carousel.
                   Adjust the position/crop within the preview frame and click <strong>Done</strong> before saving.
                 </div>
               </div>
 
-              {/* 3 Photo Slots */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* 3 Photo Slots Responsive Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
                 {[0, 1, 2].map((slotIndex) => {
                   const photo = landingPreviewPhotos.find((p) => p.displayOrder === slotIndex) || landingPreviewPhotos[slotIndex];
                   const isAdjusting = adjustingSlot === slotIndex;
@@ -3591,13 +3711,18 @@ export function Settings() {
                       key={slotIndex}
                       style={{
                         border: isAdjusting ? '2px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
-                        borderRadius: '12px',
-                        padding: '18px',
-                        background: isAdjusting ? '#F0FDFA' : '#FAFAFA',
+                        borderRadius: '14px',
+                        padding: '20px',
+                        background: isAdjusting ? '#F0FDFA' : '#FFFFFF',
+                        boxShadow: 'var(--da-shadow-sm)',
                         transition: 'all 0.15s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '14px',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '8px' }}>
                         <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--da-brand-dark)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -3606,16 +3731,16 @@ export function Settings() {
                           }}>
                             {slotIndex + 1}
                           </span>
-                          <span>Preview Slide {slotIndex + 1}</span>
+                          <span>Slide {slotIndex + 1}</span>
                           {photo && (
                             <span style={{ fontSize: '11px', fontWeight: 600, color: '#0D9488', background: '#CCFBF1', padding: '2px 8px', borderRadius: '4px' }}>
-                              Configured ({photo.position?.x ?? 50}%, {photo.position?.y ?? 50}%)
+                              ({photo.position?.x ?? 50}%, {photo.position?.y ?? 50}%)
                             </span>
                           )}
                         </div>
 
                         {photo && (
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                             {isAdjusting ? (
                               <button
                                 type="button"
@@ -3624,9 +3749,9 @@ export function Settings() {
                                   background: 'var(--da-brand-dark)',
                                   color: '#fff',
                                   border: 'none',
-                                  padding: '6px 16px',
+                                  padding: '5px 12px',
                                   borderRadius: '6px',
-                                  fontSize: '12px',
+                                  fontSize: '11px',
                                   fontWeight: 800,
                                   cursor: 'pointer',
                                   boxShadow: 'var(--da-shadow-sm)',
@@ -3642,9 +3767,9 @@ export function Settings() {
                                   background: '#fff',
                                   color: '#0F172A',
                                   border: '1px solid var(--da-border)',
-                                  padding: '6px 12px',
+                                  padding: '5px 10px',
                                   borderRadius: '6px',
-                                  fontSize: '12px',
+                                  fontSize: '11px',
                                   fontWeight: 700,
                                   cursor: 'pointer',
                                 }}
@@ -3658,9 +3783,9 @@ export function Settings() {
                                 background: '#fff',
                                 color: 'var(--da-text-primary)',
                                 border: '1px solid var(--da-border)',
-                                padding: '6px 12px',
+                                padding: '5px 10px',
                                 borderRadius: '6px',
-                                fontSize: '12px',
+                                fontSize: '11px',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 display: 'inline-block',
@@ -3685,9 +3810,9 @@ export function Settings() {
                                 background: '#FEE2E2',
                                 color: '#991B1B',
                                 border: '1px solid #FECACA',
-                                padding: '6px 12px',
+                                padding: '5px 10px',
                                 borderRadius: '6px',
-                                fontSize: '12px',
+                                fontSize: '11px',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                               }}
@@ -3713,9 +3838,8 @@ export function Settings() {
                           }}
                           style={{
                             width: '100%',
-                            maxWidth: '480px',
-                            height: '240px',
-                            borderRadius: '16px',
+                            height: '220px',
+                            borderRadius: '12px',
                             overflow: 'hidden',
                             position: 'relative',
                             background: '#E2E8F0',
@@ -3774,11 +3898,10 @@ export function Settings() {
                         <div
                           style={{
                             width: '100%',
-                            maxWidth: '480px',
-                            height: '180px',
-                            borderRadius: '16px',
+                            height: '220px',
+                            borderRadius: '12px',
                             border: '2px dashed var(--da-border)',
-                            background: '#FFFFFF',
+                            background: '#F8FAFC',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
@@ -3834,8 +3957,8 @@ export function Settings() {
                 })}
               </div>
 
-              {/* Save Button */}
-              <div style={{ borderTop: '1px solid var(--da-border-light)', paddingTop: '16px' }}>
+              {/* Save Button Footer */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--da-border-light)' }}>
                 <button
                   type="button"
                   onClick={handleSaveLandingPreview}
@@ -3844,7 +3967,7 @@ export function Settings() {
                     background: 'var(--da-brand-dark)',
                     color: '#fff',
                     border: 'none',
-                    padding: '12px 24px',
+                    padding: '12px 28px',
                     borderRadius: '8px',
                     fontWeight: 700,
                     fontSize: '13px',
@@ -3860,78 +3983,107 @@ export function Settings() {
 
           {/* TAB 6: Kiosk Settings */}
           {activeTab === 'Kiosk Settings' && (
-            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                  Inactivity Timeout (Minutes)
-                </label>
-                <input 
-                  type="number" 
-                  min={1}
-                  max={60}
-                  value={businessSettings.kioskTimeoutMinutes === '' as any ? '' : (businessSettings.kioskTimeoutMinutes ?? '')}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setBusinessSettings({
-                      ...businessSettings,
-                      kioskTimeoutMinutes: raw === '' ? ('' as any) : Number(raw),
-                    });
-                  }}
-                  onBlur={() => {
-                    if (!businessSettings.kioskTimeoutMinutes || Number(businessSettings.kioskTimeoutMinutes) < 1) {
-                      setBusinessSettings({ ...businessSettings, kioskTimeoutMinutes: 5 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  The kiosk resets automatically to the welcome screen if the user is inactive for this duration.
+            <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px', alignItems: 'start' }}>
+                {/* Card 1: Session & Inactivity Timers */}
+                <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ borderBottom: '1px solid var(--da-border-light)', paddingBottom: '12px' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
+                      Session & Inactivity Timers
+                    </h3>
+                    <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '4px 0 0' }}>
+                      On-site kiosk terminal timeout and screen security
+                    </p>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                      Inactivity Timeout (Minutes)
+                    </label>
+                    <input 
+                      type="number" 
+                      min={1}
+                      max={60}
+                      value={(businessSettings.kioskTimeoutMinutes as unknown) === '' ? '' : (businessSettings.kioskTimeoutMinutes ?? '')}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setBusinessSettings({
+                          ...businessSettings,
+                          kioskTimeoutMinutes: raw === '' ? ('' as unknown as number) : Number(raw),
+                        });
+                      }}
+                      onBlur={() => {
+                        if (!businessSettings.kioskTimeoutMinutes || Number(businessSettings.kioskTimeoutMinutes) < 1) {
+                          setBusinessSettings({ ...businessSettings, kioskTimeoutMinutes: 5 });
+                        }
+                      }}
+                      onKeyDown={(e) => handleNumericKeyDown(e)}
+                      style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                    />
+                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                      The kiosk resets automatically to the welcome screen if the user is inactive for this duration.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 2: Walk-in Booking Rules */}
+                <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '24px', boxShadow: 'var(--da-shadow-sm)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ borderBottom: '1px solid var(--da-border-light)', paddingBottom: '12px' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
+                      Walk-in Booking Rules
+                    </h3>
+                    <p style={{ fontSize: '12px', color: 'var(--da-text-secondary)', margin: '4px 0 0' }}>
+                      Kiosk check-in grace period and allowance buffer
+                    </p>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                      Kiosk Booking Allowance (Minutes)
+                    </label>
+                    <input 
+                      type="number" 
+                      min={0}
+                      max={60}
+                      value={(businessSettings.kioskAllowanceMinutes as unknown) === '' ? '' : (businessSettings.kioskAllowanceMinutes ?? 5)}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setBusinessSettings({
+                          ...businessSettings,
+                          kioskAllowanceMinutes: raw === '' ? ('' as unknown as number) : Number(raw),
+                        });
+                      }}
+                      onBlur={() => {
+                        if (businessSettings.kioskAllowanceMinutes === undefined || businessSettings.kioskAllowanceMinutes === null || (businessSettings.kioskAllowanceMinutes as unknown) === '' || Number(businessSettings.kioskAllowanceMinutes) < 0) {
+                          setBusinessSettings({ ...businessSettings, kioskAllowanceMinutes: 5 });
+                        } else if (Number(businessSettings.kioskAllowanceMinutes) > 60) {
+                          setBusinessSettings({ ...businessSettings, kioskAllowanceMinutes: 60 });
+                        }
+                      }}
+                      onKeyDown={(e) => handleNumericKeyDown(e)}
+                      style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                    />
+                    <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                      Default is 5 minutes. Added to the current time when starting a walk-in booking session on the Kiosk.
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
-                  Kiosk Booking Allowance (Minutes)
-                </label>
-                <input 
-                  type="number" 
-                  min={0}
-                  max={60}
-                  value={businessSettings.kioskAllowanceMinutes === '' as any ? '' : (businessSettings.kioskAllowanceMinutes ?? 5)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setBusinessSettings({
-                      ...businessSettings,
-                      kioskAllowanceMinutes: raw === '' ? ('' as any) : Number(raw),
-                    });
+              {/* Save Kiosk Settings Button */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--da-border-light)' }}>
+                <button 
+                  type="submit"
+                  disabled={saving}
+                  style={{ 
+                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px', 
+                    borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
+                    opacity: saving ? 0.7 : 1 
                   }}
-                  onBlur={() => {
-                    if (businessSettings.kioskAllowanceMinutes === undefined || businessSettings.kioskAllowanceMinutes === null || businessSettings.kioskAllowanceMinutes === '' as any || Number(businessSettings.kioskAllowanceMinutes) < 0) {
-                      setBusinessSettings({ ...businessSettings, kioskAllowanceMinutes: 5 });
-                    } else if (Number(businessSettings.kioskAllowanceMinutes) > 60) {
-                      setBusinessSettings({ ...businessSettings, kioskAllowanceMinutes: 60 });
-                    }
-                  }}
-                  onKeyDown={(e) => handleNumericKeyDown(e)}
-                  style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
-                />
-                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-                  Default is 5 minutes. Added to the current time when starting a walk-in booking session on the Kiosk.
-                </div>
+                >
+                  {saving ? 'Saving...' : 'Save Kiosk Settings'}
+                </button>
               </div>
-
-              <button 
-                type="submit"
-                disabled={saving}
-                style={{ 
-                  background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px', 
-                  borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
-                  marginTop: '8px', opacity: saving ? 0.7 : 1 
-                }}
-              >
-                {saving ? 'Saving...' : 'Save Kiosk Settings'}
-              </button>
             </form>
           )}
         </div>

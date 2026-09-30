@@ -39,6 +39,7 @@ import {
 } from "../../features/reservation/SpotDetailModal";
 import { fetchTemplateAvailability, fetchOccupiedInstances, fetchNextUpcomingBooking } from "../../lib/availabilityApi";
 import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling, MarqueeLabel } from "@deskatlas/ui";
+import { useKioskSettings } from "../../../hooks/useKioskSettings";
 
 export interface WorkspaceTemplateSummary {
   id: string;
@@ -320,6 +321,7 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
 
 export default function KioskReservePage() {
   const router = useRouter();
+  const { kioskTimeoutMs, warningTimeoutMs } = useKioskSettings();
 
   // Dual Discovery Mode: "map" vs "category"
   const MAX_KIOSK_DURATION_HOURS = 24;
@@ -624,7 +626,7 @@ export default function KioskReservePage() {
       const url = targetFloorId
         ? `/api/published-map?floorId=${encodeURIComponent(targetFloorId)}`
         : "/api/published-map";
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error("Failed to load published floor map.");
       const data = await res.json();
       const floorList: Floor[] = data.floors || [];
@@ -956,7 +958,12 @@ export default function KioskReservePage() {
   const totalAmount = resolvedPricing.estimatedTotal;
 
   return (
-    <SessionManager onReset={handleReset} onTimeoutWarning={() => { }}>
+    <SessionManager
+      timeoutMs={kioskTimeoutMs}
+      warningTimeoutMs={warningTimeoutMs}
+      onReset={handleReset}
+      onTimeoutWarning={() => { }}
+    >
       <main className="min-h-screen bg-[var(--da-canvas)] px-3 sm:px-6 md:px-8 py-5 sm:py-6 text-[var(--da-text-primary)] w-full">
         <div className="mx-auto flex max-w-[1800px] w-full flex-col gap-6">
           {/* Header Bar & Breadcrumbs */}
@@ -1418,6 +1425,33 @@ export default function KioskReservePage() {
                                       text={displayName}
                                       style={{ fontSize: "11px", fontWeight: 700, lineHeight: 1.2, maxWidth: "100%" }}
                                     />
+                                    {wsModel?.tags && wsModel.tags.length > 0 && (
+                                      <div className="flex flex-wrap items-center justify-center gap-0.5 mt-0.5 max-w-full overflow-hidden">
+                                        {wsModel.tags.slice(0, 2).map((tag) => (
+                                          <span
+                                            key={tag}
+                                            className="inline-block truncate rounded-full px-1.5 py-0.2 text-[8px] font-bold"
+                                            style={{
+                                              backgroundColor: 'rgba(0, 150, 137, 0.12)',
+                                              color: 'var(--da-brand-dark)',
+                                              border: '0.5px solid rgba(0, 150, 137, 0.25)',
+                                              maxWidth: '85px',
+                                            }}
+                                            title={tag}
+                                          >
+                                            {tag}
+                                          </span>
+                                        ))}
+                                        {wsModel.tags.length > 2 && (
+                                          <span
+                                            className="text-[8px] font-bold text-[var(--da-text-secondary)]"
+                                            title={wsModel.tags.slice(2).join(', ')}
+                                          >
+                                            +{wsModel.tags.length - 2}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
                                     {isOccupied && (
                                       <WorkspaceCountdownBadge
                                         bookingEndAt={occupiedDetailsMap.get(el.workspace?.workspaceInstanceId || "")}
@@ -2567,6 +2601,18 @@ export default function KioskReservePage() {
                             <p className="text-xs text-[var(--da-text-secondary)] mt-1">
                               📍 {inst.floorName} • Capacity: {inst.capacity} seat(s)
                             </p>
+                            {((inst.tags && inst.tags.length > 0) || (wsModel?.tags && wsModel.tags.length > 0) || (selectedTemplate.tags && selectedTemplate.tags.length > 0)) && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {(inst.tags || wsModel?.tags || selectedTemplate.tags || []).map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="rounded-full bg-[rgba(0,150,137,0.08)] border border-[rgba(0,150,137,0.2)] px-2 py-0.5 text-[10px] font-bold text-[var(--da-brand-dark)]"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
 
                           <div className="mt-4 pt-3 border-t border-[var(--da-border-light)] flex items-center justify-between">

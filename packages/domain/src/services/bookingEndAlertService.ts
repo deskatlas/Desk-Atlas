@@ -30,6 +30,9 @@ export interface ActiveBookingCandidate {
   spotName?: string | null;
   spotCode?: string | null;
   workspaceName?: string | null;
+  workspaceDisplayName?: string | null;
+  workspaceInstanceCode?: string | null;
+  workspaceTemplateName?: string | null;
   assignedCandidate?: {
     workspaceName?: string | null;
     startAt?: string | null;
@@ -87,9 +90,21 @@ export function resolveBookingStartTime(booking: ActiveBookingCandidate): string
  * Resolves the workspace/spot name for an active booking.
  */
 export function resolveBookingSpotName(booking: ActiveBookingCandidate): string {
+  // 1. Check direct display name from operational and admin DTOs
+  const bAny = booking as Record<string, unknown>;
+  const workspaceDisplayName = typeof bAny.workspaceDisplayName === 'string' ? bAny.workspaceDisplayName.trim() : '';
+  if (workspaceDisplayName) return workspaceDisplayName;
+
+  // 2. Check legacy spot name properties
   if (booking.spotCode && booking.spotCode.trim()) return booking.spotCode.trim();
   if (booking.spotName && booking.spotName.trim()) return booking.spotName.trim();
   if (booking.workspaceName && booking.workspaceName.trim()) return booking.workspaceName.trim();
+
+  // 3. Check instance code
+  const workspaceInstanceCode = typeof bAny.workspaceInstanceCode === 'string' ? bAny.workspaceInstanceCode.trim() : '';
+  if (workspaceInstanceCode) return workspaceInstanceCode;
+
+  // 4. Check assigned candidate in nested arrays
   if (booking.assignedCandidate?.workspaceName && booking.assignedCandidate.workspaceName.trim()) {
     return booking.assignedCandidate.workspaceName.trim();
   }
@@ -100,6 +115,11 @@ export function resolveBookingSpotName(booking: ActiveBookingCandidate): string 
       return booking.candidates[0].workspaceName.trim();
     }
   }
+
+  // 5. Check template name as descriptive fallback
+  const workspaceTemplateName = typeof bAny.workspaceTemplateName === 'string' ? bAny.workspaceTemplateName.trim() : '';
+  if (workspaceTemplateName) return workspaceTemplateName;
+
   return 'Unassigned Spot';
 }
 

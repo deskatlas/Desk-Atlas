@@ -22,6 +22,7 @@ import {
   ReservationStatus,
   StaffOperationalReservation,
   CustomerRelocationRequest,
+  ClosureImpactStatus,
   ClosureImpactPreviewResult,
   ClosureImpactedReservationSummary,
   LogClosurePhoneCallInput,
@@ -405,12 +406,16 @@ export class ReservationSupabaseRepository
 
     const reservationIds = reservations.map((r) => r.id).filter(Boolean);
 
-    const [candidatesRows, paymentAttemptsRows, catalog, relocationMap] =
+    const hasAnyClosureImpacted = reservations.some((r) => Boolean((r as any).is_closure_impacted));
+    const [candidatesRows, paymentAttemptsRows, catalog, relocationMap, activeClosureBlocks] =
       await Promise.all([
         this.fetchCandidatesForReservationIds(reservationIds),
         this.fetchPaymentAttemptsForReservationIds(reservationIds),
         this.getVenueCatalog(),
         this.fetchRelocationAuditLogsForReservationIds(reservationIds),
+        hasAnyClosureImpacted
+          ? this.request<any[]>("/schedule_blocks?scope=eq.BUSINESS&block_type=eq.CLOSURE&select=id,start_at,end_at").catch(() => [])
+          : Promise.resolve([]),
       ]);
 
     const candidatesByReservation = new Map<string, ReservationCandidateRow[]>();
@@ -453,6 +458,46 @@ export class ReservationSupabaseRepository
         reservation.status as ReservationStatus,
         isPaymentRejected ? "REJECTED" : latestAttempt?.status
       );
+
+      let isClosureImpacted = Boolean((reservation as any).is_closure_impacted);
+      let closureImpactStatus = ((reservation as any).closure_impact_status as ClosureImpactStatus | null) ?? null;
+      let closureReason = ((reservation as any).closure_reason as string) || null;
+      let closureDate = ((reservation as any).closure_date as string) || null;
+      let closureExceptionId = ((reservation as any).closure_exception_id as string) || null;
+
+      if (isClosureImpacted) {
+        const rStart = candidate?.start_at ? new Date(candidate.start_at).getTime() : 0;
+        const rEnd = candidate?.end_at ? new Date(candidate.end_at).getTime() : 0;
+        const stillOverlaps = Boolean(
+          rStart &&
+            rEnd &&
+            (activeClosureBlocks ?? []).some((c: any) => {
+              const cStart = new Date(c.start_at).getTime();
+              const cEnd = new Date(c.end_at).getTime();
+              return rStart < cEnd && rEnd > cStart;
+            })
+        );
+        if (!stillOverlaps) {
+          isClosureImpacted = false;
+          closureImpactStatus = null;
+          closureReason = null;
+          closureDate = null;
+          closureExceptionId = null;
+
+          const nowIso = new Date().toISOString();
+          this.request(`/reservations?id=eq.${encodeURIComponent(reservation.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              is_closure_impacted: false,
+              closure_impact_status: null,
+              closure_exception_id: null,
+              closure_reason: null,
+              closure_date: null,
+              updated_at: nowIso,
+            }),
+          }).catch(() => {});
+        }
+      }
 
       return {
         reservationId: reservation.id,
@@ -498,6 +543,13 @@ export class ReservationSupabaseRepository
         cancellationReason: reservation.cancellation_reason ?? null,
         cancelledAt: reservation.cancelled_at ?? null,
         cancelledByUserId: reservation.cancelled_by_user_id ?? null,
+        closureExceptionId,
+        isClosureImpacted,
+        closureImpactStatus,
+        closureReason,
+        closureDate,
+        closureNotifiedAt: ((reservation as any).closure_notified_at as string) || null,
+        manualResolutionNotes: sanitizeManualResolutionNotes((reservation as any).manual_resolution_notes),
       };
     });
   }
@@ -2546,11 +2598,15 @@ export class ReservationSupabaseRepository
     }
 
     const reservationIds = reservations.map((r) => r.id).filter(Boolean);
+    const hasAnyClosureImpacted = reservations.some((r) => Boolean(r.is_closure_impacted));
 
-    const [candidatesRows, paymentAttemptsRows, catalog] = await Promise.all([
+    const [candidatesRows, paymentAttemptsRows, catalog, activeClosureBlocks] = await Promise.all([
       this.fetchCandidatesForReservationIds(reservationIds),
       this.fetchPaymentAttemptsForReservationIds(reservationIds),
       this.getVenueCatalog(),
+      hasAnyClosureImpacted
+        ? this.request<any[]>("/schedule_blocks?scope=eq.BUSINESS&block_type=eq.CLOSURE&select=id,start_at,end_at").catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     const candidatesByReservation = new Map<string, any[]>();
@@ -2602,6 +2658,46 @@ export class ReservationSupabaseRepository
         ["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(r.status);
       const amountPaid = isApproved ? Number(latestAttempt?.amount ?? amountDue) : 0;
 
+      let isClosureImpacted = Boolean(r.is_closure_impacted);
+      let closureImpactStatus = (r.closure_impact_status as ClosureImpactStatus | null) ?? null;
+      let closureReason = (r.closure_reason as string | null) ?? null;
+      let closureDate = (r.closure_date as string | null) ?? null;
+      let closureExceptionId = (r.closure_exception_id as string | null) ?? null;
+
+      if (isClosureImpacted) {
+        const rStart = targetCandidate?.start_at ? new Date(targetCandidate.start_at).getTime() : 0;
+        const rEnd = targetCandidate?.end_at ? new Date(targetCandidate.end_at).getTime() : 0;
+        const stillOverlaps = Boolean(
+          rStart &&
+            rEnd &&
+            (activeClosureBlocks ?? []).some((c: any) => {
+              const cStart = new Date(c.start_at).getTime();
+              const cEnd = new Date(c.end_at).getTime();
+              return rStart < cEnd && rEnd > cStart;
+            })
+        );
+        if (!stillOverlaps) {
+          isClosureImpacted = false;
+          closureImpactStatus = null;
+          closureReason = null;
+          closureDate = null;
+          closureExceptionId = null;
+
+          const nowIso = new Date().toISOString();
+          this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              is_closure_impacted: false,
+              closure_impact_status: null,
+              closure_exception_id: null,
+              closure_reason: null,
+              closure_date: null,
+              updated_at: nowIso,
+            }),
+          }).catch(() => {});
+        }
+      }
+
       return {
         id: r.id,
         referenceCode: r.reference_code,
@@ -2642,13 +2738,13 @@ export class ReservationSupabaseRepository
         cancellationReason: r.cancellation_reason ?? null,
         cancelledAt: r.cancelled_at ?? null,
         cancelledByUserId: r.cancelled_by_user_id ?? null,
-        closureExceptionId: r.closure_exception_id ?? null,
-        isClosureImpacted: r.is_closure_impacted ?? false,
-        closureImpactStatus: r.closure_impact_status ?? null,
+        closureExceptionId,
+        isClosureImpacted,
+        closureImpactStatus,
         closureNotifiedAt: r.closure_notified_at ?? null,
         manualResolutionNotes: sanitizeManualResolutionNotes(r.manual_resolution_notes),
-        closureReason: r.closure_reason ?? null,
-        closureDate: r.closure_date ?? null,
+        closureReason,
+        closureDate,
       };
     });
   }
@@ -2910,6 +3006,61 @@ export class ReservationSupabaseRepository
 
     const amountDue = Number(r.amount_due);
     const formattedPaymentStatus = `${pres.payment} (${formatAmountWithCurrency(amountDue, r.currency)})`;
+    let isClosureImpacted = Boolean(r.is_closure_impacted);
+    let closureImpactStatus = r.closure_impact_status ?? null;
+    let closureNotifiedAt = r.closure_notified_at ?? null;
+    let closureReason = r.closure_reason ?? null;
+    let closureDate = r.closure_date ?? null;
+    let closureExceptionId = r.closure_exception_id ?? null;
+
+    if (isClosureImpacted) {
+      try {
+        const activeBlocks = await this.request<any[]>(
+          "/schedule_blocks?scope=eq.BUSINESS&block_type=eq.CLOSURE&select=id,start_at,end_at"
+        ).catch(() => []);
+
+        const activeClosures = (activeBlocks ?? []).map((b) => ({
+          startAt: b.start_at,
+          endAt: b.end_at,
+        }));
+
+        const rStart = effective?.startAt ? new Date(effective.startAt).getTime() : 0;
+        const rEnd = effective?.endAt ? new Date(effective.endAt).getTime() : 0;
+
+        const stillOverlaps = Boolean(
+          rStart &&
+            rEnd &&
+            activeClosures.some((c) => {
+              const cStart = new Date(c.startAt).getTime();
+              const cEnd = new Date(c.endAt).getTime();
+              return rStart < cEnd && rEnd > cStart;
+            })
+        );
+
+        if (!stillOverlaps) {
+          isClosureImpacted = false;
+          closureImpactStatus = null;
+          closureReason = null;
+          closureDate = null;
+          closureExceptionId = null;
+
+          const nowIso = new Date().toISOString();
+          this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              is_closure_impacted: false,
+              closure_impact_status: null,
+              closure_exception_id: null,
+              closure_reason: null,
+              closure_date: null,
+              updated_at: nowIso,
+            }),
+          }).catch(() => {});
+        }
+      } catch {
+        // preserve existing if network fails
+      }
+    }
 
     return {
       id: r.id,
@@ -2959,13 +3110,13 @@ export class ReservationSupabaseRepository
       rescheduleCount: r.reschedule_count ?? 0,
       paymentAttempts: paymentAttemptsSummary,
       pendingRelocationRequest,
-      closureExceptionId: r.closure_exception_id ?? null,
-      isClosureImpacted: r.is_closure_impacted ?? false,
-      closureImpactStatus: r.closure_impact_status ?? null,
-      closureNotifiedAt: r.closure_notified_at ?? null,
+      closureExceptionId,
+      isClosureImpacted,
+      closureImpactStatus,
+      closureNotifiedAt,
       manualResolutionNotes: sanitizeManualResolutionNotes(r.manual_resolution_notes),
-      closureReason: r.closure_reason ?? null,
-      closureDate: r.closure_date ?? null,
+      closureReason,
+      closureDate,
     };
   }
 
@@ -4533,6 +4684,108 @@ export class ReservationSupabaseRepository
     }
   }
 
+  async reconcileClearedClosureImpact(
+    _deletedIntervals?: Array<{ startAt: string; endAt: string }>,
+    remainingClosures?: Array<{ startAt: string; endAt: string }>,
+    _deletedBlockIds?: string[]
+  ): Promise<{ clearedReservationIds: string[] }> {
+    const nowIso = new Date().toISOString();
+    const clearedReservationIds: string[] = [];
+
+    let activeClosures = remainingClosures;
+    if (!activeClosures) {
+      try {
+        const blocks = await this.request<any[]>(
+          "/schedule_blocks?scope=eq.BUSINESS&block_type=eq.CLOSURE&select=start_at,end_at"
+        );
+        activeClosures = (blocks ?? []).map((b) => ({ startAt: b.start_at, endAt: b.end_at }));
+      } catch {
+        activeClosures = [];
+      }
+    }
+
+    const impactedRows = await this.request<any[]>(
+      `/reservations?select=id,reference_code,status,is_closure_impacted,closure_impact_status&is_closure_impacted=eq.true`
+    ).catch(() => []);
+
+    if (!Array.isArray(impactedRows) || impactedRows.length === 0) {
+      return { clearedReservationIds };
+    }
+
+    const reservationIds = impactedRows.map((r) => r.id);
+    const candidatesRows = await this.fetchCandidatesForReservationIds(reservationIds);
+
+    const candidatesByRes = new Map<string, ReservationCandidateRow[]>();
+    for (const c of candidatesRows) {
+      const list = candidatesByRes.get(c.reservation_id) ?? [];
+      list.push(c);
+      candidatesByRes.set(c.reservation_id, list);
+    }
+
+    for (const r of impactedRows) {
+      const candidateList = candidatesByRes.get(r.id) ?? [];
+      const assigned =
+        candidateList.find((c) => c.is_assigned === true) ?? candidateList[0];
+
+      if (!assigned?.start_at || !assigned?.end_at) {
+        await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            is_closure_impacted: false,
+            closure_impact_status: null,
+            closure_exception_id: null,
+            closure_reason: null,
+            closure_date: null,
+            updated_at: nowIso,
+          }),
+        }).catch((err) => console.warn(`Failed to reconcile cleared closure for reservation ${r.id}:`, err));
+        clearedReservationIds.push(r.id);
+        continue;
+      }
+
+      const rStart = new Date(assigned.start_at).getTime();
+      const rEnd = new Date(assigned.end_at).getTime();
+
+      const stillOverlaps = activeClosures.some((interval) => {
+        const cStart = new Date(interval.startAt).getTime();
+        const cEnd = new Date(interval.endAt).getTime();
+        return rStart < cEnd && rEnd > cStart;
+      });
+
+      if (!stillOverlaps) {
+        await this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            is_closure_impacted: false,
+            closure_impact_status: null,
+            closure_exception_id: null,
+            closure_reason: null,
+            closure_date: null,
+            updated_at: nowIso,
+          }),
+        }).catch((err) => console.warn(`Failed to reconcile cleared closure for reservation ${r.id}:`, err));
+
+        await this.request("/audit_logs", {
+          method: "POST",
+          body: JSON.stringify({
+            entity_type: "reservation",
+            entity_id: r.id,
+            action: "CLOSURE_CONFLICT_CLEARED",
+            actor_role: "SYSTEM",
+            metadata: {
+              reason: "Closure conflict cleared automatically following closure exception removal",
+              reconciled_at: nowIso,
+            },
+          }),
+        }).catch(() => {});
+
+        clearedReservationIds.push(r.id);
+      }
+    }
+
+    return { clearedReservationIds };
+  }
+
   async logClosurePhoneCall(input: LogClosurePhoneCallInput): Promise<{
     success: boolean;
     reservation: AdminReservationDetail;
@@ -4723,6 +4976,17 @@ export class ReservationSupabaseRepository
   }
 
   async getClosureAlerts(): Promise<ClosureAlertsResult> {
+    const activeBlocks = await this.request<any[]>(
+      "/schedule_blocks?scope=eq.BUSINESS&block_type=eq.CLOSURE&select=id,start_at,end_at,reason"
+    ).catch(() => []);
+
+    const activeClosures = (activeBlocks ?? []).map((b) => ({
+      id: b.id,
+      startAt: b.start_at,
+      endAt: b.end_at,
+      reason: b.reason,
+    }));
+
     const rows = await this.request<any[]>(
       `/reservations?select=id,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,closure_reason,closure_date,reservation_candidates(id,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(id,display_name,instance_code))&is_closure_impacted=eq.true&closure_impact_status=in.(AFFECTED_PENDING_ACTION,MANUAL_RESOLUTION_REQUIRED)&status=in.(PENDING,CONFIRMED,CHECKED_IN)`
     ).catch(() => []);
@@ -4736,12 +5000,63 @@ export class ReservationSupabaseRepository
       };
     }
 
-    const closureReasons = Array.from(new Set(rows.map((r) => r.closure_reason || "Facility Closure").filter(Boolean)));
-    const closureDates = Array.from(new Set(rows.map((r) => r.closure_date).filter(Boolean)));
+    const trulyCollidingRows: any[] = [];
+    const orphanedRowIds: string[] = [];
+
+    for (const r of rows) {
+      const candidates = r.reservation_candidates ?? [];
+      const assigned = candidates.find((c: any) => c.is_assigned) ?? candidates[0];
+      if (!assigned?.start_at || !assigned?.end_at || activeClosures.length === 0) {
+        orphanedRowIds.push(r.id);
+        continue;
+      }
+      const rStart = new Date(assigned.start_at).getTime();
+      const rEnd = new Date(assigned.end_at).getTime();
+      const overlaps = activeClosures.some((c) => {
+        const cStart = new Date(c.startAt).getTime();
+        const cEnd = new Date(c.endAt).getTime();
+        return rStart < cEnd && rEnd > cStart;
+      });
+
+      if (overlaps) {
+        trulyCollidingRows.push(r);
+      } else {
+        orphanedRowIds.push(r.id);
+      }
+    }
+
+    if (orphanedRowIds.length > 0) {
+      const nowIso = new Date().toISOString();
+      for (const orphanedId of orphanedRowIds) {
+        this.request(`/reservations?id=eq.${encodeURIComponent(orphanedId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            is_closure_impacted: false,
+            closure_impact_status: null,
+            closure_exception_id: null,
+            closure_reason: null,
+            closure_date: null,
+            updated_at: nowIso,
+          }),
+        }).catch(() => {});
+      }
+    }
+
+    if (trulyCollidingRows.length === 0) {
+      return {
+        impactedCount: 0,
+        closureDateRange: null,
+        closureReason: null,
+        reservations: [],
+      };
+    }
+
+    const closureReasons = Array.from(new Set(trulyCollidingRows.map((r) => r.closure_reason || "Facility Closure").filter(Boolean)));
+    const closureDates = Array.from(new Set(trulyCollidingRows.map((r) => r.closure_date).filter(Boolean)));
     const closureDateRange = closureDates.length > 0 ? closureDates.join(", ") : "Upcoming Closure";
     const closureReason = closureReasons.length > 0 ? closureReasons.join(", ") : "Facility Closure";
 
-    const colliding: ClosureImpactedReservationSummary[] = rows.map((r) => {
+    const colliding: ClosureImpactedReservationSummary[] = trulyCollidingRows.map((r) => {
       const candidates = r.reservation_candidates ?? [];
       const assigned = candidates.find((c: any) => c.is_assigned) ?? candidates[0];
       const inst = assigned?.workspace_instances;

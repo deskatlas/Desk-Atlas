@@ -70,6 +70,8 @@ export interface BusinessSettings {
   dayPassEndTime?: string;
   nightPassStartTime?: string;
   nightPassEndTime?: string;
+  wholeDayPassStartTime?: string;
+  wholeDayPassEndTime?: string;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
   cancellationPolicyPdfUrl?: string | null;
@@ -132,6 +134,8 @@ export interface UpdateBusinessSettingsInput {
   dayPassEndTime?: string;
   nightPassStartTime?: string;
   nightPassEndTime?: string;
+  wholeDayPassStartTime?: string;
+  wholeDayPassEndTime?: string;
   landingPreviewPhotos?: LandingPreviewPhoto[];
   statusColors?: WorkspaceStatusColors;
   cancellationPolicyPdfUrl?: string | null;

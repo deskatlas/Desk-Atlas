@@ -11,7 +11,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  
+
   useEffect(() => {
     setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -200,7 +200,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           {navItems.map((item, idx) => {
             const isActive = pathname === item.id || (item.id !== '/manage' && pathname?.startsWith(item.id));
             const navStyle = isActive ? { background: 'var(--da-brand-accent)', color: 'var(--da-brand-dark)' } : { color: 'rgba(255,255,255,.85)' };
-            
+
             return (
               <React.Fragment key={item.id}>
                 {sidebarOpen && (idx === 1 || idx === 6 || idx === 8) && (
@@ -208,9 +208,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                     {idx === 1 ? 'OPERATIONS' : idx === 6 ? 'SPACE' : 'ORGANIZATION'}
                   </div>
                 )}
-                <div 
-                  onClick={() => { router.push(item.id); setMobileMenuOpen(false); }} 
-                  title={item.label} 
+                <div
+                  onClick={() => { router.push(item.id); setMobileMenuOpen(false); }}
+                  title={item.label}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'flex-start' : 'center', gap: sidebarOpen ? '11px' : '0', padding: sidebarOpen ? '10px 12px' : '10px 0', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...navStyle }}
                 >
                   {getIcon(item.iconType, isActive)}
@@ -245,18 +245,14 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', flex: 1, minWidth: 0, fontFamily: 'var(--da-font-family)', color: 'var(--da-text-primary)' }}
                 />
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    onClick={clearSearch}
-                    aria-label="Clear search"
-                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--da-text-secondary)', fontSize: '12px', padding: '0 4px', lineHeight: 1 }}
-                  >
-                    ✕
-                  </button>
-                ) : (
-                  <span className="mobile-hide" style={{ fontSize: '10px', fontWeight: 700, color: 'var(--da-text-secondary)', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '5px', padding: '2px 6px', fontFamily: 'var(--da-font-family)' }}>⌘K</span>
-                )}
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  aria-label="Clear search"
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--da-text-secondary)', fontSize: '12px', padding: '0 4px', lineHeight: 1 }}
+                >
+                  ✕
+                </button>
               </div>
             )}
           </div>
@@ -287,7 +283,7 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
   // We can check pathname, but layout doesn't re-render fully.
   // Actually, we can just render AdminShell and let it handle the auth,
   // but for login, we should probably bypass it.
-  
+
   const pathname = usePathname();
   const isPublicAuthRoute =
     pathname === '/manage/login' ||

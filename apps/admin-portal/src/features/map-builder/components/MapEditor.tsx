@@ -842,24 +842,41 @@ export function MapEditor() {
     try {
       setActionLoading(true);
       const templateName = tpl.name.trim();
-      const activeFloorInstancesForTemplate = instances.filter(
-        (i: any) =>
-          i.floorId === selectedFloorId &&
-          (i.templateId === tpl.id || i.template?.id === tpl.id) &&
-          i.operationalStatus !== 'INACTIVE'
+      // 1. Gather all venue instances for this template regardless of floor or status
+      const allVenueInstancesForTemplate = instances.filter(
+        (i: any) => i.templateId === tpl.id || i.template?.id === tpl.id
       );
-      const existingNames = [
-        ...activeFloorInstancesForTemplate.map((i: any) => i.displayName || i.name || ''),
-        ...builderObjects
-          .filter((o: any) => o.template === tpl.name)
-          .map((o: any) => o.name || ''),
-      ];
 
-      const { displayName } = getNextAvailableInstanceNumber(
+      // 2. Gather canvas builder objects for this template
+      const canvasObjectsForTemplate = builderObjects.filter(
+        (o: any) => o.template === tpl.name || o.templateId === tpl.id
+      );
+
+      // 3. Build comprehensive list of existing names across the entire venue
+      const existingNames = Array.from(
+        new Set([
+          ...allVenueInstancesForTemplate.map((i: any) => i.displayName || i.name || '').filter(Boolean),
+          ...canvasObjectsForTemplate.map((o: any) => o.name || '').filter(Boolean),
+        ])
+      );
+
+      // 4. Use MAX_PLUS_ONE strategy to guarantee non-restart and forward progression
+      const { displayName: initialDisplayName, sequenceNumber } = getNextAvailableInstanceNumber(
         templateName,
         existingNames,
-        'GAP_FILL'
+        'MAX_PLUS_ONE'
       );
+
+      // 5. Collision verification safety check
+      let displayName = initialDisplayName;
+      let counter = 1;
+      const lowerExisting = new Set(existingNames.map((n: string) => n.trim().toLowerCase()));
+
+      while (lowerExisting.has(displayName.trim().toLowerCase())) {
+        const nextNum = sequenceNumber + counter;
+        displayName = `${templateName} ${nextNum}`;
+        counter++;
+      }
 
       const codePrefix = templateName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'WS';
       const codeSuffix = String(Math.floor(1000 + Math.random() * 9000));
@@ -2207,6 +2224,7 @@ useEffect(() => {
                           applyCanvasDimensions(preset.width, preset.height);
                           setCustomCanvasW(String(preset.width));
                           setCustomCanvasH(String(preset.height));
+                          setShowCanvasSizeModal(false);
                         }}
                         style={{
                           border: isCurrent ? '1.5px solid var(--da-brand-dark)' : '1px solid var(--da-border)',
@@ -2335,6 +2353,7 @@ useEffect(() => {
                     const w = parseInt(customCanvasW, 10) || DEFAULT_MAP_CANVAS_WIDTH;
                     const h = parseInt(customCanvasH, 10) || DEFAULT_MAP_CANVAS_HEIGHT;
                     applyCanvasDimensions(w, h);
+                    setShowCanvasSizeModal(false);
                   }}
                   style={{
                     width: '100%',

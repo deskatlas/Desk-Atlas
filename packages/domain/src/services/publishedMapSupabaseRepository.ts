@@ -105,7 +105,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
 
   async listPublishedFloors(): Promise<Floor[]> {
     const publishedVersions = await this.request<Array<{ floor_id: string }>>(
-      '/map_versions?select=floor_id&status=eq.PUBLISHED'
+      '/map_versions?select=floor_id&status=eq.PUBLISHED&order=version_number.desc'
     );
     const floorIds = [...new Set(publishedVersions.map((row) => row.floor_id))];
 
@@ -130,7 +130,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     const [cachedRow] = await this.request<Array<{ compiled_map_cache: PublishedFloorMap | null }>>(
       `/map_versions?select=compiled_map_cache&floor_id=eq.${encodeURIComponent(
         floorId
-      )}&status=eq.PUBLISHED&limit=1`
+      )}&status=eq.PUBLISHED&order=version_number.desc&limit=1`
     );
 
     if (cachedRow?.compiled_map_cache) {
@@ -162,7 +162,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     const [versionRow] = await this.request<PublishedVersionRow[]>(
       `/map_versions?select=id,floor_id,version_number,canvas_width,canvas_height,grid_size,published_at&floor_id=eq.${encodeURIComponent(
         floorId
-      )}&status=eq.PUBLISHED&limit=1`
+      )}&status=eq.PUBLISHED&order=version_number.desc&limit=1`
     );
     if (!versionRow) {
       return null;
@@ -200,13 +200,19 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     options?: { audience?: PublishedMapAudience }
   ): Promise<PublishedFloorMap[]> {
     const publishedVersions = await this.request<
-      Array<{ compiled_map_cache: PublishedFloorMap | null; floor_id: string }>
-    >('/map_versions?select=compiled_map_cache,floor_id&status=eq.PUBLISHED');
+      Array<{ compiled_map_cache: PublishedFloorMap | null; floor_id: string; version_number?: number }>
+    >('/map_versions?select=compiled_map_cache,floor_id,version_number&status=eq.PUBLISHED&order=version_number.desc');
 
     const isStaffOrAdmin = options?.audience === 'STAFF' || options?.audience === 'ADMIN';
     const maps: PublishedFloorMap[] = [];
+    const seenFloorIds = new Set<string>();
 
     for (const v of publishedVersions) {
+      if (seenFloorIds.has(v.floor_id)) {
+        continue;
+      }
+      seenFloorIds.add(v.floor_id);
+
       if (v.compiled_map_cache) {
         const compiled = v.compiled_map_cache;
         await this.hydrateWorkspaceTemplates(compiled.elements);

@@ -29,6 +29,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json({
       statusColors: DEFAULT_WORKSPACE_STATUS_COLORS,
+      kioskTimeoutMinutes: 60,
       kioskAllowanceMinutes: 5,
       maxAdvanceBookingDays: 90,
       dayPassStartTime: '07:00',

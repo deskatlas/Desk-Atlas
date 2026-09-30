@@ -20,6 +20,7 @@ export interface BusinessEmailProfile {
   contactEmail?: string;
   contactPhone?: string;
   websiteUrl?: string;
+  appUrl?: string;
   facebookUrl?: string;
   instagramUrl?: string;
   twitterUrl?: string;
@@ -35,6 +36,7 @@ export interface BaseEmailBusinessFields {
   contactNumber?: string;
   supportEmail?: string;
   websiteUrl?: string;
+  appUrl?: string;
   facebookUrl?: string;
   instagramUrl?: string;
   twitterUrl?: string;
@@ -91,6 +93,10 @@ export function resolveBusinessProfile(
       input?.websiteUrl ||
       input?.businessSettings?.websiteUrl ||
       defaultSettings?.websiteUrl,
+    appUrl:
+      input?.appUrl ||
+      input?.businessSettings?.appUrl ||
+      defaultSettings?.appUrl,
     facebookUrl:
       input?.facebookUrl ||
       input?.businessSettings?.facebookUrl ||
@@ -485,6 +491,9 @@ export interface ManualResolutionEmailInput extends BaseEmailBusinessFields {
   customerLastName?: string;
   referenceCode: string;
   trackingUrl?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  workspaceName?: string;
 }
 
 export interface PaymentProofReceivedEmailInput extends BaseEmailBusinessFields {
@@ -792,8 +801,10 @@ export function renderBookingConfirmationEmail(input: BookingConfirmationEmailIn
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Booking Confirmed! - ${profile.businessName || 'DeskAtlas'} Ref #${input.referenceCode}`;
   const trackingUrl = normalizeCustomerTrackingUrl(input.trackingUrl);
-
-  let customerOrigin = 'http://localhost:3001';
+  let customerOrigin =
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://deskatlas.test';
   if (trackingUrl) {
     try {
       customerOrigin = new URL(trackingUrl).origin;
@@ -1004,6 +1015,26 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
       <p>Thank you for completing your payment for reservation <strong>${escapeHtml(input.referenceCode)}</strong>.</p>
       <p>Your payment has been successfully recorded. However, due to high demand or scheduling conflicts, your requested workspace spot could not be automatically assigned and is currently queued for manual resolution by our team.</p>
       
+      <div class="schedule-box" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin: 18px 0;">
+        <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
+          Scheduled Booking Details
+        </div>
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Date(s):</span>
+          <span style="color: #0f172a; font-weight: 700;">${escapeHtml(input.scheduledDate || 'Upcoming Scheduled Date')}</span>
+        </div>
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Scheduled Time:</span>
+          <span style="color: #0f172a; font-weight: 700;">${escapeHtml(input.scheduledTime || 'Booked Time Slot')}</span>
+        </div>
+        ${input.workspaceName ? `
+        <div style="margin: 6px 0; font-size: 14px;">
+          <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Reserved Spot:</span>
+          <span style="color: #0f172a; font-weight: 600;">${escapeHtml(input.workspaceName)}</span>
+        </div>
+        ` : ''}
+      </div>
+
       <p>Please reach out to the business using the registered contact details below to confirm or select an alternate workspace:</p>
 
       <div class="contact-box">
@@ -1048,6 +1079,11 @@ Hello ${customerName},
 Thank you for your payment for reservation ${input.referenceCode}.
 Your payment has been received, but your requested workspace spot could not be automatically assigned and requires manual resolution.
 
+SCHEDULED BOOKING DETAILS
+-------------------------
+Date(s): ${input.scheduledDate || 'Upcoming Scheduled Date'}
+Scheduled Time: ${input.scheduledTime || 'Booked Time Slot'}
+${input.workspaceName ? `Reserved Spot: ${input.workspaceName}\n` : ''}
 Please contact ${businessName} directly using the registered business details:
 Business Email: ${businessEmail}
 ${businessPhone ? `Business Phone: ${businessPhone}\n` : ''}Reference Code: ${input.referenceCode}
@@ -3191,7 +3227,15 @@ export function renderClosureImpactNoticeEmail(input: ClosureImpactNoticeEmailIn
     ? `${input.closureDate} to ${input.closureEndDate}`
     : input.closureDate;
 
-  const trackingLink = input.trackingUrl || `http://localhost:3001/track?code=${encodeURIComponent(input.referenceCode)}&remedy=closure`;
+  const fallbackBaseUrl =
+    profile.appUrl ||
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://deskatlas.test';
+
+  const trackingLink =
+    input.trackingUrl ||
+    `${buildReservationTrackingUrl(fallbackBaseUrl, input.referenceCode)}&remedy=closure`;
   const scheduleFormatted = input.schedule || (input.startAt && input.endAt ? `${formatEmailTime(input.startAt)} to ${formatEmailTime(input.endAt)}` : 'Booked Time Slot');
 
   const html = `
@@ -3319,7 +3363,15 @@ export function renderClosureOutreachEmail(input: ClosureOutreachEmailInput): { 
     ? `${input.closureDate} to ${input.closureEndDate}`
     : input.closureDate || 'Upcoming Scheduled Date';
 
-  const trackingLink = input.trackingUrl || `http://localhost:3001/track?code=${encodeURIComponent(input.referenceCode)}&remedy=closure`;
+  const fallbackBaseUrl =
+    profile.appUrl ||
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://deskatlas.test';
+
+  const trackingLink =
+    input.trackingUrl ||
+    `${buildReservationTrackingUrl(fallbackBaseUrl, input.referenceCode)}&remedy=closure`;
   const scheduleFormatted = input.schedule || (input.startAt && input.endAt ? `${formatEmailTime(input.startAt)} to ${formatEmailTime(input.endAt)}` : 'Booked Time Slot');
 
   const html = `
@@ -3444,7 +3496,15 @@ export function renderClosureManualResolutionEmail(input: ClosureManualResolutio
     ? `${input.closureDate} to ${input.closureEndDate}`
     : input.closureDate || 'Upcoming Scheduled Date';
 
-  const trackingLink = input.trackingUrl || `http://localhost:3001/track?code=${encodeURIComponent(input.referenceCode)}&remedy=closure`;
+  const fallbackBaseUrl =
+    profile.appUrl ||
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://deskatlas.test';
+
+  const trackingLink =
+    input.trackingUrl ||
+    `${buildReservationTrackingUrl(fallbackBaseUrl, input.referenceCode)}&remedy=closure`;
   const scheduleFormatted = input.schedule || (input.startAt && input.endAt ? `${formatEmailTime(input.startAt)} to ${formatEmailTime(input.endAt)}` : 'Booked Time Slot');
 
   const html = `

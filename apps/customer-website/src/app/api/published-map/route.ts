@@ -6,6 +6,8 @@ import {
 } from '@deskatlas/domain';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,8 +29,8 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
-          'CDN-Cache-Control': 'public, s-maxage=3600',
+          'Cache-Control': 'public, max-age=10, s-maxage=30, stale-while-revalidate=60',
+          'CDN-Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
         },
       }
     );

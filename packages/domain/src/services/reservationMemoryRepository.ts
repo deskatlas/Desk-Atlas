@@ -3258,6 +3258,72 @@ export class ReservationMemoryRepository
     }
   }
 
+  async reconcileClearedClosureImpact(
+    _deletedIntervals?: Array<{ startAt: string; endAt: string }>,
+    remainingClosures?: Array<{ startAt: string; endAt: string }>,
+    _deletedBlockIds?: string[]
+  ): Promise<{ clearedReservationIds: string[] }> {
+    const nowIso = this.nowProvider().toISOString();
+    const clearedReservationIds: string[] = [];
+
+    const impactedReservations = this.reservations.filter(
+      (r) =>
+        r.isClosureImpacted === true ||
+        (Boolean(r.closureImpactStatus) &&
+          r.closureImpactStatus !== "CUSTOMER_RESOLVED" &&
+          r.closureImpactStatus !== "STAFF_RESOLVED")
+    );
+
+    const activeRemaining = remainingClosures ?? [];
+
+    for (const r of impactedReservations) {
+      const assigned =
+        (r.candidates ?? []).find((c) => c.isAssigned) ??
+        (r.candidates ?? [])[0];
+
+      if (!assigned?.startAt || !assigned?.endAt) {
+        r.isClosureImpacted = false;
+        r.closureImpactStatus = null;
+        r.closureExceptionId = null;
+        (r as any).closureReason = null;
+        (r as any).closureDate = null;
+        r.updatedAt = nowIso;
+        clearedReservationIds.push(r.id);
+        continue;
+      }
+
+      const rStart = new Date(assigned.startAt).getTime();
+      const rEnd = new Date(assigned.endAt).getTime();
+
+      const stillOverlaps = activeRemaining.some((interval) => {
+        const cStart = new Date(interval.startAt).getTime();
+        const cEnd = new Date(interval.endAt).getTime();
+        return rStart < cEnd && rEnd > cStart;
+      });
+
+      if (!stillOverlaps) {
+        r.isClosureImpacted = false;
+        r.closureImpactStatus = null;
+        r.closureExceptionId = null;
+        (r as any).closureReason = null;
+        (r as any).closureDate = null;
+        r.updatedAt = nowIso;
+        clearedReservationIds.push(r.id);
+
+        this.recordOperationalAudit({
+          reservation: r,
+          action: "CLOSURE_CONFLICT_CLEARED" as any,
+          actedAt: nowIso,
+          actorRole: "SYSTEM" as any,
+          actorUserId: "system",
+          reentry: false,
+        });
+      }
+    }
+
+    return { clearedReservationIds };
+  }
+
   async logClosurePhoneCall(input: LogClosurePhoneCallInput): Promise<{
     success: boolean;
     reservation: AdminReservationDetail;

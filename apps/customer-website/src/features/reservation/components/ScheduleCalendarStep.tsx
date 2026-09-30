@@ -116,6 +116,8 @@ export function ScheduleCalendarStep({
     dayPassEndTime: '23:30',
     nightPassStartTime: '20:00',
     nightPassEndTime: '07:00',
+    wholeDayPassStartTime: '08:00',
+    wholeDayPassEndTime: '08:00',
   });
 
   useEffect(() => {
@@ -128,6 +130,8 @@ export function ScheduleCalendarStep({
             dayPassEndTime: data.dayPassEndTime || '23:30',
             nightPassStartTime: data.nightPassStartTime || '20:00',
             nightPassEndTime: data.nightPassEndTime || '07:00',
+            wholeDayPassStartTime: data.wholeDayPassStartTime || data.dayPassStartTime || '08:00',
+            wholeDayPassEndTime: data.wholeDayPassEndTime || data.wholeDayPassStartTime || data.dayPassStartTime || '08:00',
           });
         }
       })
@@ -194,7 +198,13 @@ export function ScheduleCalendarStep({
     }
   };
 
-  const excludedStartTimes = useMemo(() => lockedSchedule?.excludedStartTimes || [], [lockedSchedule]);
+  // Stable primitive key for excluded times
+  const excludedKey = (lockedSchedule?.excludedStartTimes || []).slice().sort().join(",");
+
+  const excludedStartTimes = useMemo(() => {
+    return lockedSchedule?.excludedStartTimes || [];
+  }, [excludedKey]);
+
   const initialStartTimeVal =
     lockedSchedule?.initialStartTime && !excludedStartTimes.includes(lockedSchedule.initialStartTime)
       ? lockedSchedule.initialStartTime
@@ -208,6 +218,25 @@ export function ScheduleCalendarStep({
     String(lockedSchedule?.durationHours || 2)
   );
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(initialStartTimeVal);
+
+  useEffect(() => {
+    if (lockedSchedule?.rateType) {
+      setSelectedRateType(lockedSchedule.rateType);
+    }
+  }, [lockedSchedule?.rateType]);
+
+  useEffect(() => {
+    if (lockedSchedule?.durationHours) {
+      setSelectedDurationHours(lockedSchedule.durationHours);
+      setDurationInputStr(String(lockedSchedule.durationHours));
+    }
+  }, [lockedSchedule?.durationHours]);
+
+  useEffect(() => {
+    if (lockedSchedule?.date) {
+      setSelectedDate(lockedSchedule.date);
+    }
+  }, [lockedSchedule?.date]);
 
   const [monthAvailability, setMonthAvailability] = useState<Record<string, AvailableDate>>({});
   const [loadingDates, setLoadingDates] = useState(false);
@@ -274,12 +303,13 @@ export function ScheduleCalendarStep({
     })
       .then((res) => {
         if (cancelled) return;
-        setTimeSlots(res.slots || []);
+        const slots = res.slots || [];
+        setTimeSlots(slots);
         // Reset selected start time if current selection is no longer valid/available or is excluded
         setSelectedStartTime((curr) => {
           if (!curr) return null;
           if (excludedStartTimes.includes(curr)) return null;
-          const found = res.slots?.find((s) => s.startTime === curr && s.isAvailable);
+          const found = slots.find((s) => s.startTime === curr && s.isAvailable);
           return found ? curr : null;
         });
       })
@@ -297,7 +327,12 @@ export function ScheduleCalendarStep({
     return () => {
       cancelled = true;
     };
-  }, [workspace.workspaceInstanceId, selectedDate, selectedDurationHours, excludedStartTimes]);
+  }, [
+    workspace.workspaceInstanceId,
+    selectedDate,
+    selectedDurationHours,
+    excludedKey,
+  ]);
 
   // Sync duration when rate type changes for fixed passes
   useEffect(() => {
@@ -309,6 +344,46 @@ export function ScheduleCalendarStep({
       setDurationInputStr("12");
     }
   }, [selectedRateType]);
+
+  // Filter out past time, conflicting schedules, closed times, and already-selected times
+  const visibleTimeSlots = useMemo(() => {
+    if (!timeSlots || timeSlots.length === 0) return [];
+
+    const todayStr = getPhtDateString();
+    const now = getPhtNow();
+
+    return timeSlots.filter((slot) => {
+      // 1. Omit slots that have already passed
+      if (slot.blockingReason === "PAST_TIME") {
+        return false;
+      }
+
+      // 2. Omit slots blocked by facility schedule or existing reservations
+      if (slot.blockingReason === "SCHEDULE_BLOCKED" || slot.blockingReason === "BUSINESS_CLOSED") {
+        return false;
+      }
+
+      // 3. Omit slots already selected by a different candidate rank
+      if (excludedStartTimes.includes(slot.startTime)) {
+        return false;
+      }
+
+      // 4. Omit past time check dynamically if on today's date
+      if (selectedDate === todayStr) {
+        const [sh, sm] = slot.startTime.split(":").map(Number);
+        if (!isNaN(sh) && !isNaN(sm)) {
+          const slotDate = new Date(now);
+          slotDate.setHours(sh, sm, 0, 0);
+          if (slotDate.getTime() <= now.getTime()) {
+            return false;
+          }
+        }
+      }
+
+      // 5. Must be marked available by domain availability service
+      return slot.isAvailable;
+    });
+  }, [timeSlots, selectedDate, excludedStartTimes]);
 
   const selectedSlot = useMemo(() => {
     if (!selectedStartTime) return null;
@@ -355,6 +430,238 @@ export function ScheduleCalendarStep({
     );
   }, [workspace, selectedStartTime, passWindows]);
 
+  // Compute Day Pass effective start time, end time, duration, and expiration for selectedDate
+  const dayPassConfig = useMemo(() => {
+    const [dsh, dsm] = passWindows.dayPassStartTime.split(":").map(Number);
+    const [deh, dem] = passWindows.dayPassEndTime.split(":").map(Number);
+    let dStartMins = dsh * 60 + dsm;
+    let dEndMins = deh * 60 + dem;
+    if (dEndMins <= dStartMins) dEndMins += 1440;
+
+    let dEffStartMins = dStartMins;
+    let isExpired = false;
+
+    if (selectedDate === todayStr) {
+      const now = getPhtNow();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const roundedNow = Math.ceil(nowMinutes / 30) * 30;
+      if (roundedNow >= dEndMins) {
+        isExpired = true;
+      } else if (roundedNow > dStartMins) {
+        dEffStartMins = roundedNow;
+      }
+    }
+
+    const dDurMins = dEndMins - dEffStartMins;
+    const dEffH = Math.floor(dEffStartMins / 60) % 24;
+    const dEffM = dEffStartMins % 60;
+    const dEffStartTime = `${String(dEffH).padStart(2, "0")}:${String(dEffM).padStart(2, "0")}`;
+    const dDurHours = Math.round((dDurMins / 60) * 10) / 10;
+
+    return {
+      startTime: dEffStartTime,
+      endTime: passWindows.dayPassEndTime,
+      durationMinutes: dDurMins,
+      durationHours: dDurHours,
+      isExpired,
+      isPartial: selectedDate === todayStr && dEffStartMins > dStartMins,
+    };
+  }, [passWindows.dayPassStartTime, passWindows.dayPassEndTime, selectedDate, todayStr]);
+
+  // Compute Night Pass effective start time, end time, duration, and expiration for selectedDate
+  const nightPassConfig = useMemo(() => {
+    const [nsh, nsm] = passWindows.nightPassStartTime.split(":").map(Number);
+    const [neh, nem] = passWindows.nightPassEndTime.split(":").map(Number);
+    let nStartMins = nsh * 60 + nsm;
+    let nEndMins = neh * 60 + nem;
+    if (nEndMins <= nStartMins) nEndMins += 1440;
+
+    let nEffStartMins = nStartMins;
+    let isExpired = false;
+
+    if (selectedDate === todayStr) {
+      const now = getPhtNow();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const roundedNow = Math.ceil(nowMinutes / 30) * 30;
+      if (roundedNow > nStartMins && roundedNow < nEndMins) {
+        nEffStartMins = roundedNow;
+      } else if (roundedNow >= nEndMins && nowMinutes < 1440 && nowMinutes >= nEndMins && nStartMins >= 1440) {
+        isExpired = true;
+      }
+    }
+
+    const nDurMins = nEndMins - nEffStartMins;
+    const nEffH = Math.floor(nEffStartMins / 60) % 24;
+    const nEffM = nEffStartMins % 60;
+    const nEffStartTime = `${String(nEffH).padStart(2, "0")}:${String(nEffM).padStart(2, "0")}`;
+    const nDurHours = Math.round((nDurMins / 60) * 10) / 10;
+
+    return {
+      startTime: nEffStartTime,
+      endTime: passWindows.nightPassEndTime,
+      durationMinutes: nDurMins,
+      durationHours: nDurHours,
+      isExpired,
+      isPartial: selectedDate === todayStr && nEffStartMins > nStartMins,
+    };
+  }, [passWindows.nightPassStartTime, passWindows.nightPassEndTime, selectedDate, todayStr]);
+
+  // Compute 24-Hour Whole Day Pass effective start time, end time, duration, and expiration for selectedDate
+  const wholeDayPassConfig = useMemo(() => {
+    const startStr = passWindows.wholeDayPassStartTime || passWindows.dayPassStartTime || "08:00";
+    const [wsh, wsm] = startStr.split(":").map(Number);
+    const endStr = passWindows.wholeDayPassEndTime || startStr;
+    const [weh, wem] = endStr.split(":").map(Number);
+
+    let wStartMins = wsh * 60 + wsm;
+    let wEndMins = (weh * 60 + wem) + 1440; // 24-hour cycle ending next day
+
+    let wEffStartMins = wStartMins;
+    let isExpired = false;
+
+    if (selectedDate === todayStr) {
+      const now = getPhtNow();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const roundedNow = Math.ceil(nowMinutes / 30) * 30;
+      if (roundedNow >= wEndMins) {
+        isExpired = true;
+      } else if (roundedNow > wStartMins) {
+        wEffStartMins = roundedNow;
+      }
+    }
+
+    const wDurMins = wEndMins - wEffStartMins;
+    const wEffH = Math.floor(wEffStartMins / 60) % 24;
+    const wEffM = wEffStartMins % 60;
+    const wEffStartTime = `${String(wEffH).padStart(2, "0")}:${String(wEffM).padStart(2, "0")}`;
+    const wDurHours = Math.round((wDurMins / 60) * 10) / 10;
+
+    return {
+      startTime: wEffStartTime,
+      endTime: endStr,
+      durationMinutes: wDurMins,
+      durationHours: wDurHours,
+      isExpired,
+      isPartial: selectedDate === todayStr && wEffStartMins > wStartMins,
+    };
+  }, [passWindows.wholeDayPassStartTime, passWindows.wholeDayPassEndTime, passWindows.dayPassStartTime, selectedDate, todayStr]);
+
+  const [dayPassAvailable, setDayPassAvailable] = useState<boolean>(true);
+  const [nightPassAvailable, setNightPassAvailable] = useState<boolean>(true);
+  const [wholeDayPassAvailable, setWholeDayPassAvailable] = useState<boolean>(true);
+  const [checkingPasses, setCheckingPasses] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    let cancelled = false;
+    setCheckingPasses(true);
+
+    const promises: Promise<void>[] = [];
+
+    if (workspace.hasDayPass && workspace.dayPassPrice != null) {
+      if (dayPassConfig.isExpired || dayPassConfig.durationMinutes <= 0) {
+        setDayPassAvailable(false);
+      } else {
+        promises.push(
+          fetchTimeAvailability({
+            workspaceInstanceId: workspace.workspaceInstanceId,
+            date: selectedDate,
+            durationMinutes: dayPassConfig.durationMinutes,
+          })
+            .then((res) => {
+              if (cancelled) return;
+              const slot = (res.slots || []).find((s) => s.startTime === dayPassConfig.startTime);
+              setDayPassAvailable(Boolean(slot && slot.isAvailable));
+            })
+            .catch(() => {
+              if (!cancelled) setDayPassAvailable(false);
+            })
+        );
+      }
+    }
+
+    if (workspace.hasNightPass && workspace.nightPassPrice != null) {
+      if (nightPassConfig.isExpired || nightPassConfig.durationMinutes <= 0) {
+        setNightPassAvailable(false);
+      } else {
+        promises.push(
+          fetchTimeAvailability({
+            workspaceInstanceId: workspace.workspaceInstanceId,
+            date: selectedDate,
+            durationMinutes: nightPassConfig.durationMinutes,
+          })
+            .then((res) => {
+              if (cancelled) return;
+              const slot = (res.slots || []).find((s) => s.startTime === nightPassConfig.startTime);
+              setNightPassAvailable(Boolean(slot && slot.isAvailable));
+            })
+            .catch(() => {
+              if (!cancelled) setNightPassAvailable(false);
+            })
+        );
+      }
+    }
+
+    if (workspace.hasWholeDayPass && workspace.wholeDayPassPrice != null) {
+      if (wholeDayPassConfig.isExpired || wholeDayPassConfig.durationMinutes <= 0) {
+        setWholeDayPassAvailable(false);
+      } else {
+        promises.push(
+          fetchTimeAvailability({
+            workspaceInstanceId: workspace.workspaceInstanceId,
+            date: selectedDate,
+            durationMinutes: wholeDayPassConfig.durationMinutes,
+          })
+            .then((res) => {
+              if (cancelled) return;
+              const slot = (res.slots || []).find((s) => s.startTime === wholeDayPassConfig.startTime);
+              setWholeDayPassAvailable(Boolean(slot && slot.isAvailable));
+            })
+            .catch(() => {
+              if (!cancelled) setWholeDayPassAvailable(false);
+            })
+        );
+      }
+    }
+
+    Promise.all(promises).finally(() => {
+      if (!cancelled) setCheckingPasses(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    workspace.workspaceInstanceId,
+    workspace.hasDayPass,
+    workspace.dayPassPrice,
+    workspace.hasNightPass,
+    workspace.nightPassPrice,
+    workspace.hasWholeDayPass,
+    workspace.wholeDayPassPrice,
+    selectedDate,
+    dayPassConfig.startTime,
+    dayPassConfig.durationMinutes,
+    dayPassConfig.isExpired,
+    nightPassConfig.startTime,
+    nightPassConfig.durationMinutes,
+    nightPassConfig.isExpired,
+    wholeDayPassConfig.startTime,
+    wholeDayPassConfig.durationMinutes,
+    wholeDayPassConfig.isExpired,
+  ]);
+
+  // Fallback to HOURLY if current pass selection becomes unavailable
+  useEffect(() => {
+    if (selectedRateType === 'DAY_PASS' && !dayPassAvailable && !checkingPasses) {
+      handleRateTypeChange('HOURLY');
+    } else if (selectedRateType === 'NIGHT_PASS' && !nightPassAvailable && !checkingPasses) {
+      handleRateTypeChange('HOURLY');
+    } else if (selectedRateType === 'WHOLE_DAY_PASS' && !wholeDayPassAvailable && !checkingPasses) {
+      handleRateTypeChange('HOURLY');
+    }
+  }, [selectedRateType, dayPassAvailable, nightPassAvailable, wholeDayPassAvailable, checkingPasses]);
+
   const baseRegularPrice = useMemo(() => {
     if (selectedRateType === 'DAY_PASS') return workspace.dayPassPrice ?? workspace.rateAmount;
     if (selectedRateType === 'NIGHT_PASS') return workspace.nightPassPrice ?? workspace.rateAmount;
@@ -380,43 +687,53 @@ export function ScheduleCalendarStep({
 
   const canProceed = useMemo(() => {
     if (!selectedDate) return false;
-    if (isPassPackage) {
-      return true;
+    if (selectedRateType === 'DAY_PASS') {
+      return dayPassAvailable;
+    }
+    if (selectedRateType === 'NIGHT_PASS') {
+      return nightPassAvailable;
+    }
+    if (selectedRateType === 'WHOLE_DAY_PASS') {
+      return wholeDayPassAvailable;
+    }
+    if (selectedRateType === 'HALF_DAY_PASS') {
+      return Boolean(selectedSlot);
     }
     return Boolean(selectedSlot && selectedDurationHours && selectedDurationHours > 0);
-  }, [selectedDate, isPassPackage, selectedSlot, selectedDurationHours]);
+  }, [selectedDate, selectedRateType, dayPassAvailable, nightPassAvailable, wholeDayPassAvailable, selectedSlot, selectedDurationHours]);
 
   const handleContinue = () => {
     if (!selectedDate) return;
 
     if (selectedRateType === 'DAY_PASS') {
-      const [sh, sm] = passWindows.dayPassStartTime.split(":").map(Number);
-      const [eh, em] = passWindows.dayPassEndTime.split(":").map(Number);
-      let durMins = eh * 60 + em - (sh * 60 + sm);
-      if (durMins <= 0) durMins = 12 * 60;
-      const durHours = Math.round((durMins / 60) * 10) / 10;
       onContinue({
         date: selectedDate,
-        durationHours: durHours,
-        startTime: passWindows.dayPassStartTime,
-        endTime: passWindows.dayPassEndTime,
+        durationHours: dayPassConfig.durationHours,
+        startTime: dayPassConfig.startTime,
+        endTime: dayPassConfig.endTime,
         rateType: 'DAY_PASS',
       });
       return;
     }
 
     if (selectedRateType === 'NIGHT_PASS') {
-      const [sh, sm] = passWindows.nightPassStartTime.split(":").map(Number);
-      const [eh, em] = passWindows.nightPassEndTime.split(":").map(Number);
-      let durMins = eh * 60 + em - (sh * 60 + sm);
-      if (durMins <= 0) durMins += 1440;
-      const durHours = Math.round((durMins / 60) * 10) / 10;
       onContinue({
         date: selectedDate,
-        durationHours: durHours,
-        startTime: passWindows.nightPassStartTime,
-        endTime: passWindows.nightPassEndTime,
+        durationHours: nightPassConfig.durationHours,
+        startTime: nightPassConfig.startTime,
+        endTime: nightPassConfig.endTime,
         rateType: 'NIGHT_PASS',
+      });
+      return;
+    }
+
+    if (selectedRateType === 'WHOLE_DAY_PASS') {
+      onContinue({
+        date: selectedDate,
+        durationHours: wholeDayPassConfig.durationHours,
+        startTime: wholeDayPassConfig.startTime,
+        endTime: wholeDayPassConfig.endTime,
+        rateType: 'WHOLE_DAY_PASS',
       });
       return;
     }
@@ -677,21 +994,23 @@ export function ScheduleCalendarStep({
               {workspace.hasDayPass && workspace.dayPassPrice != null && (
                 <button
                   type="button"
-                  disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'DAY_PASS'}
+                  disabled={!dayPassAvailable || (Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'DAY_PASS')}
                   onClick={() => {
-                    if (!lockedSchedule) {
+                    if (!lockedSchedule && dayPassAvailable) {
                       handleRateTypeChange('DAY_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
-                    selectedRateType === 'DAY_PASS'
+                    !dayPassAvailable
+                      ? "opacity-40 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-400"
+                      : selectedRateType === 'DAY_PASS'
                       ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
                       : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
                   }`}
                 >
                   <span className="text-xs font-extrabold">☀️ Day Pass</span>
                   <span className="text-[11px] font-bold mt-0.5 opacity-90">
-                    ₱{workspace.dayPassPrice} flat
+                    {dayPassAvailable ? `₱${workspace.dayPassPrice} flat` : (dayPassConfig.isExpired ? "Window Ended" : "Unavailable")}
                   </span>
                 </button>
               )}
@@ -699,21 +1018,23 @@ export function ScheduleCalendarStep({
               {workspace.hasNightPass && workspace.nightPassPrice != null && (
                 <button
                   type="button"
-                  disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'NIGHT_PASS'}
+                  disabled={!nightPassAvailable || (Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'NIGHT_PASS')}
                   onClick={() => {
-                    if (!lockedSchedule) {
+                    if (!lockedSchedule && nightPassAvailable) {
                       handleRateTypeChange('NIGHT_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
-                    selectedRateType === 'NIGHT_PASS'
+                    !nightPassAvailable
+                      ? "opacity-40 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-400"
+                      : selectedRateType === 'NIGHT_PASS'
                       ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
                       : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
                   }`}
                 >
                   <span className="text-xs font-extrabold">🌙 Night Pass</span>
                   <span className="text-[11px] font-bold mt-0.5 opacity-90">
-                    ₱{workspace.nightPassPrice} flat
+                    {nightPassAvailable ? `₱${workspace.nightPassPrice} flat` : (nightPassConfig.isExpired ? "Window Ended" : "Unavailable")}
                   </span>
                 </button>
               )}
@@ -721,21 +1042,23 @@ export function ScheduleCalendarStep({
               {workspace.hasWholeDayPass && workspace.wholeDayPassPrice != null && (
                 <button
                   type="button"
-                  disabled={Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'WHOLE_DAY_PASS'}
+                  disabled={!wholeDayPassAvailable || (Boolean(lockedSchedule) && lockedSchedule?.rateType !== 'WHOLE_DAY_PASS')}
                   onClick={() => {
-                    if (!lockedSchedule) {
+                    if (!lockedSchedule && wholeDayPassAvailable) {
                       handleRateTypeChange('WHOLE_DAY_PASS');
                     }
                   }}
                   className={`flex-1 min-w-[120px] flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition ${
-                    selectedRateType === 'WHOLE_DAY_PASS'
+                    !wholeDayPassAvailable
+                      ? "opacity-40 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-400"
+                      : selectedRateType === 'WHOLE_DAY_PASS'
                       ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
                       : "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:bg-slate-50"
                   }`}
                 >
-                  <span className="text-xs font-extrabold">⏳ 24-Hour</span>
+                  <span className="text-xs font-extrabold">⏳ 24-Hour Pass</span>
                   <span className="text-[11px] font-bold mt-0.5 opacity-90">
-                    ₱{workspace.wholeDayPassPrice} flat
+                    {wholeDayPassAvailable ? `₱${workspace.wholeDayPassPrice} flat` : (wholeDayPassConfig.isExpired ? "Window Ended" : "Unavailable")}
                   </span>
                 </button>
               )}
@@ -843,36 +1166,55 @@ export function ScheduleCalendarStep({
               <div className="rounded-2xl bg-amber-50/90 border border-amber-200/90 p-4 text-xs text-amber-950 leading-relaxed flex flex-col gap-2">
                 <div className="font-extrabold flex items-center gap-2 text-sm text-amber-900">
                   <span>☀️</span>
-                  <span>Day Pass Selected - Active Shift Window</span>
+                  <span>Day Pass Selected - Daytime Window</span>
                 </div>
                 <p>
-                  Day Pass covers the daytime operating window from <strong>{formatTime12Hour(passWindows.dayPassStartTime)}</strong> until <strong>{formatTime12Hour(passWindows.dayPassEndTime)}</strong> for a fixed price of <strong>₱{workspace.dayPassPrice}</strong>.
+                  Day Pass covers the daytime operating window from <strong>{formatTime12Hour(dayPassConfig.startTime)}</strong> until <strong>{formatTime12Hour(dayPassConfig.endTime)}</strong> for a fixed price of <strong>₱{workspace.dayPassPrice}</strong>.
                 </p>
+                {dayPassConfig.isPartial ? (
+                  <span className="text-[11px] font-bold text-amber-800 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded w-fit">
+                    ⚡ Today Partial Window ({formatTime12Hour(dayPassConfig.startTime)} to {formatTime12Hour(dayPassConfig.endTime)}) at standard flat pass rate
+                  </span>
+                ) : null}
               </div>
             ) : selectedRateType === 'NIGHT_PASS' ? (
               <div className="rounded-2xl bg-indigo-50/90 border border-indigo-200/90 p-4 text-xs text-indigo-950 leading-relaxed flex flex-col gap-2">
                 <div className="font-extrabold flex items-center gap-2 text-sm text-indigo-900">
                   <span>🌙</span>
-                  <span>Night Pass Selected - Overnight Shift Window</span>
+                  <span>Night Pass Selected - Overnight Window</span>
                 </div>
                 <p>
-                  Night Pass covers the overnight window from <strong>{formatTime12Hour(passWindows.nightPassStartTime)}</strong> until <strong>{formatTime12Hour(passWindows.nightPassEndTime)}</strong> the next morning for a fixed price of <strong>₱{workspace.nightPassPrice}</strong>.
+                  Night Pass covers the overnight window from <strong>{formatTime12Hour(nightPassConfig.startTime)}</strong> until <strong>{formatTime12Hour(nightPassConfig.endTime)}</strong> the next morning for a fixed price of <strong>₱{workspace.nightPassPrice}</strong>.
                 </p>
+                {nightPassConfig.isPartial ? (
+                  <span className="text-[11px] font-bold text-indigo-800 bg-indigo-100/80 border border-indigo-300 px-2 py-0.5 rounded w-fit">
+                    ⚡ Today Partial Window ({formatTime12Hour(nightPassConfig.startTime)} to {formatTime12Hour(nightPassConfig.endTime)}) at standard flat pass rate
+                  </span>
+                ) : null}
+              </div>
+            ) : selectedRateType === 'WHOLE_DAY_PASS' ? (
+              <div className="rounded-2xl bg-teal-50/90 border border-teal-200/90 p-4 text-xs text-teal-950 leading-relaxed flex flex-col gap-2">
+                <div className="font-extrabold flex items-center gap-2 text-sm text-teal-900">
+                  <span>⏳</span>
+                  <span>24-Hour Pass Selected - Full 24-Hour Window</span>
+                </div>
+                <p>
+                  24-Hour Pass covers the 24-hour cycle starting at <strong>{formatTime12Hour(wholeDayPassConfig.startTime)}</strong> until <strong>{formatTime12Hour(wholeDayPassConfig.endTime)}</strong> the next day for a fixed price of <strong>₱{workspace.wholeDayPassPrice}</strong>.
+                </p>
+                {wholeDayPassConfig.isPartial ? (
+                  <span className="text-[11px] font-bold text-teal-800 bg-teal-100/80 border border-teal-300 px-2 py-0.5 rounded w-fit">
+                    ⚡ Today Partial Window ({formatTime12Hour(wholeDayPassConfig.startTime)} to {formatTime12Hour(wholeDayPassConfig.endTime)} next day) at standard flat pass rate
+                  </span>
+                ) : null}
               </div>
             ) : (
               <div className="rounded-2xl bg-emerald-50/80 border border-emerald-200/80 p-4 text-xs text-emerald-900 leading-relaxed">
                 <div className="font-extrabold flex items-center gap-2 text-sm mb-1">
                   <span>✨</span>
-                  <span>
-                    {selectedRateType === 'WHOLE_DAY_PASS'
-                      ? '24-Hour Whole Day Pass Selected'
-                      : '12-Hour Half Day Pass Selected'}
-                  </span>
+                  <span>12-Hour Half Day Pass Selected</span>
                 </div>
                 <p>
-                  {selectedRateType === 'WHOLE_DAY_PASS'
-                    ? `24-Hour Stay: Pick your desired check-in time below to book a full 24-hour continuous window for ₱${workspace.wholeDayPassPrice}.`
-                    : `12-Hour Stay: Pick your desired check-in time below to book a full 12-hour continuous window for ₱${workspace.halfDayPassPrice}.`}
+                  12-Hour Stay: Pick your desired check-in time below to book a full 12-hour continuous window for ₱{workspace.halfDayPassPrice}.
                 </p>
               </div>
             )}
@@ -885,16 +1227,18 @@ export function ScheduleCalendarStep({
           <div className="rounded-[24px] border border-[var(--da-border)] bg-white p-5 sm:p-6 shadow-[var(--da-shadow-md)]">
             <div className="border-b border-[var(--da-border-light)] pb-3 mb-4">
               <h3 className="text-base font-extrabold text-[var(--da-brand-dark)]">
-                {selectedRateType === 'DAY_PASS' || selectedRateType === 'NIGHT_PASS'
+                {selectedRateType === 'DAY_PASS' || selectedRateType === 'NIGHT_PASS' || selectedRateType === 'WHOLE_DAY_PASS'
                   ? '3. Pass Shift Details'
                   : `3. Choose Start Time${candidateRank > 0 ? ` for Backup ${candidateRank}` : ''}`}
               </h3>
               <p className="text-xs text-[var(--da-text-secondary)] mt-0.5">
                 {formatDateDisplay(selectedDate)}
                 {selectedRateType === 'DAY_PASS'
-                  ? ` • Day Pass (${formatTime12Hour(passWindows.dayPassStartTime)} – ${formatTime12Hour(passWindows.dayPassEndTime)})`
+                  ? ` • Day Pass (${formatTime12Hour(dayPassConfig.startTime)} - ${formatTime12Hour(dayPassConfig.endTime)})`
                   : selectedRateType === 'NIGHT_PASS'
-                  ? ` • Night Pass (${formatTime12Hour(passWindows.nightPassStartTime)} – ${formatTime12Hour(passWindows.nightPassEndTime)})`
+                  ? ` • Night Pass (${formatTime12Hour(nightPassConfig.startTime)} - ${formatTime12Hour(nightPassConfig.endTime)})`
+                  : selectedRateType === 'WHOLE_DAY_PASS'
+                  ? ` • 24-Hour Pass (${formatTime12Hour(wholeDayPassConfig.startTime)} - ${formatTime12Hour(wholeDayPassConfig.endTime)})`
                   : ` • ${selectedDurationHours} hr${selectedDurationHours > 1 ? 's' : ''}`}
               </p>
             </div>
@@ -904,11 +1248,18 @@ export function ScheduleCalendarStep({
                 <div className="rounded-2xl bg-amber-50/80 border border-amber-200/80 p-4 text-xs text-amber-950 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600 font-semibold">Start Time:</span>
-                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(passWindows.dayPassStartTime)}</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">
+                      {formatTime12Hour(dayPassConfig.startTime)}
+                      {dayPassConfig.isPartial ? " (Current Available Window)" : ""}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600 font-semibold">End Time:</span>
-                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(passWindows.dayPassEndTime)}</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(dayPassConfig.endTime)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 font-semibold">Duration:</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">{dayPassConfig.durationHours} Hours</span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-amber-200/60">
                     <span className="text-slate-600 font-semibold">Fixed Total:</span>
@@ -916,7 +1267,7 @@ export function ScheduleCalendarStep({
                   </div>
                 </div>
                 <p className="text-[11px] text-[var(--da-text-secondary)]">
-                  Your reservation is automatically set for the entire daytime shift window. Click <strong>Continue</strong> to proceed.
+                  Your reservation is automatically set for the available daytime shift window. Click <strong>Continue</strong> to proceed.
                 </p>
               </div>
             ) : selectedRateType === 'NIGHT_PASS' ? (
@@ -924,11 +1275,18 @@ export function ScheduleCalendarStep({
                 <div className="rounded-2xl bg-indigo-50/80 border border-indigo-200/80 p-4 text-xs text-indigo-950 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600 font-semibold">Start Time:</span>
-                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(passWindows.nightPassStartTime)}</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">
+                      {formatTime12Hour(nightPassConfig.startTime)}
+                      {nightPassConfig.isPartial ? " (Current Available Window)" : ""}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-600 font-semibold">End Time:</span>
-                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(passWindows.nightPassEndTime)} (Next Day)</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(nightPassConfig.endTime)} (Next Day)</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 font-semibold">Duration:</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">{nightPassConfig.durationHours} Hours</span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-indigo-200/60">
                     <span className="text-slate-600 font-semibold">Fixed Total:</span>
@@ -936,7 +1294,34 @@ export function ScheduleCalendarStep({
                   </div>
                 </div>
                 <p className="text-[11px] text-[var(--da-text-secondary)]">
-                  Your reservation is automatically set for the entire overnight shift window. Click <strong>Continue</strong> to proceed.
+                  Your reservation is automatically set for the available overnight shift window. Click <strong>Continue</strong> to proceed.
+                </p>
+              </div>
+            ) : selectedRateType === 'WHOLE_DAY_PASS' ? (
+              <div className="flex flex-col gap-3">
+                <div className="rounded-2xl bg-teal-50/80 border border-teal-200/80 p-4 text-xs text-teal-950 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 font-semibold">Start Time:</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">
+                      {formatTime12Hour(wholeDayPassConfig.startTime)}
+                      {wholeDayPassConfig.isPartial ? " (Current Available Window)" : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 font-semibold">End Time:</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">{formatTime12Hour(wholeDayPassConfig.endTime)} (Next Day)</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-600 font-semibold">Duration:</span>
+                    <span className="font-extrabold text-[var(--da-brand-dark)]">{wholeDayPassConfig.durationHours} Hours</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-teal-200/60">
+                    <span className="text-slate-600 font-semibold">Fixed Total:</span>
+                    <span className="font-extrabold text-emerald-700 text-sm">₱{workspace.wholeDayPassPrice}</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-[var(--da-text-secondary)]">
+                  Your reservation is automatically set for the 24-hour cycle window. Click <strong>Continue</strong> to proceed.
                 </p>
               </div>
             ) : loadingTimes ? (
@@ -951,14 +1336,15 @@ export function ScheduleCalendarStep({
                 <p className="font-bold">Unable to load times</p>
                 <p className="mt-0.5">{timeError}</p>
               </div>
-            ) : timeSlots.length === 0 ? (
-              <div className="rounded-xl bg-[var(--da-canvas)] border border-[var(--da-border-light)] p-6 text-center">
-                <p className="text-xs font-bold text-[var(--da-brand-dark)]">
-                  No slots available on this date
+            ) : visibleTimeSlots.length === 0 ? (
+              <div className="rounded-2xl bg-[var(--da-canvas,#F8FAFC)] border border-[var(--da-border-light,#E2E8F0)] p-6 text-center">
+                <div className="text-2xl mb-2">🗓️</div>
+                <p className="text-xs font-bold text-[var(--da-brand-dark,#009689)]">
+                  No Available Start Times Remaining
                 </p>
-                <p className="mt-1 text-[11px] text-[var(--da-text-secondary)]">
-                  The business may be closed or operating hours do not accommodate a{" "}
-                  {selectedDurationHours}-hour booking. Please pick another date or spot.
+                <p className="mt-1 text-[11px] text-[var(--da-text-secondary,#64748B)] leading-relaxed">
+                  All slots for {formatDateDisplay(selectedDate)} have passed or are fully booked.
+                  Please select a different date or walk in at our front-desk kiosk.
                 </p>
               </div>
             ) : (
@@ -967,61 +1353,30 @@ export function ScheduleCalendarStep({
                   <span className="shrink-0 text-sm">💡</span>
                   <span>For immediate bookings (within 30 minutes), please proceed to walk in using our in-house kiosk.</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 max-h-[240px] overflow-y-auto pr-1">
-                  {timeSlots.map((slot) => {
-                    const isExcluded = excludedStartTimes.includes(slot.startTime);
+                <div className="grid grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
+                  {visibleTimeSlots.map((slot) => {
                     const isSelected = selectedStartTime === slot.startTime;
-
-                    const isWithin30Mins = (() => {
-                      if (selectedDate !== todayStr) return false;
-                      const [sh, sm] = slot.startTime.split(":").map(Number);
-                      if (isNaN(sh) || isNaN(sm)) return false;
-                      const now = getPhtNow();
-                      const slotDate = new Date();
-                      slotDate.setHours(sh, sm, 0, 0);
-                      return slotDate.getTime() - now.getTime() < 30 * 60 * 1000;
-                    })();
-
-                    const isImmediateWalkIn =
-                      slot.blockingReason === "IMMEDIATE_WALK_IN_ONLY" ||
-                      (selectedDate === todayStr && isWithin30Mins && slot.blockingReason !== "PAST_TIME");
-                    const isAvailable = slot.isAvailable && !isExcluded && !isImmediateWalkIn;
-
-                    let reasonLabel = "Reserved";
-                    if (isExcluded) reasonLabel = "Already Selected";
-                    else if (slot.blockingReason === "PAST_TIME") reasonLabel = "Past";
-                    else if (isImmediateWalkIn) reasonLabel = "Walk-in Only";
-                    else if (slot.blockingReason === "BUSINESS_CLOSED") reasonLabel = "Closed";
-                    else if (slot.blockingReason === "SCHEDULE_BLOCKED") reasonLabel = "Blocked";
 
                     return (
                       <button
                         key={slot.startTime}
                         type="button"
-                        disabled={!isAvailable}
-                        title={isImmediateWalkIn ? "For immediate bookings (within 30 minutes), please proceed to walk in using our in-house kiosk." : undefined}
                         onClick={() => {
                           setSelectedStartTime(slot.startTime);
                         }}
-                        className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
+                        className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
                           isSelected
-                            ? "bg-[var(--da-primary)] text-white border-[var(--da-accent)] shadow-sm ring-2 ring-[var(--da-accent)]"
-                            : isAvailable
-                            ? "bg-[var(--da-canvas)] text-[var(--da-brand-dark)] border-[var(--da-border-light)] hover:border-[var(--da-primary)] hover:bg-white"
-                            : "opacity-40 cursor-not-allowed bg-slate-50 text-slate-400 border-dashed border-slate-200"
+                            ? "bg-[var(--da-primary,#009689)] text-white border-[var(--da-accent,#007A70)] shadow-sm ring-2 ring-[var(--da-accent,#007A70)]"
+                            : "bg-white text-[var(--da-brand-dark,#009689)] border-[var(--da-border-light,#E2E8F0)] hover:border-[var(--da-primary,#009689)] hover:bg-[var(--da-canvas,#F8FAFC)]"
                         }`}
                       >
                         <div className="flex w-full items-center justify-between">
                           <span className="text-xs font-bold">
                             {formatTime12Hour(slot.startTime)}
                           </span>
-                          {!isAvailable ? (
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
-                              {reasonLabel}
-                            </span>
-                          ) : null}
+                          <span className="text-[10px] font-semibold opacity-80">Available</span>
                         </div>
-                        <span className="text-[10px] opacity-80 mt-0.5">
+                        <span className="text-[10px] opacity-75 mt-0.5">
                           to {formatTime12Hour(slot.endTime)}
                           {(() => {
                             const [sh, sm] = slot.startTime.split(":").map(Number);
@@ -1032,8 +1387,6 @@ export function ScheduleCalendarStep({
                     );
                   })}
                 </div>
-
-
               </div>
             )}
           </div>

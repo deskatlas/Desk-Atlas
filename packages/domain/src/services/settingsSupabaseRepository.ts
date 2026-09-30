@@ -199,6 +199,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       dayPassEndTime: row.day_pass_end_time ?? '23:30',
       nightPassStartTime: row.night_pass_start_time ?? '20:00',
       nightPassEndTime: row.night_pass_end_time ?? '07:00',
+      wholeDayPassStartTime: (row as any).whole_day_pass_start_time ?? row.day_pass_start_time ?? '08:00',
+      wholeDayPassEndTime: (row as any).whole_day_pass_end_time ?? (row as any).whole_day_pass_start_time ?? row.day_pass_start_time ?? '08:00',
       landingPreviewPhotos: Array.isArray(row.landing_preview_photos) ? row.landing_preview_photos : [],
       statusColors: row.status_colors ? normalizeWorkspaceStatusColors(row.status_colors) : { ...DEFAULT_WORKSPACE_STATUS_COLORS },
       cancellationPolicyPdfUrl: row.cancellation_policy_pdf_url ?? null,
@@ -651,7 +653,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   async deleteScheduleBlocks(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
-    const filter = ids.map((id) => `"${id}"`).join(',');
+    const filter = ids.map((id) => encodeURIComponent(id)).join(',');
     await this.request(`/schedule_blocks?id=in.(${filter})`, {
       method: 'DELETE',
     });

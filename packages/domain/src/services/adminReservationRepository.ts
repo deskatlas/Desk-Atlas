@@ -138,6 +138,11 @@ export interface AdminReservationRepository {
     closureReason?: string | null,
     closureDate?: string | null
   ): Promise<void>;
+  reconcileClearedClosureImpact?(
+    deletedIntervals?: Array<{ startAt: string; endAt: string }>,
+    remainingClosures?: Array<{ startAt: string; endAt: string }>,
+    deletedBlockIds?: string[]
+  ): Promise<{ clearedReservationIds: string[] }>;
   logClosurePhoneCall?(input: import("../models/reservation").LogClosurePhoneCallInput): Promise<{
     success: boolean;
     reservation: AdminReservationDetail;

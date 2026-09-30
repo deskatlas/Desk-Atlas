@@ -137,31 +137,31 @@ describe("MS-11: Authoritative PHT Time Sync & Pass Pricing Tiers", () => {
       expect(isDayTime("07:00", "07:00", "20:00")).toBe(true);
     });
 
-    it("resolves Day hourly price when start time is in daytime window", () => {
+    it("resolves base hourly rate and daytime window when start time is in daytime", () => {
       const dayRate = resolveTimeBasedHourlyRate(config, "10:00", "07:00", "20:00");
-      expect(dayRate.rate).toBe(50);
+      expect(dayRate.rate).toBe(60);
       expect(dayRate.isNight).toBe(false);
-      expect(dayRate.tierLabel).toBe("Day Rate");
+      expect(dayRate.tierLabel).toBe("Day");
       expect(dayRate.hasConfiguredRate).toBe(true);
 
       const pricing = calculateReservationPrice("HOURLY", config, 3, "10:00", "07:00", "20:00");
-      expect(pricing.unitPrice).toBe(50);
-      expect(pricing.totalAmount).toBe(150);
+      expect(pricing.unitPrice).toBe(60);
+      expect(pricing.totalAmount).toBe(180);
     });
 
-    it("resolves Night hourly price when start time is in nighttime window", () => {
+    it("resolves base hourly rate and nighttime window when start time is in nighttime", () => {
       const nightRate = resolveTimeBasedHourlyRate(config, "21:30", "07:00", "20:00");
-      expect(nightRate.rate).toBe(80);
+      expect(nightRate.rate).toBe(60);
       expect(nightRate.isNight).toBe(true);
-      expect(nightRate.tierLabel).toBe("Night Rate");
+      expect(nightRate.tierLabel).toBe("Night");
       expect(nightRate.hasConfiguredRate).toBe(true);
 
       const pricing = calculateReservationPrice("HOURLY", config, 3, "21:30", "07:00", "20:00");
-      expect(pricing.unitPrice).toBe(80);
-      expect(pricing.totalAmount).toBe(240);
+      expect(pricing.unitPrice).toBe(60);
+      expect(pricing.totalAmount).toBe(180);
     });
 
-    it("resolves Night hourly price when night start is configured at 10:00 and booking time is 10:30", () => {
+    it("resolves base hourly rate and nighttime window with custom shift config", () => {
       const customShiftConfig = {
         dayPassStartTime: "07:00",
         dayPassEndTime: "23:30",
@@ -170,19 +170,29 @@ describe("MS-11: Authoritative PHT Time Sync & Pass Pricing Tiers", () => {
       };
       const res = resolveTimeBasedHourlyRate(config, "10:30", customShiftConfig);
       expect(res.isNight).toBe(true);
-      expect(res.rate).toBe(80);
-      expect(res.tierLabel).toBe("Night Rate");
+      expect(res.rate).toBe(60);
+      expect(res.tierLabel).toBe("Night");
 
       const pricing = calculateReservationPrice("HOURLY", config, 2, "10:30", customShiftConfig);
-      expect(pricing.unitPrice).toBe(80);
-      expect(pricing.totalAmount).toBe(160);
+      expect(pricing.unitPrice).toBe(60);
+      expect(pricing.totalAmount).toBe(120);
+    });
+
+    it("resolves Day Pass and Night Pass flat promo prices when pass rateType is selected", () => {
+      const dayPassPricing = calculateReservationPrice("DAY_PASS", config);
+      expect(dayPassPricing.unitPrice).toBe(50);
+      expect(dayPassPricing.totalAmount).toBe(50);
+
+      const nightPassPricing = calculateReservationPrice("NIGHT_PASS", config);
+      expect(nightPassPricing.unitPrice).toBe(80);
+      expect(nightPassPricing.totalAmount).toBe(80);
     });
 
     it("falls back to base rate when specific day or night rate is not enabled", () => {
       const unconfigured = { rateAmount: 60 };
       const res = resolveTimeBasedHourlyRate(unconfigured, "22:00");
       expect(res.rate).toBe(60);
-      expect(res.hasConfiguredRate).toBe(false);
+      expect(res.hasConfiguredRate).toBe(true);
     });
   });
 });

@@ -36,6 +36,8 @@ export class InMemorySettingsRepository implements SettingsRepository {
     dayPassEndTime: '23:30',
     nightPassStartTime: '20:00',
     nightPassEndTime: '07:00',
+    wholeDayPassStartTime: '08:00',
+    wholeDayPassEndTime: '08:00',
     landingPreviewPhotos: [],
     statusColors: { ...DEFAULT_WORKSPACE_STATUS_COLORS },
     cancellationPolicyPdfUrl: null,
@@ -166,6 +168,12 @@ export class InMemorySettingsRepository implements SettingsRepository {
       nightPassEndTime: input.nightPassEndTime !== undefined && input.nightPassEndTime !== null
         ? input.nightPassEndTime
         : (this.businessSettings.nightPassEndTime ?? '07:00'),
+      wholeDayPassStartTime: input.wholeDayPassStartTime !== undefined && input.wholeDayPassStartTime !== null
+        ? input.wholeDayPassStartTime
+        : (this.businessSettings.wholeDayPassStartTime ?? '08:00'),
+      wholeDayPassEndTime: input.wholeDayPassEndTime !== undefined && input.wholeDayPassEndTime !== null
+        ? input.wholeDayPassEndTime
+        : (this.businessSettings.wholeDayPassEndTime ?? '08:00'),
       landingPreviewPhotos:
         input.landingPreviewPhotos !== undefined
           ? [...input.landingPreviewPhotos]
