@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from "react-router";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import { PrivacyNoticeLink } from "@/app/components/privacy";
 
 export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -136,6 +137,9 @@ export function Layout() {
                   <Link to="/manage-booking" className="hover:text-teal-600 transition-colors">
                     Manage Booking
                   </Link>
+                </li>
+                <li>
+                  <PrivacyNoticeLink />
                 </li>
               </ul>
             </div>
