@@ -36,6 +36,8 @@ export function PromotionsList() {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [selectedPromoId, setSelectedPromoId] = useState<string | null>(null);
   const [promoToDelete, setPromoToDelete] = useState<PromotionalRate | null>(null);
+  const [selectedPromoIds, setSelectedPromoIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState<boolean>(false);
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -410,6 +412,11 @@ export function PromotionsList() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to delete promotion');
       showToast('Promotion deleted successfully.');
+      setSelectedPromoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(promoToDelete.id);
+        return next;
+      });
       setPromoToDelete(null);
       await loadData();
     } catch (err: unknown) {
@@ -428,6 +435,54 @@ export function PromotionsList() {
       status: filterStatus,
     });
   }, [promotions, searchQuery, filterWorkspaceId, filterRateType, filterStatus]);
+
+  const allFilteredIds = useMemo(() => filteredPromotions.map((p) => p.id), [filteredPromotions]);
+  const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedPromoIds.has(id));
+  const isSomeSelected = allFilteredIds.some((id) => selectedPromoIds.has(id)) && !isAllSelected;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedPromoIds(new Set());
+    } else {
+      setSelectedPromoIds(new Set(allFilteredIds));
+    }
+  };
+
+  const toggleSelectPromo = (id: string) => {
+    setSelectedPromoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchDeletePromotions = async () => {
+    if (selectedPromoIds.size === 0) return;
+    try {
+      setActionLoading(true);
+      const ids = Array.from(selectedPromoIds);
+      const res = await fetch('/api/admin/promotions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to delete selected promotions');
+      showToast(result.message || `Successfully deleted ${ids.length} promotion(s).`);
+      setSelectedPromoIds(new Set());
+      setIsBulkDeleteModalOpen(false);
+      await loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete selected promotions';
+      showToast(msg, 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -725,79 +780,225 @@ export function PromotionsList() {
           </button>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB', color: '#4B5563', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <th style={{ padding: '12px 16px' }}>Campaign Name</th>
-                <th style={{ padding: '12px 16px' }}>Target Workspaces</th>
-                <th style={{ padding: '12px 16px' }}>Rate Type</th>
-                <th style={{ padding: '12px 16px' }}>Promo Price</th>
-                <th style={{ padding: '12px 16px' }}>Validity Window</th>
-                <th style={{ padding: '12px 16px' }}>Status</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPromotions.map((promo) => {
-                const targetedNames = promo.workspaceTemplateIds
-                  .map((id) => templates.find((t) => t.id === id)?.name || id)
-                  .join(', ');
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {selectedPromoIds.size > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#F0FDFA',
+                border: '1px solid #99F6E4',
+                padding: '12px 18px',
+                borderRadius: '10px',
+                boxShadow: '0 2px 4px rgba(0, 150, 137, 0.06)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span
+                  style={{
+                    background: '#009689',
+                    color: '#FFFFFF',
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  {selectedPromoIds.size} Selected
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#0F766E' }}>
+                  {selectedPromoIds.size === 1
+                    ? '1 promotional campaign selected'
+                    : `${selectedPromoIds.size} promotional campaigns selected`}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPromoIds(new Set())}
+                  disabled={actionLoading}
+                  style={{
+                    background: '#FFFFFF',
+                    border: '1px solid #CCFBF1',
+                    borderRadius: '8px',
+                    padding: '7px 14px',
+                    color: '#0F766E',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease-in-out',
+                  }}
+                >
+                  Clear Selection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteModalOpen(true)}
+                  disabled={actionLoading}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#DC2626',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '7px 16px',
+                    color: '#FFFFFF',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(220, 38, 38, 0.2)',
+                    transition: 'all 0.15s ease-in-out',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                  </svg>
+                  Delete Selected ({selectedPromoIds.size})
+                </button>
+              </div>
+            </div>
+          )}
 
-                return (
-                  <tr key={promo.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                    <td style={{ padding: '14px 16px', fontWeight: 600, color: '#111827' }}>
-                      {promo.name}
-                    </td>
-                    <td style={{ padding: '14px 16px', color: '#4B5563', maxWidth: '240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={targetedNames}>
-                      {targetedNames || 'All Workspaces'}
-                    </td>
-                    <td style={{ padding: '14px 16px', color: '#4B5563' }}>
-                      <span style={{ background: '#F3F4F6', padding: '2px 6px', borderRadius: '4px', fontSize: '12px', fontWeight: 600 }}>
-                        {promo.rateType.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 16px', fontWeight: 700, color: '#009689' }}>
-                      ₱{promo.promotionalPrice.toFixed(2)}
-                    </td>
-                    <td style={{ padding: '14px 16px', color: '#6B7280', fontSize: '13px' }}>
-                      {formatWindow(promo.startAt, promo.endAt)}
-                    </td>
-                    <td style={{ padding: '14px 16px' }}>
-                      {getStatusBadge(promo)}
-                    </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                      <button
-                        onClick={() => openEditModal(promo)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#009689',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          marginRight: '12px',
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => setPromoToDelete(promo)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#DC2626',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #E5E7EB', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB', color: '#4B5563', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <th style={{ padding: '12px 16px', width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all promotions"
+                      checked={isAllSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = isSomeSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                  </th>
+                  <th style={{ padding: '12px 16px' }}>Campaign Name</th>
+                  <th style={{ padding: '12px 16px' }}>Target Workspaces</th>
+                  <th style={{ padding: '12px 16px' }}>Rate Type</th>
+                  <th style={{ padding: '12px 16px' }}>Promo Price</th>
+                  <th style={{ padding: '12px 16px' }}>Validity Window</th>
+                  <th style={{ padding: '12px 16px' }}>Status</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPromotions.map((promo) => {
+                  const targetedNames = promo.workspaceTemplateIds
+                    .map((id) => templates.find((t) => t.id === id)?.name || id)
+                    .join(', ');
+
+                  return (
+                    <tr key={promo.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                      <td style={{ padding: '14px 16px', width: '40px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${promo.name}`}
+                          checked={selectedPromoIds.has(promo.id)}
+                          onChange={() => toggleSelectPromo(promo.id)}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                      </td>
+                      <td style={{ padding: '14px 16px', fontWeight: 600, color: '#111827' }}>
+                        {promo.name}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#4B5563', maxWidth: '240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={targetedNames}>
+                        {targetedNames || 'All Workspaces'}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#4B5563' }}>
+                        <span style={{ background: '#F3F4F6', padding: '2px 6px', borderRadius: '4px', fontSize: '12px', fontWeight: 600 }}>
+                          {promo.rateType.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#009689' }}>
+                        ₱{promo.promotionalPrice.toFixed(2)}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#6B7280', fontSize: '13px' }}>
+                        {formatWindow(promo.startAt, promo.endAt)}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        {getStatusBadge(promo)}
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(promo)}
+                            aria-label={`Edit ${promo.name}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              background: '#F0FDFA',
+                              border: '1px solid #99F6E4',
+                              color: '#0F766E',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease-in-out',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#CCFBF1';
+                              e.currentTarget.style.borderColor = '#5EEAD4';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#F0FDFA';
+                              e.currentTarget.style.borderColor = '#99F6E4';
+                            }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                              <path d="m15 5 4 4"/>
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPromoToDelete(promo)}
+                            aria-label={`Delete ${promo.name}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              background: '#FEF2F2',
+                              border: '1px solid #FECACA',
+                              color: '#DC2626',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease-in-out',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = '#FEE2E2';
+                              e.currentTarget.style.borderColor = '#FCA5A5';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = '#FEF2F2';
+                              e.currentTarget.style.borderColor = '#FECACA';
+                            }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1277,48 +1478,264 @@ export function PromotionsList() {
 
       {/* Delete Confirmation Modal */}
       {promoToDelete && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: '#fff', borderRadius: '8px', maxWidth: '440px', width: '100%', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 12px 0', color: '#111827' }}>
-              Delete Promotion
-            </h3>
-            <p style={{ margin: '0 0 20px 0', color: '#4B5563', fontSize: '14px', lineHeight: 1.5 }}>
-              Are you sure you want to delete the promotion <strong>&quot;{promoToDelete.name}&quot;</strong>? This action cannot be undone.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(18, 37, 26, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 110,
+            overflowY: 'auto',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--da-surface, #fff)',
+              padding: '28px',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '480px',
+              boxShadow: 'var(--da-shadow-lg, 0 20px 25px -5px rgba(0,0,0,0.15))',
+              margin: '20px auto',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#DC2626',
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                </svg>
+              </div>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark, #111827)', margin: 0, letterSpacing: '-0.02em' }}>
+                  Delete Promotional Campaign
+                </h2>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '14px', color: 'var(--da-text-secondary, #4B5563)', lineHeight: 1.5, marginBottom: '16px' }}>
+              Are you sure you want to delete <strong style={{ color: 'var(--da-text-primary, #111827)' }}>&quot;{promoToDelete.name}&quot;</strong>?
+            </div>
+
+            <div
+              style={{
+                background: 'var(--da-canvas, #F9FAFB)',
+                border: '1px solid var(--da-border, #E5E7EB)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                fontSize: '13px',
+                color: 'var(--da-text-primary, #111827)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}
+            >
+              <div><strong>Rate Type:</strong> {promoToDelete.rateType.replace('_', ' ')}</div>
+              <div><strong>Promo Price:</strong> ₱{promoToDelete.promotionalPrice.toFixed(2)}</div>
+              <div><strong>Validity Window:</strong> {formatWindow(promoToDelete.startAt, promoToDelete.endAt)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <strong>Status:</strong> {getStatusBadge(promoToDelete)}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: 'var(--da-text-secondary, #6B7280)', lineHeight: 1.4, marginBottom: '20px' }}>
+              Notice: This action is permanent and cannot be undone. Workspace rates configured for this promotion will revert to their standard rates.
+            </div>
+
+            <div className="mobile-flex-col" style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setPromoToDelete(null)}
                 disabled={actionLoading}
+                onClick={() => setPromoToDelete(null)}
                 style={{
-                  padding: '8px 16px',
-                  border: '1px solid #D1D5DB',
-                  borderRadius: '6px',
-                  background: '#fff',
-                  color: '#374151',
-                  fontSize: '14px',
-                  fontWeight: 500,
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
                   cursor: 'pointer',
+                  background: '#fff',
+                  color: 'var(--da-text-primary, #111827)',
+                  border: '1px solid var(--da-border, #D1D5DB)',
+                  fontFamily: 'var(--da-font-family)',
                 }}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleDeletePromotion}
                 disabled={actionLoading}
+                onClick={handleDeletePromotion}
                 style={{
-                  padding: '8px 18px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  background: '#DC2626',
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  background: 'var(--da-danger, #DC2626)',
                   color: '#fff',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
+                  border: 'none',
+                  fontFamily: 'var(--da-font-family)',
+                  opacity: actionLoading ? 0.7 : 1,
                 }}
               >
-                {actionLoading ? 'Deleting...' : 'Delete Promotion'}
+                {actionLoading ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Modal */}
+      {isBulkDeleteModalOpen && selectedPromoIds.size > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(18, 37, 26, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 110,
+            overflowY: 'auto',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--da-surface, #fff)',
+              padding: '28px',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '500px',
+              boxShadow: 'var(--da-shadow-lg, 0 20px 25px -5px rgba(0,0,0,0.15))',
+              margin: '20px auto',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#DC2626',
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                </svg>
+              </div>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark, #111827)', margin: 0, letterSpacing: '-0.02em' }}>
+                  Delete {selectedPromoIds.size} Promotional Campaign{selectedPromoIds.size === 1 ? '' : 's'}
+                </h2>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '14px', color: 'var(--da-text-secondary, #4B5563)', lineHeight: 1.5, marginBottom: '16px' }}>
+              Are you sure you want to permanently delete the <strong style={{ color: 'var(--da-text-primary, #111827)' }}>{selectedPromoIds.size}</strong> selected promotional campaign{selectedPromoIds.size === 1 ? '' : 's'}?
+            </div>
+
+            <div
+              style={{
+                maxHeight: '180px',
+                overflowY: 'auto',
+                background: 'var(--da-canvas, #F9FAFB)',
+                border: '1px solid var(--da-border, #E5E7EB)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+              }}
+            >
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#6B7280', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                Campaigns to be Deleted:
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: 'var(--da-text-primary, #374151)' }}>
+                {promotions
+                  .filter((p) => selectedPromoIds.has(p.id))
+                  .map((p) => (
+                    <li key={p.id} style={{ margin: '5px 0' }}>
+                      <strong style={{ color: '#111827' }}>{p.name}</strong>{' '}
+                      <span style={{ color: '#6B7280', fontSize: '12px' }}>
+                        ({p.rateType.replace('_', ' ')}: ₱{p.promotionalPrice.toFixed(2)})
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+
+            <div style={{ fontSize: '12px', color: 'var(--da-text-secondary, #6B7280)', lineHeight: 1.4, marginBottom: '20px' }}>
+              Notice: This action cannot be undone. All affected workspace rates will immediately revert to their default base rates.
+            </div>
+
+            <div className="mobile-flex-col" style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => setIsBulkDeleteModalOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: '#fff',
+                  color: 'var(--da-text-primary, #111827)',
+                  border: '1px solid var(--da-border, #D1D5DB)',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleBatchDeletePromotions}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                  background: 'var(--da-danger, #DC2626)',
+                  color: '#fff',
+                  border: 'none',
+                  fontFamily: 'var(--da-font-family)',
+                  opacity: actionLoading ? 0.7 : 1,
+                }}
+              >
+                {actionLoading ? 'Deleting...' : `Confirm Delete (${selectedPromoIds.size})`}
               </button>
             </div>
           </div>

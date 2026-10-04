@@ -46,6 +46,8 @@ export {
 export type {
   UrgentClosureImpactBannerProps,
 } from './components/UrgentClosureImpactBanner';
+export { Button } from './components/Button';
+export type { ButtonProps } from './components/Button';
 export const appShellClassName = 'min-h-screen bg-slate-950 text-slate-100';
 
 

@@ -176,15 +176,35 @@ export async function DELETE(request: NextRequest) {
   try {
     const searchParams = new URL(request.url).searchParams;
     const body = await request.json().catch(() => ({}));
-    const id = searchParams.get('id') || body.id;
+    const singleId = searchParams.get('id') || (typeof body.id === 'string' ? body.id : undefined);
 
-    if (!id) {
-      return NextResponse.json({ error: 'Promotion id is required' }, { status: 400 });
+    let idsToDelete: string[] = [];
+    if (singleId) {
+      idsToDelete = [singleId];
+    } else if (Array.isArray(body.ids) && body.ids.length > 0) {
+      idsToDelete = body.ids.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0);
+    }
+
+    if (idsToDelete.length === 0) {
+      return NextResponse.json(
+        { error: 'Promotion id or ids array is required' },
+        { status: 400 }
+      );
     }
 
     const service = getAdminPromotionalService();
-    const success = await service.deletePromotion(id);
-    return NextResponse.json({ success });
+    let success = true;
+    if (idsToDelete.length === 1) {
+      success = await service.deletePromotion(idsToDelete[0]);
+    } else {
+      success = await service.deletePromotions(idsToDelete);
+    }
+
+    return NextResponse.json({
+      success,
+      deletedCount: idsToDelete.length,
+      message: `Successfully deleted ${idsToDelete.length} promotion(s).`,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to delete promotion';
     return NextResponse.json({ error: message }, { status: 500 });

@@ -161,4 +161,14 @@ export class SupabasePromotionalRepository implements PromotionalRateRepository 
     });
     return true;
   }
+
+  async deletePromotions(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    if (ids.length === 1) return this.deletePromotion(ids[0]);
+    const inList = ids.map((id) => encodeURIComponent(id)).join(',');
+    await this.request(`/promotional_rates?id=in.(${inList})`, {
+      method: 'DELETE',
+    });
+    return true;
+  }
 }

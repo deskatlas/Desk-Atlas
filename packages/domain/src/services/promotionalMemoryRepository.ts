@@ -76,4 +76,13 @@ export class InMemoryPromotionalRepository implements PromotionalRateRepository 
     this.promotions = this.promotions.filter((p) => p.id !== id);
     return this.promotions.length < initialLength;
   }
+
+  async deletePromotions(ids: string[]): Promise<boolean> {
+    const idSet = new Set(ids);
+    const initialLength = this.promotions.length;
+    this.promotions = this.promotions.filter((p) => !idSet.has(p.id));
+    return this.promotions.length < initialLength;
+  }
 }
+
+export { InMemoryPromotionalRepository as PromotionalMemoryRepository };

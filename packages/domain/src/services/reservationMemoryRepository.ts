@@ -1030,6 +1030,8 @@ export class ReservationMemoryRepository
           workspaceInstanceCode: assignedCandidate?.workspaceInstanceId ?? null,
           workspaceTemplateName: assignedCandidate ? "Workspace" : null,
           floorName: assignedCandidate ? "Unknown Floor" : null,
+          rescheduleCount: reservation.rescheduleCount ?? null,
+          updatedAt: reservation.updatedAt ?? null,
         } satisfies ReportReservationRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));

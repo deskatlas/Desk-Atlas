@@ -5,6 +5,8 @@ import {
   buildReservationTrackingUrl,
   createBookingAccessService,
   createTransactionalEmailService,
+  formatEmailBookingDate,
+  formatEmailBookingTimeRange,
   hashBookingToken,
   ReservationSupabaseRepository,
   SupabaseSettingsRepository,
@@ -188,11 +190,25 @@ export async function POST(
 
       if (customerEmail && customerFirstName) {
         const emailService = createTransactionalEmailService();
+        const reservationRepo = new ReservationSupabaseRepository();
+        const candidates = await reservationRepo.findCandidatesByReservationId(result.reservationId);
+        const mainCandidate = candidates.find((c) => c.rank === 0) || candidates[0];
+        const startAt = mainCandidate?.startAt;
+        const endAt = mainCandidate?.endAt;
+        const workspaceName = mainCandidate?.workspaceDisplayName || mainCandidate?.workspaceTemplateName;
+        const scheduledDate = startAt ? formatEmailBookingDate(startAt, businessSettings?.timezone) : undefined;
+        const scheduledTime = startAt && endAt ? formatEmailBookingTimeRange(startAt, endAt, businessSettings?.timezone) : undefined;
+
         const emailResult = await emailService.sendManualResolutionEmail({
           to: customerEmail,
           customerFirstName,
           customerLastName: customerLastName || "",
           referenceCode: referenceCode || result.reservationReferenceCode,
+          startAt,
+          endAt,
+          scheduledDate,
+          scheduledTime,
+          workspaceName,
           businessName,
           businessEmail,
           businessPhone,

@@ -26,6 +26,7 @@ import {
   isSessionWarning,
   isSessionExpired,
   getOrCreateSessionExpiry,
+  syncSessionExpiryWithConfig,
   clearSessionExpiry,
   getCustomerSessionTimeoutSeconds,
   CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS,
@@ -371,15 +372,16 @@ export function ReservationPage() {
   const [loadingInstances, setLoadingInstances] = useState(false);
   const [instanceError, setInstanceError] = useState<string | null>(null);
 
-  // Guest customer detail fields (MF-23 & MF-35)
+  // Guest customer detail fields (MF-23, MF-35 & MS-31)
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [customerContactNumber, setCustomerContactNumber] = useState("");
+  const [contactNumberDigits, setContactNumberDigits] = useState("");
   const [formErrors, setFormErrors] = useState<{
     firstName?: string;
     lastName?: string;
     email?: string;
+    contactNumber?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEmailConfirmOpen, setIsEmailConfirmOpen] = useState(false);
@@ -390,6 +392,34 @@ export function ReservationPage() {
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const [candidateImageErrors, setCandidateImageErrors] = useState<Record<string, boolean>>({});
 
+  // Contact number input handler enforcing Philippine mobile format (09 + 9 digits)
+  const handleContactNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    // Strip all non-digit characters
+    let digits = raw.replace(/\D/g, "");
+
+    // If user pasted 639... or +639..., normalize to 9 digits
+    if (digits.startsWith("639") && digits.length >= 3) {
+      digits = digits.slice(3);
+    } else if (digits.startsWith("63") && digits.length >= 2) {
+      digits = digits.slice(2);
+    }
+
+    // Ensure leading 09 is handled; extract trailing digits
+    if (digits.startsWith("09")) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith("9") && digits.length > 9) {
+      digits = digits.slice(1);
+    }
+
+    // Restrict to at most 9 trailing digits (09 + 9 digits = 11 digits total)
+    const cleanSuffix = digits.slice(0, 9);
+    setContactNumberDigits(cleanSuffix);
+    if (formErrors.contactNumber) {
+      setFormErrors((prev) => ({ ...prev, contactNumber: undefined }));
+    }
+  };
+
   // MF-155: Pre-confirmation price revalidation state
   const [priceChangeInfo, setPriceChangeInfo] = useState<{
     templateName: string;
@@ -399,13 +429,14 @@ export function ReservationPage() {
   } | null>(null);
   const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState<boolean>(false);
 
-  // MF-70 / MF-115: Configurable client-side session timeout state (default 20 mins / 1200 seconds)
+  // MF-70 / MF-115 / MS-31: Configurable client-side session timeout state
   const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
   const [isSessionTimedOut, setIsSessionTimedOut] = useState<boolean>(false);
   const [timeoutRedirectCountdown, setTimeoutRedirectCountdown] = useState<number>(5);
   const [configuredTimeoutSeconds, setConfiguredTimeoutSeconds] = useState<number>(
     CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS
   );
+  const [isSettingsLoaded, setIsSettingsLoaded] = useState<boolean>(false);
   const [statusColors, setStatusColors] = useState<WorkspaceStatusColors>(
     DEFAULT_WORKSPACE_STATUS_COLORS
   );
@@ -428,10 +459,13 @@ export function ReservationPage() {
           if (typeof data?.maxAdvanceBookingDays === "number") {
             setMaxAdvanceBookingDays(data.maxAdvanceBookingDays);
           }
+          setIsSettingsLoaded(true);
         }
       })
       .catch(() => {
-        // Fallback to default
+        if (isMounted) {
+          setIsSettingsLoaded(true);
+        }
       });
 
     fetch("/api/public/promotions")
@@ -448,7 +482,7 @@ export function ReservationPage() {
     };
   }, []);
 
-  // MF-70 / MF-115: Reservation session timer lifecycle
+  // MF-70 / MF-115 / MS-31: Reservation session timer lifecycle
   useEffect(() => {
     // If we have transitioned to email-handoff, clear session timer
     if (step === "email-handoff") {
@@ -459,8 +493,13 @@ export function ReservationPage() {
     }
 
     if (typeof window === "undefined") return;
+    if (!isSettingsLoaded) return;
 
-    const expiryMs = getOrCreateSessionExpiry(window.sessionStorage, Date.now(), configuredTimeoutSeconds);
+    const expiryMs = syncSessionExpiryWithConfig(
+      window.sessionStorage,
+      Date.now(),
+      configuredTimeoutSeconds
+    );
     const initialRemaining = calculateRemainingSessionSeconds(expiryMs);
 
     if (initialRemaining <= 0) {
@@ -490,7 +529,7 @@ export function ReservationPage() {
         setCustomerFirstName("");
         setCustomerLastName("");
         setCustomerEmail("");
-        setCustomerContactNumber("");
+        setContactNumberDigits("");
         setFormErrors({});
       } else {
         setSessionSecondsLeft(remaining);
@@ -500,7 +539,7 @@ export function ReservationPage() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [step, configuredTimeoutSeconds]);
+  }, [step, configuredTimeoutSeconds, isSettingsLoaded]);
 
   // MF-70: Auto-redirect countdown when session expires
   useEffect(() => {
@@ -1101,7 +1140,7 @@ export function ReservationPage() {
   const handleSubmitReservation = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    const errors: { firstName?: string; lastName?: string; email?: string } = {};
+    const errors: { firstName?: string; lastName?: string; email?: string; contactNumber?: string } = {};
     const firstNameValidation = validatePersonName(customerFirstName, "First name");
     if (!firstNameValidation.isValid) {
       errors.firstName = firstNameValidation.error;
@@ -1115,6 +1154,9 @@ export function ReservationPage() {
       errors.email = "Email address is required.";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
       errors.email = "Please enter a valid email address.";
+    }
+    if (contactNumberDigits.length > 0 && contactNumberDigits.length !== 9) {
+      errors.contactNumber = "Please enter the remaining digits of your 11-digit mobile number.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -1169,7 +1211,7 @@ export function ReservationPage() {
           customerFirstName: customerFirstName.trim(),
           customerLastName: customerLastName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
-          customerContactNumber: customerContactNumber.trim() || undefined,
+          customerContactNumber: contactNumberDigits.length === 9 ? `09${contactNumberDigits}` : undefined,
           rateType: mainCandidate?.rateType || "HOURLY",
           bookedRatePerHour: effectiveRateSnapshot,
           rateSnapshot: effectiveRateSnapshot,
@@ -1309,14 +1351,14 @@ export function ReservationPage() {
             </p>
           </div>
 
-          {/* MF-70: Session Timeout Pill */}
+          {/* MF-70 / MS-31: Session Timeout Pill */}
           {step !== "email-handoff" && sessionSecondsLeft !== null && !isSessionTimedOut && (
             <div
               className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm ${sessionSecondsLeft <= 120
                   ? "border-2 border-amber-500 bg-amber-50 text-amber-900 animate-pulse"
                   : "border border-[var(--da-border)] bg-white text-[var(--da-text-secondary)]"
                 }`}
-              title="Your reservation session lasts 20 minutes to ensure real-time inventory availability."
+              title={`Your reservation session lasts ${Math.round(configuredTimeoutSeconds / 60)} minutes to ensure real-time inventory availability.`}
             >
               <span className="text-sm">{sessionSecondsLeft <= 120 ? "⚠️" : "⏱️"}</span>
               <span>
@@ -1437,7 +1479,7 @@ export function ReservationPage() {
                     type="button"
                     onClick={() => {
                       const emailParam = (submittedReservation.customerEmail || customerEmail.trim().toLowerCase());
-                      router.push(
+                      router.replace(
                         `/track?code=${encodeURIComponent(submittedReservation.referenceCode)}${emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""
                         }`
                       );
@@ -1449,7 +1491,7 @@ export function ReservationPage() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => router.push("/track")}
+                    onClick={() => router.replace("/track")}
                     className="da-secondary-button w-full sm:w-auto text-sm font-bold px-6 py-3.5"
                   >
                     Track Reservation
@@ -3459,15 +3501,44 @@ export function ReservationPage() {
                     <label htmlFor="customer-contact-number" className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1">
                       Contact Number <span className="text-gray-400 font-normal">(Optional)</span>
                     </label>
-                    <input
-                      id="customer-contact-number"
-                      type="tel"
-                      value={customerContactNumber}
-                      onChange={(e) => setCustomerContactNumber(e.target.value)}
-                      placeholder="e.g. 09171234567"
-                      disabled={isSubmitting}
-                      className="da-input w-full text-sm font-medium"
-                    />
+                    <div
+                      className={`flex items-center overflow-hidden rounded-[14px] border bg-white transition-all shadow-sm ${
+                        formErrors.contactNumber
+                          ? "border-red-500 ring-2 ring-red-100"
+                          : "border-[var(--da-border)] focus-within:border-[var(--da-primary)] focus-within:ring-2 focus-within:ring-[var(--da-primary)]/20"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 border-r border-[var(--da-border-light)] bg-slate-50 px-3.5 py-3 text-slate-700 select-none flex-shrink-0">
+                        <span className="text-sm">🇵🇭</span>
+                        <span className="font-mono text-sm font-bold text-[var(--da-brand-dark)]">
+                          09
+                        </span>
+                      </div>
+                      <input
+                        id="customer-contact-number"
+                        type="tel"
+                        inputMode="numeric"
+                        value={contactNumberDigits}
+                        onChange={handleContactNumberChange}
+                        placeholder="171234567"
+                        maxLength={9}
+                        disabled={isSubmitting}
+                        className="w-full bg-transparent px-3.5 py-3 font-mono text-sm font-medium tracking-wide text-[var(--da-text-primary)] placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+                      />
+                    </div>
+                    {formErrors.contactNumber ? (
+                      <p className="mt-1 text-[11px] font-bold text-red-600">
+                        {formErrors.contactNumber}
+                      </p>
+                    ) : contactNumberDigits.length > 0 && contactNumberDigits.length < 9 ? (
+                      <p className="mt-1 text-[11px] font-semibold text-amber-600">
+                        Please enter the remaining {9 - contactNumberDigits.length} digits of your mobile number.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-[var(--da-text-secondary)]">
+                        Enter your 9-digit mobile suffix (e.g. 171234567 for 09171234567).
+                      </p>
+                    )}
                   </div>
 
                   <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[11px] leading-relaxed text-slate-600">

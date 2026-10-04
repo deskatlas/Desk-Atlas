@@ -6,6 +6,8 @@ import {
   createBookingAccessService,
   createCounterPaymentService,
   createTransactionalEmailService,
+  formatEmailBookingDate,
+  formatEmailBookingTimeRange,
   hashBookingToken,
   ReservationSupabaseRepository,
   SupabaseSettingsRepository,
@@ -171,11 +173,24 @@ export async function POST(
       }
 
       const emailService = createTransactionalEmailService();
+      const candidates = await reservationRepository.findCandidatesByReservationId(result.reservationId);
+      const mainCandidate = candidates.find((c) => c.rank === 0) || candidates[0];
+      const startAt = mainCandidate?.startAt;
+      const endAt = mainCandidate?.endAt;
+      const workspaceName = mainCandidate?.workspaceDisplayName || mainCandidate?.workspaceTemplateName;
+      const scheduledDate = startAt ? formatEmailBookingDate(startAt, businessSettings?.timezone) : undefined;
+      const scheduledTime = startAt && endAt ? formatEmailBookingTimeRange(startAt, endAt, businessSettings?.timezone) : undefined;
+
       await emailService.sendManualResolutionEmail({
         to: counterPaymentRecord.customerEmail,
         customerFirstName: counterPaymentRecord.customerFirstName,
         customerLastName: counterPaymentRecord.customerLastName,
         referenceCode: result.reservationReferenceCode,
+        startAt,
+        endAt,
+        scheduledDate,
+        scheduledTime,
+        workspaceName,
         businessName,
         businessEmail,
         businessPhone,

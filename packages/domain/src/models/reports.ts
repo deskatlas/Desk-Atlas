@@ -38,6 +38,9 @@ export interface ReportReservationRecord {
   workspaceInstanceCode: string | null;
   workspaceTemplateName: string | null;
   floorName: string | null;
+  rescheduleCount?: number | null;
+  updatedAt?: string | null;
+  rescheduledAt?: string | null;
 }
 
 export interface ReportPaymentAttemptRecord {

@@ -24,6 +24,7 @@ export interface BusinessEmailProfile {
   facebookUrl?: string;
   instagramUrl?: string;
   twitterUrl?: string;
+  timezone?: string;
 }
 
 export interface BaseEmailBusinessFields {
@@ -420,6 +421,38 @@ export function formatEmailSchedule(value?: string | null, timezone: string = DE
 }
 
 /**
+ * MS-32: Formats a booking ISO timestamp into a long human-readable date string (e.g. "Monday, October 5, 2026").
+ */
+export function formatEmailBookingDate(startAt: string, timezone: string = DEFAULT_TIMEZONE): string {
+  try {
+    const d = new Date(startAt);
+    if (isNaN(d.getTime())) {
+      return startAt.slice(0, 10);
+    }
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: timezone,
+    }).format(d);
+  } catch {
+    return startAt.slice(0, 10);
+  }
+}
+
+/**
+ * MS-32: Formats booking start and end ISO timestamps into a 12-hour AM/PM time range (e.g. "09:00 AM to 05:00 PM").
+ */
+export function formatEmailBookingTimeRange(
+  startAt: string,
+  endAt: string,
+  timezone: string = DEFAULT_TIMEZONE
+): string {
+  return `${formatEmailTimeOnly(startAt, timezone)} to ${formatEmailTimeOnly(endAt, timezone)}`;
+}
+
+/**
  * MF-141: Formats session expiry duration in minutes into a human-readable label and session title.
  */
 export function formatSessionExpiryDuration(minutes?: number | null): { label: string; sessionTitle: string } {
@@ -489,8 +522,11 @@ export interface ManualResolutionEmailInput extends BaseEmailBusinessFields {
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
+  customerName?: string;
   referenceCode: string;
   trackingUrl?: string;
+  startAt?: string;
+  endAt?: string;
   scheduledDate?: string;
   scheduledTime?: string;
   workspaceName?: string;
@@ -977,11 +1013,20 @@ ${renderBusinessFooterText(profile)}
 
 export function renderManualResolutionEmail(input: ManualResolutionEmailInput): { subject: string; html: string; text: string } {
   const profile = resolveBusinessProfile(input);
-  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const customerName = input.customerName || [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const businessName = profile.businessName || 'DeskAtlas';
   const businessEmail = profile.contactEmail || 'support@deskatlas.com';
   const businessPhone = profile.contactPhone;
   const subject = `Reservation Update: Manual Resolution Needed [${input.referenceCode}]`;
+
+  const resolvedScheduledDate =
+    input.scheduledDate ||
+    (input.startAt ? formatEmailBookingDate(input.startAt, profile.timezone || DEFAULT_TIMEZONE) : undefined);
+  const resolvedScheduledTime =
+    input.scheduledTime ||
+    (input.startAt && input.endAt
+      ? formatEmailBookingTimeRange(input.startAt, input.endAt, profile.timezone || DEFAULT_TIMEZONE)
+      : undefined);
 
   const html = `
 <!DOCTYPE html>
@@ -1021,11 +1066,11 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
         </div>
         <div style="margin: 6px 0; font-size: 14px;">
           <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Date(s):</span>
-          <span style="color: #0f172a; font-weight: 700;">${escapeHtml(input.scheduledDate || 'Upcoming Scheduled Date')}</span>
+          <span style="color: #0f172a; font-weight: 700;">${escapeHtml(resolvedScheduledDate || 'Upcoming Scheduled Date')}</span>
         </div>
         <div style="margin: 6px 0; font-size: 14px;">
           <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Scheduled Time:</span>
-          <span style="color: #0f172a; font-weight: 700;">${escapeHtml(input.scheduledTime || 'Booked Time Slot')}</span>
+          <span style="color: #0f172a; font-weight: 700;">${escapeHtml(resolvedScheduledTime || 'Booked Time Slot')}</span>
         </div>
         ${input.workspaceName ? `
         <div style="margin: 6px 0; font-size: 14px;">
@@ -1081,8 +1126,8 @@ Your payment has been received, but your requested workspace spot could not be a
 
 SCHEDULED BOOKING DETAILS
 -------------------------
-Date(s): ${input.scheduledDate || 'Upcoming Scheduled Date'}
-Scheduled Time: ${input.scheduledTime || 'Booked Time Slot'}
+Date(s): ${resolvedScheduledDate || 'Upcoming Scheduled Date'}
+Scheduled Time: ${resolvedScheduledTime || 'Booked Time Slot'}
 ${input.workspaceName ? `Reserved Spot: ${input.workspaceName}\n` : ''}
 Please contact ${businessName} directly using the registered business details:
 Business Email: ${businessEmail}
@@ -3492,9 +3537,10 @@ export function renderClosureManualResolutionEmail(input: ClosureManualResolutio
   const subject = `Action Required: Your Reservation [${input.referenceCode}] is Being Handled by Our Team`;
   const reasonText = input.closureReason ? input.closureReason.trim() : 'Scheduled Facility Closure / Maintenance';
 
-  const closurePeriod = input.closureEndDate && input.closureEndDate !== input.closureDate
-    ? `${input.closureDate} to ${input.closureEndDate}`
-    : input.closureDate || 'Upcoming Scheduled Date';
+  const resolvedClosureDate = input.closureDate || (input.startAt ? formatEmailBookingDate(input.startAt, profile.timezone || DEFAULT_TIMEZONE) : undefined);
+  const closurePeriod = input.closureEndDate && input.closureEndDate !== resolvedClosureDate
+    ? `${resolvedClosureDate} to ${input.closureEndDate}`
+    : resolvedClosureDate || 'Upcoming Scheduled Date';
 
   const fallbackBaseUrl =
     profile.appUrl ||
@@ -3505,7 +3551,7 @@ export function renderClosureManualResolutionEmail(input: ClosureManualResolutio
   const trackingLink =
     input.trackingUrl ||
     `${buildReservationTrackingUrl(fallbackBaseUrl, input.referenceCode)}&remedy=closure`;
-  const scheduleFormatted = input.schedule || (input.startAt && input.endAt ? `${formatEmailTime(input.startAt)} to ${formatEmailTime(input.endAt)}` : 'Booked Time Slot');
+  const scheduleFormatted = input.schedule || (input.startAt && input.endAt ? formatEmailBookingTimeRange(input.startAt, input.endAt, profile.timezone || DEFAULT_TIMEZONE) : 'Booked Time Slot');
 
   const html = `
 <!DOCTYPE html>

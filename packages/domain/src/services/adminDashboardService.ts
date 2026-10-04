@@ -76,9 +76,9 @@ export class AdminDashboardService {
       subText: rangeBounds.comparisonSubText,
     };
 
-    // 2. Metric: Currently Checked In
-    const currentlyCheckedInCount = reservations.filter(
-      (r) => r.checkedInAt !== null && r.checkedOutAt === null
+    // 2. Metric: Currently Checked In (auto-excludes ended/completed bookings)
+    const currentlyCheckedInCount = reservations.filter((r) =>
+      isReservationActivelyCheckedIn(r, now)
     ).length;
     const totalCapacity = catalog.instances.length;
     const capacityPct = totalCapacity > 0 ? Math.round((currentlyCheckedInCount / totalCapacity) * 100) : 0;
@@ -92,8 +92,18 @@ export class AdminDashboardService {
     };
 
     // 3. Metric: Pending Payments
-    const currentPendingPayments = countPendingPayments(reservations, payments, rangeBounds.currentStart, rangeBounds.currentEnd);
-    const prevPendingPayments = countPendingPayments(reservations, payments, rangeBounds.prevStart, rangeBounds.prevEnd);
+    const currentPendingPayments = countPendingPayments(
+      payments,
+      rangeBounds.currentStart,
+      rangeBounds.currentEnd,
+      range === "today"
+    );
+    const prevPendingPayments = countPendingPayments(
+      payments,
+      rangeBounds.prevStart,
+      rangeBounds.prevEnd,
+      false
+    );
     const pendingPaymentsMetric = {
       label: "Pending Payments",
       value: currentPendingPayments,
@@ -102,24 +112,24 @@ export class AdminDashboardService {
       subText: rangeBounds.comparisonSubText,
     };
 
-    // 4. Metric: Rescheduled Bookings (Manual Resolution or rank > 0)
-    const currentRescheduled = reservations.filter(
-      (r) =>
-        (r.reservationStatus === "NEEDS_MANUAL_RESOLUTION" ||
-          (r.assignedCandidateRank !== null && r.assignedCandidateRank > 0)) &&
-        isWithinRange(r.createdAt, rangeBounds.currentStart, rangeBounds.currentEnd)
+    // 4. Metric: Rescheduled Bookings
+    const currentRescheduledCount = countRescheduledBookings(
+      reservations,
+      auditActivity,
+      rangeBounds.currentStart,
+      rangeBounds.currentEnd
     );
-    const prevRescheduled = reservations.filter(
-      (r) =>
-        (r.reservationStatus === "NEEDS_MANUAL_RESOLUTION" ||
-          (r.assignedCandidateRank !== null && r.assignedCandidateRank > 0)) &&
-        isWithinRange(r.createdAt, rangeBounds.prevStart, rangeBounds.prevEnd)
+    const prevRescheduledCount = countRescheduledBookings(
+      reservations,
+      auditActivity,
+      rangeBounds.prevStart,
+      rangeBounds.prevEnd
     );
     const rescheduledMetric = {
       label: "Rescheduled Bookings",
-      value: currentRescheduled.length,
-      formattedValue: String(currentRescheduled.length),
-      changeText: formatComparisonTrend(currentRescheduled.length, prevRescheduled.length),
+      value: currentRescheduledCount,
+      formattedValue: String(currentRescheduledCount),
+      changeText: formatComparisonTrend(currentRescheduledCount, prevRescheduledCount),
       subText: rangeBounds.comparisonSubText,
     };
 
@@ -153,7 +163,7 @@ export class AdminDashboardService {
     );
 
     // Workspace Overview (Occupancy Breakdown)
-    const workspaceOverview = buildWorkspaceOverview(catalog, occupancyList, reservations, nowIso);
+    const workspaceOverview = buildWorkspaceOverview(catalog, occupancyList, reservations, now);
 
     // Occupancy Summary (Current Occupied Count & Capacity)
     const occupancySummary = calculateOccupancySummary(catalog, occupancyList);
@@ -174,6 +184,25 @@ export class AdminDashboardService {
       generatedAt: nowIso,
     };
   }
+}
+
+export function isReservationActivelyCheckedIn(
+  reservation: ReportReservationRecord,
+  now: Date
+): boolean {
+  if (!reservation.checkedInAt || reservation.checkedOutAt !== null) {
+    return false;
+  }
+  if (reservation.reservationStatus === "COMPLETED" || reservation.reservationStatus === "CANCELLED") {
+    return false;
+  }
+  if (reservation.bookingEndAt) {
+    const endMs = new Date(reservation.bookingEndAt).getTime();
+    if (!isNaN(endMs) && endMs <= now.getTime()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function createAdminDashboardService(
@@ -338,38 +367,56 @@ function formatComparisonTrend(current: number, prev: number): string {
 }
 
 function countPendingPayments(
-  reservations: ReportReservationRecord[],
   payments: ReportPaymentAttemptRecord[],
   start: Date,
-  end: Date
+  end: Date,
+  isTodayRange: boolean = false
 ): number {
-  const pendingReservations = reservations.filter(
-    (r) =>
-      (r.reservationStatus === "PENDING_PAYMENT" ||
-        r.reservationStatus === "PAYMENT_UNDER_REVIEW" ||
-        r.reservationStatus === "PENDING_COUNTER_CONFIRMATION") &&
-      isWithinRange(r.createdAt, start, end)
-  );
+  if (isTodayRange) {
+    // For Today's operational view, match the Payment Reviews tab: all payment attempts currently awaiting review
+    const activeUnderReview = payments.filter((p) => p.paymentStatus === "UNDER_REVIEW");
+    const uniqueIds = new Set<string>(activeUnderReview.map((p) => p.paymentAttemptId));
+    return uniqueIds.size;
+  }
 
+  // For historical windows (7d, 30d), count payment proofs submitted within the window
   const underReviewPayments = payments.filter(
     (p) =>
       p.paymentStatus === "UNDER_REVIEW" &&
       p.proofSubmittedAt !== null &&
       isWithinRange(p.proofSubmittedAt, start, end)
   );
+  const uniqueIds = new Set<string>(underReviewPayments.map((p) => p.paymentAttemptId));
+  return uniqueIds.size;
+}
 
-  // Avoid double counting if reservation status is already pending
-  const countedReservationIds = new Set(pendingReservations.map((r) => r.reservationId));
-  let count = pendingReservations.length;
+function countRescheduledBookings(
+  reservations: ReportReservationRecord[],
+  auditActivity: OperationalActivityRecord[],
+  start: Date,
+  end: Date
+): number {
+  // Check audit activity for reschedule events in the window
+  const rescheduleAuditCount = auditActivity.filter(
+    (a) =>
+      ((a.activityType as string) === "RESERVATION_RESCHEDULED" ||
+        (a as unknown as { action?: string }).action === "RESERVATION_RESCHEDULED" ||
+        (a as unknown as { action?: string }).action === "reservation_rescheduled" ||
+        (a.activityType as string)?.toLowerCase().includes("reschedule") ||
+        (a as unknown as { action?: string }).action?.toLowerCase().includes("reschedule")) &&
+      isWithinRange(a.occurredAt || (a as unknown as { createdAt?: string }).createdAt || "", start, end)
+  ).length;
 
-  for (const payment of underReviewPayments) {
-    if (!countedReservationIds.has(payment.reservationId)) {
-      count += 1;
-      countedReservationIds.add(payment.reservationId);
-    }
+  if (rescheduleAuditCount > 0) {
+    return rescheduleAuditCount;
   }
 
-  return count;
+  // Fallback: check reservations with rescheduleCount > 0 updated within range
+  return reservations.filter(
+    (r) =>
+      Boolean(r.rescheduleCount && r.rescheduleCount > 0) &&
+      isWithinRange(r.rescheduledAt || r.updatedAt || r.createdAt, start, end)
+  ).length;
 }
 
 function buildActivityStream(
@@ -540,7 +587,7 @@ function buildWorkspaceOverview(
   catalog: WorkspaceCatalog,
   occupancyList: OccupancyRecord[],
   reservations: ReportReservationRecord[],
-  nowIso: string
+  now: Date
 ) {
   const totalWorkspaces = catalog.instances.length;
   const floorName = catalog.floors[0]?.name ?? "All Floors";
@@ -549,8 +596,8 @@ function buildWorkspaceOverview(
     (inst) => inst.operationalStatus === "MAINTENANCE" || inst.operationalStatus === "INACTIVE"
   ).length;
 
-  const inUseCount = reservations.filter(
-    (r) => r.checkedInAt !== null && r.checkedOutAt === null
+  const inUseCount = reservations.filter((r) =>
+    isReservationActivelyCheckedIn(r, now)
   ).length;
 
   const reservedCount = occupancyList.filter(

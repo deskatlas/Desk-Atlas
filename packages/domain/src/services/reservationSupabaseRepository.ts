@@ -213,6 +213,41 @@ export class ReservationSupabaseRepository
     return text ? (JSON.parse(text) as T) : (undefined as T);
   }
 
+  async findCandidatesByReservationId(reservationId: string): Promise<Array<{
+    rank: number;
+    startAt?: string;
+    endAt?: string;
+    workspaceDisplayName?: string;
+    workspaceTemplateName?: string;
+  }>> {
+    try {
+      const candidates = await this.request<Array<{
+        rank: number;
+        start_at?: string;
+        end_at?: string;
+        workspace_instance_id?: string;
+        workspace_instances?: {
+          name?: string;
+          workspace_templates?: {
+            name?: string;
+          };
+        };
+      }>>(
+        `/reservation_candidates?reservation_id=eq.${encodeURIComponent(reservationId)}&select=rank,start_at,end_at,workspace_instance_id,workspace_instances(name,workspace_templates(name))&order=rank.asc`
+      );
+
+      return (candidates || []).map((c) => ({
+        rank: c.rank,
+        startAt: c.start_at,
+        endAt: c.end_at,
+        workspaceDisplayName: c.workspace_instances?.name,
+        workspaceTemplateName: c.workspace_instances?.workspace_templates?.name,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   private catalogCache: {
     data?: {
       instancesById: Map<string, CatalogWorkspaceInstance>;
@@ -1931,6 +1966,8 @@ export class ReservationSupabaseRepository
           workspaceInstanceCode: workspaceInstance?.instance_code ?? null,
           workspaceTemplateName: workspaceTemplate?.name ?? null,
           floorName: floor?.name ?? null,
+          rescheduleCount: r.reschedule_count ?? null,
+          updatedAt: r.updated_at ?? null,
         } satisfies ReportReservationRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));

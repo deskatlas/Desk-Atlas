@@ -213,4 +213,5 @@ export * from './services/promotionalService';
 export * from './services/pricingService';
 export * from './services/reservationStatusService';
 export * from './services/promotionalFilterService';
+export * from './services/transactionalEmailService';
 

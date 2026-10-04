@@ -42,6 +42,8 @@ import {
   createTransactionalEmailService,
   buildReservationTrackingUrl,
   formatDurationFromDates,
+  formatEmailBookingDate,
+  formatEmailBookingTimeRange,
 } from "./transactionalEmailService";
 
 export class AdminReservationError extends Error {
@@ -953,6 +955,9 @@ export class AdminReservationService {
           closureReason: result.reservation.closureReason,
           workspaceDisplayName: assigned?.workspaceDisplayName || undefined,
           workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
+          startAt: assigned?.startAt,
+          endAt: assigned?.endAt,
+          schedule: assigned?.startAt && assigned?.endAt ? formatEmailBookingTimeRange(assigned.startAt, assigned.endAt) : undefined,
           notes: input.notes,
           trackingUrl,
         });

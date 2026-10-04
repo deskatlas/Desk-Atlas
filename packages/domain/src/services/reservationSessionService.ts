@@ -98,6 +98,38 @@ export function getOrCreateSessionExpiry(
 }
 
 /**
+ * Synchronizes or initializes the session expiry timestamp with the configured timeout.
+ * Replaces any existing timestamp if it is expired or exceeds the valid timeout bounds.
+ */
+export function syncSessionExpiryWithConfig(
+  storage?: { getItem: (key: string) => string | null; setItem: (key: string, val: string) => void },
+  nowMs: number = Date.now(),
+  timeoutSeconds: number = CUSTOMER_RESERVATION_SESSION_TIMEOUT_SECONDS
+): number {
+  if (!storage) return nowMs + timeoutSeconds * 1000;
+  try {
+    const stored = storage.getItem(CUSTOMER_RESERVATION_SESSION_STORAGE_KEY);
+    if (stored) {
+      const parsed = parseInt(stored, 10);
+      const remaining = parsed - nowMs;
+      if (!isNaN(parsed) && remaining > 0 && remaining <= (timeoutSeconds + 10) * 1000) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore storage errors in restricted browser contexts
+  }
+
+  const newExpiry = nowMs + timeoutSeconds * 1000;
+  try {
+    storage.setItem(CUSTOMER_RESERVATION_SESSION_STORAGE_KEY, String(newExpiry));
+  } catch {
+    // Ignore storage errors
+  }
+  return newExpiry;
+}
+
+/**
  * Removes the session expiry timestamp from storage.
  */
 export function clearSessionExpiry(

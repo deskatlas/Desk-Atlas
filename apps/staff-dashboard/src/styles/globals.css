@@ -110,3 +110,137 @@ textarea::placeholder {
   animation: da-text-marquee var(--da-marquee-duration, 8s) linear infinite;
   will-change: transform;
 }
+
+/* Universal Interactive Button Foundation (MS-33 / DSD-UI1) */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"] {
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out,
+              border-color 0.15s ease-in-out,
+              color 0.15s ease-in-out,
+              box-shadow 0.15s ease-in-out,
+              transform 0.15s ease-in-out,
+              filter 0.15s ease-in-out;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+/* Universal Button Hover Effect */
+button:not(:disabled):not([aria-disabled="true"]):hover,
+[role="button"]:not([aria-disabled="true"]):hover,
+input[type="button"]:not(:disabled):hover,
+input[type="submit"]:not(:disabled):hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+/* Universal Button Active Press Effect */
+button:not(:disabled):not([aria-disabled="true"]):active,
+[role="button"]:not([aria-disabled="true"]):active,
+input[type="button"]:not(:disabled):active,
+input[type="submit"]:not(:disabled):active {
+  filter: brightness(0.96);
+  transform: translateY(0px) scale(0.98);
+  transition-duration: 0.05s;
+}
+
+/* Universal Disabled State */
+button:disabled,
+button[aria-disabled="true"],
+[role="button"][aria-disabled="true"],
+input[type="button"]:disabled,
+input[type="submit"]:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.45 !important;
+  filter: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+  pointer-events: none;
+}
+
+/* Canonical Design System Button Classes */
+.da-primary-button {
+  background-color: var(--da-brand-dark, #0f172a);
+  color: #ffffff;
+  border: 1px solid transparent;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.da-primary-button:not(:disabled):hover {
+  background-color: var(--da-brand-dark-hover, #1e293b);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
+  transform: translateY(-1px);
+}
+.da-primary-button:not(:disabled):active {
+  transform: translateY(0px) scale(0.98);
+}
+
+.da-secondary-button {
+  background-color: #ffffff;
+  color: var(--da-brand-dark, #0f172a);
+  border: 1px solid var(--da-border, #e2e8f0);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.da-secondary-button:not(:disabled):hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0284c7;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+.da-secondary-button:not(:disabled):active {
+  background-color: #f1f5f9;
+  transform: translateY(0px) scale(0.98);
+}
+
+.da-danger-button {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecdd3;
+  font-weight: 600;
+}
+.da-danger-button:not(:disabled):hover {
+  background-color: #ef4444;
+  color: #ffffff;
+  border-color: #dc2626;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+.da-danger-button:not(:disabled):active {
+  background-color: #dc2626;
+  transform: translateY(0px) scale(0.98);
+}
+
+.da-ghost-button {
+  background-color: transparent;
+  color: var(--da-text-secondary, #64748b);
+  border: none;
+}
+.da-ghost-button:not(:disabled):hover {
+  background-color: rgba(0, 0, 0, 0.06);
+  color: var(--da-brand-dark, #0f172a);
+  transform: translateY(-1px);
+}
+.da-ghost-button:not(:disabled):active {
+  background-color: rgba(0, 0, 0, 0.1);
+  transform: translateY(0px) scale(0.97);
+}
+
+.da-accent-button {
+  background-color: var(--da-primary, #009689);
+  color: #ffffff;
+  border: 1px solid transparent;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 150, 137, 0.2);
+}
+.da-accent-button:not(:disabled):hover {
+  background-color: #007d72;
+  box-shadow: 0 4px 12px rgba(0, 150, 137, 0.35);
+  transform: translateY(-1px);
+}
+.da-accent-button:not(:disabled):active {
+  transform: translateY(0px) scale(0.98);
+}

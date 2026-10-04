@@ -31,6 +31,11 @@ export class PromotionalService {
     return this.repository.deletePromotion(id);
   }
 
+  async deletePromotions(ids: string[]): Promise<boolean> {
+    if (!ids || ids.length === 0) return true;
+    return this.repository.deletePromotions(ids);
+  }
+
   async resolvePricingForTemplate(
     templateId: string,
     rateType: RateTargetType,

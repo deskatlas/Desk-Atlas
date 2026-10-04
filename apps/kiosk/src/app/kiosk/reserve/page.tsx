@@ -498,15 +498,39 @@ export default function KioskReservePage() {
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [customerContactNumber, setCustomerContactNumber] = useState("");
+  const [contactNumberDigits, setContactNumberDigits] = useState("");
   const [formErrors, setFormErrors] = useState<{
     firstName?: string;
     lastName?: string;
     email?: string;
+    contactNumber?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [referenceCode, setReferenceCode] = useState<string | null>(null);
+
+  const handleContactNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    let digits = raw.replace(/\D/g, "");
+
+    if (digits.startsWith("639") && digits.length >= 3) {
+      digits = digits.slice(3);
+    } else if (digits.startsWith("63") && digits.length >= 2) {
+      digits = digits.slice(2);
+    }
+
+    if (digits.startsWith("09")) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith("9") && digits.length > 9) {
+      digits = digits.slice(1);
+    }
+
+    const cleanSuffix = digits.slice(0, 9);
+    setContactNumberDigits(cleanSuffix);
+    if (formErrors.contactNumber) {
+      setFormErrors((prev) => ({ ...prev, contactNumber: undefined }));
+    }
+  };
 
   // Map & Catalog states
   const currentTick = useLiveCountdownClock(1000);
@@ -822,7 +846,7 @@ export default function KioskReservePage() {
     setCustomerFirstName("");
     setCustomerLastName("");
     setCustomerEmail("");
-    setCustomerContactNumber("");
+    setContactNumberDigits("");
     setFormErrors({});
     setIsSubmitting(false);
     setSubmitError(null);
@@ -840,7 +864,7 @@ export default function KioskReservePage() {
     e.preventDefault();
     if (!selectedWorkspace) return;
 
-    const errors: { firstName?: string; lastName?: string; email?: string } = {};
+    const errors: { firstName?: string; lastName?: string; email?: string; contactNumber?: string } = {};
     const firstNameValidation = validatePersonName(customerFirstName, "First name");
     if (!firstNameValidation.isValid) {
       errors.firstName = firstNameValidation.error;
@@ -854,6 +878,9 @@ export default function KioskReservePage() {
       errors.email = "Email address is required.";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
       errors.email = "Please enter a valid email address.";
+    }
+    if (contactNumberDigits.length > 0 && contactNumberDigits.length !== 9) {
+      errors.contactNumber = "Please enter the remaining digits of your 11-digit mobile number.";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -874,7 +901,7 @@ export default function KioskReservePage() {
           customerFirstName: customerFirstName.trim(),
           customerLastName: customerLastName.trim(),
           customerEmail: emailVal.toLowerCase(),
-          customerContactNumber: customerContactNumber.trim() || undefined,
+          customerContactNumber: contactNumberDigits.length === 9 ? `09${contactNumberDigits}` : undefined,
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
           rateType: selectedRateType,
           durationHours: effectiveDurationHours,
@@ -2788,15 +2815,44 @@ export default function KioskReservePage() {
                     <label htmlFor="kiosk-contact-number" className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1">
                       Contact Number <span className="text-gray-400 font-normal">(Optional)</span>
                     </label>
-                    <input
-                      id="kiosk-contact-number"
-                      type="tel"
-                      value={customerContactNumber}
-                      onChange={(e) => setCustomerContactNumber(e.target.value)}
-                      placeholder="e.g. 09171234567"
-                      disabled={isSubmitting}
-                      className="da-input text-sm font-medium"
-                    />
+                    <div
+                      className={`flex items-center overflow-hidden rounded-[14px] border bg-white transition-all shadow-sm ${
+                        formErrors.contactNumber
+                          ? "border-red-500 ring-2 ring-red-100"
+                          : "border-[var(--da-border)] focus-within:border-[var(--da-primary)] focus-within:ring-2 focus-within:ring-[var(--da-primary)]/20"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 border-r border-[var(--da-border-light)] bg-slate-50 px-3.5 py-3 text-slate-700 select-none flex-shrink-0">
+                        <span className="text-sm">🇵🇭</span>
+                        <span className="font-mono text-sm font-bold text-[var(--da-brand-dark)]">
+                          09
+                        </span>
+                      </div>
+                      <input
+                        id="kiosk-contact-number"
+                        type="tel"
+                        inputMode="numeric"
+                        value={contactNumberDigits}
+                        onChange={handleContactNumberChange}
+                        placeholder="171234567"
+                        maxLength={9}
+                        disabled={isSubmitting}
+                        className="w-full bg-transparent px-3.5 py-3 font-mono text-sm font-medium tracking-wide text-[var(--da-text-primary)] placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+                      />
+                    </div>
+                    {formErrors.contactNumber ? (
+                      <p className="mt-1 text-[11px] font-bold text-red-600">
+                        {formErrors.contactNumber}
+                      </p>
+                    ) : contactNumberDigits.length > 0 && contactNumberDigits.length < 9 ? (
+                      <p className="mt-1 text-[11px] font-semibold text-amber-600">
+                        Please enter the remaining {9 - contactNumberDigits.length} digits of your mobile number.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-[var(--da-text-secondary)]">
+                        Enter your 9-digit mobile suffix (e.g. 171234567 for 09171234567).
+                      </p>
+                    )}
                   </div>
 
                   {/* Payment Method Selection */}

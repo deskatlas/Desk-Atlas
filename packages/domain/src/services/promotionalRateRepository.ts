@@ -10,4 +10,5 @@ export interface PromotionalRateRepository {
   createPromotion(input: CreatePromotionalRateInput): Promise<PromotionalRate>;
   updatePromotion(id: string, input: UpdatePromotionalRateInput): Promise<PromotionalRate>;
   deletePromotion(id: string): Promise<boolean>;
+  deletePromotions(ids: string[]): Promise<boolean>;
 }
