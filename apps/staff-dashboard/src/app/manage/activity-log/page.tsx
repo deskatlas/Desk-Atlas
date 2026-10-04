@@ -29,13 +29,15 @@ const ACTION_GROUPS: { label: string; value: string; types?: string[] }[] = [
     ],
   },
   {
-    label: "Relocations & Extensions",
+    label: "Relocations, Extensions & Reschedules",
     value: "RESERVATIONS",
     types: [
       "reservation_relocated",
       "RESERVATION_RELOCATED",
       "reservation_extended",
       "RESERVATION_EXTENDED",
+      "reservation_rescheduled",
+      "RESERVATION_RESCHEDULED",
     ],
   },
   {

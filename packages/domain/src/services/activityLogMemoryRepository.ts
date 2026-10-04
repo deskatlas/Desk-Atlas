@@ -11,7 +11,7 @@ import {
 export interface MemoryAuditLogRow {
   id: string;
   actor_user_id: string | null;
-  actor_role: "ADMIN" | "STAFF" | "SUPERADMIN" | "SYSTEM";
+  actor_role: "ADMIN" | "STAFF" | "SUPERADMIN" | "SYSTEM" | "CUSTOMER";
   action: string;
   entity_type: string;
   entity_id: string | null;
@@ -158,7 +158,7 @@ export class ActivityLogMemoryRepository implements ActivityLogRepository {
 
     const entries: ActivityLogEntry[] = pagedRows.map((row) => {
       let actorName = "System";
-      let actorRole: "ADMIN" | "STAFF" | "SUPERADMIN" | "SYSTEM" = row.actor_role;
+      let actorRole: "ADMIN" | "STAFF" | "SUPERADMIN" | "SYSTEM" | "CUSTOMER" = row.actor_role;
 
       if (row.actor_user_id) {
         const profile = this.staffProfiles.get(row.actor_user_id);
@@ -168,6 +168,8 @@ export class ActivityLogMemoryRepository implements ActivityLogRepository {
         } else {
           actorName = row.actor_role ? `${row.actor_role} User` : "Staff Member";
         }
+      } else if (row.actor_role === "CUSTOMER") {
+        actorName = "Customer";
       } else if (row.actor_role === "SYSTEM") {
         actorName = "System";
       }

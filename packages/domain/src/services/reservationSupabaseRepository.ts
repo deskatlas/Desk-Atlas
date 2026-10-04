@@ -1835,7 +1835,7 @@ export class ReservationSupabaseRepository
 
   async listOperationalActivity(limit: number): Promise<OperationalActivityRecord[]> {
     const rows = await this.request<any[]>(
-      `/audit_logs?select=*&action=in.(reservation_checked_in,reservation_checked_out,reservation_reentered)&order=created_at.desc&limit=${limit}`
+      `/audit_logs?select=*&action=in.(reservation_checked_in,reservation_checked_out,reservation_reentered,reservation_rescheduled)&order=created_at.desc&limit=${limit}`
     );
 
     const actorUserIds = Array.from(
@@ -1875,7 +1875,7 @@ export class ReservationSupabaseRepository
         const resolvedActorName =
           row.metadata?.actor_name ||
           (row.actor_user_id ? profileMap.get(row.actor_user_id) : undefined) ||
-          (row.actor_role === "ADMIN" ? "Admin" : row.actor_role === "STAFF" ? "Staff" : null);
+          (row.actor_role === "ADMIN" ? "Admin" : row.actor_role === "STAFF" ? "Staff" : row.actor_role === "CUSTOMER" ? "Customer" : null);
 
         return {
           reservationId: summary.reservationId,
@@ -1884,11 +1884,13 @@ export class ReservationSupabaseRepository
           workspaceDisplayName: summary.workspaceDisplayName,
           workspaceInstanceCode: summary.workspaceInstanceCode,
           activityType:
-            row.action === "reservation_checked_out"
-              ? "CHECK_OUT"
-              : (row.action === "reservation_reentered" || row.metadata?.reentry === true || row.metadata?.event_type === "RE_ENTRY")
-                ? "REENTRY"
-                : "CHECK_IN",
+            row.action === "reservation_rescheduled"
+              ? "RESCHEDULED"
+              : row.action === "reservation_checked_out"
+                ? "CHECK_OUT"
+                : (row.action === "reservation_reentered" || row.metadata?.reentry === true || row.metadata?.event_type === "RE_ENTRY")
+                  ? "REENTRY"
+                  : "CHECK_IN",
           occurredAt: row.created_at,
           actorUserId: row.actor_user_id,
           actorRole: row.actor_role,

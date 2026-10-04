@@ -288,14 +288,14 @@ export function ScannerPage() {
   const getStatusLabel = (accessState: string) => {
     switch (accessState) {
       case 'ACTIVE':
-        return 'ACTIVE BOOKING';
+        return 'Active Booking';
       case 'NOT_ACTIVE':
-        return 'TOO EARLY / NOT ACTIVE';
+        return 'Too Early (Not Active)';
       case 'EXPIRED':
-        return 'EXPIRED';
+        return 'Expired';
       case 'INVALID':
       default:
-        return 'INVALID / UNCONFIRMED';
+        return 'Invalid / Unconfirmed';
     }
   };
 

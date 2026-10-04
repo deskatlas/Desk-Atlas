@@ -195,24 +195,33 @@ function buildStaffActivityStream(
       const eventKey = `${event.reservationId}-${event.activityType}-${event.occurredAt}`;
       if (!seenEvents.has(eventKey)) {
         seenEvents.add(eventKey);
+        const isReschedule = event.activityType === "RESCHEDULED";
         const isReentry = event.activityType === "REENTRY";
-        const isCheckIn = event.activityType === "CHECK_IN";
+        const isCheckIn = event.activityType === "CHECK_IN" || isReentry;
         const actorDisplay =
           event.actorName ||
-          (event.actorRole === "ADMIN" ? "Admin" : event.actorRole === "STAFF" ? "Staff" : null);
+          (event.actorRole === "ADMIN"
+            ? "Admin"
+            : event.actorRole === "STAFF"
+              ? "Staff"
+              : event.actorRole === "CUSTOMER"
+                ? "Customer"
+                : null);
         items.push({
           id: eventKey,
           time: formatTimeInTimezone(event.occurredAt, timezone),
           initials: getInitials(event.customerName),
           name: event.customerName,
           workspace: event.workspaceDisplayName ?? event.workspaceInstanceCode ?? "Workspace",
-          mark: isReentry ? "↺" : (isCheckIn ? "✓" : "→"),
-          status: isReentry ? "Re-entered" : (isCheckIn ? "Checked In" : "Checked Out"),
-          style: isReentry
-            ? { background: "#E0F2FE", color: "#0369A1" }
-            : isCheckIn
-              ? { background: "var(--da-info)", color: "var(--da-brand-dark)" }
-              : { background: "var(--da-canvas)", color: "var(--da-text-secondary)" },
+          mark: isReschedule ? "↺" : isReentry ? "↺" : isCheckIn ? "✓" : "→",
+          status: isReschedule ? "Rescheduled" : isReentry ? "Re-entered" : isCheckIn ? "Checked In" : "Checked Out",
+          style: isReschedule
+            ? { background: "#EBF5FF", color: "#1E40AF" }
+            : isReentry
+              ? { background: "#E0F2FE", color: "#0369A1" }
+              : isCheckIn
+                ? { background: "var(--da-info)", color: "var(--da-brand-dark)" }
+                : { background: "var(--da-canvas)", color: "var(--da-text-secondary)" },
           occurredAt: event.occurredAt,
           actorUserId: event.actorUserId ?? null,
           actorRole: event.actorRole ?? null,
@@ -266,6 +275,31 @@ function buildStaffActivityStream(
           status: "Counter Queue",
           style: { background: "var(--da-soft)", color: "var(--da-brand-dark)" },
           occurredAt: reservation.createdAt,
+        });
+      }
+    }
+
+    // Rescheduled fallback
+    const rescheduleTime = reservation.rescheduledAt || reservation.updatedAt;
+    if (
+      reservation.rescheduleCount &&
+      reservation.rescheduleCount > 0 &&
+      rescheduleTime &&
+      isWithinRange(rescheduleTime, start, end)
+    ) {
+      const eventKey = `${reservation.reservationId}-rescheduled-${rescheduleTime}`;
+      if (!seenEvents.has(eventKey)) {
+        seenEvents.add(eventKey);
+        items.push({
+          id: eventKey,
+          time: formatTimeInTimezone(rescheduleTime, timezone),
+          initials,
+          name: fullName,
+          workspace: workspaceName,
+          mark: "↺",
+          status: "Rescheduled",
+          style: { background: "#EBF5FF", color: "#1E40AF" },
+          occurredAt: rescheduleTime,
         });
       }
     }

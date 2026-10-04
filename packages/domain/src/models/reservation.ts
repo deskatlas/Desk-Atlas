@@ -368,7 +368,7 @@ export interface OccupancyRecord extends StaffOperationalReservation {
   occupancyState: OccupancyState;
 }
 
-export type OperationalActivityType = "CHECK_IN" | "REENTRY" | "CHECK_OUT";
+export type OperationalActivityType = "CHECK_IN" | "REENTRY" | "CHECK_OUT" | "RESCHEDULED";
 
 export interface OperationalActivityRecord {
   reservationId: string;
@@ -379,7 +379,7 @@ export interface OperationalActivityRecord {
   activityType: OperationalActivityType;
   occurredAt: string;
   actorUserId: string | null;
-  actorRole: "ADMIN" | "STAFF" | "SYSTEM";
+  actorRole: "ADMIN" | "STAFF" | "SYSTEM" | "CUSTOMER";
   actorName?: string | null;
 }
 

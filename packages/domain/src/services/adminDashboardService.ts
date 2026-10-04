@@ -399,7 +399,8 @@ function countRescheduledBookings(
   // Check audit activity for reschedule events in the window
   const rescheduleAuditCount = auditActivity.filter(
     (a) =>
-      ((a.activityType as string) === "RESERVATION_RESCHEDULED" ||
+      (a.activityType === "RESCHEDULED" ||
+        (a.activityType as string) === "RESERVATION_RESCHEDULED" ||
         (a as unknown as { action?: string }).action === "RESERVATION_RESCHEDULED" ||
         (a as unknown as { action?: string }).action === "reservation_rescheduled" ||
         (a.activityType as string)?.toLowerCase().includes("reschedule") ||
@@ -431,7 +432,7 @@ function buildActivityStream(
   const seenEvents = new Set<string>();
   const recordedCheckInsByReservation = new Map<string, number[]>();
 
-  // 1. Audit log activities (Check-ins, Check-outs)
+  // 1. Audit log activities (Check-ins, Check-outs, Re-entries, and Reschedules)
   for (const event of auditActivity) {
     if (isWithinRange(event.occurredAt, start, end)) {
       const eventTime = new Date(event.occurredAt).getTime();
@@ -447,27 +448,38 @@ function buildActivityStream(
       const eventKey = `${event.reservationId}-${event.activityType}-${event.occurredAt}`;
       if (!seenEvents.has(eventKey)) {
         seenEvents.add(eventKey);
+        const isReschedule = event.activityType === "RESCHEDULED";
         const isReentry = event.activityType === "REENTRY";
         const isCheckIn = event.activityType === "CHECK_IN" || isReentry;
+        const actorDisplay =
+          event.actorName ||
+          (event.actorRole === "ADMIN"
+            ? "Admin"
+            : event.actorRole === "STAFF"
+              ? "Staff"
+              : event.actorRole === "CUSTOMER"
+                ? "Customer"
+                : null);
+
         items.push({
           id: eventKey,
           time: formatTimeInTimezone(event.occurredAt, timezone),
           initials: getInitials(event.customerName),
           name: event.customerName,
           workspace: event.workspaceDisplayName ?? event.workspaceInstanceCode ?? "Workspace",
-          mark: isReentry ? "↺" : (isCheckIn ? "✓" : "→"),
-          status: isReentry ? "Re-entered" : (isCheckIn ? "Checked In" : "Checked Out"),
-          style: isReentry
-            ? { background: "#E0F2FE", color: "#0369A1" }
-            : isCheckIn
-              ? { background: "var(--da-info)", color: "var(--da-brand-dark)" }
-              : { background: "var(--da-canvas)", color: "var(--da-text-secondary)" },
+          mark: isReschedule ? "↺" : isReentry ? "↺" : isCheckIn ? "✓" : "→",
+          status: isReschedule ? "Rescheduled" : isReentry ? "Re-entered" : isCheckIn ? "Checked In" : "Checked Out",
+          style: isReschedule
+            ? { background: "#EBF5FF", color: "#1E40AF" }
+            : isReentry
+              ? { background: "#E0F2FE", color: "#0369A1" }
+              : isCheckIn
+                ? { background: "var(--da-info)", color: "var(--da-brand-dark)" }
+                : { background: "var(--da-canvas)", color: "var(--da-text-secondary)" },
           occurredAt: event.occurredAt,
           actorUserId: event.actorUserId ?? null,
           actorRole: event.actorRole ?? null,
-          actorName:
-            event.actorName ||
-            (event.actorRole === "ADMIN" ? "Admin" : event.actorRole === "STAFF" ? "Staff" : null),
+          actorName: actorDisplay,
         });
       }
     }
@@ -572,6 +584,31 @@ function buildActivityStream(
           status: "Cancelled",
           style: { background: "#FFF1F2", color: "var(--da-brand-dark)" },
           occurredAt: reservation.createdAt,
+        });
+      }
+    }
+
+    // Rescheduled fallback
+    const rescheduleTime = reservation.rescheduledAt || reservation.updatedAt;
+    if (
+      reservation.rescheduleCount &&
+      reservation.rescheduleCount > 0 &&
+      rescheduleTime &&
+      isWithinRange(rescheduleTime, start, end)
+    ) {
+      const eventKey = `${reservation.reservationId}-rescheduled-${rescheduleTime}`;
+      if (!seenEvents.has(eventKey)) {
+        seenEvents.add(eventKey);
+        items.push({
+          id: eventKey,
+          time: formatTimeInTimezone(rescheduleTime, timezone),
+          initials,
+          name: fullName,
+          workspace: workspaceName,
+          mark: "↺",
+          status: "Rescheduled",
+          style: { background: "#EBF5FF", color: "#1E40AF" },
+          occurredAt: rescheduleTime,
         });
       }
     }

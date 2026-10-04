@@ -155,12 +155,13 @@ input[type="submit"]:disabled {
 .da-secondary-button:not(:disabled):hover {
   background-color: #f8fafc;
   border-color: #cbd5e1;
-  color: #0284c7;
+  color: var(--da-brand-dark, #0f172a);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
 }
 .da-secondary-button:not(:disabled):active {
   background-color: #f1f5f9;
+  color: var(--da-brand-dark, #0f172a);
   transform: translateY(0px) scale(0.98);
 }
 

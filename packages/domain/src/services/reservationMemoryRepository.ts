@@ -2084,12 +2084,28 @@ export class ReservationMemoryRepository
     }
 
     r.updatedAt = nowIso;
+    r.rescheduleCount = isClosureWaiver ? currentRescheduleCount : currentRescheduleCount + 1;
     (r as any).rescheduledAt = nowIso;
     (r as any).rescheduledByRole = input.actorRole ?? "ADMIN";
-    (r as any).rescheduleCount = isClosureWaiver ? currentRescheduleCount : currentRescheduleCount + 1;
+    (r as any).rescheduleCount = r.rescheduleCount;
     if (r.isClosureImpacted) {
       r.closureImpactStatus = isCustomerActor ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED";
     }
+
+    const summary = this.buildOperationalReservation(r);
+    const activityEvent: OperationalActivityRecord = {
+      reservationId: r.id,
+      referenceCode: r.referenceCode,
+      customerName: `${r.customerFirstName} ${r.customerLastName}`.trim(),
+      workspaceDisplayName: summary.workspaceDisplayName ?? assigned?.workspaceDisplayName ?? "Workspace",
+      workspaceInstanceCode: summary.workspaceInstanceCode ?? assigned?.workspaceInstanceId ?? null,
+      activityType: "RESCHEDULED",
+      occurredAt: nowIso,
+      actorUserId: input.actorUserId ?? null,
+      actorRole: isCustomerActor ? "CUSTOMER" : ((input.actorRole as "ADMIN" | "STAFF" | "SYSTEM") ?? "ADMIN"),
+      actorName: isCustomerActor ? "Customer" : (input.actorRole === "STAFF" ? "Staff" : "Admin"),
+    };
+    this.operationalAuditEvents.unshift(activityEvent);
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {

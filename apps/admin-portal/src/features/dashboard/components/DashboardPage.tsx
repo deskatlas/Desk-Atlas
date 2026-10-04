@@ -127,7 +127,7 @@ export function DashboardPage() {
   };
 
   const pendingPaymentsMetric = data?.metrics.pendingPayments ?? {
-    label: "Pending Payments",
+    label: "Pending Reviews",
     value: 0,
     formattedValue: "0",
     changeText: "0%",

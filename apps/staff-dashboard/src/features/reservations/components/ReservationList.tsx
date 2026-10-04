@@ -58,10 +58,10 @@ export function ReservationList() {
     tabParam === 'operations'
       ? 'operations'
       : tabParam === 'completed'
-      ? 'completed'
-      : tabParam === 'expired'
-      ? 'expired'
-      : 'reservations';
+        ? 'completed'
+        : tabParam === 'expired'
+          ? 'expired'
+          : 'reservations';
 
   const [activeTab, setActiveTab] = useState<ReservationTabType>(initialTab);
   const [reservationsSubFilter, setReservationsSubFilter] = useState<StaffReservationsSubFilter>('all');
@@ -91,10 +91,10 @@ export function ReservationList() {
         newTab === 'operations'
           ? '/manage/reservations?tab=operations'
           : newTab === 'completed'
-          ? '/manage/reservations?tab=completed'
-          : newTab === 'expired'
-          ? '/manage/reservations?tab=expired'
-          : '/manage/reservations?tab=reservations';
+            ? '/manage/reservations?tab=completed'
+            : newTab === 'expired'
+              ? '/manage/reservations?tab=expired'
+              : '/manage/reservations?tab=reservations';
       router.replace(url);
     });
   };
@@ -104,10 +104,10 @@ export function ReservationList() {
     activeTab === 'reservations'
       ? reservationsSubFilter
       : activeTab === 'operations'
-      ? operationsSubFilter
-      : activeTab === 'completed'
-      ? 'all'
-      : expiredSubFilter;
+        ? operationsSubFilter
+        : activeTab === 'completed'
+          ? 'all'
+          : expiredSubFilter;
 
   const tabFiltered = filterStaffReservationsByTab(reservations, activeTab, currentSubFilter, currentTick);
   const searchFiltered = filterReservationsBySearch(tabFiltered, searchQuery);
@@ -170,7 +170,7 @@ export function ReservationList() {
       <div style={{ marginBottom: '20px' }}>
         <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Reservations</h1>
         <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: "'Inter', sans-serif" }}>
-          Today's operational, booking management, completed, and expired records
+          All bookings, operations, management, completed, and expired records
         </div>
       </div>
 
@@ -365,32 +365,32 @@ export function ReservationList() {
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {activeTab === 'reservations'
               ? STAFF_RESERVATIONS_TAB_FILTERS.map((f, i) => {
-                  const isActive = reservationsSubFilter === f.filter;
-                  const filterStyle = isActive
-                    ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
-                    : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setReservationsSubFilter(f.filter)}
-                      style={{
-                        padding: '7px 14px',
-                        borderRadius: '9999px',
-                        whiteSpace: 'nowrap',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
-                        ...filterStyle,
-                      }}
-                    >
-                      {f.label}
-                    </button>
-                  );
-                })
+                const isActive = reservationsSubFilter === f.filter;
+                const filterStyle = isActive
+                  ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
+                  : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setReservationsSubFilter(f.filter)}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '9999px',
+                      whiteSpace: 'nowrap',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
+                      ...filterStyle,
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })
               : activeTab === 'operations'
-              ? STAFF_OPERATIONS_TAB_FILTERS.map((f, i) => {
+                ? STAFF_OPERATIONS_TAB_FILTERS.map((f, i) => {
                   const isActive = operationsSubFilter === f.filter;
                   const filterStyle = isActive
                     ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
@@ -415,33 +415,33 @@ export function ReservationList() {
                     </button>
                   );
                 })
-              : activeTab === 'completed'
-              ? null
-              : STAFF_EXPIRED_TAB_FILTERS.map((f, i) => {
-                  const isActive = expiredSubFilter === f.filter;
-                  const filterStyle = isActive
-                    ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
-                    : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setExpiredSubFilter(f.filter)}
-                      style={{
-                        padding: '7px 14px',
-                        borderRadius: '9999px',
-                        whiteSpace: 'nowrap',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
-                        ...filterStyle,
-                      }}
-                    >
-                      {f.label}
-                    </button>
-                  );
-                })}
+                : activeTab === 'completed'
+                  ? null
+                  : STAFF_EXPIRED_TAB_FILTERS.map((f, i) => {
+                    const isActive = expiredSubFilter === f.filter;
+                    const filterStyle = isActive
+                      ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
+                      : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setExpiredSubFilter(f.filter)}
+                        style={{
+                          padding: '7px 14px',
+                          borderRadius: '9999px',
+                          whiteSpace: 'nowrap',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: "var(--da-font-family, 'Inter', sans-serif)",
+                          ...filterStyle,
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    );
+                  })}
           </div>
         </div>
 
@@ -480,8 +480,8 @@ export function ReservationList() {
                 const statusDisp = getStatusDisplay(res.reservationStatus);
                 const isCheckedInOrActive =
                   (res.reservationStatus === 'CHECKED_IN' ||
-                   res.checkInState === 'CHECKED_IN' ||
-                   res.reservationStatus === 'CONFIRMED') &&
+                    res.checkInState === 'CHECKED_IN' ||
+                    res.reservationStatus === 'CONFIRMED') &&
                   res.checkInState !== 'CHECKED_OUT';
 
                 return (

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { extractBookingToken, type BookingScanResult } from "@deskatlas/domain";
+import { extractBookingToken, formatBookingAccessState, formatBookingCheckInState, type BookingScanResult } from "@deskatlas/domain";
 
 interface KioskScannerProps {
   onCancel: () => void;
@@ -243,13 +243,13 @@ export function KioskScanner({ onCancel, onSwitchToReference }: KioskScannerProp
               <div style={{ background: "#F8FAFC", padding: "12px 16px", borderRadius: "12px" }}>
                 <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 600, textTransform: "uppercase" }}>Access State</div>
                 <div style={{ fontSize: "16px", fontWeight: 700, color: bookingData.accessState === "ACTIVE" ? "#16A34A" : "#D97706", marginTop: "2px" }}>
-                  {bookingData.accessState}
+                  {formatBookingAccessState(bookingData.accessState)}
                 </div>
               </div>
               <div style={{ background: "#F8FAFC", padding: "12px 16px", borderRadius: "12px" }}>
                 <div style={{ fontSize: "12px", color: "#64748B", fontWeight: 600, textTransform: "uppercase" }}>Check-In</div>
                 <div style={{ fontSize: "16px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}>
-                  {bookingData.checkInState || "CONFIRMED"}
+                  {formatBookingCheckInState(bookingData.checkInState)}
                 </div>
               </div>
             </div>

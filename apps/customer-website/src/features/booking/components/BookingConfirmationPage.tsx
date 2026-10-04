@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatBookingAccessState, formatBookingCheckInState } from "@deskatlas/domain";
 import { useBookingAccess } from "../hooks/useBookingAccess";
 
 export function BookingConfirmationPage({ token }: { token: string }) {
@@ -46,8 +47,8 @@ export function BookingConfirmationPage({ token }: { token: string }) {
               <Card label="Guest" value={data.customerName} />
               <Card label="Workspace" value={data.workspaceDisplayName} />
               <Card label="Floor" value={data.floorName} />
-              <Card label="Access state" value={data.accessState} />
-              <Card label="Check-in state" value={data.checkInState} />
+              <Card label="Access state" value={formatBookingAccessState(data.accessState)} />
+              <Card label="Check-in state" value={formatBookingCheckInState(data.checkInState)} />
             </div>
 
             <div className="mt-6 rounded-[24px] bg-[var(--da-canvas)] p-6">

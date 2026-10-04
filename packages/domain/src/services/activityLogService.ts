@@ -2,7 +2,7 @@ export interface ActivityLogEntry {
   id: string;
   actorId: string | null;
   actorName: string;
-  actorRole: 'ADMIN' | 'STAFF' | 'SUPERADMIN' | 'SYSTEM';
+  actorRole: 'ADMIN' | 'STAFF' | 'SUPERADMIN' | 'SYSTEM' | 'CUSTOMER';
   action: string;
   actionLabel: string;
   entityType: string;
