@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { PublicLandingPreviewPhoto } from "@deskatlas/domain";
+import { PrivacyNoticeLink } from "@/app/components/privacy";
 
 const steps = [
   "Browse the published workspace map",
@@ -183,6 +184,12 @@ export function LandingPage() {
           ))}
         </div>
       </section>
+
+      <footer className="border-t border-[var(--da-border)] bg-white">
+        <div className="mx-auto flex max-w-6xl justify-end px-6 py-6 text-sm">
+          <PrivacyNoticeLink />
+        </div>
+      </footer>
     </main>
   );
 }
