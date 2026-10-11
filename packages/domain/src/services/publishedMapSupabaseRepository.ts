@@ -15,6 +15,14 @@ import type {
 } from '../models/publishedMap';
 import { normalizeAmenityTag } from '../models/amenities';
 import { getWorkspaceAvailabilityStatus } from './workspaceService';
+import {
+  type CacheInvalidationRegistry,
+  getProjectReferenceCaches,
+  ensureReferenceDataRealtimeInvalidation,
+  normalizeSupabaseProjectUrl,
+  QueryCache,
+  loadReferenceData,
+} from './referenceDataCache';
 
 type FloorRow = {
   id: string;
@@ -85,8 +93,15 @@ type PublishedElementRow = {
 export class SupabasePublishedMapRepository implements PublishedMapRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
+  private readonly projectUrl: string;
+  private readonly cache: QueryCache<PublishedFloorMap | null>;
 
-  constructor(options?: { supabaseUrl?: string; serviceRoleKey?: string }) {
+  constructor(options?: {
+    supabaseUrl?: string;
+    serviceRoleKey?: string;
+    cache?: QueryCache<PublishedFloorMap | null>;
+    invalidationRegistry?: CacheInvalidationRegistry;
+  }) {
     const supabaseUrl =
       options?.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = options?.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -99,8 +114,16 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for published map routes');
     }
 
-    this.restUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+    this.projectUrl = normalizeSupabaseProjectUrl(supabaseUrl);
+    this.restUrl = `${this.projectUrl}/rest/v1`;
     this.serviceRoleKey = serviceRoleKey;
+    const projectCaches = getProjectReferenceCaches(this.projectUrl);
+    this.cache = options?.cache ?? (projectCaches.publishedMaps as QueryCache<PublishedFloorMap | null>);
+    const registry = options?.invalidationRegistry ?? projectCaches.invalidationRegistry;
+    ensureReferenceDataRealtimeInvalidation(this.projectUrl, this.serviceRoleKey, registry);
+    for (const table of ['map_versions', 'workspace_instances', 'floors', 'workspace_templates'] as const) {
+      registry.registerCache(table, this.cache, `${this.projectUrl}:published-map:`);
+    }
   }
 
   async listPublishedFloors(): Promise<Floor[]> {
@@ -127,20 +150,27 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
     const isStaffOrAdmin = options?.audience === 'STAFF' || options?.audience === 'ADMIN';
 
     // Phase 2: Instant pre-materialized compiled_map_cache point lookup (< 15ms)
-    const [cachedRow] = await this.request<Array<{ compiled_map_cache: PublishedFloorMap | null }>>(
-      `/map_versions?select=compiled_map_cache&floor_id=eq.${encodeURIComponent(
-        floorId
-      )}&status=eq.PUBLISHED&order=version_number.desc&limit=1`
+    const compiled = await loadReferenceData(
+      this.cache,
+      `${this.projectUrl}:published-map:${floorId}`,
+      async () => {
+        const [cachedRow] = await this.request<Array<{ compiled_map_cache: PublishedFloorMap | null }>>(
+          `/map_versions?select=compiled_map_cache&floor_id=eq.${encodeURIComponent(
+            floorId
+          )}&status=eq.PUBLISHED&order=version_number.desc&limit=1`
+        );
+        return cachedRow?.compiled_map_cache ?? null;
+      }
     );
 
-    if (cachedRow?.compiled_map_cache) {
-      const compiled = cachedRow.compiled_map_cache;
-      await this.hydrateWorkspaceTemplates(compiled.elements);
-      await this.hydrateWorkspaceOperationalStatuses(compiled.elements);
+    if (compiled) {
+      const hydrated = structuredClone(compiled);
+      await this.hydrateWorkspaceTemplates(hydrated.elements);
+      await this.hydrateWorkspaceOperationalStatuses(hydrated.elements);
       if (!isStaffOrAdmin) {
         return {
-          ...compiled,
-          elements: compiled.elements.filter((row) => {
+          ...hydrated,
+          elements: hydrated.elements.filter((row) => {
             if (row.elementRole === 'WORKSPACE' && row.workspace?.operationalStatus === 'INACTIVE') {
               return false;
             }
@@ -148,7 +178,7 @@ export class SupabasePublishedMapRepository implements PublishedMapRepository {
           }),
         };
       }
-      return compiled;
+      return hydrated;
     }
 
     // Graceful fallback for legacy records prior to pre-materialization

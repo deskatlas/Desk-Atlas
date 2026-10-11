@@ -840,6 +840,9 @@ importers:
 
   packages/domain:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.112.4
+        version: 2.112.4
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0

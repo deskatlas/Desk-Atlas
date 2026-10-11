@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, it } from "vitest";
 import {
   SupabasePublishedMapRepository,
+  getProjectReferenceCaches,
   createPublishedMapService,
   buildReservationTrackingUrl,
   renderClosureManualResolutionEmail,
@@ -25,6 +26,7 @@ describe("MS-25: 4-Map Deployed Propagation Parity, Canvas Modal Dismissal, and 
   const originalCustomerUrl = process.env.NEXT_PUBLIC_CUSTOMER_URL;
 
   function setupEnv() {
+    getProjectReferenceCaches('https://mock.supabase.co').publishedMaps.invalidateAll();
     process.env.SUPABASE_URL = "https://mock.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "mock-service-role-key";
   }

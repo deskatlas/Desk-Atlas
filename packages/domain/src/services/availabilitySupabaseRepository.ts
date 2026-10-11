@@ -11,6 +11,16 @@ import type {
   WorkspaceOperationalStatus,
   WorkspaceTemplate,
 } from '../models/workspace';
+import {
+  type CacheInvalidationRegistry,
+  getProjectReferenceCaches,
+  ensureReferenceDataRealtimeInvalidation,
+  normalizeSupabaseProjectUrl,
+  QueryCache,
+  loadReferenceData,
+} from './referenceDataCache';
+
+type AvailabilityReferenceValue = BusinessAvailabilitySettings | OperatingHoursInterval[];
 
 type BusinessSettingsRow = {
   timezone: string;
@@ -82,8 +92,15 @@ type BlockingReservationRow = {
 export class SupabaseAvailabilityRepository implements AvailabilityRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
+  private readonly projectUrl: string;
+  private readonly cache: QueryCache<AvailabilityReferenceValue>;
 
-  constructor(options?: { supabaseUrl?: string; serviceRoleKey?: string }) {
+  constructor(options?: {
+    supabaseUrl?: string;
+    serviceRoleKey?: string;
+    cache?: QueryCache<AvailabilityReferenceValue>;
+    invalidationRegistry?: CacheInvalidationRegistry;
+  }) {
     const supabaseUrl =
       options?.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = options?.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -96,8 +113,15 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for availability routes');
     }
 
-    this.restUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+    this.projectUrl = normalizeSupabaseProjectUrl(supabaseUrl);
+    this.restUrl = `${this.projectUrl}/rest/v1`;
     this.serviceRoleKey = serviceRoleKey;
+    const projectCaches = getProjectReferenceCaches(this.projectUrl);
+    this.cache = options?.cache ?? (projectCaches.referenceData as QueryCache<AvailabilityReferenceValue>);
+    const registry = options?.invalidationRegistry ?? projectCaches.invalidationRegistry;
+    ensureReferenceDataRealtimeInvalidation(this.projectUrl, this.serviceRoleKey, registry);
+    registry.registerCache('business_settings', this.cache, this.cacheKey('availability-business-settings'));
+    registry.registerCache('operating_hours', this.cache, this.cacheKey('operating-hours:'));
   }
 
   async getWorkspaceInstance(instanceId: string): Promise<WorkspaceInstanceDetails | null> {
@@ -145,6 +169,10 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
   }
 
   async getBusinessSettings(): Promise<BusinessAvailabilitySettings> {
+    return loadReferenceData(this.cache, this.cacheKey('availability-business-settings'), () => this.loadBusinessSettings());
+  }
+
+  private async loadBusinessSettings(): Promise<BusinessAvailabilitySettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
       '/business_settings?select=timezone,booking_interval_minutes,max_advance_booking_days&id=eq.1&limit=1'
     ).catch(async () => {
@@ -169,6 +197,10 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
   }
 
   async listOperatingHours(dayOfWeek: number): Promise<OperatingHoursInterval[]> {
+    return loadReferenceData(this.cache, this.cacheKey(`operating-hours:${dayOfWeek}`), () => this.loadOperatingHours(dayOfWeek));
+  }
+
+  private async loadOperatingHours(dayOfWeek: number): Promise<OperatingHoursInterval[]> {
     const rows = await this.request<OperatingHoursRow[]>(
       `/operating_hours?select=id,day_of_week,opens_at,closes_at,is_active&day_of_week=eq.${dayOfWeek}&is_active=eq.true&order=opens_at.asc`
     );
@@ -329,6 +361,10 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
 
     const text = await response.text();
     return text ? (JSON.parse(text) as T) : (undefined as T);
+  }
+
+  private cacheKey(category: string): string {
+    return `${this.projectUrl}:${category}`;
   }
 }
 

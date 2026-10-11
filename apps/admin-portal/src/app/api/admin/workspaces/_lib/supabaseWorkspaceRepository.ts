@@ -13,8 +13,20 @@ import type {
   WorkspaceOperationalStatus,
   WorkspaceRepository,
   WorkspaceTemplate,
+  QueryCache,
+  CacheInvalidationRegistry,
 } from '@deskatlas/domain';
-import { WorkspaceConflictError, WorkspaceValidationError, sortWorkspaceInstances } from '@deskatlas/domain';
+import {
+  WorkspaceConflictError,
+  WorkspaceValidationError,
+  getProjectReferenceCaches,
+  loadReferenceData,
+  ensureReferenceDataRealtimeInvalidation,
+  normalizeSupabaseProjectUrl,
+  sortWorkspaceInstances,
+} from '@deskatlas/domain';
+
+type WorkspaceReferenceValue = WorkspaceTemplate[] | Floor[];
 
 type TemplateRow = {
   id: string;
@@ -77,10 +89,18 @@ type FutureReservationRow = {
 export class SupabaseWorkspaceRepository implements WorkspaceRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
+  private readonly projectUrl: string;
+  private readonly cache: QueryCache<WorkspaceReferenceValue>;
+  private readonly invalidationRegistry: CacheInvalidationRegistry;
 
-  constructor() {
-    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  constructor(options?: {
+    supabaseUrl?: string;
+    serviceRoleKey?: string;
+    cache?: QueryCache<WorkspaceReferenceValue>;
+    invalidationRegistry?: CacheInvalidationRegistry;
+  }) {
+    const supabaseUrl = options?.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = options?.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl) {
       throw new Error('SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is required for M01 workspace routes');
@@ -90,24 +110,45 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for controlled pre-auth Admin workspace routes');
     }
 
-    this.restUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+    this.projectUrl = normalizeSupabaseProjectUrl(supabaseUrl);
+    this.restUrl = `${this.projectUrl}/rest/v1`;
     this.serviceRoleKey = serviceRoleKey;
+    const projectCaches = getProjectReferenceCaches(this.projectUrl);
+    this.cache = options?.cache ?? (projectCaches.referenceData as QueryCache<WorkspaceReferenceValue>);
+    this.invalidationRegistry = options?.invalidationRegistry ?? projectCaches.invalidationRegistry;
+    ensureReferenceDataRealtimeInvalidation(this.projectUrl, this.serviceRoleKey, this.invalidationRegistry);
+    this.invalidationRegistry.registerCache('workspace_templates', this.cache, this.cacheKey('templates'));
+    this.invalidationRegistry.registerCache('floors', this.cache, this.cacheKey('floors'));
   }
 
   async listCatalog(): Promise<WorkspaceCatalog> {
     const [templates, floors, instances] = await Promise.all([
-      this.request<TemplateRow[]>('/workspace_templates?select=*&order=name.asc'),
-      this.request<FloorRow[]>('/floors?select=*&is_active=eq.true&order=display_order.asc'),
+      this.listTemplates(),
+      this.listActiveFloors(),
       this.request<InstanceRow[]>(
         '/workspace_instances?select=*,template:workspace_templates(*),floor:floors(*)&order=instance_code.asc'
       ),
     ]);
 
     return {
-      templates: templates.map(mapTemplate),
-      floors: floors.map(mapFloor),
+      templates,
+      floors,
       instances: sortWorkspaceInstances(instances.map(mapInstanceDetails)),
     };
+  }
+
+  async listTemplates(): Promise<WorkspaceTemplate[]> {
+    return loadReferenceData(this.cache, this.cacheKey('templates'), async () => {
+      const rows = await this.request<TemplateRow[]>('/workspace_templates?select=*&order=name.asc');
+      return rows.map(mapTemplate);
+    });
+  }
+
+  async listActiveFloors(): Promise<Floor[]> {
+    return loadReferenceData(this.cache, this.cacheKey('floors'), async () => {
+      const rows = await this.request<FloorRow[]>('/floors?select=*&is_active=eq.true&order=display_order.asc');
+      return rows.map(mapFloor);
+    });
   }
 
   async getInstance(id: string): Promise<WorkspaceInstanceDetails> {
@@ -562,9 +603,23 @@ export class SupabaseWorkspaceRepository implements WorkspaceRepository {
       throw new Error(`Supabase workspace request failed (${response.status}): ${detail}`);
     }
 
+
+    this.invalidateAfterMutation(path, options.method);
+
     if (response.status === 204) return undefined as T;
     const text = await response.text();
     return text ? (JSON.parse(text) as T) : (undefined as T);
+  }
+
+  private cacheKey(category: string): string {
+    return `${this.projectUrl}:workspace:${category}`;
+  }
+
+  private invalidateAfterMutation(path: string, method?: string): void {
+    if (!method || method === 'GET') return;
+    if (path.startsWith('/workspace_templates')) this.invalidationRegistry.invalidate('workspace_templates');
+    if (path.startsWith('/floors')) this.invalidationRegistry.invalidate('floors');
+    if (path.startsWith('/workspace_instances')) this.invalidationRegistry.invalidate('workspace_instances');
   }
 }
 

@@ -8,7 +8,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 
-# Initial Administrator Bootstrap (used by `pnpm bootstrap:admin` / `pnpm seed:admin`)
+# Initial Administrator Bootstrap (used by `pnpm bootstrap:admin`)
 ADMIN_EMAIL=admin@thedeskatlas.com
 ADMIN_PASSWORD=AdminPassword123!
 ADMIN_DISPLAY_NAME="Admin User"

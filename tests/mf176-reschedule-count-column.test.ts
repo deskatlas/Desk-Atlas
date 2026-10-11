@@ -14,7 +14,7 @@ import {
 describe('MF-176: Missing reschedule_count Column Causes Rescheduling Failure', () => {
   describe('Migration and Schema Verification', () => {
     it('should define reschedule_count column in the migration file', () => {
-      const migrationPath = path.resolve(process.cwd(), 'supabase/010_add_reschedule_count_to_reservations.sql');
+      const migrationPath = path.resolve(process.cwd(), 'supabase/archive/pre-consolidation/010_add_reschedule_count_to_reservations.sql');
       expect(fs.existsSync(migrationPath)).toBe(true);
 
       const content = fs.readFileSync(migrationPath, 'utf8');

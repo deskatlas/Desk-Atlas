@@ -1,0 +1,21 @@
+{
+  "000_reset_database.sql": "67a65d96d6875e3dee15443be05f8232e1f1bb616d0c06a2008e768749f5b9cd",
+  "001_schema.sql": "3dbd94e2a77bd5d14bff8d47a58c4df5bec0e50343da282c341ad8a3ce2e325c",
+  "002_functions.sql": "eeb5008c62d6837bf3b80ce5bf31c9ee3472c9071cde56a2dceca743d47021d7",
+  "003_storage.sql": "d1093b3da0e0b79fbfbb2e53a41a47dcde93c477102570468f07cdafc80b85bc",
+  "004_security_and_rls.sql": "de4d4ae1b0eafc8b5eb138c43861d32fb42843410150480a9278279ef50e0c6d",
+  "008_add_social_links_to_business_settings.sql": "9fc795e3950628faa42c58ce0197f2121253bd03638e754c0988537ca4390c9c",
+  "009_rename_moderate_tag_to_moderate_noise.sql": "5ebfc58f8c2892458e2be6b8261d58209e6e6aa183fac5a5bbc0c1dc9a81cd88",
+  "010_add_reschedule_count_to_reservations.sql": "fff8705334c228c12614c6d5dcbe0a6d89c2a598f66fc0b19e626aea64f9daa1",
+  "011_prevent_duplicate_instance_names.sql": "4fe9f3d87af27b680ca142b60a38c85a575d317dcfd4f389a35fafe50125c269",
+  "012_add_reschedule_max_advance_limit_to_business_settings.sql": "acfa918677b163ca3a588cae0fcd0f5eea19eeb1952b12b9b5448ce87fd5cfbc",
+  "013_enable_realtime_replication.sql": "628f5e7f91c701d1987d6738e231bc691200c5f88a075137ee3ba3f3c6737aad",
+  "014_optimize_map_publishing_and_caching.sql": "4ae3673bdc055f20a9bae086ec460f676f55fda8f521690f119151c3d36ae168",
+  "015_add_max_advance_booking_days_to_business_settings.sql": "c498c35ce41a58d1976e99eea341282c06ba8228a81f137749429ac0eb7ab4b6",
+  "016_add_closure_impact_to_reservations.sql": "74f3b33fff2d9d8b2f6147de8a98327d9bfb9277422204157968d5e03269a212",
+  "017_add_workspace_pass_tiers_and_windows.sql": "0e5d05c4de26320fb9fe2934b1093e511922e7734a1d471c3061c28251b6a4cd",
+  "017_create_promotional_rates_table.sql": "2188785c60cc16f86421db4c1e9b94c2c23b6b3568fa62da9e9aff8b22f12814",
+  "018_add_near_checkout_threshold_to_settings.sql": "cfee29741fb418201aeac59af4c83e36741510ec060dbccf73b0df50aec43316",
+  "019_fix_map_publish_foreign_key_and_overlaps.sql": "7bf65e44eef084f681f720ab837f3f8417cd1d2da5022f41e09b4eb7dbe2b208",
+  "020_relax_map_element_integrity_for_historical_detachment.sql": "809523193d0443c22388f77f5c8039e9c852844fb41a3b5ec10b92be33fea0ca"
+}

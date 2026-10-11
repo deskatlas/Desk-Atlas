@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ReservationMemoryRepository,
   createAdminReservationService,
@@ -21,6 +21,8 @@ describe("MS-09: Business Closure Reservation Collision Lifecycle & Resolution",
   const mockNow = new Date("2026-10-01T08:00:00.000Z");
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(mockNow);
     reservationRepo = new ReservationMemoryRepository(() => mockNow);
     settingsRepo = new InMemorySettingsRepository();
     const sentEmails: any[] = [];
@@ -49,6 +51,10 @@ describe("MS-09: Business Closure Reservation Collision Lifecycle & Resolution",
       reservationRepo,
       emailService
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("QAD-TC9.1 & QAD-TC9.2: previews colliding reservations when scheduling full-day closure", async () => {

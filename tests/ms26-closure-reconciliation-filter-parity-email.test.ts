@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ReservationMemoryRepository,
   createAdminReservationService,
@@ -21,6 +21,8 @@ describe("MS-26: Facility Closure Removal Conflict Reconciliation, Filter Parity
   const mockNow = new Date("2026-10-01T08:00:00.000Z");
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(mockNow);
     reservationRepo = new ReservationMemoryRepository(() => mockNow);
     settingsRepo = new InMemorySettingsRepository();
     emailService = createTransactionalEmailService({
@@ -44,6 +46,10 @@ describe("MS-26: Facility Closure Removal Conflict Reconciliation, Filter Parity
       reservationRepo,
       emailService
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("QAD-TC26-01: Add closure overlapping reservation, verify manual resolution flag is set", async () => {

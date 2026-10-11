@@ -201,6 +201,8 @@ export interface AdminWorkspaceSpace {
 
 export interface WorkspaceRepository {
   listCatalog(): Promise<WorkspaceCatalog>;
+  listTemplates?(): Promise<WorkspaceTemplate[]>;
+  listActiveFloors?(): Promise<Floor[]>;
   getInstance(id: string): Promise<WorkspaceInstanceDetails>;
   createFloor(input: CreateFloorInput): Promise<Floor>;
   deleteFloor(id: string): Promise<{ deleted: boolean; deactivated?: boolean; removedInstancesCount?: number }>;

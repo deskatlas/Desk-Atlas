@@ -175,7 +175,7 @@ describe("MF-66: Fix Early Checkout Ambiguous Column Reference", () => {
   });
 
   it("verifies assert_reservation_candidate_set permits duration deviation for finalized reservations", () => {
-    const filePath = path.resolve(__dirname, "../supabase/001_schema.sql");
+    const filePath = path.resolve(__dirname, "../supabase/002_functions.sql");
     assert.ok(fs.existsSync(filePath), `Expected ${filePath} to exist`);
     const content = fs.readFileSync(filePath, "utf-8");
     assert.ok(

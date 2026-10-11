@@ -1,3 +1,5 @@
+-- DEPRECATED: Absorbed into 021_consolidate_temp_hotfixes.sql.
+-- Historical record only. Do not execute this file in clean rebuilds.
 -- MF-148: Relax booking_interval_minutes lower bound from > 5 to >= 1
 ALTER TABLE business_settings
   DROP CONSTRAINT IF EXISTS business_settings_booking_interval_bound;
@@ -34,7 +36,7 @@ UPDATE reservations
 SET booked_rate_per_hour = rate_snapshot
 WHERE booked_rate_per_hour IS NULL AND rate_snapshot IS NOT NULL;
 
--- MF-158: Note — storage bucket size limit configured via Supabase dashboard or storage policy
+-- MF-158: Note - storage bucket size limit configured via Supabase dashboard or storage policy
 -- No SQL migration required for bucket size limit. Update via Supabase Storage bucket settings.
 
 -- MF-165: Add social media links and website to business_settings

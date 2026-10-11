@@ -10,6 +10,16 @@ import {
 import type { OperatingHoursInterval, ScheduleBlock } from '../models/availability';
 import type { SettingsRepository } from './settingsRepository';
 import { normalizeWorkspaceStatusColors } from './workspaceStatusColorService';
+import {
+  type CacheInvalidationRegistry,
+  getProjectReferenceCaches,
+  ensureReferenceDataRealtimeInvalidation,
+  normalizeSupabaseProjectUrl,
+  QueryCache,
+  loadReferenceData,
+} from './referenceDataCache';
+
+type SettingsCacheValue = BusinessSettings | OperatingHoursInterval[] | AdminPaymentMethod[];
 
 type BusinessSettingsRow = {
   id: number;
@@ -82,8 +92,16 @@ type ScheduleBlockRow = {
 export class SupabaseSettingsRepository implements SettingsRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
+  private readonly projectUrl: string;
+  private readonly cache: QueryCache<SettingsCacheValue>;
+  private readonly invalidationRegistry: CacheInvalidationRegistry;
 
-  constructor(options?: { supabaseUrl?: string; serviceRoleKey?: string }) {
+  constructor(options?: {
+    supabaseUrl?: string;
+    serviceRoleKey?: string;
+    cache?: QueryCache<SettingsCacheValue>;
+    invalidationRegistry?: CacheInvalidationRegistry;
+  }) {
     const supabaseUrl =
       options?.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = options?.serviceRoleKey ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -96,11 +114,23 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for settings');
     }
 
-    this.restUrl = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+    this.projectUrl = normalizeSupabaseProjectUrl(supabaseUrl);
+    this.restUrl = `${this.projectUrl}/rest/v1`;
     this.serviceRoleKey = serviceRoleKey;
+    const projectCaches = getProjectReferenceCaches(this.projectUrl);
+    this.cache = options?.cache ?? (projectCaches.referenceData as QueryCache<SettingsCacheValue>);
+    this.invalidationRegistry = options?.invalidationRegistry ?? projectCaches.invalidationRegistry;
+    ensureReferenceDataRealtimeInvalidation(this.projectUrl, this.serviceRoleKey, this.invalidationRegistry);
+    this.invalidationRegistry.registerCache('business_settings', this.cache, this.cacheKey('business-settings'));
+    this.invalidationRegistry.registerCache('operating_hours', this.cache, this.cacheKey('operating-hours'));
+    this.invalidationRegistry.registerCache('payment_methods', this.cache, this.cacheKey('payment-methods'));
   }
 
   async getBusinessSettings(): Promise<BusinessSettings> {
+    return loadReferenceData(this.cache, this.cacheKey('business-settings'), () => this.loadBusinessSettings());
+  }
+
+  private async loadBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
       '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,near_checkout_threshold_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,max_advance_booking_days,day_pass_start_time,day_pass_end_time,night_pass_start_time,night_pass_end_time,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
@@ -174,7 +204,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       };
     }
 
-    return {
+    const result = {
       id: row.id,
       businessName: row.business_name,
       timezone: row.timezone,
@@ -208,6 +238,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       cancellationPolicyUpdatedAt: row.cancellation_policy_updated_at ?? null,
       updatedAt: row.updated_at,
     };
+    return result;
   }
 
   async updateBusinessSettings(
@@ -355,7 +386,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       throw new Error('Failed to update business settings');
     }
 
-    return {
+    const result = {
       id: row.id,
       businessName: row.business_name,
       timezone: row.timezone,
@@ -387,9 +418,15 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       cancellationPolicyUpdatedAt: row.cancellation_policy_updated_at !== undefined ? row.cancellation_policy_updated_at : (input.cancellationPolicyUpdatedAt ?? null),
       updatedAt: row.updated_at,
     };
+    this.invalidationRegistry.invalidate('business_settings');
+    return result;
   }
 
   async listOperatingHours(): Promise<OperatingHoursInterval[]> {
+    return loadReferenceData(this.cache, this.cacheKey('operating-hours'), () => this.loadOperatingHours());
+  }
+
+  private async loadOperatingHours(): Promise<OperatingHoursInterval[]> {
     const rows = await this.request<OperatingHoursRow[]>(
       '/operating_hours?select=id,day_of_week,opens_at,closes_at,is_active&order=day_of_week.asc,opens_at.asc'
     );
@@ -415,8 +452,10 @@ export class SupabaseSettingsRepository implements SettingsRepository {
     await this.request('/operating_hours?day_of_week=gte.0', {
       method: 'DELETE',
     });
+    this.invalidationRegistry.invalidate('operating_hours');
 
     if (intervals.length === 0) {
+      this.invalidationRegistry.invalidate('operating_hours');
       return [];
     }
 
@@ -435,16 +474,22 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       body: JSON.stringify(rowsToInsert),
     });
 
-    return inserted.map((row) => ({
+    const result = inserted.map((row) => ({
       id: row.id,
       dayOfWeek: row.day_of_week,
       opensAt: row.opens_at,
       closesAt: row.closes_at,
       isActive: row.is_active,
     }));
+    this.invalidationRegistry.invalidate('operating_hours');
+    return result;
   }
 
   async listPaymentMethods(): Promise<AdminPaymentMethod[]> {
+    return loadReferenceData(this.cache, this.cacheKey('payment-methods'), () => this.loadPaymentMethods());
+  }
+
+  private async loadPaymentMethods(): Promise<AdminPaymentMethod[]> {
     const rows = await this.request<PaymentMethodRow[]>(
       '/payment_methods?select=id,method_type,display_name,account_name,account_number,qr_image_path,instructions,allow_web,allow_kiosk,is_active,display_order&order=display_order.asc,created_at.asc'
     );
@@ -498,7 +543,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       throw new Error('Failed to create payment method');
     }
 
-    return {
+    const result = {
       id: row.id,
       methodType: row.method_type,
       displayName: row.display_name,
@@ -511,6 +556,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       isActive: row.is_active,
       displayOrder: row.display_order,
     };
+    this.invalidationRegistry.invalidate('payment_methods');
+    return result;
   }
 
   async updatePaymentMethod(input: UpdatePaymentMethodInput): Promise<AdminPaymentMethod> {
@@ -550,7 +597,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       throw new Error(`Payment method ${input.id} not found`);
     }
 
-    return {
+    const result = {
       id: row.id,
       methodType: row.method_type,
       displayName: row.display_name,
@@ -563,12 +610,15 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       isActive: row.is_active,
       displayOrder: row.display_order,
     };
+    this.invalidationRegistry.invalidate('payment_methods');
+    return result;
   }
 
   async deletePaymentMethod(id: string): Promise<void> {
     await this.request(`/payment_methods?id=eq.${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+    this.invalidationRegistry.invalidate('payment_methods');
   }
 
   async reorderPaymentMethods(orderedIds: string[]): Promise<AdminPaymentMethod[]> {
@@ -586,6 +636,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         body: JSON.stringify({ display_order: i + 1 }),
       });
     }
+    this.invalidationRegistry.invalidate('payment_methods');
     return this.listPaymentMethods();
   }
 
@@ -692,5 +743,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
     const text = await response.text();
     return text ? (JSON.parse(text) as T) : (undefined as T);
+  }
+
+  private cacheKey(category: string): string {
+    return `${this.projectUrl}:${category}`;
   }
 }

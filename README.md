@@ -181,7 +181,6 @@ deskatlas/
 │   ├── validation/            # Zod validation schemas & reservation candidate bounds
 │   └── config/                # Shared runtime configuration & network port constants
 ├── supabase/
-│   └── migrations/            # Version-controlled PostgreSQL schemas, RLS, and RPCs
 ├── tests/
 │   ├── t01-workspace-catalog.test.ts
 │   ├── t02-map-persistence-geometry.test.ts
@@ -294,24 +293,20 @@ cp .env.example .env.local
 
 *(Refer to the [Environment Variables](#environment-variables) section below for detailed definitions.)*
 
-### 4. Apply Database Migrations & Seeds
+### 4. Apply Database SQL
 
-Execute the SQL migrations found in `supabase/migrations/` against your Supabase database in sequential order, or run:
-
-```bash
-supabase db reset
-```
+Execute the six active SQL files in `supabase/` in the order documented in [MIGRATION_ORDER.md](supabase/MIGRATION_ORDER.md). The reset file 000 is destructive and requires an explicitly authorized rebuild. Historical non-seed SQL is preserved in `supabase/archive/pre-consolidation/`. No application data is seeded.
 
 ### 5. Bootstrap Administrative and Staff Accounts
 
-Initialize the system with default privileged credentials:
+Explicitly provision administrative and staff accounts:
 
 ```bash
-# Seed initial administrator account
-pnpm seed:admin
+# Provision initial administrator account
+pnpm bootstrap:admin
 
-# Seed initial staff member account
-pnpm seed:staff
+# Provision initial staff member account
+pnpm bootstrap:staff
 ```
 
 ### 6. Start Development Servers
@@ -342,7 +337,7 @@ DeskAtlas uses a centralized root configuration (`.env.local`) shared across pac
 | `NEXT_PUBLIC_SUPABASE_URL` | **Yes** | `https://xyzcompany.supabase.co` | Public / Client | Supabase Project API gateway URL |
 | `SUPABASE_URL` | **Yes** | `https://xyzcompany.supabase.co` | Server-Only | Supabase URL for backend server-side client |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Yes** | `eyJh...` | Server-Only | High-privilege key for atomic RPCs & admin actions. **Never expose to client.** |
-| `ADMIN_EMAIL` | Optional | `admin@deskatlas.com` | Server-Only | Email for `pnpm seed:admin` script |
+| `ADMIN_EMAIL` | Optional | `admin@deskatlas.com` | Server-Only | Email for `pnpm bootstrap:admin` script |
 | `ADMIN_PASSWORD` | Optional | `AdminPassword123!` | Server-Only | Secure password for initial admin user |
 | `ADMIN_DISPLAY_NAME` | Optional | `"Admin User"` | Server-Only | Full display name for initial admin |
 | `RESEND_API_KEY` | Optional | `re_123456789` | Server-Only | Resend API key for transactional emails |
@@ -353,12 +348,19 @@ DeskAtlas uses a centralized root configuration (`.env.local`) shared across pac
 
 ## Database Setup & Migrations
 
-DeskAtlas database schemas are located in `supabase/migrations/`. Key database assets include:
+DeskAtlas database schemas are located in `supabase/`. Key database assets include:
 
-- `001_initial_schema.sql`: Core domain tables (`workspace_templates`, `physical_workspaces`, `floor_plans`, `reservations`, `reservation_candidates`, `payment_sessions`, `access_passes`).
-- `002_concurrency_and_gist.sql`: Installation of `btree_gist` extension and temporal exclusion constraints preventing overlapping confirmed reservations.
-- `003_allocation_rpc.sql`: The atomic `allocate_reservation_candidate` stored procedure managing candidate cascading (`Main -> Alt 1 -> Alt 2`).
-- `004_rls_and_storage.sql`: Row-Level Security policies restricting private payment proof reads to authenticated staff/admins and configuring public workspace asset buckets.
+| File | Purpose |
+|---|---|
+| `000_reset_database.sql` | Authorized clean-rebuild reset |
+| `001_schema.sql` | Current tables, enums, constraints, and indexes |
+| `002_functions.sql` | RPCs, business rules, defaults, and triggers |
+| `003_storage.sql` | Buckets and storage policies |
+| `004_security_and_rls.sql` | Grants and row level security |
+| `005_realtime.sql` | Realtime publication |
+| `sql_schema.sql` | Full current DrawSQL diagram import |
+
+Prior non-seed SQL is preserved in `supabase/archive/pre-consolidation/`. Follow [the SQL manifest](supabase/MIGRATION_ORDER.md) for clean installs and incremental upgrades.
 
 ---
 

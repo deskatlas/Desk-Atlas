@@ -14,6 +14,7 @@ import type {
   UpdateCustomStructureTemplateInput,
   WorkspaceInstancePlacement,
 } from '@deskatlas/domain';
+import { getProjectReferenceCaches } from '@deskatlas/domain';
 
 type CustomStructureTemplateRow = {
   id: string;
@@ -241,6 +242,7 @@ export class SupabaseMapRepository implements MapRepository {
         p_published_by_user_id: actorUserId,
       }),
     });
+    getProjectReferenceCaches(this.restUrl.replace(/\/rest\/v1$/, '')).invalidationRegistry.invalidate('map_versions');
     const archivedVersionIds = beforeVersions
       .filter((version) => version.status === 'PUBLISHED')
       .map((version) => version.id);

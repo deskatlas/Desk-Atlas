@@ -1,6 +1,0 @@
--- ============================================================================
--- DeskAtlas - 006_seed_staff.sql
--- (Deprecated: Staff are added exclusively by the Admin via the Staff Management UI)
--- ============================================================================
--- No manual SQL seeding for staff.
--- All staff accounts must be created by the authenticated Admin via /manage/staff.

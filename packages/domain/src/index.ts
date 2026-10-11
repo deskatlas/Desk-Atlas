@@ -201,6 +201,7 @@ export * from './services/workspaceUsageSupabaseRepository';
 export * from './services/activityLogService';
 export * from './services/activityLogMemoryRepository';
 export * from './services/activityLogSupabaseRepository';
+export * from './services/referenceDataCache';
 export * from './services/reservationTabSegregation';
 export * from './services/paymentProofValidationService';
 export * from './services/kioskInactivityService';

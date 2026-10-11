@@ -9,6 +9,7 @@
     "typecheck": "echo 'Typechecking domain package'"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "exceljs": "^4.4.0",
     "pngjs": "^7.0.0"
   },

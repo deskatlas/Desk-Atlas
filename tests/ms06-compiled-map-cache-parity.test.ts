@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import {
   SupabasePublishedMapRepository,
+  getProjectReferenceCaches,
   createPublishedMapService,
   type Floor,
   type PublishedFloorMap,
@@ -14,6 +15,7 @@ import {
  * and falls back gracefully when compiled_map_cache is null.
  */
 describe('MS-06 / QAD-TC6.7: Pre-Compiled Map Cache Parity', () => {
+  beforeEach(() => getProjectReferenceCaches('https://mock.supabase.co').publishedMaps.invalidateAll());
   const mockFloor: Floor = {
     id: 'fl-1',
     name: 'Ground Floor',
