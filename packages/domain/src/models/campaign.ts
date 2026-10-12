@@ -4,7 +4,7 @@ export type CampaignStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
 
 export type RewardType = 'PERCENTAGE_DISCOUNT' | 'FIXED_AMOUNT_DISCOUNT';
 
-export type VoucherStatus = 'AVAILABLE' | 'USED' | 'EXPIRED';
+export type VoucherStatus = 'AVAILABLE' | 'PENDING_REDEMPTION' | 'USED' | 'EXPIRED';
 
 export type ReservationChannel = 'WEB' | 'KIOSK';
 
@@ -122,6 +122,10 @@ export interface Voucher {
   expires_at: string;
   expiresAt?: string;
   startsAt?: Date | string;
+  pending_reservation_id?: string | null;
+  pendingReservationId?: string | null;
+  held_at?: string | null;
+  heldAt?: Date | string | null;
   redeemed_at: string | null;
   redeemedAt?: Date | string | null;
   redeemed_reservation_id: string | null;

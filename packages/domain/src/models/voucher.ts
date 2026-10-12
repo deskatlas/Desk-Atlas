@@ -1,6 +1,6 @@
 import type { RewardType, CombineOperator as RuleCombineOperator, MetricType as RuleMetric } from './campaign';
 
-export type VoucherStatus = 'AVAILABLE' | 'USED' | 'EXPIRED';
+export type VoucherStatus = 'AVAILABLE' | 'PENDING_REDEMPTION' | 'USED' | 'EXPIRED';
 
 export interface VoucherRewardSnapshot {
   rewardType: RewardType;
@@ -33,6 +33,10 @@ export interface Voucher {
   issued_at?: string;
   expiresAt: string;
   expires_at?: string;
+  pendingReservationId?: string | null;
+  pending_reservation_id?: string | null;
+  heldAt?: string | null;
+  held_at?: string | null;
   redeemedAt?: string | null;
   redeemed_at?: string | null;
   redeemedReservationId?: string | null;

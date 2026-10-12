@@ -51,7 +51,12 @@ export async function POST(request: NextRequest) {
         ...v,
         effectiveStatus: getEffectiveVoucherStatus(v, now),
       }))
-      .filter((v) => v.effectiveStatus === status);
+      .filter((v) => {
+        if (status === 'AVAILABLE') {
+          return v.effectiveStatus === 'AVAILABLE' || v.effectiveStatus === 'PENDING_REDEMPTION';
+        }
+        return v.effectiveStatus === status;
+      });
 
     const paginated = matching.slice(0, limit);
 
@@ -63,6 +68,8 @@ export async function POST(request: NextRequest) {
       reward_snapshot: v.rewardSnapshot,
       issued_at: v.issuedAt,
       expires_at: v.expiresAt,
+      pending_reservation_id: v.pendingReservationId || v.pending_reservation_id || null,
+      held_at: v.heldAt || v.held_at || null,
       redeemed_at: v.redeemedAt || v.redeemed_at || null,
       redeemed_reservation_id: v.redeemedReservationId || v.redeemed_reservation_id || null,
       redeemed_discount_amount: v.redeemedDiscountAmount ?? v.redeemed_discount_amount ?? null,

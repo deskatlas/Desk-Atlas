@@ -9,6 +9,7 @@ import { RateType } from "./pricingService";
 import { resolveEffectivePrice } from "./promotionalPricingService";
 import { PromotionalRate } from "../models/promotionalRate";
 import type { VoucherService } from "./voucherService";
+import type { VoucherRepository } from "./voucherRepository";
 
 export class ReservationError extends Error {
   constructor(message: string) {
@@ -33,6 +34,7 @@ export class ReservationService {
       now?: Date;
       promotions?: PromotionalRate[];
       voucherService?: VoucherService;
+      voucherRepository?: VoucherRepository;
     }
   ): Promise<ReservationResponseDTO> {
     const firstNameValidation = validatePersonName(request.customerFirstName, "First name");
@@ -213,6 +215,11 @@ export class ReservationService {
         } catch (err: unknown) {
           if (err && typeof err === 'object' && 'code' in err) {
             const errCode = (err as { code?: string }).code;
+            if (errCode === 'PROMO_PENDING') {
+              throw new ReservationError(
+                'This promo code is currently in use by a pending reservation.'
+              );
+            }
             if (errCode === 'PROMO_USED' || errCode === 'PROMO_EXPIRED' || errCode === 'PROMO_REVALIDATION_REQUIRED') {
               throw new ReservationError(
                 'Your promo or price changed. Review the updated amount before continuing.'
@@ -273,6 +280,16 @@ export class ReservationService {
         }
       );
 
+      if (requestedVoucherId && options?.voucherRepository) {
+        try {
+          await options.voucherRepository.holdVoucher(requestedVoucherId, reservation.id);
+        } catch {
+          throw new ReservationError(
+            'The promo code is no longer available or is currently reserved by another pending booking.'
+          );
+        }
+      }
+
       const storedSession = await this.paymentRepository.findPaymentSessionByTokenHash(draftSession.tokenHash);
       if (!storedSession) {
         throw new ReservationError("Payment session could not be created.");
@@ -307,6 +324,17 @@ export class ReservationService {
     }
 
     const createdReservation = await this.reservationRepository.createReservation(request, rateSnapshot, amountDue);
+
+    if (requestedVoucherId && options?.voucherRepository) {
+      try {
+        await options.voucherRepository.holdVoucher(requestedVoucherId, createdReservation.id);
+      } catch {
+        throw new ReservationError(
+          'The promo code is no longer available or is currently reserved by another pending booking.'
+        );
+      }
+    }
+
     return {
       ...createdReservation,
       grossAmountDue,

@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
     const reservation = await service.createReservation(payload, {
       paymentLinkBaseUrl,
       voucherService,
+      voucherRepository: voucherRepo,
     });
 
     const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, reservation.referenceCode);

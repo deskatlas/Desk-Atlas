@@ -12,6 +12,7 @@ import {
   handleConfirmedReservationCampaignQualification,
   hashBookingToken,
   redeemReservationVoucher,
+  releaseHeldReservationVoucher,
   ReservationSupabaseRepository,
   SupabaseSettingsRepository,
   VoucherSupabaseRepository,
@@ -304,7 +305,7 @@ export async function POST(
       let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
       let businessName = "DeskAtlas";
       let businessPhone: string | undefined;
-      let businessSettings: any = undefined;
+      let businessSettings: unknown = undefined;
 
       try {
         const settingsRepo = new SupabaseSettingsRepository();
@@ -334,7 +335,7 @@ export async function POST(
           businessName,
           businessEmail,
           businessPhone,
-          businessSettings,
+          businessSettings: businessSettings as Parameters<typeof emailService.sendPaymentProofRejectedEmail>[0]['businessSettings'],
           trackingUrl,
         });
 
@@ -349,6 +350,26 @@ export async function POST(
       } else {
         console.warn(
           `[AdminPaymentRejection] Skipping rejection email: customer details missing (email: ${customerEmail}, name: ${customerFirstName})`
+        );
+      }
+    }
+
+    if (body.decision === "REJECT" || result.reservationStatus === "CANCELLED") {
+      // MS-40: Release held voucher back to AVAILABLE on admin payment rejection
+      try {
+        const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const voucherRepo = supabaseUrl && serviceRoleKey
+          ? new VoucherSupabaseRepository({ supabaseUrl, serviceRoleKey })
+          : undefined;
+        await releaseHeldReservationVoucher({
+          reservationId: result.reservationId,
+          voucherRepository: voucherRepo,
+        });
+      } catch (voucherReleaseErr: unknown) {
+        console.error(
+          "[AdminPaymentRejection] Voucher release hook error:",
+          voucherReleaseErr
         );
       }
     }

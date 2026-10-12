@@ -37,10 +37,18 @@ export interface PromoValidationResult {
 }
 
 export function getEffectiveVoucherStatus(voucher: Voucher, now: Date = new Date()): VoucherStatus {
-  if (voucher.status === 'USED' || voucher.redeemedAt) {
+  if (voucher.status === 'USED' || voucher.redeemedAt || voucher.redeemed_at) {
     return 'USED';
   }
-  if (new Date(voucher.expiresAt) <= now) {
+  if (
+    voucher.status === 'PENDING_REDEMPTION' ||
+    voucher.pendingReservationId ||
+    voucher.pending_reservation_id
+  ) {
+    return 'PENDING_REDEMPTION';
+  }
+  const expiresAt = voucher.expiresAt || voucher.expires_at || '';
+  if (expiresAt && new Date(expiresAt) <= now) {
     return 'EXPIRED';
   }
   return 'AVAILABLE';
@@ -105,25 +113,29 @@ export class VoucherService {
     if (effectiveStatus === 'USED') {
       throw new PromoValidationError('PROMO_USED', 'This promo code has already been redeemed.');
     }
+    if (effectiveStatus === 'PENDING_REDEMPTION') {
+      throw new PromoValidationError('PROMO_PENDING', 'This promo code is currently in use by a pending reservation.');
+    }
     if (effectiveStatus === 'EXPIRED') {
       throw new PromoValidationError('PROMO_EXPIRED', 'This promo code has expired.');
     }
 
-    const rawSnapshot = voucher.rewardSnapshot || voucher.reward_snapshot || {
-      rewardType: (voucher as any).rewardType || (voucher as any).reward_type || 'FIXED_AMOUNT_DISCOUNT',
-      rewardValue: (voucher as any).rewardValue ?? (voucher as any).reward_value ?? 0,
-      maxDiscountAmount: (voucher as any).maxDiscountAmount ?? (voucher as any).max_discount_amount,
-      redemptionChannels: (voucher as any).redemptionChannels ?? (voucher as any).redemption_channels,
-      redemptionWorkspaceTypeIds: (voucher as any).redemptionWorkspaceTypeIds ?? (voucher as any).redemption_workspace_type_ids,
-      minimumBookingAmount: (voucher as any).minimumBookingAmount ?? (voucher as any).minimum_booking_amount,
-    };
+    const voucherObj = voucher as unknown as Record<string, unknown>;
+    const rawSnapshot = (voucher.rewardSnapshot || voucher.reward_snapshot || {
+      rewardType: (voucherObj.rewardType || voucherObj.reward_type || 'FIXED_AMOUNT_DISCOUNT') as RewardType,
+      rewardValue: Number(voucherObj.rewardValue ?? voucherObj.reward_value ?? 0),
+      maxDiscountAmount: (voucherObj.maxDiscountAmount ?? voucherObj.max_discount_amount ?? null) as number | null,
+      redemptionChannels: (voucherObj.redemptionChannels ?? voucherObj.redemption_channels) as ('WEB' | 'KIOSK')[] | undefined,
+      redemptionWorkspaceTypeIds: (voucherObj.redemptionWorkspaceTypeIds ?? voucherObj.redemption_workspace_type_ids) as string[] | undefined,
+      minimumBookingAmount: (voucherObj.minimumBookingAmount ?? voucherObj.minimum_booking_amount) as number | undefined,
+    }) as Record<string, unknown>;
 
-    const rewardType = (rawSnapshot as any).rewardType || (rawSnapshot as any).reward_type || 'FIXED_AMOUNT_DISCOUNT';
-    const rewardValue = (rawSnapshot as any).rewardValue ?? (rawSnapshot as any).reward_value ?? 0;
-    const maxDiscountAmount = (rawSnapshot as any).maxDiscountAmount ?? (rawSnapshot as any).max_discount_amount;
-    const redemptionChannels = (rawSnapshot as any).redemptionChannels ?? (rawSnapshot as any).redemption_channels;
-    const redemptionWorkspaceTypeIds = (rawSnapshot as any).redemptionWorkspaceTypeIds ?? (rawSnapshot as any).redemption_workspace_type_ids;
-    const minimumBookingAmount = (rawSnapshot as any).minimumBookingAmount ?? (rawSnapshot as any).minimum_booking_amount;
+    const rewardType = (rawSnapshot.rewardType || rawSnapshot.reward_type || 'FIXED_AMOUNT_DISCOUNT') as RewardType;
+    const rewardValue = Number(rawSnapshot.rewardValue ?? rawSnapshot.reward_value ?? 0);
+    const maxDiscountAmount = (rawSnapshot.maxDiscountAmount ?? rawSnapshot.max_discount_amount ?? null) as number | null;
+    const redemptionChannels = (rawSnapshot.redemptionChannels ?? rawSnapshot.redemption_channels) as ('WEB' | 'KIOSK')[] | undefined;
+    const redemptionWorkspaceTypeIds = (rawSnapshot.redemptionWorkspaceTypeIds ?? rawSnapshot.redemption_workspace_type_ids) as string[] | undefined;
+    const minimumBookingAmount = (rawSnapshot.minimumBookingAmount ?? rawSnapshot.minimum_booking_amount) as number | undefined;
 
     // Check channel eligibility
     if (

@@ -20,7 +20,7 @@ interface BookingItem {
 interface VoucherItem {
   id: string;
   promo_code: string;
-  status: "AVAILABLE" | "USED" | "EXPIRED";
+  status: "AVAILABLE" | "PENDING_REDEMPTION" | "USED" | "EXPIRED";
   campaign_name_snapshot: string;
   reward_snapshot: {
     rewardType: "PERCENTAGE_DISCOUNT" | "FIXED_AMOUNT_DISCOUNT";
@@ -33,6 +33,9 @@ interface VoucherItem {
   };
   issued_at: string;
   expires_at: string;
+  pending_reservation_id?: string | null;
+  pending_reservation_reference?: string | null;
+  held_at?: string | null;
   redeemed_at?: string | null;
   redeemed_reservation_id?: string | null;
   redeemed_discount_amount?: number | null;
@@ -455,14 +458,30 @@ export function RewardsVoucherDashboard({
                         className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
                           v.status === "AVAILABLE"
                             ? "bg-emerald-100 text-emerald-800"
+                            : v.status === "PENDING_REDEMPTION"
+                            ? "bg-amber-100 text-amber-800"
                             : v.status === "USED"
                             ? "bg-slate-100 text-slate-600"
                             : "bg-red-100 text-red-700"
                         }`}
                       >
-                        {v.status}
+                        {v.status === "PENDING_REDEMPTION" ? "ON HOLD" : v.status}
                       </span>
                     </div>
+
+                    {(v.status === "PENDING_REDEMPTION" || (v as unknown as { effectiveStatus?: string }).effectiveStatus === "PENDING_REDEMPTION") && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <span
+                          data-testid="voucher-status-pending"
+                          className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800"
+                        >
+                          ON HOLD / PENDING
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          Reserved for booking awaiting review
+                        </span>
+                      </div>
+                    )}
 
                     <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 p-2.5">
                       <span className="font-mono text-sm font-black tracking-widest text-slate-900 select-all">
@@ -472,7 +491,7 @@ export function RewardsVoucherDashboard({
                         type="button"
                         onClick={() => copyToClipboard(v.promo_code)}
                         className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 border border-slate-300 hover:bg-slate-100 transition-colors"
-                        title="Copy promo code"
+                        title={v.status === "PENDING_REDEMPTION" ? "This code is currently on hold for an unconfirmed reservation." : "Copy promo code"}
                       >
                         {copiedCode === v.promo_code ? "Copied!" : "Copy Code"}
                       </button>

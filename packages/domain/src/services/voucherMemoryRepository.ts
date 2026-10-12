@@ -120,6 +120,10 @@ export class VoucherMemoryRepository implements VoucherRepository {
       issuedAt: issued_at,
       expires_at,
       expiresAt: expires_at,
+      pending_reservation_id: data.pending_reservation_id ?? data.pendingReservationId ?? null,
+      pendingReservationId: data.pending_reservation_id ?? data.pendingReservationId ?? null,
+      held_at: data.held_at ?? data.heldAt ?? null,
+      heldAt: data.held_at ?? data.heldAt ?? null,
       redeemed_at: data.redeemed_at ?? data.redeemedAt ?? null,
       redeemedAt: data.redeemed_at ?? data.redeemedAt ?? null,
       redeemed_reservation_id: data.redeemed_reservation_id ?? data.redeemedReservationId ?? null,
@@ -161,13 +165,25 @@ export class VoucherMemoryRepository implements VoucherRepository {
     if (!existing) {
       throw new Error(`Voucher ${voucherId} not found`);
     }
-    if (existing.status !== 'AVAILABLE' || existing.redeemedAt) {
+    const isAvailable = existing.status === 'AVAILABLE' && !existing.redeemedAt;
+    const isHeldByRes =
+      existing.status === 'PENDING_REDEMPTION' &&
+      !existing.redeemedAt &&
+      (!existing.pendingReservationId ||
+        existing.pendingReservationId === reservationId ||
+        existing.pending_reservation_id === reservationId);
+
+    if (!isAvailable && !isHeldByRes) {
       throw new Error(`Voucher ${voucherId} could not be redeemed (already used or concurrent conflict)`);
     }
     const timestamp = redeemedAt || new Date().toISOString();
     const updated: Voucher = {
       ...existing,
       status: 'USED',
+      pendingReservationId: null,
+      pending_reservation_id: null,
+      heldAt: null,
+      held_at: null,
       redeemedAt: timestamp,
       redeemed_at: timestamp,
       redeemedReservationId: reservationId,
@@ -175,6 +191,71 @@ export class VoucherMemoryRepository implements VoucherRepository {
       redeemedDiscountAmount: discountAmount,
       redeemed_discount_amount: discountAmount,
       actualDiscountAmount: discountAmount,
+      updatedAt: timestamp,
+      updated_at: timestamp,
+    };
+    this.vouchers.set(voucherId, updated);
+    return updated;
+  }
+
+  async holdVoucher(
+    voucherId: string,
+    reservationId: string,
+    heldAt?: string
+  ): Promise<Voucher> {
+    const existing = this.vouchers.get(voucherId);
+    if (!existing) {
+      throw new Error(`Voucher ${voucherId} not found`);
+    }
+    if (
+      existing.status === 'PENDING_REDEMPTION' &&
+      (existing.pendingReservationId === reservationId || existing.pending_reservation_id === reservationId)
+    ) {
+      return existing;
+    }
+    if (existing.status !== 'AVAILABLE' || existing.pendingReservationId || existing.pending_reservation_id) {
+      throw new Error(`Voucher ${voucherId} could not be held (already held or used)`);
+    }
+    const timestamp = heldAt || new Date().toISOString();
+    const updated: Voucher = {
+      ...existing,
+      status: 'PENDING_REDEMPTION',
+      pendingReservationId: reservationId,
+      pending_reservation_id: reservationId,
+      heldAt: timestamp,
+      held_at: timestamp,
+      updatedAt: timestamp,
+      updated_at: timestamp,
+    };
+    this.vouchers.set(voucherId, updated);
+    return updated;
+  }
+
+  async releaseVoucher(
+    voucherId: string,
+    reservationId: string
+  ): Promise<Voucher> {
+    const existing = this.vouchers.get(voucherId);
+    if (!existing) {
+      throw new Error(`Voucher ${voucherId} not found`);
+    }
+    if (
+      existing.status !== 'PENDING_REDEMPTION' ||
+      (existing.pendingReservationId !== reservationId &&
+        existing.pending_reservation_id !== reservationId)
+    ) {
+      throw new Error(
+        `Voucher ${voucherId} could not be released (not held by reservation ${reservationId})`
+      );
+    }
+    const timestamp = new Date().toISOString();
+    const updated: Voucher = {
+      ...existing,
+      status: 'AVAILABLE',
+      pendingReservationId: null,
+      pending_reservation_id: null,
+      heldAt: null,
+      held_at: null,
       updatedAt: timestamp,
       updated_at: timestamp,
     };

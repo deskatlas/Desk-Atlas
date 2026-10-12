@@ -8,6 +8,7 @@ import type {
   RuleDefinitionV1,
   Voucher,
   VoucherRewardSnapshot,
+  VoucherStatus,
 } from '../models/campaign';
 import type { CampaignListFilter, CampaignRepository } from './campaignRepository';
 import { calculateEffectiveVoucherStatus } from './campaignRuleEvaluator';
@@ -635,7 +636,7 @@ export class CampaignSupabaseRepository implements CampaignRepository {
       .eq('campaign_id', campaignId);
 
     if (error) throw new Error(error.message);
-    const rows = (data || []) as Array<{ status: 'AVAILABLE' | 'USED' | 'EXPIRED'; expires_at: string; redeemed_at: string | null }>;
+    const rows = (data || []) as Array<{ status: VoucherStatus; expires_at: string; redeemed_at: string | null; pending_reservation_id?: string | null }>;
 
     let issued = 0;
     let used = 0;

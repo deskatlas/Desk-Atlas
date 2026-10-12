@@ -46,9 +46,13 @@ export function calculateEffectiveVoucherStatus(voucher: {
   expires_at: string;
   redeemed_at?: string | null;
   redeemed_reservation_id?: string | null;
+  pending_reservation_id?: string | null;
 }, nowIso?: string): VoucherStatus {
   if (voucher.redeemed_at || voucher.redeemed_reservation_id || voucher.status === 'USED') {
     return 'USED';
+  }
+  if (voucher.pending_reservation_id || voucher.status === 'PENDING_REDEMPTION') {
+    return 'PENDING_REDEMPTION';
   }
   const now = nowIso ? new Date(nowIso).getTime() : Date.now();
   const expiry = new Date(voucher.expires_at).getTime();

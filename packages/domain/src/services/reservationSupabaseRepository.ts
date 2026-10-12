@@ -709,6 +709,13 @@ export class ReservationSupabaseRepository
       body: JSON.stringify(patchPayload),
     }).catch(() => {});
 
+    if (request.requestedVoucherId) {
+      await this.request('/rpc/hold_voucher_for_pending_reservation', {
+        method: 'POST',
+        body: JSON.stringify({ p_reservation_id: reservationId }),
+      }).catch(() => {});
+    }
+
     const candidatesData = await this.request<any[]>(
       `/reservation_candidates?select=*&reservation_id=eq.${encodeURIComponent(reservationId)}&order=rank.asc`
     );

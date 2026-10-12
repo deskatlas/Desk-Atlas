@@ -18,6 +18,15 @@ export interface VoucherRepository {
     discountAmount: number,
     redeemedAt?: string
   ): Promise<Voucher>;
+  holdVoucher(
+    voucherId: string,
+    reservationId: string,
+    heldAt?: string
+  ): Promise<Voucher>;
+  releaseVoucher(
+    voucherId: string,
+    reservationId: string
+  ): Promise<Voucher>;
   listActiveCampaigns(now?: Date): Promise<Campaign[]>;
   listRulesForCampaign(campaignId: string): Promise<CampaignRule[]>;
   listQualifyingFactsForCustomer(customerId: string): Promise<QualifyingBookingFact[]>;

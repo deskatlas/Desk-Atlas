@@ -455,7 +455,11 @@ export function ReservationPage() {
 
       const json = await res.json();
       if (!res.ok) {
-        setPromoError(json.error?.message || "Invalid promo code. Please check and try again.");
+        if (json.error?.code === 'PROMO_PENDING') {
+          setPromoError(json.error?.message || "This promo code is currently in use by a pending reservation. Complete or cancel that booking before reusing this code.");
+        } else {
+          setPromoError(json.error?.message || "Invalid promo code. Please check and try again.");
+        }
         setAppliedPromo(null);
         return;
       }

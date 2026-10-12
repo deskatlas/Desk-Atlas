@@ -29,7 +29,8 @@ export interface VoucherQuoteResult {
     | 'PROMO_CHANNEL_INELIGIBLE'
     | 'PROMO_WORKSPACE_INELIGIBLE'
     | 'PROMO_MINIMUM_SPEND_NOT_MET'
-    | 'PROMO_REVALIDATION_REQUIRED';
+    | 'PROMO_REVALIDATION_REQUIRED'
+    | 'PROMO_PENDING';
   errorMessage?: string;
   voucher?: Voucher;
   discountAmount?: number;
@@ -62,6 +63,13 @@ export class VoucherRedemptionService {
         isValid: false,
         errorCode: 'PROMO_ALREADY_USED',
         errorMessage: 'This promo code has already been redeemed.',
+      };
+    }
+    if (effectiveStatus === 'PENDING_REDEMPTION') {
+      return {
+        isValid: false,
+        errorCode: 'PROMO_PENDING',
+        errorMessage: 'This promo code is currently in use by a pending reservation.',
       };
     }
     if (effectiveStatus === 'EXPIRED') {
@@ -162,7 +170,14 @@ export class VoucherRedemptionService {
 
     // Check status
     const effectiveStatus = calculateEffectiveVoucherStatus(voucher, params.nowIso);
-    if (effectiveStatus !== 'AVAILABLE') {
+    const voucherWithPending = voucher as unknown as { pending_reservation_id?: string | null; pendingReservationId?: string | null };
+    const isAvailableOrHeldByThis =
+      effectiveStatus === 'AVAILABLE' ||
+      (effectiveStatus === 'PENDING_REDEMPTION' &&
+        (voucherWithPending.pending_reservation_id === params.reservationId ||
+          voucherWithPending.pendingReservationId === params.reservationId));
+
+    if (!isAvailableOrHeldByThis) {
       return {
         success: false,
         errorCode: 'PROMO_REVALIDATION_REQUIRED',

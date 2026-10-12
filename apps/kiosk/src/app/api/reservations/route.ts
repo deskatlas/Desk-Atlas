@@ -226,6 +226,7 @@ export async function POST(request: NextRequest) {
 
     const reservation = await reservationService.createReservation(createRequest, {
       voucherService,
+      voucherRepository: voucherRepo,
     });
 
     return NextResponse.json(reservation, { status: 201 });

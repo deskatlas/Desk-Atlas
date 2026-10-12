@@ -29,9 +29,11 @@ interface VoucherRow {
   milestone_index: number;
   campaign_name_snapshot: string;
   reward_snapshot: VoucherRewardSnapshot;
-  status: 'AVAILABLE' | 'USED' | 'EXPIRED';
+  status: VoucherStatus;
   issued_at: string;
   expires_at: string;
+  pending_reservation_id?: string | null;
+  held_at?: string | null;
   redeemed_at: string | null;
   redeemed_reservation_id: string | null;
   redeemed_discount_amount: number | string | null;
@@ -223,6 +225,8 @@ export class VoucherSupabaseRepository implements VoucherRepository {
       status,
       issued_at,
       expires_at,
+      pending_reservation_id: data.pendingReservationId || data.pending_reservation_id || null,
+      held_at: data.heldAt || data.held_at || null,
       redeemed_at: data.redeemedAt || data.redeemed_at || null,
       redeemed_reservation_id: data.redeemedReservationId || data.redeemed_reservation_id || null,
       redeemed_discount_amount: data.redeemedDiscountAmount ?? data.redeemed_discount_amount ?? null,
@@ -247,6 +251,12 @@ export class VoucherSupabaseRepository implements VoucherRepository {
     };
 
     if (updates.status !== undefined) updatePayload.status = updates.status;
+    if (updates.pendingReservationId !== undefined || updates.pending_reservation_id !== undefined) {
+      updatePayload.pending_reservation_id = updates.pendingReservationId || updates.pending_reservation_id || null;
+    }
+    if (updates.heldAt !== undefined || updates.held_at !== undefined) {
+      updatePayload.held_at = updates.heldAt || updates.held_at || null;
+    }
     if (updates.redeemedAt !== undefined || updates.redeemed_at !== undefined) {
       updatePayload.redeemed_at = updates.redeemedAt || updates.redeemed_at || null;
     }
@@ -278,6 +288,30 @@ export class VoucherSupabaseRepository implements VoucherRepository {
     redeemedAt?: string
   ): Promise<Voucher> {
     const timestamp = redeemedAt || new Date().toISOString();
+    // First try redeeming if currently held by this reservation in PENDING_REDEMPTION
+    const { data: heldData } = await this.supabase
+      .from('vouchers')
+      .update({
+        status: 'USED',
+        redeemed_at: timestamp,
+        redeemed_reservation_id: reservationId,
+        redeemed_discount_amount: discountAmount,
+        pending_reservation_id: null,
+        held_at: null,
+        updated_at: timestamp,
+      })
+      .eq('id', voucherId)
+      .eq('status', 'PENDING_REDEMPTION')
+      .eq('pending_reservation_id', reservationId)
+      .is('redeemed_at', null)
+      .select('*')
+      .maybeSingle();
+
+    if (heldData) {
+      return this.mapVoucher(heldData as VoucherRow);
+    }
+
+    // Otherwise try redeeming from AVAILABLE status
     const { data, error } = await this.supabase
       .from('vouchers')
       .update({
@@ -285,6 +319,8 @@ export class VoucherSupabaseRepository implements VoucherRepository {
         redeemed_at: timestamp,
         redeemed_reservation_id: reservationId,
         redeemed_discount_amount: discountAmount,
+        pending_reservation_id: null,
+        held_at: null,
         updated_at: timestamp,
       })
       .eq('id', voucherId)
@@ -298,6 +334,80 @@ export class VoucherSupabaseRepository implements VoucherRepository {
     }
     if (!data) {
       throw new Error(`Voucher ${voucherId} could not be redeemed (already used or concurrent conflict)`);
+    }
+
+    return this.mapVoucher(data as VoucherRow);
+  }
+
+  async holdVoucher(
+    voucherId: string,
+    reservationId: string,
+    heldAt?: string
+  ): Promise<Voucher> {
+    const timestamp = heldAt || new Date().toISOString();
+
+    // 1. Return idempotently if already held by this exact reservation (e.g. via database trigger)
+    const { data: alreadyHeld } = await this.supabase
+      .from('vouchers')
+      .select('*')
+      .eq('id', voucherId)
+      .eq('pending_reservation_id', reservationId)
+      .eq('status', 'PENDING_REDEMPTION')
+      .maybeSingle();
+
+    if (alreadyHeld) {
+      return this.mapVoucher(alreadyHeld as VoucherRow);
+    }
+
+    // 2. Atomically transition from AVAILABLE to PENDING_REDEMPTION
+    const { data, error } = await this.supabase
+      .from('vouchers')
+      .update({
+        status: 'PENDING_REDEMPTION',
+        pending_reservation_id: reservationId,
+        held_at: timestamp,
+        updated_at: timestamp,
+      })
+      .eq('id', voucherId)
+      .eq('status', 'AVAILABLE')
+      .is('pending_reservation_id', null)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to hold voucher ${voucherId}: ${error.message}`);
+    }
+    if (!data) {
+      throw new Error(`Voucher ${voucherId} could not be held (already held or used)`);
+    }
+
+    return this.mapVoucher(data as VoucherRow);
+  }
+
+  async releaseVoucher(
+    voucherId: string,
+    reservationId: string
+  ): Promise<Voucher> {
+    const timestamp = new Date().toISOString();
+    const { data, error } = await this.supabase
+      .from('vouchers')
+      .update({
+        status: 'AVAILABLE',
+        pending_reservation_id: null,
+        held_at: null,
+        updated_at: timestamp,
+      })
+      .eq('id', voucherId)
+      .eq('pending_reservation_id', reservationId)
+      .eq('status', 'PENDING_REDEMPTION')
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to release voucher ${voucherId}: ${error.message}`);
+    }
+    if (!data) {
+      throw new Error(`Voucher ${voucherId} could not be released (not held by reservation ${reservationId})`);
     }
 
     return this.mapVoucher(data as VoucherRow);
@@ -661,6 +771,8 @@ export class VoucherSupabaseRepository implements VoucherRepository {
     let effectiveStatus: VoucherStatus = rawStatus;
     if (rawStatus === 'USED' || row.redeemed_at) {
       effectiveStatus = 'USED';
+    } else if (rawStatus === 'PENDING_REDEMPTION' || row.pending_reservation_id) {
+      effectiveStatus = 'PENDING_REDEMPTION';
     } else if (new Date(expiresAt) <= now) {
       effectiveStatus = 'EXPIRED';
     } else {
@@ -694,6 +806,10 @@ export class VoucherSupabaseRepository implements VoucherRepository {
       issued_at: issuedAt,
       expiresAt,
       expires_at: expiresAt,
+      pendingReservationId: row.pending_reservation_id ?? null,
+      pending_reservation_id: row.pending_reservation_id ?? null,
+      heldAt: row.held_at ?? null,
+      held_at: row.held_at ?? null,
       redeemedAt: row.redeemed_at,
       redeemed_at: row.redeemed_at,
       redeemedReservationId: row.redeemed_reservation_id,
