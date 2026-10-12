@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createBookingSurveyService,
   createStaffOperationsService,
+  handleConfirmedReservationCampaignQualification,
   ReservationSupabaseRepository,
   StaffOperationsConflictError,
   StaffOperationsError,
@@ -81,6 +82,14 @@ export async function POST(
       await surveyService.sendSurveyForReservation(result.reservationId);
     } catch (surveyErr) {
       console.warn("[CheckOut] Failed to dispatch survey email:", surveyErr);
+    }
+
+    try {
+      await handleConfirmedReservationCampaignQualification({
+        reservationId: result.reservationId,
+      });
+    } catch (campaignErr) {
+      console.warn("[CheckOut] Campaign qualification hook error:", campaignErr);
     }
 
     return NextResponse.json(result);

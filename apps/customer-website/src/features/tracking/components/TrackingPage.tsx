@@ -8,6 +8,8 @@ import { CustomerRelocateModal } from "./CustomerRelocateModal";
 import { CancellationTermsModal } from "./CancellationTermsModal";
 import { mapReservationStatusDisplay } from "../utils/reservationStatusMap";
 
+import { RewardsAccessCard } from "./RewardsAccessCard";
+
 interface TrackingPageProps {
   initialReferenceCode?: string;
   initialEmail?: string;
@@ -57,14 +59,14 @@ export function TrackingPage({
 
   return (
     <main className="min-h-screen bg-[var(--da-canvas)] px-6 py-12">
-      <div className="mx-auto max-w-3xl rounded-[28px] border border-[var(--da-border)] bg-white p-8 shadow-[var(--da-shadow-lg)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--da-primary)]">
-              Track Reservation
+              Manage Booking
             </p>
             <h1 className="mt-2 text-4xl font-extrabold tracking-[-0.03em] text-[var(--da-brand-dark)]">
-              Check your reservation status
+              Check Reservations & Rewards
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -82,50 +84,80 @@ export function TrackingPage({
           </div>
         </div>
 
-        <div className="mt-8 grid gap-4">
-          <label className="grid gap-2 text-sm font-bold">
-            Reference code
-            <input
-              value={referenceCode}
-              onChange={(event) => setReferenceCode(event.target.value)}
-              className="da-input"
-              placeholder="DA-2026-01234"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold">
-            Email address
-            <input
-              type="email"
-              value={customerEmail}
-              onChange={(event) => setCustomerEmail(event.target.value)}
-              className="da-input"
-              placeholder="guest@example.com"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              setSuccessMessage(null);
-              trackReservation({ referenceCode, customerEmail });
-            }}
-            disabled={loading}
-            className="da-primary-button mt-2 w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
+        {/* Dual Paths: Side-by-side on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          {/* Path 1: Check a Reservation */}
+          <div
+            className="rounded-[28px] border border-[var(--da-border)] bg-white p-8 shadow-[var(--da-shadow-lg)] flex flex-col justify-between h-full"
+            data-testid="check-reservation-card"
           >
-            {loading ? "Checking reservation..." : "Check Status"}
-          </button>
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--da-primary)]">
+                Check a Reservation
+              </p>
+              <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.03em] text-[var(--da-brand-dark)]">
+                Track by booking reference
+              </h2>
+              <p className="mt-1 text-xs text-[var(--da-text-secondary)]">
+                Look up an existing booking reference code and registered email to check status or reschedule.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-4 w-full">
+              <label className="grid gap-2 text-xs font-bold text-[var(--da-brand-dark)]">
+                Reference code
+                <input
+                  value={referenceCode}
+                  onChange={(event) => setReferenceCode(event.target.value)}
+                  className="da-input font-mono uppercase text-sm w-full"
+                  placeholder="DA-2026-01234"
+                  data-testid="track-reference-code-input"
+                />
+              </label>
+              <label className="grid gap-2 text-xs font-bold text-[var(--da-brand-dark)]">
+                Email address
+                <input
+                  type="email"
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                  className="da-input text-sm w-full"
+                  placeholder="guest@example.com"
+                  data-testid="track-email-input"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setSuccessMessage(null);
+                  trackReservation({ referenceCode, customerEmail });
+                }}
+                disabled={loading}
+                className="da-primary-button mt-2 w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
+                data-testid="track-reservation-submit"
+              >
+                {loading ? "Checking reservation..." : "Check Status"}
+              </button>
+            </div>
+
+            {successMessage ? (
+              <div className="mt-6 rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                {successMessage}
+              </div>
+            ) : null}
+
+            {error ? (
+              <div className="mt-6 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Path 2: My Bookings & Rewards */}
+          <RewardsAccessCard />
         </div>
 
-        {successMessage ? (
-          <div className="mt-6 rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {successMessage}
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className="mt-6 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
+        {/* Existing reservation search detail view */}
+        <div className="mt-8">
 
         {data ? (() => {
           const isRejected =
@@ -204,7 +236,14 @@ export function TrackingPage({
               )}
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <InfoCard label="Amount due" value={`${data.currency} ${data.amountDue}`} />
+                <InfoCard
+                  label="Amount due"
+                  value={
+                    data.discountAmount && data.discountAmount > 0
+                      ? `${data.currency} ${data.amountDue} (Discount: -${data.currency} ${data.discountAmount}${data.promoCodeUsed ? ` [${data.promoCodeUsed}]` : ""})`
+                      : `${data.currency} ${data.amountDue}`
+                  }
+                />
                 <InfoCard label="Confirmed at" value={confirmedAtValue} />
                 <InfoCard label="Final workspace" value={finalWorkspaceValue} />
                 <InfoCard label="Booking time" value={bookingTimeValue} />
@@ -407,6 +446,7 @@ export function TrackingPage({
           onClose={() => setShowTermsModal(false)}
           defaultCutoffHours={data?.rescheduleCutoffHours ?? 12}
         />
+        </div>
       </div>
     </main>
   );

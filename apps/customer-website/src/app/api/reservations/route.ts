@@ -8,6 +8,10 @@ import {
   CreateReservationRequest,
   ReservationError,
   ReservationSupabaseRepository,
+  VoucherSupabaseRepository,
+  CustomerSupabaseRepository,
+  VoucherService,
+  WorkspaceRepository,
 } from '@deskatlas/domain';
 
 export const runtime = 'nodejs';
@@ -115,9 +119,12 @@ export async function POST(request: NextRequest) {
     const reservationRepo = new ReservationSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
     const workspaceRepo = new CustomerWorkspaceRepo(supabase);
     const paymentSessionService = createPaymentSessionService(reservationRepo);
+    const voucherRepo = new VoucherSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
+    const customerRepo = new CustomerSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
+    const voucherService = new VoucherService(voucherRepo, customerRepo);
     const service = createReservationService(
       reservationRepo,
-      workspaceRepo as any,
+      workspaceRepo as unknown as WorkspaceRepository,
       reservationRepo,
       paymentSessionService
     );
@@ -130,17 +137,24 @@ export async function POST(request: NextRequest) {
       process.env.DESKATLAS_PUBLIC_APP_URL ??
       request.nextUrl.origin.replace(/\/$/, '');
 
+    const rawBody = body as {
+      contactNumber?: string | null;
+      promo_code?: string | null;
+    };
+
     const payload: CreateReservationRequest = {
       ...body,
       rateType: body.rateType,
       bookedRatePerHour: body.bookedRatePerHour ?? null,
       rateSnapshot: body.rateSnapshot ?? null,
       amountDue: body.amountDue ?? null,
-      customerContactNumber: body.customerContactNumber ?? (body as any).contactNumber ?? null,
+      customerContactNumber: body.customerContactNumber ?? rawBody.contactNumber ?? null,
+      promoCode: body.promoCode ?? rawBody.promo_code ?? null,
     };
 
     const reservation = await service.createReservation(payload, {
       paymentLinkBaseUrl,
+      voucherService,
     });
 
     const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, reservation.referenceCode);
@@ -162,6 +176,9 @@ export async function POST(request: NextRequest) {
           trackingUrl,
           workspaceTemplateName: reservation.candidates?.[0]?.workspaceTemplateName,
           bookingDate: reservation.candidates?.[0]?.startAt,
+          grossAmount: reservation.grossAmountDue,
+          discountAmount: reservation.discountAmount,
+          promoCode: reservation.promoCodeUsed,
         });
       } catch (err: unknown) {
         console.error('[ReservationCreation] Failed to dispatch payment email:', err);

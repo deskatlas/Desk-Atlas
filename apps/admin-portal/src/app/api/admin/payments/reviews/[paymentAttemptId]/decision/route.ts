@@ -3,13 +3,18 @@ import { getAdminPaymentReviewService } from "../../../_lib/paymentReviewService
 import { paymentReviewErrorResponse } from "../../../_lib/errors";
 import {
   buildReservationTrackingUrl,
+  createCustomerService,
   createBookingAccessService,
   createTransactionalEmailService,
+  CustomerSupabaseRepository,
   formatEmailBookingDate,
   formatEmailBookingTimeRange,
+  handleConfirmedReservationCampaignQualification,
   hashBookingToken,
+  redeemReservationVoucher,
   ReservationSupabaseRepository,
   SupabaseSettingsRepository,
+  VoucherSupabaseRepository,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -104,6 +109,8 @@ export async function POST(
 
     let emailDispatched: boolean | undefined;
     let emailError: string | undefined;
+    let customerIdEmailDispatched: boolean | undefined;
+    let customerIdEmailError: string | undefined;
 
     if (result.reservationStatus === "CONFIRMED" && result.assignedCandidate) {
       const reservationRepository = new ReservationSupabaseRepository();
@@ -149,7 +156,37 @@ export async function POST(
           });
 
           emailDispatched = emailResult.success;
-          if (!emailResult.success) {
+          if (emailResult.success) {
+            try {
+              const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+              const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+              if (!supabaseUrl || !serviceRoleKey) {
+                throw new Error("Supabase configuration is missing for customer ID email handoff");
+              }
+              const customerRepository = new CustomerSupabaseRepository({
+                supabaseUrl,
+                serviceRoleKey,
+              });
+              const customerService = createCustomerService(customerRepository, emailService);
+              const handoff = await customerService.completeDirectBookingEmailHandoff({
+                reservationId: result.reservationId,
+                bookingProviderMessageId: emailResult.id,
+              });
+              customerIdEmailDispatched = handoff.customerIdJobFound
+                ? handoff.customerIdEmailSent
+                : undefined;
+              customerIdEmailError = handoff.customerIdEmailError;
+            } catch (handoffError: unknown) {
+              customerIdEmailDispatched = false;
+              customerIdEmailError = handoffError instanceof Error
+                ? handoffError.message
+                : "Customer ID email handoff failed";
+              console.error(
+                "[AdminPaymentApproval] Failed to complete customer ID email handoff:",
+                handoffError
+              );
+            }
+          } else {
             emailError = emailResult.error;
             console.error(
               `[AdminPaymentApproval] Failed to dispatch booking confirmation email to ${customerEmail}:`,
@@ -157,6 +194,37 @@ export async function POST(
             );
           }
         }
+      }
+
+      // MS-36: Trigger automated campaign qualification pipeline and instant milestone evaluation
+      try {
+        await handleConfirmedReservationCampaignQualification({
+          reservationId: result.reservationId,
+          source: "WEB",
+        });
+      } catch (campaignErr: unknown) {
+        console.error(
+          "[AdminPaymentApproval] Campaign qualification hook error:",
+          campaignErr
+        );
+      }
+
+      // MS-39: Single-use voucher redemption hook
+      try {
+        const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const voucherRepo = supabaseUrl && serviceRoleKey
+          ? new VoucherSupabaseRepository({ supabaseUrl, serviceRoleKey })
+          : undefined;
+        await redeemReservationVoucher({
+          reservationId: result.reservationId,
+          voucherRepository: voucherRepo,
+        });
+      } catch (voucherRedemptionErr: unknown) {
+        console.error(
+          "[AdminPaymentApproval] Voucher redemption hook error:",
+          voucherRedemptionErr
+        );
       }
     } else if (result.reservationStatus === "NEEDS_MANUAL_RESOLUTION") {
       const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3000$/, ":3001").replace(/\/$/, "");
@@ -169,7 +237,7 @@ export async function POST(
       let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
       let businessName = "DeskAtlas";
       let businessPhone: string | undefined;
-      let businessSettings: any = undefined;
+      let businessSettings: Awaited<ReturnType<SupabaseSettingsRepository["getBusinessSettings"]>> | undefined = undefined;
 
       try {
         const settingsRepo = new SupabaseSettingsRepository();
@@ -289,6 +357,8 @@ export async function POST(
       ...result,
       ...(emailDispatched !== undefined ? { emailDispatched } : {}),
       ...(emailError ? { emailError } : {}),
+      ...(customerIdEmailDispatched !== undefined ? { customerIdEmailDispatched } : {}),
+      ...(customerIdEmailError ? { customerIdEmailError } : {}),
     });
   } catch (error) {
     return paymentReviewErrorResponse(error);

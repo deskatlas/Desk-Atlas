@@ -74,6 +74,9 @@ import { StaffOperationsRepository } from "./staffOperationsRepository";
 import { StaffOperationsError, StaffOperationsConflictError } from "./staffOperationsService";
 import { sanitizeManualResolutionNotes } from "./reservationSupabaseRepository";
 import { randomUUID } from "crypto";
+import { CustomerMemoryRepository } from "./customerMemoryRepository";
+import { CustomerService } from "./customerService";
+import type { CustomerRepository } from "./customerRepository";
 
 interface StoredPaymentAttempt {
   id: string;
@@ -120,11 +123,37 @@ export class ReservationMemoryRepository
   private nextApprovalFailureMessage: string | null = null;
   private businessName: string = "DeskAtlas";
   private workspaceRepository?: WorkspaceRepository;
+  private customerRepository: CustomerRepository;
+
   constructor(
     private readonly nowProvider: () => Date = () => new Date(),
     workspaceRepository?: WorkspaceRepository
   ) {
     this.workspaceRepository = workspaceRepository;
+    this.customerRepository = new CustomerMemoryRepository(this.nowProvider);
+  }
+
+  setCustomerRepository(repo: CustomerRepository): void {
+    this.customerRepository = repo;
+  }
+
+  getCustomerRepository(): CustomerRepository {
+    return this.customerRepository;
+  }
+
+  private async processConfirmedReservationIdentity(reservation: ReservationResponseDTO, processedAt: string): Promise<void> {
+    const service = new CustomerService(this.customerRepository, undefined, this.nowProvider);
+    const result = await service.handleReservationConfirmation({
+      id: reservation.id,
+      referenceCode: reservation.referenceCode,
+      customerEmail: reservation.customerEmail,
+      customerFirstName: reservation.customerFirstName,
+      customerLastName: reservation.customerLastName,
+      customerContactNumber: reservation.customerContactNumber,
+      amountDue: reservation.amountDue,
+      currency: reservation.currency,
+    });
+    reservation.customerId = result.customer.id;
   }
 
   setWorkspaceRepository(repo: WorkspaceRepository): void {
@@ -228,6 +257,13 @@ export class ReservationMemoryRepository
       rateSnapshot,
       bookedRatePerHour: rateSnapshot,
       amountDue,
+      grossAmountDue: request.grossAmountDue ?? amountDue,
+      discountAmount: request.discountAmount ?? 0,
+      requestedVoucherId: request.requestedVoucherId ?? null,
+      appliedVoucherId: null,
+      promoCodeUsed: request.promoCode ? request.promoCode.trim().toUpperCase() : null,
+      promoQuoteSnapshot: request.promoQuoteSnapshot ?? null,
+      pricingRevision: 1,
       currency: "PHP",
       createdAt: now,
       updatedAt: now,
@@ -373,6 +409,9 @@ export class ReservationMemoryRepository
       proofSubmittedAt: attempt.proofSubmittedAt,
       paymentMethodId: attempt.paymentMethodId,
       businessName: this.businessName,
+      grossAmountDue: reservation.grossAmountDue,
+      discountAmount: reservation.discountAmount,
+      promoCodeUsed: reservation.promoCodeUsed,
     };
   }
 
@@ -576,6 +615,10 @@ export class ReservationMemoryRepository
         const attempt = this.requirePaymentAttemptById(input.paymentAttemptId);
 
         if (attempt.status === "APPROVED") {
+          const res = this.reservations.find((r) => r.id === attempt.reservationId);
+          if (res && (res.status === "CONFIRMED" || res.status === "CHECKED_IN")) {
+            await this.processConfirmedReservationIdentity(res, attempt.processedAt || input.processedAt);
+          }
           return this.buildDecisionResult(attempt, input.actorUserId);
         }
 
@@ -624,6 +667,7 @@ export class ReservationMemoryRepository
         if (assignedCandidate) {
           reservation.status = "CONFIRMED";
           reservation.confirmedAt = reservation.confirmedAt ?? input.processedAt;
+          await this.processConfirmedReservationIdentity(reservation, input.processedAt);
         } else {
           reservation.status = "NEEDS_MANUAL_RESOLUTION";
         }
@@ -711,6 +755,10 @@ export class ReservationMemoryRepository
         }
 
         if (attempt.status === "APPROVED") {
+          const res = this.reservations.find((r) => r.id === attempt.reservationId);
+          if (res && (res.status === "CONFIRMED" || res.status === "CHECKED_IN")) {
+            await this.processConfirmedReservationIdentity(res, attempt.processedAt || input.processedAt);
+          }
           return this.buildDecisionResult(attempt, input.actorUserId);
         }
 
@@ -759,6 +807,7 @@ export class ReservationMemoryRepository
           reservation.status = "CHECKED_IN";
           reservation.confirmedAt = reservation.confirmedAt ?? input.processedAt;
           reservation.checkedInAt = reservation.checkedInAt ?? input.processedAt;
+          await this.processConfirmedReservationIdentity(reservation, input.processedAt);
 
           this.recordOperationalAudit({
             reservation,
@@ -1093,6 +1142,9 @@ export class ReservationMemoryRepository
       customerEmail: reservation.customerEmail,
       reservationStatus: reservation.status,
       amountDue: reservation.amountDue,
+      grossAmountDue: reservation.grossAmountDue != null ? Number(reservation.grossAmountDue) : null,
+      discountAmount: reservation.discountAmount != null ? Number(reservation.discountAmount) : null,
+      promoCodeUsed: reservation.promoCodeUsed ?? null,
       currency: reservation.currency,
       confirmedAt: reservation.confirmedAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
@@ -1348,6 +1400,9 @@ export class ReservationMemoryRepository
       refundStatus: attempt.refundStatus,
       processedAt: attempt.processedAt,
       processedByUserId: attempt.processedByUserId,
+      grossAmountDue: reservation.grossAmountDue,
+      discountAmount: reservation.discountAmount,
+      promoCodeUsed: reservation.promoCodeUsed,
     };
   }
 
@@ -1820,6 +1875,9 @@ export class ReservationMemoryRepository
       manualResolutionNotes: sanitizeManualResolutionNotes(r.manualResolutionNotes),
       closureReason: (r as any).closureReason ?? null,
       closureDate: (r as any).closureDate ?? null,
+      grossAmountDue: r.grossAmountDue,
+      discountAmount: r.discountAmount,
+      promoCodeUsed: r.promoCodeUsed,
     };
   }
 

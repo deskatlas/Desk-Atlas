@@ -215,4 +215,30 @@ export * from './services/pricingService';
 export * from './services/reservationStatusService';
 export * from './services/promotionalFilterService';
 export * from './services/transactionalEmailService';
+export * from './models/customer';
+export * from './services/customerRepository';
+export * from './services/customerMemoryRepository';
+export * from './services/customerSupabaseRepository';
+export * from './services/customerService';
 export * from './utils/formatters';
+export * from './models/campaign';
+export * from './services/campaignRuleEvaluator';
+export * from './services/campaignRepository';
+export * from './services/campaignMemoryRepository';
+export * from './services/campaignSupabaseRepository';
+export * from './services/campaignService';
+export * from './services/voucherRedemptionService';
+export type {
+  RuleProgress,
+  EligibilityResult,
+  PromoQuoteSnapshot,
+  NotificationOutboxItem,
+  RewardProcessingJob,
+} from './models/voucher';
+export * from './services/voucherRepository';
+export * from './services/voucherMemoryRepository';
+export * from './services/voucherSupabaseRepository';
+export * from './services/voucherService';
+export * from './services/rateLimiterService';
+export * from './services/confirmationQualificationHook';
+export * from './services/voucherRedemptionHelper';

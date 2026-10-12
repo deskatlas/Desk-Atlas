@@ -6,6 +6,9 @@ export interface GuestReservationTrackingRecord {
   customerEmail: string;
   reservationStatus: string;
   amountDue: number;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  promoCodeUsed?: string | null;
   currency: string;
   confirmedAt: string | null;
   checkedOutAt: string | null;

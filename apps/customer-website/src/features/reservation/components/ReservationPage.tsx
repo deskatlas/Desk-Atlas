@@ -392,6 +392,108 @@ export function ReservationPage() {
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const [candidateImageErrors, setCandidateImageErrors] = useState<Record<string, boolean>>({});
 
+  // Promo code state (SPEC-3 Section 5.1)
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    grossAmount: number;
+    discountAmount: number;
+    amountDue: number;
+    terms?: any;
+  } | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) {
+      setPromoError("Please enter a promo code.");
+      return;
+    }
+    if (!customerEmail.trim()) {
+      setPromoError("Please enter your email address before applying a promo code.");
+      return;
+    }
+
+    setPromoLoading(true);
+    setPromoError(null);
+    setPromoSuccess(null);
+
+    try {
+      const candidatesPayload = candidates.map((c) => {
+        const startUtc = zonedDateTimeToUtc(c.date, c.startTime, "Asia/Manila");
+        const endUtc = new Date(startUtc.getTime() + c.durationHours * 60 * 60 * 1000);
+        return {
+          rank: c.rank,
+          workspaceInstanceId: c.workspace.workspaceInstanceId,
+          startAt: startUtc.toISOString(),
+          endAt: endUtc.toISOString(),
+          rateType: c.rateType || "HOURLY",
+        };
+      });
+
+      const res = await fetch("/api/booking/validate-promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          promo_code: promoCode.trim().toUpperCase(),
+          email: customerEmail.trim().toLowerCase(),
+          booking_context: {
+            channel: "WEB",
+            grossAmount: mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate),
+            candidates: candidatesPayload.length > 0 ? candidatesPayload : [
+              {
+                rank: 0,
+                workspaceInstanceId: "00000000-0000-0000-0000-000000000000",
+                startAt: new Date().toISOString(),
+                endAt: new Date(Date.now() + 3600000).toISOString(),
+              },
+            ],
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        setPromoError(json.error?.message || "Invalid promo code. Please check and try again.");
+        setAppliedPromo(null);
+        return;
+      }
+
+      setAppliedPromo({
+        code: promoCode.trim().toUpperCase(),
+        grossAmount: json.data.gross_amount,
+        discountAmount: json.data.discount_amount,
+        amountDue: json.data.amount_due,
+        terms: json.data.terms,
+      });
+      setPromoSuccess(`Promo code applied: PHP ${json.data.discount_amount.toFixed(2)} discount`);
+    } catch {
+      setPromoError("Invalid promo code. Please check and try again.");
+      setAppliedPromo(null);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setPromoCode("");
+    setAppliedPromo(null);
+    setPromoError(null);
+    setPromoSuccess(null);
+  };
+
+  // MS-38 Pillar 5: Frictionless auto-apply promo code at 8 characters
+  useEffect(() => {
+    const cleaned = promoCode.trim().toUpperCase();
+    if (cleaned.length === 8 && !appliedPromo && !promoLoading && !promoError) {
+      const timer = setTimeout(() => {
+        void handleApplyPromo();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [promoCode, appliedPromo, promoLoading, promoError]);
+
   // Contact number input handler enforcing Philippine mobile format (09 + 9 digits)
   const handleContactNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
@@ -657,6 +759,16 @@ export function ReservationPage() {
       rateType === "HOURLY" ? mainCandidate.durationHours : 1
     );
   }, [mainCandidate, activePromotions]);
+
+  const effectiveMainTotal = useMemo(
+    () => (mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate)),
+    [mainPricing, mainCandidate]
+  );
+
+  const effectiveAmountDue = useMemo(
+    () => (appliedPromo ? appliedPromo.amountDue : effectiveMainTotal),
+    [appliedPromo, effectiveMainTotal]
+  );
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.workspaceInstanceId === selectedWorkspaceId) ?? null,
@@ -1200,7 +1312,6 @@ export function ReservationPage() {
         };
       });
 
-      const effectiveMainTotal = mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate);
       const effectiveRateSnapshot = mainPricing ? mainPricing.effectivePrice : calculateDisplayRate(mainCandidate);
 
       const response = await fetch("/api/reservations", {
@@ -1212,10 +1323,11 @@ export function ReservationPage() {
           customerLastName: customerLastName.trim(),
           customerEmail: customerEmail.trim().toLowerCase(),
           customerContactNumber: contactNumberDigits.length === 9 ? `09${contactNumberDigits}` : undefined,
+          promoCode: appliedPromo?.code || undefined,
           rateType: mainCandidate?.rateType || "HOURLY",
           bookedRatePerHour: effectiveRateSnapshot,
           rateSnapshot: effectiveRateSnapshot,
-          amountDue: effectiveMainTotal,
+          amountDue: effectiveAmountDue,
           candidates: candidatesPayload,
         }),
       });
@@ -3375,12 +3487,24 @@ export function ReservationPage() {
                         {mainCandidate.durationHours} Hours
                       </span>
                     </div>
+                    {appliedPromo && (
+                      <>
+                        <div className="flex justify-between text-slate-500 line-through text-xs">
+                          <span>Original Rate:</span>
+                          <span>₱{effectiveMainTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-600 font-semibold text-xs">
+                          <span>Voucher Discount ({appliedPromo.code}):</span>
+                          <span>-₱{appliedPromo.discountAmount.toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="border-t border-[var(--da-border-light)] pt-2 flex justify-between items-center">
                       <span className="font-extrabold text-sm text-[var(--da-brand-dark)]">
                         Amount Due on Confirmation:
                       </span>
-                      <span className="font-extrabold text-lg text-[var(--da-primary)]">
-                        ₱{mainPricing?.estimatedTotal.toFixed(2)}
+                      <span className="font-extrabold text-lg text-[var(--da-primary)]" data-testid="amount-due-confirmation">
+                        ₱{effectiveAmountDue.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -3541,6 +3665,79 @@ export function ReservationPage() {
                     )}
                   </div>
 
+                  {/* Optional Promo Code Field directly after Contact Number (SPEC-3 Section 5.1) */}
+                  <div className="mt-4" data-testid="promo-code-container">
+                    <label htmlFor="booking-promo-code" className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1">
+                      Promo Code <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="booking-promo-code"
+                        type="text"
+                        maxLength={8}
+                        value={promoCode}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setPromoCode(val);
+                          if (promoError) setPromoError(null);
+                          if (appliedPromo && val !== appliedPromo.code) {
+                            setAppliedPromo(null);
+                            setPromoSuccess(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleApplyPromo();
+                          }
+                        }}
+                        placeholder="e.g. 7K9M2P4X"
+                        disabled={isSubmitting || promoLoading}
+                        className="da-input font-mono uppercase tracking-widest text-sm flex-1"
+                        data-testid="booking-promo-code-input"
+                      />
+                      {appliedPromo ? (
+                        <button
+                          type="button"
+                          onClick={handleRemovePromo}
+                          className="da-secondary-button text-xs font-bold px-4"
+                          data-testid="remove-promo-button"
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleApplyPromo()}
+                          disabled={!promoCode.trim() || promoLoading}
+                          className="da-primary-button text-xs font-bold px-4 disabled:opacity-50"
+                          data-testid="apply-promo-button"
+                        >
+                          {promoLoading ? "Applying..." : "Apply"}
+                        </button>
+                      )}
+                    </div>
+
+                    {promoError && (
+                      <p className="mt-1 text-[11px] font-bold text-red-600" data-testid="promo-error-message">
+                        {promoError}
+                      </p>
+                    )}
+
+                    {promoSuccess && appliedPromo && (
+                      <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-[11px] text-emerald-800" data-testid="promo-success-summary">
+                        <div className="flex justify-between items-center font-semibold">
+                          <span>Loyalty Discount ({appliedPromo.code})</span>
+                          <span>- PHP {appliedPromo.discountAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-slate-700 mt-1 font-bold">
+                          <span>Updated Amount Due:</span>
+                          <span>PHP {appliedPromo.amountDue.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[11px] leading-relaxed text-slate-600">
                     <span className="font-bold text-slate-800">Please Note:</span> Submitting creates a pending reservation and opens a 1-hour online payment session. The selected workspace is not guaranteed until payment proof is approved and the reservation is confirmed.
                   </div>
@@ -3567,8 +3764,7 @@ export function ReservationPage() {
                         </>
                       ) : (
                         <span>
-                          Submit Reservation & Pay (₱
-                          {(mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate)).toFixed(2)}) →
+                          Submit Reservation & Pay (₱{effectiveAmountDue.toFixed(2)}) →
                         </span>
                       )}
                     </button>
@@ -3606,7 +3802,7 @@ export function ReservationPage() {
           templateName={mainCandidate.workspace.templateName}
           durationHours={mainCandidate.durationHours}
           date={mainCandidate.date}
-          totalAmount={mainPricing ? mainPricing.estimatedTotal : calculateDisplayTotal(mainCandidate)}
+          totalAmount={effectiveAmountDue}
           isSubmitting={isSubmitting}
           onConfirm={handleConfirmSubmit}
         />

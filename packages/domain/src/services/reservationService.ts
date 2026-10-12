@@ -8,6 +8,7 @@ import { validatePersonName } from "./personNameValidationService";
 import { RateType } from "./pricingService";
 import { resolveEffectivePrice } from "./promotionalPricingService";
 import { PromotionalRate } from "../models/promotionalRate";
+import type { VoucherService } from "./voucherService";
 
 export class ReservationError extends Error {
   constructor(message: string) {
@@ -31,6 +32,7 @@ export class ReservationService {
       maxAdvanceBookingDays?: number;
       now?: Date;
       promotions?: PromotionalRate[];
+      voucherService?: VoucherService;
     }
   ): Promise<ReservationResponseDTO> {
     const firstNameValidation = validatePersonName(request.customerFirstName, "First name");
@@ -145,31 +147,105 @@ export class ReservationService {
       amountDue = resolved.estimatedTotal;
     }
 
-    // If client passed validated promo pricing, accept effective rate within limits
-    if (request.amountDue !== undefined && request.amountDue !== null && request.amountDue > 0) {
-      if (request.amountDue <= amountDue) {
-        amountDue = request.amountDue;
-        if (request.rateSnapshot !== undefined && request.rateSnapshot !== null) {
+    const serverGrossAmount = amountDue;
+
+    // If client passed validated promotional pricing (without loyalty promo code), accept within limits
+    if (!request.promoCode) {
+      if (request.amountDue !== undefined && request.amountDue !== null && request.amountDue > 0) {
+        if (request.amountDue <= amountDue) {
+          amountDue = request.amountDue;
+          if (request.rateSnapshot !== undefined && request.rateSnapshot !== null) {
+            rateSnapshot = request.rateSnapshot;
+          } else if (request.bookedRatePerHour !== undefined && request.bookedRatePerHour !== null) {
+            rateSnapshot = request.bookedRatePerHour;
+          }
+        }
+      } else if (request.rateSnapshot !== undefined && request.rateSnapshot !== null && request.rateSnapshot > 0) {
+        if (request.rateSnapshot <= basePrice) {
           rateSnapshot = request.rateSnapshot;
-        } else if (request.bookedRatePerHour !== undefined && request.bookedRatePerHour !== null) {
+          if (rateType !== "HOURLY") {
+            amountDue = rateSnapshot;
+          }
+        }
+      } else if (request.bookedRatePerHour !== undefined && request.bookedRatePerHour !== null && request.bookedRatePerHour > 0) {
+        if (request.bookedRatePerHour <= basePrice) {
           rateSnapshot = request.bookedRatePerHour;
-        }
-      }
-    } else if (request.rateSnapshot !== undefined && request.rateSnapshot !== null && request.rateSnapshot > 0) {
-      if (request.rateSnapshot <= basePrice) {
-        rateSnapshot = request.rateSnapshot;
-        if (rateType !== "HOURLY") {
-          amountDue = rateSnapshot;
-        }
-      }
-    } else if (request.bookedRatePerHour !== undefined && request.bookedRatePerHour !== null && request.bookedRatePerHour > 0) {
-      if (request.bookedRatePerHour <= basePrice) {
-        rateSnapshot = request.bookedRatePerHour;
-        if (rateType !== "HOURLY") {
-          amountDue = rateSnapshot;
+          if (rateType !== "HOURLY") {
+            amountDue = rateSnapshot;
+          }
         }
       }
     }
+
+    let grossAmountDue = request.promoCode ? serverGrossAmount : amountDue;
+    let discountAmount = 0;
+    let requestedVoucherId: string | null = null;
+    let promoQuoteSnapshot: Record<string, unknown> | null = null;
+
+    if (request.promoCode && request.promoCode.trim() !== '') {
+      if (options?.voucherService) {
+        try {
+          const promoResult = await options.voucherService.validatePromoForBooking({
+            promoCode: request.promoCode,
+            email: request.customerEmail,
+            channel: request.source,
+            grossAmount: grossAmountDue,
+            workspaceTemplateId: mainTemplate.id,
+            now: options?.now,
+          });
+
+          discountAmount = promoResult.discountAmount;
+          amountDue = promoResult.amountDue;
+          requestedVoucherId = promoResult.voucherId;
+          promoQuoteSnapshot = {
+            voucherId: promoResult.voucherId,
+            promoCode: request.promoCode.trim().toUpperCase(),
+            rewardType: promoResult.terms?.rewardType ?? (promoResult as unknown as Record<string, unknown>).rewardType ?? 'PERCENTAGE_DISCOUNT',
+            rewardValue: promoResult.terms?.rewardValue ?? (promoResult as unknown as Record<string, unknown>).rewardValue ?? 0,
+            maxDiscountAmount: promoResult.terms?.maxDiscountAmount ?? null,
+            grossAmount: grossAmountDue,
+            discountAmount,
+            amountDue,
+            quotedAt: promoResult.serverNow ?? new Date().toISOString(),
+            channel: request.source,
+            workspaceTemplateId: mainTemplate.id,
+          };
+        } catch (err: unknown) {
+          if (err && typeof err === 'object' && 'code' in err) {
+            const errCode = (err as { code?: string }).code;
+            if (errCode === 'PROMO_USED' || errCode === 'PROMO_EXPIRED' || errCode === 'PROMO_REVALIDATION_REQUIRED') {
+              throw new ReservationError(
+                'Your promo or price changed. Review the updated amount before continuing.'
+              );
+            }
+          }
+          const msg = err instanceof Error ? err.message : 'Invalid promo code';
+          throw new ReservationError(msg);
+        }
+      } else if (
+        request.amountDue !== undefined &&
+        request.amountDue !== null &&
+        request.amountDue > 0 &&
+        request.amountDue < grossAmountDue
+      ) {
+        // Resilient fallback when voucherService is omitted but client passed validated promo pricing
+        discountAmount = Math.round((grossAmountDue - request.amountDue) * 100) / 100;
+        amountDue = request.amountDue;
+        requestedVoucherId = request.requestedVoucherId ?? null;
+        promoQuoteSnapshot = request.promoQuoteSnapshot ?? {
+          promoCode: request.promoCode.trim().toUpperCase(),
+          grossAmount: grossAmountDue,
+          discountAmount,
+          amountDue,
+          channel: request.source,
+        };
+      }
+    }
+
+    request.grossAmountDue = grossAmountDue;
+    request.discountAmount = discountAmount;
+    request.requestedVoucherId = requestedVoucherId;
+    request.promoQuoteSnapshot = promoQuoteSnapshot;
 
     if (request.source === "WEB") {
       if (!this.paymentRepository) {
@@ -204,6 +280,11 @@ export class ReservationService {
 
       return {
         ...reservation,
+        grossAmountDue,
+        discountAmount,
+        promoCodeUsed: request.promoCode ? request.promoCode.trim().toUpperCase() : null,
+        requestedVoucherId,
+        promoQuoteSnapshot,
         paymentSession: {
           paymentAttemptId: storedSession.paymentAttemptId,
           token: draftSession.token,
@@ -225,7 +306,15 @@ export class ReservationService {
       }
     }
 
-    return await this.reservationRepository.createReservation(request, rateSnapshot, amountDue);
+    const createdReservation = await this.reservationRepository.createReservation(request, rateSnapshot, amountDue);
+    return {
+      ...createdReservation,
+      grossAmountDue,
+      discountAmount,
+      promoCodeUsed: request.promoCode ? request.promoCode.trim().toUpperCase() : null,
+      requestedVoucherId,
+      promoQuoteSnapshot,
+    };
   }
 
   async revalidateWorkspacePrice(templateId: string): Promise<{

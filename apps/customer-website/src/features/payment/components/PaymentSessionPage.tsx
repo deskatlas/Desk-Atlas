@@ -489,7 +489,14 @@ export function PaymentSessionPage({ token }: { token: string }) {
                 <div className="mt-8 grid gap-4 md:grid-cols-2">
                   <Panel label="Reference" value={data.reservationReferenceCode} />
                   <Panel label="Guest" value={`${data.customerFirstName} ${data.customerLastName}`} />
-                  <Panel label="Amount Due" value={`${data.currency} ${data.amountDue}`} />
+                  <Panel
+                    label="Amount Due"
+                    value={
+                      data.discountAmount && data.discountAmount > 0
+                        ? `${data.currency} ${data.amountDue} (${data.promoCodeUsed ?? 'Promo'}: -${data.currency} ${data.discountAmount})`
+                        : `${data.currency} ${data.amountDue}`
+                    }
+                  />
                   <Panel label="Status" value="Awaiting proof submission" />
                 </div>
 

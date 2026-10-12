@@ -8,9 +8,12 @@ import {
   createTransactionalEmailService,
   formatEmailBookingDate,
   formatEmailBookingTimeRange,
+  handleConfirmedReservationCampaignQualification,
   hashBookingToken,
+  redeemReservationVoucher,
   ReservationSupabaseRepository,
   SupabaseSettingsRepository,
+  VoucherSupabaseRepository,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -142,6 +145,37 @@ export async function POST(
           });
         }
       }
+
+      // MS-36: Trigger automated campaign qualification pipeline and instant milestone evaluation
+      try {
+        await handleConfirmedReservationCampaignQualification({
+          reservationId: result.reservationId,
+          source: "KIOSK",
+        });
+      } catch (campaignErr: unknown) {
+        console.error(
+          "[StaffPaymentConfirm] Campaign qualification hook error:",
+          campaignErr
+        );
+      }
+
+      // MS-39: Single-use voucher redemption hook
+      try {
+        const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const voucherRepo = supabaseUrl && serviceRoleKey
+          ? new VoucherSupabaseRepository({ supabaseUrl, serviceRoleKey })
+          : undefined;
+        await redeemReservationVoucher({
+          reservationId: result.reservationId,
+          voucherRepository: voucherRepo,
+        });
+      } catch (voucherRedemptionErr: unknown) {
+        console.error(
+          "[StaffPaymentConfirm] Voucher redemption hook error:",
+          voucherRedemptionErr
+        );
+      }
     } else if (result.reservationStatus === "NEEDS_MANUAL_RESOLUTION") {
       const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3003$/, ":3001").replace(/\/$/, "");
       const trackingBaseUrl =
@@ -153,7 +187,7 @@ export async function POST(
       let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
       let businessName = "DeskAtlas";
       let businessPhone: string | undefined;
-      let businessSettings: any = undefined;
+      let businessSettings: Awaited<ReturnType<SupabaseSettingsRepository["getBusinessSettings"]>> | undefined = undefined;
 
       try {
         const settingsRepo = new SupabaseSettingsRepository();

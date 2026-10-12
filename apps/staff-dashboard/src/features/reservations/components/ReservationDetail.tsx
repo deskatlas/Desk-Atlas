@@ -373,6 +373,16 @@ export function ReservationDetail({ id }: { id: string }) {
   const amountDueText = reservation.amountDue ? `${reservation.currency || 'PHP'} ${reservation.amountDue}` : null;
   const rateSnapshotText = reservation.rateSnapshot ? `${reservation.currency || 'PHP'} ${reservation.rateSnapshot}/hr` : null;
 
+  const hasDiscount = typeof reservation.discountAmount === 'number' && reservation.discountAmount > 0;
+  const grossAmountText = reservation.grossAmountDue
+    ? `${reservation.currency || 'PHP'} ${reservation.grossAmountDue}`
+    : (hasDiscount && reservation.amountDue
+      ? `${reservation.currency || 'PHP'} ${(Number(reservation.amountDue) + Number(reservation.discountAmount)).toFixed(2)}`
+      : null);
+  const discountText = hasDiscount
+    ? `-${reservation.currency || 'PHP'} ${reservation.discountAmount}${reservation.promoCodeUsed ? ` (${reservation.promoCodeUsed})` : ''}`
+    : null;
+
   const detailFields = [
     { label: 'Customer Name', value: customerFullName },
     { label: 'Email', value: customerEmail },
@@ -380,6 +390,8 @@ export function ReservationDetail({ id }: { id: string }) {
     { label: 'Schedule', value: scheduleText },
     { label: 'Duration', value: durationText },
     ...(rateSnapshotText ? [{ label: 'Hourly Rate', value: rateSnapshotText }] : []),
+    ...(hasDiscount && grossAmountText ? [{ label: 'Gross Amount', value: grossAmountText }] : []),
+    ...(hasDiscount && discountText ? [{ label: 'Voucher Discount', value: discountText }] : []),
     ...(amountDueText ? [{ label: 'Total Amount', value: amountDueText }] : []),
     { label: 'Payment Status', value: paymentStatusText },
     ...(reservation.reservationStatus === 'CANCELLED'

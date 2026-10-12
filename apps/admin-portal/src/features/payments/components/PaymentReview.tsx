@@ -116,8 +116,8 @@ export function PaymentReview({ id }: { id: string }) {
       setIsApproveSuccess(true);
       setShowApproveModal(true);
       fetchDetail();
-    } catch (err: any) {
-      setActionError(err.message || 'Error reconsidering payment.');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error reconsidering payment.');
     } finally {
       setIsReconsidering(false);
     }
@@ -137,8 +137,8 @@ export function PaymentReview({ id }: { id: string }) {
       if (data.proofStoragePath) {
         fetchProofUrl();
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load payment details.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load payment details.');
     } finally {
       setLoading(false);
     }
@@ -190,8 +190,8 @@ export function PaymentReview({ id }: { id: string }) {
 
       setApproveResult(data);
       setIsApproveSuccess(true);
-    } catch (err: any) {
-      setActionError(err.message || 'Error approving payment.');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error approving payment.');
     } finally {
       setIsApproving(false);
     }
@@ -233,8 +233,8 @@ export function PaymentReview({ id }: { id: string }) {
 
       setShowRejectModal(false);
       router.push('/manage/payments');
-    } catch (err: any) {
-      setActionError(err.message || 'Error rejecting payment.');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error rejecting payment.');
     } finally {
       setIsRejecting(false);
     }
@@ -272,11 +272,37 @@ export function PaymentReview({ id }: { id: string }) {
     ? formatScheduleRange(primaryCandidate.startAt, primaryCandidate.endAt)
     : 'Not scheduled';
 
-  const reviewFields = [
+  const hasPromo = typeof detail.discountAmount === 'number' && detail.discountAmount > 0;
+  const formattedGross = detail.grossAmountDue != null
+    ? `₱${Number(detail.grossAmountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    : formattedAmount;
+  const formattedDiscount = hasPromo
+    ? `-₱${Number(detail.discountAmount).toFixed(2)}`
+    : null;
+
+  interface ReviewField {
+    label: string;
+    value: React.ReactNode;
+    testId?: string;
+  }
+
+  const reviewFields: ReviewField[] = [
     { label: 'Customer', value: customerName },
     { label: 'Email', value: detail.customerEmail },
     { label: 'Reference', value: detail.reservationReferenceCode || detail.paymentAttemptId.slice(0, 8) },
-    { label: 'Amount', value: formattedAmount },
+    ...(hasPromo
+      ? [
+          { label: 'Gross Amount', value: formattedGross },
+          {
+            label: 'Promo Applied',
+            value: `${detail.promoCodeUsed ?? 'PROMO'} (${formattedDiscount})`,
+            testId: 'review-promo-breakdown',
+          },
+          { label: 'Amount Due', value: formattedAmount, testId: 'review-amount-due' },
+        ]
+      : [
+          { label: 'Amount', value: formattedAmount, testId: 'review-amount-due' },
+        ]),
     { label: 'Date/Time', value: scheduleDisplay },
     { label: 'Submitted', value: submittedAgo },
     { label: 'Status', value: detail.paymentStatus },
@@ -330,7 +356,13 @@ export function PaymentReview({ id }: { id: string }) {
           {reviewFields.map((f, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid var(--da-border-light)', fontSize: '13px' }}>
               <span style={{ color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>{f.label}</span>
-              <span style={{ fontWeight: 700, color: 'var(--da-text-primary)' }}>{f.value}</span>
+              {f.testId === 'review-amount-due' ? (
+                <span style={{ fontWeight: 700, color: 'var(--da-text-primary)' }} data-testid="review-amount-due">{f.value}</span>
+              ) : f.testId === 'review-promo-breakdown' ? (
+                <span style={{ fontWeight: 700, color: 'var(--da-text-primary)' }} data-testid="review-promo-breakdown">{f.value}</span>
+              ) : (
+                <span style={{ fontWeight: 700, color: 'var(--da-text-primary)' }}>{f.value}</span>
+              )}
             </div>
           ))}
         </div>

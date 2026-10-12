@@ -494,6 +494,9 @@ export interface PaymentLinkEmailInput extends BaseEmailBusinessFields {
   trackingUrl?: string;
   workspaceTemplateName?: string;
   bookingDate?: string;
+  grossAmount?: number | null;
+  discountAmount?: number | null;
+  promoCode?: string | null;
 }
 
 // MF-141 alias for PaymentLinkEmailInput
@@ -722,8 +725,13 @@ export interface RoleChangeNotificationEmailInput extends BaseEmailBusinessField
 export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject: string; html: string; text: string } {
   const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `${profile.businessName || 'DeskAtlas'} Reservation Payment - Ref #${input.referenceCode}`;
   const formattedAmount = `${input.currency.toUpperCase()} ${Number(input.amountDue).toFixed(2)}`;
+  const hasDiscount = Boolean(input.discountAmount && input.discountAmount > 0);
+  const subject = hasDiscount
+    ? `${profile.businessName || 'DeskAtlas'} Reservation Payment - Ref #${input.referenceCode} (${formattedAmount})`
+    : `${profile.businessName || 'DeskAtlas'} Reservation Payment - Ref #${input.referenceCode}`;
+  const formattedGrossAmount = `${input.currency.toUpperCase()} ${Number(input.grossAmount ?? (input.amountDue + (input.discountAmount || 0))).toFixed(2)}`;
+  const formattedDiscountAmount = `-${input.currency.toUpperCase()} ${Number(input.discountAmount || 0).toFixed(2)}`;
   const expiresFormatted = new Date(input.expiresAt).toLocaleString('en-US', {
     timeZone: 'UTC',
     dateStyle: 'medium',
@@ -781,6 +789,24 @@ export function renderPaymentLinkEmail(input: PaymentLinkEmailInput): { subject:
         <div class="amount-val">${escapeHtml(formattedAmount)}</div>
       </div>
 
+      ${hasDiscount ? `
+      <div class="discount-breakdown-box" style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 14px;">
+        <div style="font-weight: 700; color: #166534; margin-bottom: 8px; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px;">Payment Summary</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #374151;">
+          <span>Original Booking Total:</span>
+          <span>${escapeHtml(formattedGrossAmount)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #15803d; font-weight: 600;">
+          <span>Promotional Voucher${input.promoCode ? ` (${escapeHtml(input.promoCode)})` : ''}:</span>
+          <span>${escapeHtml(formattedDiscountAmount)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid #bbf7d0; font-weight: 700; color: #166534; font-size: 15px;">
+          <span>Net Amount to Pay:</span>
+          <span>${escapeHtml(formattedAmount)}</span>
+        </div>
+      </div>
+      ` : ''}
+
       <div style="text-align: center;">
         <a href="${escapeHtml(input.paymentUrl)}" class="btn">Proceed to Payment</a>
       </div>
@@ -814,7 +840,12 @@ Your workspace reservation request has been created. Please complete your paymen
 
 Amount Due: ${formattedAmount}
 Payment URL: ${input.paymentUrl}
-
+${hasDiscount ? `
+Payment Summary:
+- Original Booking Total: ${formattedGrossAmount}
+- Promotional Voucher${input.promoCode ? ` (${input.promoCode})` : ''}: ${formattedDiscountAmount}
+- Net Amount to Pay: ${formattedAmount}
+` : ''}
 Session Expiry: ${expiresFormatted} (${expiryInfo.label})
 
 Payment Instructions:
@@ -3238,6 +3269,104 @@ export class TransactionalEmailService {
       text: rendered.text,
     });
   }
+
+  async sendSaveCustomerIdEmail(input: SaveCustomerIdEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: SaveCustomerIdEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderSaveCustomerIdEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'save-customer-id',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-save-customer-id' };
+      } catch (err: any) {
+        console.warn('[TransactionalEmail] Save customer ID webhook dispatch error:', err.message);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendVoucherEmail(input: VoucherEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: VoucherEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderVoucherEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'voucher-email',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-voucher-email' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Voucher webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendVoucherAwardedEmail(input: VoucherAwardedEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: VoucherAwardedEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderVoucherAwardedEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'voucher-awarded',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-voucher-awarded' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Voucher awarded webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
 }
 
 export interface ClosureImpactNoticeEmailInput extends BaseEmailBusinessFields {
@@ -3641,8 +3770,312 @@ ${renderBusinessFooterText(profile)}
   return { subject, html, text };
 }
 
+export interface SaveCustomerIdEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerCode: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  customerEmail: string;
+  rewardsPortalUrl?: string;
+}
+
+export function renderSaveCustomerIdEmail(input: SaveCustomerIdEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Your DeskAtlas Customer ID: ${input.customerCode}`;
+
+  let customerOrigin =
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://deskatlas.test';
+
+  const portalUrl = input.rewardsPortalUrl || `${customerOrigin}/rewards`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-card { text-align: center; margin: 28px 0; background-color: #f0fdf4; padding: 24px 20px; border-radius: 12px; border: 1px solid #86efac; }
+    .code-label { font-size: 12px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .code-value { font-family: monospace; font-size: 32px; font-weight: 800; color: #166534; letter-spacing: 4px; margin: 8px 0; }
+    .code-hint { font-size: 13px; color: #15803d; margin-top: 6px; }
+    .info-box { background-color: #f8fafc; border-radius: 10px; padding: 18px 20px; margin: 20px 0; border: 1px solid #e2e8f0; }
+    .info-item { font-size: 14px; color: #334155; margin: 8px 0; line-height: 1.5; }
+    .btn-container { text-align: center; margin: 28px 0 20px 0; }
+    .btn { display: inline-block; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; background-color: #15803d; color: #ffffff !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Permanent Customer Identity</p>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Welcome to ${escapeHtml(businessName)}! Following your first confirmed booking, your permanent Customer ID has been created.</p>
+
+      <div class="code-card">
+        <div class="code-label">Your Permanent Customer ID</div>
+        <div class="code-value">${escapeHtml(input.customerCode)}</div>
+        <div class="code-hint">Permanently bound to ${escapeHtml(input.customerEmail)}</div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-item"><strong>Important Identifier Notice:</strong> Your Customer ID is an identifier, not a password. Please keep your Customer ID and email pair private.</div>
+        <div class="info-item"><strong>Permanent Email Binding:</strong> This Customer ID is permanently bound to <code>${escapeHtml(input.customerEmail)}</code>. Future bookings made with this email will automatically associate with your loyalty profile.</div>
+        <div class="info-item"><strong>My Bookings & Rewards:</strong> You can use this Customer ID along with your email on the My Bookings & Rewards portal to view your confirmed bookings, access passes, and promotional loyalty rewards.</div>
+      </div>
+
+      <div class="btn-container">
+        <a href="${escapeHtml(portalUrl)}" class="btn">Access My Bookings & Rewards</a>
+      </div>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Your DeskAtlas Customer ID: ${input.customerCode}
+
+Hello ${customerName},
+
+Welcome to ${businessName}! Following your first confirmed booking, your permanent Customer ID has been created:
+
+CUSTOMER ID: ${input.customerCode}
+BOUND EMAIL: ${input.customerEmail}
+
+Important Information:
+- Your Customer ID is an identifier, not a password. Please keep your Customer ID and email pair private.
+- This Customer ID is permanently bound to ${input.customerEmail}. Future bookings made with this email will automatically associate with your loyalty profile.
+- You can use this Customer ID along with your email on My Bookings & Rewards to track your reservations and view your loyalty rewards.
+
+Access My Bookings & Rewards:
+${portalUrl}
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export interface VoucherEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  promoCode: string;
+  discountDescription: string;
+  campaignName: string;
+  expiresAt: string;
+  terms?: Record<string, unknown>;
+  instructions?: string;
+}
+
+export function renderVoucherEmail(input: VoucherEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Valued Guest';
+  const subject = `Your DeskAtlas Voucher: ${input.promoCode} - ${input.discountDescription}`;
+  const expiryFormatted = formatEmailTime(input.expiresAt, profile.timezone || DEFAULT_TIMEZONE);
+  const fallbackBaseUrl = profile.appUrl || 'http://localhost:3001';
+  const reserveUrl = `${fallbackBaseUrl}/reserve`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-card { text-align: center; margin: 28px 0; background-color: #f0fdf4; padding: 24px 20px; border-radius: 12px; border: 1px solid #86efac; }
+    .code-label { font-size: 12px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .code-value { font-family: monospace; font-size: 32px; font-weight: 800; color: #166534; letter-spacing: 4px; margin: 8px 0; }
+    .code-hint { font-size: 13px; color: #15803d; margin-top: 6px; }
+    .info-box { background-color: #f8fafc; border-radius: 10px; padding: 18px 20px; margin: 20px 0; border: 1px solid #e2e8f0; }
+    .info-item { font-size: 14px; color: #334155; margin: 8px 0; line-height: 1.5; }
+    .btn-container { text-align: center; margin: 28px 0 20px 0; }
+    .btn { display: inline-block; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; background-color: #15803d; color: #ffffff !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Reward Voucher</p>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Here is your reward voucher from <strong>${escapeHtml(input.campaignName)}</strong>:</p>
+
+      <div class="code-card">
+        <div class="code-label">Promo Code • ${escapeHtml(input.discountDescription)}</div>
+        <div class="code-value">${escapeHtml(input.promoCode)}</div>
+        <div class="code-hint">Expires: ${escapeHtml(expiryFormatted)}</div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-item"><strong>How to Redeem:</strong> Enter this 8-character promo code in the Promo Code field during booking on our customer website or on-site kiosk.</div>
+        <div class="info-item"><strong>Validity:</strong> Single use only. This voucher cannot be stacked with other promo codes.</div>
+      </div>
+
+      <div class="btn-container">
+        <a href="${escapeHtml(reserveUrl)}" class="btn">Book a Desk Now</a>
+      </div>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Your DeskAtlas Voucher: ${input.promoCode} - ${input.discountDescription}
+
+Hello ${customerName},
+
+Here is your reward voucher from ${input.campaignName}:
+
+PROMO CODE: ${input.promoCode}
+DISCOUNT: ${input.discountDescription}
+EXPIRES: ${expiryFormatted}
+
+How to Redeem:
+Enter this 8-character promo code in the Promo Code field during booking on our website or on-site kiosk terminal.
+
+Book a Desk:
+${reserveUrl}
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export interface VoucherAwardedEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  promoCode: string;
+  discountDescription?: string;
+  discountText?: string;
+  campaignName: string;
+  expiresAt: string;
+  portalUrl?: string;
+  terms?: Record<string, unknown>;
+  instructions?: string;
+}
+
+export function renderVoucherAwardedEmail(input: VoucherAwardedEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Valued Guest';
+  const discountText = input.discountText || input.discountDescription || 'Reward Discount';
+  const subject = `Your DeskAtlas Reward: ${input.promoCode} (${discountText})`;
+  const expiryFormatted = formatEmailTime(input.expiresAt, profile.timezone || DEFAULT_TIMEZONE);
+  const fallbackBaseUrl = profile.appUrl || 'http://localhost:3001';
+  const portalUrl = input.portalUrl || `${fallbackBaseUrl}/track/rewards`;
+  const reserveUrl = `${fallbackBaseUrl}/reserve`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-card { text-align: center; margin: 28px 0; background-color: #f0fdf4; padding: 24px 20px; border-radius: 12px; border: 1px solid #86efac; }
+    .code-label { font-size: 12px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .code-value { font-family: monospace; font-size: 32px; font-weight: 800; color: #166534; letter-spacing: 4px; margin: 8px 0; }
+    .code-hint { font-size: 13px; color: #15803d; margin-top: 6px; }
+    .info-box { background-color: #f8fafc; border-radius: 10px; padding: 18px 20px; margin: 20px 0; border: 1px solid #e2e8f0; }
+    .info-item { font-size: 14px; color: #334155; margin: 8px 0; line-height: 1.5; }
+    .btn-container { text-align: center; margin: 28px 0 20px 0; }
+    .btn { display: inline-block; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; background-color: #15803d; color: #ffffff !important; }
+    .secondary-btn { display: inline-block; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 13px; background-color: #f1f5f9; color: #334155 !important; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Milestone Reward Unlocked</p>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Congratulations! You have unlocked a new reward from <strong>${escapeHtml(input.campaignName)}</strong>:</p>
+
+      <div class="code-card">
+        <div class="code-label">Promo Code: ${escapeHtml(discountText)}</div>
+        <div class="code-value">${escapeHtml(input.promoCode)}</div>
+        <div class="code-hint">Expires: ${escapeHtml(expiryFormatted)}</div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-item"><strong>How to Redeem:</strong> Enter this 8-character promo code in the Promo Code field during booking on our customer website or on-site kiosk.</div>
+        <div class="info-item"><strong>Validity:</strong> Single use only. This voucher cannot be stacked with other promo codes.</div>
+      </div>
+
+      <div class="btn-container">
+        <a href="${escapeHtml(reserveUrl)}" class="btn">Book a Desk Now</a>
+        <a href="${escapeHtml(portalUrl)}" class="secondary-btn">View My Rewards</a>
+      </div>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Your DeskAtlas Reward: ${input.promoCode} (${discountText})
+
+Hello ${customerName},
+
+Congratulations! You have unlocked a new reward from ${input.campaignName}:
+
+PROMO CODE: ${input.promoCode}
+DISCOUNT: ${discountText}
+EXPIRES: ${expiryFormatted}
+
+How to Redeem:
+Enter this 8-character promo code in the Promo Code field during booking on our website or on-site kiosk terminal.
+
+Book a Desk:
+${reserveUrl}
+
+View Rewards Portal:
+${portalUrl}
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {
   return new TransactionalEmailService(config);
 }
+
 
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   createStaffOperationsService,
+  handleConfirmedReservationCampaignQualification,
   ReservationSupabaseRepository,
   StaffOperationsConflictError,
   StaffOperationsError,
@@ -66,6 +67,14 @@ export async function POST(
         role: resolvedRole,
       },
     });
+
+    try {
+      await handleConfirmedReservationCampaignQualification({
+        reservationId: result.reservationId,
+      });
+    } catch (campaignErr) {
+      console.warn("[CheckIn] Campaign qualification hook error:", campaignErr);
+    }
 
     return NextResponse.json(result);
   } catch (error) {

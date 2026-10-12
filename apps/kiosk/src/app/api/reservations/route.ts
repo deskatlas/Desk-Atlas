@@ -11,6 +11,10 @@ import {
   SupabaseSettingsRepository,
   InMemorySettingsRepository,
   createAdminSettingsService,
+  VoucherSupabaseRepository,
+  CustomerSupabaseRepository,
+  VoucherService,
+  WorkspaceRepository,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -79,9 +83,12 @@ export async function POST(request: NextRequest) {
       serviceRoleKey: supabaseKey,
     });
     const workspaceRepository = new KioskWorkspaceRepo(supabase);
+    const voucherRepo = new VoucherSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
+    const customerRepo = new CustomerSupabaseRepository({ supabaseUrl, serviceRoleKey: supabaseKey });
+    const voucherService = new VoucherService(voucherRepo, customerRepo);
     const reservationService = createReservationService(
       reservationRepository,
-      workspaceRepository as any,
+      workspaceRepository as unknown as WorkspaceRepository,
       reservationRepository
     );
 
@@ -140,6 +147,7 @@ export async function POST(request: NextRequest) {
         bookedRatePerHour: body.bookedRatePerHour ?? null,
         rateSnapshot: body.rateSnapshot ?? null,
         amountDue: body.amountDue ?? null,
+        promoCode: body.promoCode ?? (body as any).promo_code ?? null,
         candidates: body.candidates,
       };
     } else {
@@ -181,6 +189,7 @@ export async function POST(request: NextRequest) {
         bookedRatePerHour: body.bookedRatePerHour ?? null,
         rateSnapshot: body.rateSnapshot ?? null,
         amountDue: body.amountDue ?? null,
+        promoCode: body.promoCode ?? (body as any).promo_code ?? null,
         candidates: [
           {
             rank: 0,
@@ -215,7 +224,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const reservation = await reservationService.createReservation(createRequest);
+    const reservation = await reservationService.createReservation(createRequest, {
+      voucherService,
+    });
 
     return NextResponse.json(reservation, { status: 201 });
   } catch (error) {

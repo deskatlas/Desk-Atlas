@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
-    "archives"
+    "archives",
+    "src/app/api/booking/validate-promo"
   ]
 }

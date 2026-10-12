@@ -18,6 +18,7 @@ import {
 } from '@deskatlas/domain';
 import { handleNumericKeyDown } from '@deskatlas/ui';
 import { CancellationPolicyUploader } from './CancellationPolicyUploader';
+import { CampaignsSettings } from './CampaignsSettings';
 
 const DAY_NAMES = [
   'Sunday',
@@ -296,15 +297,16 @@ export function isPastDate(dateStr: string, timezone: string = 'Asia/Manila'): b
 
 export function Settings() {
   const [activeTab, setActiveTab] = useState<
-    'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings'
+    'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards'
   >('Business Profile');
-  const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings'> = [
+  const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards'> = [
     'Business Profile',
     'Business Hours',
     'Payment Methods',
     'Closures & Holidays',
     'Landing Preview',
     'Kiosk Settings',
+    'Campaigns & Rewards',
   ];
 
   const [loading, setLoading] = useState(true);
@@ -4085,6 +4087,11 @@ export function Settings() {
                 </button>
               </div>
             </form>
+          )}
+
+          {/* TAB 7: Campaigns & Rewards */}
+          {activeTab === 'Campaigns & Rewards' && (
+            <CampaignsSettings />
           )}
         </div>
       )}

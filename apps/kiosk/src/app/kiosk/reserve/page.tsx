@@ -509,6 +509,19 @@ export default function KioskReservePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [referenceCode, setReferenceCode] = useState<string | null>(null);
 
+  // Promo code state (SPEC-3 Section 5.1)
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    grossAmount: number;
+    discountAmount: number;
+    amountDue: number;
+    terms?: any;
+  } | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
+
   const handleContactNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     let digits = raw.replace(/\D/g, "");
@@ -847,6 +860,11 @@ export default function KioskReservePage() {
     setCustomerLastName("");
     setCustomerEmail("");
     setContactNumberDigits("");
+    setPromoCode("");
+    setAppliedPromo(null);
+    setPromoLoading(false);
+    setPromoError(null);
+    setPromoSuccess(null);
     setFormErrors({});
     setIsSubmitting(false);
     setSubmitError(null);
@@ -858,6 +876,100 @@ export default function KioskReservePage() {
     handleReset();
     router.push("/kiosk");
   };
+
+  // Invalidate promo when booking parameters change (SPEC-3 Section 5.1)
+  useEffect(() => {
+    if (appliedPromo) {
+      setAppliedPromo(null);
+      setPromoSuccess(null);
+      setPromoError("Booking details changed. Please re-apply your promo code.");
+    }
+  }, [customerEmail, effectiveDurationHours, selectedWorkspace?.workspaceInstanceId, selectedRateType]);
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) {
+      setPromoError("Please enter a promo code.");
+      return;
+    }
+    if (!customerEmail.trim()) {
+      setPromoError("Please enter your email address before applying a promo code.");
+      return;
+    }
+    if (!selectedWorkspace) {
+      setPromoError("Please select a desk first.");
+      return;
+    }
+
+    setPromoLoading(true);
+    setPromoError(null);
+    setPromoSuccess(null);
+
+    try {
+      const startUtc = getNowWithLeewayDate(kioskAllowanceMinutes);
+      const endUtc = new Date(startUtc.getTime() + effectiveDurationHours * 60 * 60 * 1000);
+
+      const res = await fetch("/api/booking/validate-promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          promo_code: promoCode.trim().toUpperCase(),
+          email: customerEmail.trim().toLowerCase(),
+          booking_context: {
+            channel: "KIOSK",
+            grossAmount: totalAmount,
+            candidates: [
+              {
+                rank: 0,
+                workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
+                startAt: startUtc.toISOString(),
+                endAt: endUtc.toISOString(),
+                rateType: selectedRateType || "HOURLY",
+              },
+            ],
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        setPromoError(json.error?.message || "Invalid promo code. Please check and try again.");
+        setAppliedPromo(null);
+        return;
+      }
+
+      setAppliedPromo({
+        code: promoCode.trim().toUpperCase(),
+        grossAmount: json.data.gross_amount,
+        discountAmount: json.data.discount_amount,
+        amountDue: json.data.amount_due,
+        terms: json.data.terms,
+      });
+      setPromoSuccess(`Promo code applied: PHP ${json.data.discount_amount.toFixed(2)} discount`);
+    } catch {
+      setPromoError("Invalid promo code. Please check and try again.");
+      setAppliedPromo(null);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setPromoCode("");
+    setAppliedPromo(null);
+    setPromoError(null);
+    setPromoSuccess(null);
+  };
+
+  // MS-38 Pillar 5: Frictionless auto-apply promo code at 8 characters on Kiosk
+  useEffect(() => {
+    const cleaned = promoCode.trim().toUpperCase();
+    if (cleaned.length === 8 && !appliedPromo && !promoLoading && !promoError) {
+      const timer = setTimeout(() => {
+        void handleApplyPromo();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [promoCode, appliedPromo, promoLoading, promoError]);
 
   // Submit reservation
   const handleSubmitReservation = async (e: React.FormEvent) => {
@@ -902,6 +1014,7 @@ export default function KioskReservePage() {
           customerLastName: customerLastName.trim(),
           customerEmail: emailVal.toLowerCase(),
           customerContactNumber: contactNumberDigits.length === 9 ? `09${contactNumberDigits}` : undefined,
+          promoCode: appliedPromo?.code || undefined,
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
           rateType: selectedRateType,
           durationHours: effectiveDurationHours,
@@ -912,7 +1025,7 @@ export default function KioskReservePage() {
           paymentMethod,
           bookedRatePerHour: resolvedPricing.effectivePrice,
           rateSnapshot: resolvedPricing.effectivePrice,
-          amountDue: resolvedPricing.estimatedTotal,
+          amountDue: appliedPromo ? appliedPromo.amountDue : resolvedPricing.estimatedTotal,
         }),
       });
 
@@ -2724,11 +2837,17 @@ export default function KioskReservePage() {
                   <div className="text-left sm:text-right">
                     <span className="text-[var(--da-text-secondary)] font-bold block">Amount Due at Counter:</span>
                     <p className="text-xl font-extrabold text-[var(--da-primary)] mt-0.5">
-                      ₱{totalAmount.toFixed(2)}
+                      ₱{(appliedPromo ? appliedPromo.amountDue : totalAmount).toFixed(2)}
                     </p>
-                    <p className="text-[10px] text-[var(--da-text-secondary)]">
-                      {selectedRateType === "HOURLY" ? `₱${regularRate.toFixed(2)}/hr` : "Flat Pass Rate"}
-                    </p>
+                    {appliedPromo ? (
+                      <p className="text-[11px] text-emerald-600 font-bold">
+                        (₱{appliedPromo.grossAmount.toFixed(2)} - ₱{appliedPromo.discountAmount.toFixed(2)} promo)
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-[var(--da-text-secondary)]">
+                        {selectedRateType === "HOURLY" ? `₱${regularRate.toFixed(2)}/hr` : "Flat Pass Rate"}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -2855,6 +2974,79 @@ export default function KioskReservePage() {
                     )}
                   </div>
 
+                  {/* Optional Promo Code Field directly after Contact Number (SPEC-3 Section 5.1) */}
+                  <div className="mt-4" data-testid="kiosk-promo-code-container">
+                    <label htmlFor="kiosk-promo-code" className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1">
+                      Promo Code <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="kiosk-promo-code"
+                        type="text"
+                        maxLength={8}
+                        value={promoCode}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setPromoCode(val);
+                          if (promoError) setPromoError(null);
+                          if (appliedPromo && val !== appliedPromo.code) {
+                            setAppliedPromo(null);
+                            setPromoSuccess(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleApplyPromo();
+                          }
+                        }}
+                        placeholder="e.g. 7K9M2P4X"
+                        disabled={isSubmitting || promoLoading}
+                        className="da-input font-mono uppercase tracking-widest text-sm flex-1 min-h-[48px]"
+                        data-testid="kiosk-promo-code-input"
+                      />
+                      {appliedPromo ? (
+                        <button
+                          type="button"
+                          onClick={handleRemovePromo}
+                          className="da-secondary-button text-xs font-bold px-5 min-h-[48px]"
+                          data-testid="kiosk-remove-promo-button"
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleApplyPromo()}
+                          disabled={!promoCode.trim() || promoLoading}
+                          className="da-primary-button text-xs font-bold px-6 min-h-[48px] disabled:opacity-50"
+                          data-testid="kiosk-apply-promo-button"
+                        >
+                          {promoLoading ? "Applying..." : "Apply"}
+                        </button>
+                      )}
+                    </div>
+
+                    {promoError && (
+                      <p className="mt-1 text-[11px] font-bold text-red-600" data-testid="kiosk-promo-error-message">
+                        {promoError}
+                      </p>
+                    )}
+
+                    {promoSuccess && appliedPromo && (
+                      <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-[11px] text-emerald-800" data-testid="kiosk-promo-success-summary">
+                        <div className="flex justify-between items-center font-semibold">
+                          <span>Loyalty Discount ({appliedPromo.code})</span>
+                          <span>- PHP {appliedPromo.discountAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-slate-700 mt-1 font-bold">
+                          <span>Updated Amount Due:</span>
+                          <span>PHP {appliedPromo.amountDue.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Payment Method Selection */}
                   <div>
                     <label className="block text-xs font-bold text-[var(--da-brand-dark)] mb-1.5">
@@ -2918,7 +3110,7 @@ export default function KioskReservePage() {
                           <span>Generating Check-In Code...</span>
                         </>
                       ) : (
-                        <span>Submit & Get Check-In Code (₱{totalAmount.toFixed(2)}) →</span>
+                        <span>Submit & Get Check-In Code (₱{(appliedPromo ? appliedPromo.amountDue : totalAmount).toFixed(2)}) →</span>
                       )}
                     </button>
                   </div>
@@ -2958,6 +3150,9 @@ export default function KioskReservePage() {
                   <p className="mt-2 text-xs text-[var(--da-text-secondary)]">
                     Pass Recipient: <strong>{customerEmail.trim().toLowerCase()}</strong>
                   </p>
+                  <p className="mt-2 text-sm font-bold text-[var(--da-brand-dark)]">
+                    Amount to Pay at Counter: ₱{(appliedPromo ? appliedPromo.amountDue : totalAmount).toFixed(2)}
+                  </p>
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-left w-full">
@@ -2968,7 +3163,7 @@ export default function KioskReservePage() {
                     </div>
                     <p className="leading-relaxed">
                       {paymentMethod === "CASH"
-                        ? `Present your reference code and pay ₱${totalAmount.toFixed(2)} in cash to staff at the counter desk.`
+                        ? `Present your reference code and pay ₱${(appliedPromo ? appliedPromo.amountDue : totalAmount).toFixed(2)} in cash to staff at the counter desk.`
                         : "Staff will confirm your payment at the counter desk and instantly allocate your reserved spot."}
                     </p>
                   </div>

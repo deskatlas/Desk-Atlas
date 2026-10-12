@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   test: {
-    include: ["tests/t*.test.ts", "tests/mf*.test.ts", "tests/ms*.test.ts"],
+    include: ["tests/t*.test.ts", "tests/mf*.test.ts", "tests/ms*.test.ts", "tests/spec*.test.ts"],
     passWithNoTests: true,
     environment: "node",
     testTimeout: 20000,

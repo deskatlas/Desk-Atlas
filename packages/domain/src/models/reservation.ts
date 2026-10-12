@@ -52,6 +52,14 @@ export interface Reservation {
   closureImpactStatus?: ClosureImpactStatus | null;
   closureNotifiedAt?: string | null;
   manualResolutionNotes?: string | null;
+  customerId?: string | null;
+  requestedVoucherId?: string | null;
+  appliedVoucherId?: string | null;
+  grossAmountDue?: number;
+  discountAmount?: number;
+  promoCodeUsed?: string | null;
+  promoQuoteSnapshot?: Record<string, unknown> | null;
+  pricingRevision?: number;
 }
 
 export type CandidateRank = 0 | 1 | 2;
@@ -93,6 +101,11 @@ export interface CreateReservationRequest {
   bookedRatePerHour?: number | null;
   rateSnapshot?: number | null;
   amountDue?: number | null;
+  promoCode?: string | null;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  requestedVoucherId?: string | null;
+  promoQuoteSnapshot?: Record<string, unknown> | null;
 }
 
 export type PaymentChannel = "WEB" | "KIOSK";
@@ -147,6 +160,9 @@ export interface PaymentSessionRecord {
   proofSubmittedAt: string | null;
   paymentMethodId: string | null;
   businessName?: string;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  promoCodeUsed?: string | null;
 }
 
 export interface PaymentSessionView {
@@ -166,6 +182,9 @@ export interface PaymentSessionView {
   paymentMethodId: string | null;
   paymentMethods: PaymentMethod[];
   businessName?: string;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  promoCodeUsed?: string | null;
 }
 
 export interface PaymentSessionStatusView {
@@ -236,6 +255,9 @@ export interface PaymentReviewDetail extends PaymentReviewQueueItem {
   refundStatus: RefundStatus;
   processedAt: string | null;
   processedByUserId: string | null;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  promoCodeUsed?: string | null;
 }
 
 export type PaymentReviewDecision = "APPROVE" | "REJECT" | "RECONSIDER_APPROVE";
@@ -453,6 +475,9 @@ export interface GuestReservationTrackingResult {
   closureReason?: string | null;
   closureDate?: string | null;
   closureNotifiedAt?: string | null;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  promoCodeUsed?: string | null;
 }
 
 export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue" | "cancelled" | "closure_impacted";
@@ -595,6 +620,9 @@ export interface AdminReservationDetail {
   manualResolutionNotes?: string | null;
   closureReason?: string | null;
   closureDate?: string | null;
+  grossAmountDue?: number | null;
+  discountAmount?: number | null;
+  promoCodeUsed?: string | null;
 }
 
 export interface ClosureImpactedReservationSummary {
