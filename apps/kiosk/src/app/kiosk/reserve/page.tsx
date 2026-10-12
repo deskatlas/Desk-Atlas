@@ -508,6 +508,13 @@ export default function KioskReservePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [referenceCode, setReferenceCode] = useState<string | null>(null);
+  const [confirmedReservationDetails, setConfirmedReservationDetails] = useState<{
+    referenceCode: string;
+    amountDue: number;
+    grossAmount?: number;
+    discountAmount?: number;
+    promoCode?: string;
+  } | null>(null);
 
   // Promo code state (SPEC-3 Section 5.1)
   const [promoCode, setPromoCode] = useState("");
@@ -604,6 +611,7 @@ export default function KioskReservePage() {
   const [upcomingBooking, setUpcomingBooking] = useState<NextUpcomingBookingResult | null>(null);
 
   useEffect(() => {
+    if (step === "code" || !selectedWorkspace?.workspaceInstanceId) return;
     let cancelled = false;
     const loadUpcoming = async () => {
       try {
@@ -869,6 +877,7 @@ export default function KioskReservePage() {
     setIsSubmitting(false);
     setSubmitError(null);
     setReferenceCode(null);
+    setConfirmedReservationDetails(null);
     setUpcomingBooking(null);
   };
 
@@ -879,12 +888,13 @@ export default function KioskReservePage() {
 
   // Invalidate promo when booking parameters change (SPEC-3 Section 5.1)
   useEffect(() => {
+    if (step === "code") return;
     if (appliedPromo) {
       setAppliedPromo(null);
       setPromoSuccess(null);
       setPromoError("Booking details changed. Please re-apply your promo code.");
     }
-  }, [customerEmail, effectiveDurationHours, selectedWorkspace?.workspaceInstanceId, selectedRateType]);
+  }, [customerEmail, effectiveDurationHours, selectedWorkspace?.workspaceInstanceId, selectedRateType, step]);
 
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) {
@@ -1034,7 +1044,19 @@ export default function KioskReservePage() {
         throw new Error(result.error || "Failed to create kiosk reservation.");
       }
 
+      const confirmedAmount =
+        typeof result.amountDue === "number" && !isNaN(result.amountDue)
+          ? result.amountDue
+          : (appliedPromo ? appliedPromo.amountDue : totalAmount);
+
       setReferenceCode(result.referenceCode || "DA-REF");
+      setConfirmedReservationDetails({
+        referenceCode: result.referenceCode || "DA-REF",
+        amountDue: confirmedAmount,
+        grossAmount: result.grossAmountDue ?? appliedPromo?.grossAmount ?? totalAmount,
+        discountAmount: result.discountAmount ?? appliedPromo?.discountAmount ?? 0,
+        promoCode: result.promoCodeUsed ?? appliedPromo?.code,
+      });
       setStep("code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An unexpected error occurred. Please try again.";
@@ -1096,6 +1118,9 @@ export default function KioskReservePage() {
 
   const currentRate = resolvedPricing.effectivePrice;
   const totalAmount = resolvedPricing.estimatedTotal;
+  const displayAmountToPay =
+    confirmedReservationDetails?.amountDue ??
+    (appliedPromo ? appliedPromo.amountDue : totalAmount);
 
   return (
     <SessionManager
@@ -3151,8 +3176,13 @@ export default function KioskReservePage() {
                     Pass Recipient: <strong>{customerEmail.trim().toLowerCase()}</strong>
                   </p>
                   <p className="mt-2 text-sm font-bold text-[var(--da-brand-dark)]">
-                    Amount to Pay at Counter: ₱{(appliedPromo ? appliedPromo.amountDue : totalAmount).toFixed(2)}
+                    Amount to Pay at Counter: ₱{displayAmountToPay.toFixed(2)}
                   </p>
+                  {confirmedReservationDetails?.promoCode && (confirmedReservationDetails.discountAmount ?? 0) > 0 && (
+                    <span className="block text-xs text-emerald-700 font-semibold mt-0.5">
+                      Promo ({confirmedReservationDetails.promoCode}) applied: -₱{confirmedReservationDetails.discountAmount?.toFixed(2)}
+                    </span>
+                  )}
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-left w-full">
@@ -3163,7 +3193,7 @@ export default function KioskReservePage() {
                     </div>
                     <p className="leading-relaxed">
                       {paymentMethod === "CASH"
-                        ? `Present your reference code and pay ₱${(appliedPromo ? appliedPromo.amountDue : totalAmount).toFixed(2)} in cash to staff at the counter desk.`
+                        ? `Present your reference code and pay ₱${displayAmountToPay.toFixed(2)} in cash to staff at the counter desk.`
                         : "Staff will confirm your payment at the counter desk and instantly allocate your reserved spot."}
                     </p>
                   </div>

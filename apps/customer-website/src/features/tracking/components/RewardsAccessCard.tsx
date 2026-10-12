@@ -50,10 +50,10 @@ export function RewardsAccessCard({
         }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
       if (!res.ok) {
         setVerifyError(
-          json.error?.message ||
+          json?.error?.message ||
             "Customer ID and email do not match our records. Please check and try again."
         );
         setIsVerifying(false);
