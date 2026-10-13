@@ -7,6 +7,14 @@ import {
   type RewardsSession,
 } from "../context/RewardsSessionContext";
 
+export const STORAGE_KEY_VERIFY_LOCKOUT = "deskatlas_customer_verify_lockout";
+
+export function formatLockoutTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 interface RewardsAccessCardProps {
   standalone?: boolean;
   initialError?: string | null;
@@ -24,19 +32,114 @@ export function RewardsAccessCard({
   const [email, setEmail] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(initialError);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  const isLocked = Boolean(lockedUntil && remainingSeconds > 0);
+
+  // Restore lockout state from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_VERIFY_LOCKOUT);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.lockedUntil && parsed.lockedUntil > Date.now()) {
+          setLockedUntil(parsed.lockedUntil);
+          const diff = Math.max(1, Math.ceil((parsed.lockedUntil - Date.now()) / 1000));
+          setRemainingSeconds(diff);
+          if (parsed.customerCode && !customerCode) {
+            setCustomerCode(parsed.customerCode);
+          }
+          if (parsed.email && !email) {
+            setEmail(parsed.email);
+          }
+        } else {
+          localStorage.removeItem(STORAGE_KEY_VERIFY_LOCKOUT);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Wall-clock active countdown timer with multi-tab and visibility sync
+  useEffect(() => {
+    if (!lockedUntil) return;
+
+    const updateTimer = () => {
+      const diff = Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000));
+      setRemainingSeconds(diff);
+      if (diff === 0) {
+        setLockedUntil(null);
+        try {
+          localStorage.removeItem(STORAGE_KEY_VERIFY_LOCKOUT);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    const onVisibilityOrFocus = () => {
+      updateTimer();
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY_VERIFY_LOCKOUT) {
+        if (e.newValue) {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            if (parsed?.lockedUntil && parsed.lockedUntil > Date.now()) {
+              setLockedUntil(parsed.lockedUntil);
+              updateTimer();
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          setLockedUntil(null);
+          setRemainingSeconds(0);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityOrFocus);
+    window.addEventListener("focus", onVisibilityOrFocus);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityOrFocus);
+      window.removeEventListener("focus", onVisibilityOrFocus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [lockedUntil]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && verifyError) {
+      if (e.key === "Escape" && verifyError && !isLocked) {
         setVerifyError(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [verifyError]);
+  }, [verifyError, isLocked]);
 
   const handleVerify = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    // DevTools protection: verify lockout status in runtime even if DOM disabled was removed
+    if (lockedUntil && Date.now() < lockedUntil) {
+      const diff = Math.max(1, Math.ceil((lockedUntil - Date.now()) / 1000));
+      setRemainingSeconds(diff);
+      setVerifyError(
+        `Too many failed verification attempts. Please wait ${formatLockoutTime(diff)} before trying again.`
+      );
+      return;
+    }
+
     setVerifyError(null);
     setIsVerifying(true);
 
@@ -52,10 +155,35 @@ export function RewardsAccessCard({
 
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setVerifyError(
-          json?.error?.message ||
-            "Customer ID and email do not match our records. Please check and try again."
-        );
+        if (res.status === 429 || json?.error?.lockedUntil || json?.error?.retryAfterSeconds) {
+          const lockTime =
+            json?.error?.lockedUntil ||
+            Date.now() + (json?.error?.retryAfterSeconds || 300) * 1000;
+          setLockedUntil(lockTime);
+          const diff = Math.max(1, Math.ceil((lockTime - Date.now()) / 1000));
+          setRemainingSeconds(diff);
+          try {
+            localStorage.setItem(
+              STORAGE_KEY_VERIFY_LOCKOUT,
+              JSON.stringify({
+                lockedUntil: lockTime,
+                customerCode: customerCode.trim().toUpperCase(),
+                email: email.trim().toLowerCase(),
+              })
+            );
+          } catch {
+            // ignore
+          }
+          setVerifyError(
+            json?.error?.message ||
+              "Too many failed verification attempts. Please try again in 5 minutes."
+          );
+        } else {
+          setVerifyError(
+            json?.error?.message ||
+              "Customer ID and email do not match our records. Please check and try again."
+          );
+        }
         setIsVerifying(false);
         return;
       }
@@ -116,8 +244,8 @@ export function RewardsAccessCard({
             value={customerCode}
             onChange={(e) => setCustomerCode(e.target.value.toUpperCase())}
             placeholder="e.g. 7K9M2P"
-            className="da-input font-mono uppercase tracking-widest text-sm w-full"
-            disabled={isVerifying}
+            className="da-input font-mono uppercase tracking-widest text-sm w-full disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isVerifying || isLocked}
             required
             data-testid="rewards-customer-id-input"
           />
@@ -130,8 +258,8 @@ export function RewardsAccessCard({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="guest@example.com"
-            className="da-input text-sm w-full"
-            disabled={isVerifying}
+            className="da-input text-sm w-full disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isVerifying || isLocked}
             required
             data-testid="rewards-email-input"
           />
@@ -139,11 +267,15 @@ export function RewardsAccessCard({
 
         <button
           type="submit"
-          disabled={isVerifying || !customerCode.trim() || !email.trim()}
+          disabled={isVerifying || isLocked || !customerCode.trim() || !email.trim()}
           className="da-primary-button mt-2 w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
           data-testid="rewards-verify-submit"
         >
-          {isVerifying ? "Verifying..." : "View My Bookings & Rewards"}
+          {isLocked
+            ? `Try again in ${formatLockoutTime(remainingSeconds)}`
+            : isVerifying
+            ? "Verifying..."
+            : "View My Bookings & Rewards"}
         </button>
 
         {verifyError && (
@@ -151,7 +283,11 @@ export function RewardsAccessCard({
             role="dialog"
             aria-modal="true"
             aria-labelledby="rewards-error-title"
-            onClick={() => setVerifyError(null)}
+            onClick={() => {
+              if (!isLocked) {
+                setVerifyError(null);
+              }
+            }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
             data-testid="rewards-verify-error-modal"
           >
@@ -160,8 +296,12 @@ export function RewardsAccessCard({
               className="relative w-full max-w-md rounded-[28px] border border-[var(--da-border)] bg-white p-6 md:p-8 shadow-2xl"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600 font-bold">
-                  ⚠️
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold ${
+                    isLocked ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"
+                  }`}
+                >
+                  {isLocked ? "⏳" : "⚠️"}
                 </div>
                 <div>
                   <h3
@@ -171,10 +311,32 @@ export function RewardsAccessCard({
                     Verification Failed
                   </h3>
                   <p className="text-xs text-[var(--da-text-secondary)]">
-                    Unable to access rewards portal
+                    {isLocked
+                      ? "Form temporarily locked for your security"
+                      : "Unable to access rewards portal"}
                   </p>
                 </div>
               </div>
+
+              {isLocked && (
+                <div
+                  className="mt-4 rounded-[18px] border border-amber-300 bg-amber-50 p-4 text-center"
+                  data-testid="rewards-verify-lockout-banner"
+                >
+                  <div className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                    Too Many Failed Attempts
+                  </div>
+                  <div
+                    className="mt-1 font-mono text-3xl font-extrabold text-amber-900"
+                    data-testid="rewards-verify-countdown"
+                  >
+                    {formatLockoutTime(remainingSeconds)}
+                  </div>
+                  <div className="mt-1 text-xs text-amber-700">
+                    Please wait until the countdown ends before trying again.
+                  </div>
+                </div>
+              )}
 
               <div
                 className="mt-6 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -186,11 +348,16 @@ export function RewardsAccessCard({
               <div className="mt-6 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setVerifyError(null)}
-                  className="da-primary-button text-sm font-bold px-6 py-2.5 justify-center"
+                  disabled={isLocked}
+                  onClick={() => {
+                    if (!isLocked) {
+                      setVerifyError(null);
+                    }
+                  }}
+                  className="da-primary-button text-sm font-bold px-6 py-2.5 justify-center disabled:cursor-not-allowed disabled:opacity-60"
                   data-testid="rewards-verify-error-close"
                 >
-                  Try Again
+                  {isLocked ? `Locked (${formatLockoutTime(remainingSeconds)})` : "Try Again"}
                 </button>
               </div>
             </div>

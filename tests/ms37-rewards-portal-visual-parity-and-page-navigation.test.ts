@@ -223,10 +223,10 @@ describe("MS-37: Customer Portal Visual Alignment, Dual-Path Access Container Sy
   });
 
   // QAD-TC37-11: Ephemeral token security compliance
-  it("QAD-TC37-11: Ephemeral token security compliance (zero localStorage, zero token in URLs)", () => {
-    // Verify no localStorage usage in tracking components
+  it("QAD-TC37-11: Ephemeral token security compliance (zero localStorage for session tokens, zero token in URLs)", () => {
+    // Verify no token localStorage usage in tracking components
     expect(rewardsSessionContextContent).not.toContain("localStorage");
-    expect(rewardsAccessCardContent).not.toContain("localStorage");
+    expect(rewardsAccessCardContent).not.toMatch(/localStorage\.setItem\([^)]*token/i);
     expect(rewardsVoucherDashboardContent).not.toContain("localStorage");
     expect(trackRewardsPageContent).not.toContain("localStorage");
 

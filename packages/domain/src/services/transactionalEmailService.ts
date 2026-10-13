@@ -114,6 +114,18 @@ export function resolveBusinessProfile(
   return merged;
 }
 
+export function resolveCustomerAppBaseUrl(
+  profile?: BusinessEmailProfile
+): string {
+  const candidate =
+    profile?.appUrl ||
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://www.thedeskatlas.com';
+
+  return candidate.trim().replace(/\/+$/, '');
+}
+
 export async function getOrResolveBusinessProfile(
   input?: BaseEmailBusinessFields,
   defaultProfile?: BusinessEmailProfile
@@ -2801,6 +2813,12 @@ export class TransactionalEmailService {
         });
       }
     }
+    if (!profile.appUrl) {
+      profile.appUrl =
+        process.env.DESKATLAS_PUBLIC_APP_URL ||
+        process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+        undefined;
+    }
     return profile;
   }
 
@@ -3888,7 +3906,7 @@ export function renderVoucherEmail(input: VoucherEmailInput): { subject: string;
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Valued Guest';
   const subject = `Your DeskAtlas Voucher: ${input.promoCode} - ${input.discountDescription}`;
   const expiryFormatted = formatEmailTime(input.expiresAt, profile.timezone || DEFAULT_TIMEZONE);
-  const fallbackBaseUrl = profile.appUrl || 'http://localhost:3001';
+  const fallbackBaseUrl = resolveCustomerAppBaseUrl(profile);
   const reserveUrl = `${fallbackBaseUrl}/reserve`;
 
   const html = `
@@ -3988,7 +4006,7 @@ export function renderVoucherAwardedEmail(input: VoucherAwardedEmailInput): { su
   const discountText = input.discountText || input.discountDescription || 'Reward Discount';
   const subject = `Your DeskAtlas Reward: ${input.promoCode} (${discountText})`;
   const expiryFormatted = formatEmailTime(input.expiresAt, profile.timezone || DEFAULT_TIMEZONE);
-  const fallbackBaseUrl = profile.appUrl || 'http://localhost:3001';
+  const fallbackBaseUrl = resolveCustomerAppBaseUrl(profile);
   const portalUrl = input.portalUrl || `${fallbackBaseUrl}/track/rewards`;
   const reserveUrl = `${fallbackBaseUrl}/reserve`;
 

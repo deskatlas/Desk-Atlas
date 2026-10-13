@@ -13,18 +13,36 @@ import type {
 
 // SPEC-2 Traceability: PRD-F23, SDD-C14, DSD-UI14, ERD-E16 through ERD-E20, QAD-TC37
 
-interface RuleFormState {
+export interface RuleFormState {
   label: string;
   metric: MetricType;
-  threshold: number;
+  threshold: number | '';
   combine: CombineOperator;
   recurring: boolean;
   rewardType: RewardType;
-  rewardValue: number;
+  rewardValue: number | '';
+  hasMaxDiscountCap: boolean;
   maxDiscountAmount: string;
-  voucherValidityDays: number;
+  voucherValidityDays: number | '';
   earningChannels: ReservationChannel[];
   redemptionChannels: ReservationChannel[];
+}
+
+export function handleNumericChange(
+  raw: string,
+  allowDecimal: boolean = false
+): number | '' {
+  if (raw === '') return '';
+
+  let cleaned = raw;
+  if (!allowDecimal) {
+    cleaned = cleaned.replace(/^0+(?=\d)/, '');
+  } else {
+    cleaned = cleaned.replace(/^0+(?=[1-9])/, '').replace(/^0+(?=0\.)/, '');
+  }
+
+  const parsed = allowDecimal ? parseFloat(cleaned) : parseInt(cleaned, 10);
+  return isNaN(parsed) ? '' : parsed;
 }
 
 const DEFAULT_RULE_FORM: RuleFormState = {
@@ -35,7 +53,8 @@ const DEFAULT_RULE_FORM: RuleFormState = {
   recurring: true,
   rewardType: 'PERCENTAGE_DISCOUNT',
   rewardValue: 10,
-  maxDiscountAmount: '500',
+  hasMaxDiscountCap: false,
+  maxDiscountAmount: '',
   voucherValidityDays: 30,
   earningChannels: ['WEB', 'KIOSK'],
   redemptionChannels: ['WEB', 'KIOSK'],
@@ -104,23 +123,71 @@ export function CampaignsSettings() {
     setTimeout(() => setSuccessMsg(null), 5000);
   };
 
-  // Helper for generating rule summary text
+  // Handle percentage and discount amount inputs with clamping
+  const handleRewardValueChange = (raw: string) => {
+    const val = handleNumericChange(raw, true);
+    if (ruleForm.rewardType === 'PERCENTAGE_DISCOUNT') {
+      if (typeof val === 'number') {
+        if (val > 100) {
+          setRuleForm({ ...ruleForm, rewardValue: 100 });
+          return;
+        }
+        if (val < 0) {
+          setRuleForm({ ...ruleForm, rewardValue: '' });
+          return;
+        }
+      }
+    }
+    setRuleForm({ ...ruleForm, rewardValue: val });
+  };
+
+  // Helper for generating rule summary text in simple English
   const formatRulePreview = (form: RuleFormState): string => {
+    const thresholdVal = form.threshold === '' ? 0 : form.threshold;
     const thresholdText =
       form.metric === 'BOOKING_COUNT'
-        ? `${form.threshold} confirmed booking${form.threshold > 1 ? 's' : ''}`
+        ? `${thresholdVal} booking${Number(thresholdVal) === 1 ? '' : 's'}`
         : form.metric === 'NET_SPEND'
-        ? `₱${Number(form.threshold).toFixed(2)} in booking spend`
-        : `${form.threshold} minutes booked`;
+        ? `₱${Number(thresholdVal).toFixed(2)} total spend`
+        : `${thresholdVal} minutes booked`;
 
-    const cycleText = form.recurring ? `Every ${thresholdText}` : `Completing ${thresholdText}`;
+    const cycleText = form.recurring ? `Every ${thresholdText}` : `Reaching ${thresholdText}`;
+    const rewardVal = form.rewardValue === '' ? 0 : form.rewardValue;
+    const hasCap = form.rewardType === 'PERCENTAGE_DISCOUNT' && form.hasMaxDiscountCap && form.maxDiscountAmount.trim();
+    const capText = hasCap ? ` (up to ₱${Number(form.maxDiscountAmount).toFixed(2)})` : '';
     const rewardText =
       form.rewardType === 'PERCENTAGE_DISCOUNT'
-        ? `${form.rewardValue}% discount${form.maxDiscountAmount ? ` (up to ₱${Number(form.maxDiscountAmount).toFixed(2)})` : ''}`
-        : `₱${Number(form.rewardValue).toFixed(2)} fixed discount`;
+        ? `${rewardVal}% discount${capText}`
+        : `₱${Number(rewardVal).toFixed(2)} fixed discount`;
 
-    const channelsText = form.earningChannels.join(' and ');
-    return `${cycleText} on ${channelsText} automatically awards a ${rewardText}, valid for ${form.voucherValidityDays} days.`;
+    const channelsText = (form.earningChannels.length > 0 ? form.earningChannels : ['WEB', 'KIOSK']).join(' and ');
+    const validity = form.voucherValidityDays === '' ? 30 : form.voucherValidityDays;
+    return `${cycleText} on ${channelsText} automatically awards a ${rewardText}, valid for ${validity} days.`;
+  };
+
+  const toggleEarningChannel = (channel: ReservationChannel) => {
+    const current = ruleForm.earningChannels;
+    const next = current.includes(channel)
+      ? current.filter((c) => c !== channel)
+      : [...current, channel];
+    if (next.length === 0) return;
+    setRuleForm({ ...ruleForm, earningChannels: next });
+  };
+
+  const toggleRedemptionChannel = (channel: ReservationChannel) => {
+    const current = ruleForm.redemptionChannels;
+    const next = current.includes(channel)
+      ? current.filter((c) => c !== channel)
+      : [...current, channel];
+    if (next.length === 0) return;
+    setRuleForm({ ...ruleForm, redemptionChannels: next });
+  };
+
+  const handleRestoreCampaign = async (campaign: Campaign) => {
+    if (!confirm(`Restore reward program "${campaign.name}" to PAUSED status? You can review all settings before turning it back on.`)) {
+      return;
+    }
+    await handleTransitionStatus(campaign, 'PAUSED');
   };
 
   // Status transitions
@@ -146,7 +213,7 @@ export function CampaignsSettings() {
         throw new Error(err.error?.message || 'Failed to update campaign status');
       }
 
-      showSuccess(`Campaign "${campaign.name}" is now ${targetStatus}.`);
+      showSuccess(`Program "${campaign.name}" is now ${targetStatus.toLowerCase()}.`);
       fetchCampaigns();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Status update failed');
@@ -157,7 +224,7 @@ export function CampaignsSettings() {
 
   // Delete draft
   const handleDeleteDraft = async (campaign: Campaign) => {
-    if (!confirm(`Are you sure you want to delete draft campaign "${campaign.name}"?`)) {
+    if (!confirm(`Are you sure you want to delete draft program "${campaign.name}"?`)) {
       return;
     }
     try {
@@ -170,7 +237,7 @@ export function CampaignsSettings() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error?.message || 'Failed to delete draft campaign');
       }
-      showSuccess(`Draft campaign "${campaign.name}" deleted.`);
+      showSuccess(`Draft program "${campaign.name}" deleted.`);
       fetchCampaigns();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Delete failed');
@@ -186,8 +253,32 @@ export function CampaignsSettings() {
       setSaving(true);
       setErrorMsg(null);
 
+      if (
+        ruleForm.threshold === '' ||
+        Number(ruleForm.threshold) <= 0 ||
+        ruleForm.rewardValue === '' ||
+        Number(ruleForm.rewardValue) <= 0 ||
+        ruleForm.voucherValidityDays === '' ||
+        Number(ruleForm.voucherValidityDays) <= 0
+      ) {
+        setErrorMsg('Please enter valid positive numbers for the goal, discount, and validity days.');
+        setSaving(false);
+        return;
+      }
+
+      if (
+        ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' &&
+        (Number(ruleForm.rewardValue) < 0.01 || Number(ruleForm.rewardValue) > 100)
+      ) {
+        setErrorMsg('Discount percentage must be between 0.01% and 100%.');
+        setSaving(false);
+        return;
+      }
+
       const maxCap =
-        ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' && ruleForm.maxDiscountAmount.trim()
+        ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' &&
+        ruleForm.hasMaxDiscountCap &&
+        ruleForm.maxDiscountAmount.trim()
           ? Number(ruleForm.maxDiscountAmount)
           : null;
 
@@ -236,7 +327,7 @@ export function CampaignsSettings() {
         throw new Error(err.error?.message || 'Failed to create campaign');
       }
 
-      showSuccess(`Campaign "${campaignName}" created successfully!`);
+      showSuccess(`Reward program "${campaignName}" created successfully!`);
       setIsCreateModalOpen(false);
       resetForms();
       fetchCampaigns();
@@ -256,8 +347,32 @@ export function CampaignsSettings() {
       setSaving(true);
       setErrorMsg(null);
 
+      if (
+        ruleForm.threshold === '' ||
+        Number(ruleForm.threshold) <= 0 ||
+        ruleForm.rewardValue === '' ||
+        Number(ruleForm.rewardValue) <= 0 ||
+        ruleForm.voucherValidityDays === '' ||
+        Number(ruleForm.voucherValidityDays) <= 0
+      ) {
+        setErrorMsg('Please enter valid positive numbers for the goal, discount, and validity days.');
+        setSaving(false);
+        return;
+      }
+
+      if (
+        ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' &&
+        (Number(ruleForm.rewardValue) < 0.01 || Number(ruleForm.rewardValue) > 100)
+      ) {
+        setErrorMsg('Discount percentage must be between 0.01% and 100%.');
+        setSaving(false);
+        return;
+      }
+
       const maxCap =
-        ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' && ruleForm.maxDiscountAmount.trim()
+        ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' &&
+        ruleForm.hasMaxDiscountCap &&
+        ruleForm.maxDiscountAmount.trim()
           ? Number(ruleForm.maxDiscountAmount)
           : null;
 
@@ -299,7 +414,7 @@ export function CampaignsSettings() {
         throw new Error(err.error?.message || 'Failed to publish successor rule');
       }
 
-      showSuccess(`Successor rule published for campaign "${selectedCampaign.name}".`);
+      showSuccess(`Updated rule published for "${selectedCampaign.name}".`);
       setIsSuccessorModalOpen(false);
       resetForms();
       fetchCampaigns();
@@ -336,7 +451,7 @@ export function CampaignsSettings() {
         throw new Error(err.error?.message || 'Failed to update campaign');
       }
 
-      showSuccess(`Draft campaign "${campaignName}" updated.`);
+      showSuccess(`Draft program "${campaignName}" updated.`);
       setIsEditDraftModalOpen(false);
       resetForms();
       fetchCampaigns();
@@ -390,10 +505,10 @@ export function CampaignsSettings() {
       >
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
-            Automated Reward Campaigns
+            Customer Reward Programs
           </h2>
           <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
-            Configure milestone rules that automatically issue single-use promo codes upon customer booking milestones.
+            Automatically give promo codes and discounts to customers when they reach booking goals (such as 5 bookings).
           </div>
         </div>
 
@@ -417,7 +532,7 @@ export function CampaignsSettings() {
             gap: '6px',
           }}
         >
-          <span>+</span> Create New Campaign
+          <span>+</span> Create Reward Program
         </button>
       </div>
 
@@ -448,11 +563,17 @@ export function CampaignsSettings() {
         }}
       >
         <div style={{ display: 'flex', gap: '6px' }}>
-          {['ALL', 'ACTIVE', 'DRAFT', 'PAUSED', 'ARCHIVED'].map((st) => (
+          {[
+            { key: 'ALL', label: 'All' },
+            { key: 'ACTIVE', label: 'Active' },
+            { key: 'DRAFT', label: 'Drafts' },
+            { key: 'PAUSED', label: 'Paused' },
+            { key: 'ARCHIVED', label: 'Archived' },
+          ].map((tab) => (
             <button
-              key={st}
+              key={tab.key}
               type="button"
-              onClick={() => setStatusFilter(st)}
+              onClick={() => setStatusFilter(tab.key)}
               style={{
                 padding: '6px 12px',
                 borderRadius: '6px',
@@ -460,18 +581,18 @@ export function CampaignsSettings() {
                 fontWeight: 700,
                 border: 'none',
                 cursor: 'pointer',
-                background: statusFilter === st ? 'var(--da-brand-dark)' : '#F1F5F9',
-                color: statusFilter === st ? '#fff' : 'var(--da-text-secondary)',
+                background: statusFilter === tab.key ? 'var(--da-brand-dark)' : '#F1F5F9',
+                color: statusFilter === tab.key ? '#fff' : 'var(--da-text-secondary)',
               }}
             >
-              {st}
+              {tab.label}
             </button>
           ))}
         </div>
 
         <input
           type="text"
-          placeholder="Search campaigns..."
+          placeholder="Search reward programs by name..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{
@@ -480,7 +601,7 @@ export function CampaignsSettings() {
             borderRadius: '6px',
             padding: '6px 12px',
             fontSize: '12px',
-            width: '240px',
+            width: '260px',
           }}
         />
       </div>
@@ -488,16 +609,16 @@ export function CampaignsSettings() {
       {/* Campaigns Listing */}
       {loading ? (
         <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px', textAlign: 'center', color: 'var(--da-text-secondary)' }}>
-          Loading automated campaigns...
+          Loading reward programs...
         </div>
       ) : campaigns.length === 0 ? (
         <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '48px', textAlign: 'center' }}>
           <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎁</div>
           <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--da-brand-dark)' }}>
-            No campaigns found
+            No reward programs found
           </div>
           <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginTop: '4px', maxWidth: '420px', margin: '4px auto 16px' }}>
-            There are no campaigns matching your current filter. Create a new campaign to reward customers on booking milestones.
+            There are no programs matching your filter. Click below to create your first reward program.
           </div>
           <button
             type="button"
@@ -516,7 +637,7 @@ export function CampaignsSettings() {
               cursor: 'pointer',
             }}
           >
-            Create Your First Campaign
+            Create Your First Reward Program
           </button>
         </div>
       ) : (
@@ -639,6 +760,7 @@ export function CampaignsSettings() {
                             onClick={() => {
                               setSelectedCampaign(camp);
                               setSelectedRule(rule);
+                              const hasCap = Boolean(rule.max_discount_amount && Number(rule.max_discount_amount) > 0);
                               setRuleForm({
                                 label: `${rule.label} (v${rule.version + 1})`,
                                 metric: rule.rule_definition.conditions[0]?.metric || 'BOOKING_COUNT',
@@ -647,7 +769,8 @@ export function CampaignsSettings() {
                                 recurring: rule.rule_definition.recurring,
                                 rewardType: rule.reward_type,
                                 rewardValue: Number(rule.reward_value),
-                                maxDiscountAmount: rule.max_discount_amount ? String(rule.max_discount_amount) : '',
+                                hasMaxDiscountCap: hasCap,
+                                maxDiscountAmount: hasCap ? String(rule.max_discount_amount) : '',
                                 voucherValidityDays: rule.voucher_validity_days,
                                 earningChannels: rule.rule_definition.earning_channels,
                                 redemptionChannels: rule.rule_definition.redemption_channels,
@@ -818,9 +941,28 @@ export function CampaignsSettings() {
                 )}
 
                 {camp.status === 'ARCHIVED' && (
-                  <span style={{ fontSize: '11px', color: '#94A3B8', fontStyle: 'italic', alignSelf: 'center' }}>
-                    Archived campaigns are permanent and cannot be reactivated.
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#94A3B8', fontStyle: 'italic' }}>
+                      Archived
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreCampaign(camp)}
+                      disabled={saving}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #CBD5E1',
+                        color: '#475569',
+                        borderRadius: '6px',
+                        padding: '5px 12px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Restore to Paused
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -834,7 +976,7 @@ export function CampaignsSettings() {
           <div style={{ background: '#fff', borderRadius: '14px', maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: '24px', boxShadow: 'var(--da-shadow-md)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
-                Create Automated Reward Campaign
+                Create Customer Reward Program
               </h3>
               <button
                 type="button"
@@ -847,7 +989,7 @@ export function CampaignsSettings() {
 
             <form onSubmit={handleCreateCampaignSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Campaign Name *</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Program Name *</label>
                 <input
                   type="text"
                   required
@@ -866,51 +1008,55 @@ export function CampaignsSettings() {
                   maxLength={2000}
                   value={campaignDescription}
                   onChange={(e) => setCampaignDescription(e.target.value)}
-                  placeholder="Optional internal campaign details"
+                  placeholder="Add any helpful notes about this program (optional)"
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
                 />
               </div>
 
               {/* Initial Rule Builder Section */}
               <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '12px' }}>
-                  Initial Reward Rule Configuration
+                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--da-brand-dark)', marginBottom: '4px' }}>
+                  Set Up the Reward Rule
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginBottom: '12px' }}>
+                  Decide when customers reach the goal and what discount voucher they receive.
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Rule Label *</label>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Rule Name *</label>
                     <input
                       type="text"
                       required
                       value={ruleForm.label}
                       onChange={(e) => setRuleForm({ ...ruleForm, label: e.target.value })}
+                      placeholder="e.g. 5 Bookings Reward"
                       style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                     />
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Metric Type</label>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>What counts toward the goal?</label>
                       <select
                         value={ruleForm.metric}
                         onChange={(e) => setRuleForm({ ...ruleForm, metric: e.target.value as MetricType })}
                         style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                       >
-                        <option value="BOOKING_COUNT">Booking Count</option>
-                        <option value="NET_SPEND">Net Booking Spend (PHP)</option>
-                        <option value="BOOKED_MINUTES">Booked Minutes</option>
+                        <option value="BOOKING_COUNT">Number of bookings (e.g. 5 bookings)</option>
+                        <option value="NET_SPEND">Total money spent (PHP)</option>
+                        <option value="BOOKED_MINUTES">Total minutes booked</option>
                       </select>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Threshold Target</label>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Goal amount to reach</label>
                       <input
                         type="number"
                         min="1"
                         required
                         value={ruleForm.threshold}
-                        onChange={(e) => setRuleForm({ ...ruleForm, threshold: Number(e.target.value) })}
+                        onChange={(e) => setRuleForm({ ...ruleForm, threshold: handleNumericChange(e.target.value) })}
                         style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                       />
                     </div>
@@ -943,52 +1089,135 @@ export function CampaignsSettings() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
-                        {ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? 'Percentage (0.01 - 99.99%)' : 'Discount Amount (₱)'}
+                        {ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? 'Discount Percentage (0.01% - 100%)' : 'Discount Amount (₱)'}
                       </label>
                       <input
                         type="number"
                         step="0.01"
                         min="0.01"
-                        max={ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? '99.99' : undefined}
+                        max={ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? '100' : undefined}
                         required
                         value={ruleForm.rewardValue}
-                        onChange={(e) => setRuleForm({ ...ruleForm, rewardValue: Number(e.target.value) })}
+                        onChange={(e) => handleRewardValueChange(e.target.value)}
                         style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                       />
                     </div>
                   </div>
 
                   {ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' && (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Max Discount Cap (₱, Optional)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g. 500.00"
-                        value={ruleForm.maxDiscountAmount}
-                        onChange={(e) => setRuleForm({ ...ruleForm, maxDiscountAmount: e.target.value })}
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
-                      />
+                    <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--da-brand-dark)' }}>
+                        <input
+                          type="checkbox"
+                          checked={ruleForm.hasMaxDiscountCap}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setRuleForm({
+                              ...ruleForm,
+                              hasMaxDiscountCap: checked,
+                              maxDiscountAmount: checked ? (ruleForm.maxDiscountAmount || '500') : '',
+                            });
+                          }}
+                        />
+                        Limit maximum discount amount (Cap)
+                      </label>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginLeft: '22px' }}>
+                        Turn this off if you want to give a full percentage discount with no limit.
+                      </div>
+
+                      {ruleForm.hasMaxDiscountCap && (
+                        <div style={{ marginTop: '4px', marginLeft: '22px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                            Maximum Discount Limit (₱)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            placeholder="e.g. 500.00"
+                            value={ruleForm.maxDiscountAmount}
+                            onChange={(e) => setRuleForm({ ...ruleForm, maxDiscountAmount: e.target.value })}
+                            style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
+                          />
+                          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '4px' }}>
+                            Example: With a 20% discount and a ₱500 cap, a ₱4,000 booking gets ₱500 off instead of ₱800.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Voucher Validity (Days)</label>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                      How many days is the voucher valid?
+                    </label>
                     <input
                       type="number"
                       min="1"
                       max="365"
                       required
                       value={ruleForm.voucherValidityDays}
-                      onChange={(e) => setRuleForm({ ...ruleForm, voucherValidityDays: Number(e.target.value) })}
+                      onChange={(e) => setRuleForm({ ...ruleForm, voucherValidityDays: handleNumericChange(e.target.value) })}
                       style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                     />
+                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                      The customer will have this many days to use their promo code before it expires.
+                    </div>
+                  </div>
+
+                  {/* Channel Applicability */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '2px' }}>Earning Channels</label>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Where can customers earn progress?</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={ruleForm.earningChannels.includes('WEB')}
+                            onChange={() => toggleEarningChannel('WEB')}
+                          />
+                          Web Checkout (Website)
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={ruleForm.earningChannels.includes('KIOSK')}
+                            onChange={() => toggleEarningChannel('KIOSK')}
+                          />
+                          Kiosk Terminal (Front Desk)
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '2px' }}>Redemption Channels</label>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Where can customers use this voucher?</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={ruleForm.redemptionChannels.includes('WEB')}
+                            onChange={() => toggleRedemptionChannel('WEB')}
+                          />
+                          Web Checkout (Website)
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={ruleForm.redemptionChannels.includes('KIOSK')}
+                            onChange={() => toggleRedemptionChannel('KIOSK')}
+                          />
+                          Kiosk Terminal (Front Desk)
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* Live Preview Box */}
                 <div style={{ marginTop: '14px', background: '#FEF9C3', border: '1px solid #FEF08A', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#854D0E', lineHeight: 1.4 }}>
-                  <strong>Rule Preview:</strong> {formatRulePreview(ruleForm)}
+                  <strong>Rule Summary:</strong> {formatRulePreview(ruleForm)}
                 </div>
               </div>
 
@@ -1006,7 +1235,7 @@ export function CampaignsSettings() {
                   disabled={saving}
                   style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: 'var(--da-brand-dark)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {saving ? 'Creating...' : 'Create Draft Campaign'}
+                  {saving ? 'Creating...' : 'Create Draft Program'}
                 </button>
               </div>
             </form>
@@ -1020,7 +1249,7 @@ export function CampaignsSettings() {
           <div style={{ background: '#fff', borderRadius: '14px', maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: '24px', boxShadow: 'var(--da-shadow-md)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
-                Publish Successor Rule for {selectedCampaign.name}
+                Add Successor Rule (Version {selectedRule.version + 1}) for {selectedCampaign.name}
               </h3>
               <button
                 type="button"
@@ -1033,12 +1262,12 @@ export function CampaignsSettings() {
 
             {/* Warning Alert on Progress Reset */}
             <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px', fontSize: '12px', color: '#92400E', lineHeight: 1.4 }}>
-              <strong>Notice on Customer Progress:</strong> Publishing a successor rule will retire the current version and establish a fresh earning window from the effective date. Customer progress toward unearned milestones will evaluate under the new rule's window, while existing issued vouchers remain intact.
+              <strong>How updating rules works:</strong> This new rule version replaces rule version {selectedRule.version}. Any customers who already reached their goal will keep their vouchers.
             </div>
 
             <form onSubmit={handleSuccessorRuleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Successor Label *</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>New Rule Name *</label>
                 <input
                   type="text"
                   required
@@ -1050,29 +1279,41 @@ export function CampaignsSettings() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Metric Type</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>What counts toward the goal?</label>
                   <select
                     value={ruleForm.metric}
                     onChange={(e) => setRuleForm({ ...ruleForm, metric: e.target.value as MetricType })}
                     style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                   >
-                    <option value="BOOKING_COUNT">Booking Count</option>
-                    <option value="NET_SPEND">Net Booking Spend (PHP)</option>
-                    <option value="BOOKED_MINUTES">Booked Minutes</option>
+                    <option value="BOOKING_COUNT">Number of bookings (e.g. 5 bookings)</option>
+                    <option value="NET_SPEND">Total money spent (PHP)</option>
+                    <option value="BOOKED_MINUTES">Total minutes booked</option>
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Threshold Target</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Goal amount to reach</label>
                   <input
                     type="number"
                     min="1"
                     required
                     value={ruleForm.threshold}
-                    onChange={(e) => setRuleForm({ ...ruleForm, threshold: Number(e.target.value) })}
+                    onChange={(e) => setRuleForm({ ...ruleForm, threshold: handleNumericChange(e.target.value) })}
                     style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                   />
                 </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  id="successor-recurring-toggle"
+                  checked={ruleForm.recurring}
+                  onChange={(e) => setRuleForm({ ...ruleForm, recurring: e.target.checked })}
+                />
+                <label htmlFor="successor-recurring-toggle" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--da-brand-dark)', cursor: 'pointer' }}>
+                  Recurring (Award vouchers at every threshold multiple, e.g. every 5 bookings)
+                </label>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -1090,46 +1331,129 @@ export function CampaignsSettings() {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
-                    {ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? 'Percentage (0.01 - 99.99%)' : 'Discount Amount (₱)'}
+                    {ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? 'Discount Percentage (0.01% - 100%)' : 'Discount Amount (₱)'}
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0.01"
-                    max={ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? '99.99' : undefined}
+                    max={ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' ? '100' : undefined}
                     required
                     value={ruleForm.rewardValue}
-                    onChange={(e) => setRuleForm({ ...ruleForm, rewardValue: Number(e.target.value) })}
+                    onChange={(e) => handleRewardValueChange(e.target.value)}
                     style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                   />
                 </div>
               </div>
 
               {ruleForm.rewardType === 'PERCENTAGE_DISCOUNT' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Max Discount Cap (₱, Optional)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g. 500.00"
-                    value={ruleForm.maxDiscountAmount}
-                    onChange={(e) => setRuleForm({ ...ruleForm, maxDiscountAmount: e.target.value })}
-                    style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
-                  />
+                <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--da-brand-dark)' }}>
+                    <input
+                      type="checkbox"
+                      checked={ruleForm.hasMaxDiscountCap}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setRuleForm({
+                          ...ruleForm,
+                          hasMaxDiscountCap: checked,
+                          maxDiscountAmount: checked ? (ruleForm.maxDiscountAmount || '500') : '',
+                        });
+                      }}
+                    />
+                    Limit maximum discount amount (Cap)
+                  </label>
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginLeft: '22px' }}>
+                    Turn this off if you want to give a full percentage discount with no limit.
+                  </div>
+
+                  {ruleForm.hasMaxDiscountCap && (
+                    <div style={{ marginTop: '4px', marginLeft: '22px' }}>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                        Maximum Discount Limit (₱)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        placeholder="e.g. 500.00"
+                        value={ruleForm.maxDiscountAmount}
+                        onChange={(e) => setRuleForm({ ...ruleForm, maxDiscountAmount: e.target.value })}
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
+                      />
+                      <div style={{ fontSize: '11px', color: '#64748B', marginTop: '4px' }}>
+                        Example: With a 20% discount and a ₱500 cap, a ₱4,000 booking gets ₱500 off instead of ₱800.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>Voucher Validity (Days)</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                  How many days is the voucher valid?
+                </label>
                 <input
                   type="number"
                   min="1"
                   max="365"
                   required
                   value={ruleForm.voucherValidityDays}
-                  onChange={(e) => setRuleForm({ ...ruleForm, voucherValidityDays: Number(e.target.value) })}
+                  onChange={(e) => setRuleForm({ ...ruleForm, voucherValidityDays: handleNumericChange(e.target.value) })}
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', background: '#fff' }}
                 />
+                <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                  The customer will have this many days to use their promo code before it expires.
+                </div>
+              </div>
+
+              {/* Channel Applicability */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '2px' }}>Earning Channels</label>
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Where can customers earn progress?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={ruleForm.earningChannels.includes('WEB')}
+                        onChange={() => toggleEarningChannel('WEB')}
+                      />
+                      Web Checkout (Website)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={ruleForm.earningChannels.includes('KIOSK')}
+                        onChange={() => toggleEarningChannel('KIOSK')}
+                      />
+                      Kiosk Terminal (Front Desk)
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '2px' }}>Redemption Channels</label>
+                  <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Where can customers use this voucher?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={ruleForm.redemptionChannels.includes('WEB')}
+                        onChange={() => toggleRedemptionChannel('WEB')}
+                      />
+                      Web Checkout (Website)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={ruleForm.redemptionChannels.includes('KIOSK')}
+                        onChange={() => toggleRedemptionChannel('KIOSK')}
+                      />
+                      Kiosk Terminal (Front Desk)
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div style={{ background: '#FEF9C3', border: '1px solid #FEF08A', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#854D0E', lineHeight: 1.4 }}>
@@ -1150,7 +1474,7 @@ export function CampaignsSettings() {
                   disabled={saving}
                   style={{ padding: '8px 18px', borderRadius: '6px', border: 'none', background: '#0D9488', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {saving ? 'Publishing...' : 'Publish Successor Rule'}
+                  {saving ? 'Publishing...' : 'Publish New Rule'}
                 </button>
               </div>
             </form>
@@ -1164,7 +1488,7 @@ export function CampaignsSettings() {
           <div style={{ background: '#fff', borderRadius: '14px', maxWidth: '520px', width: '100%', padding: '24px', boxShadow: 'var(--da-shadow-md)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>
-                Edit Draft Campaign Details
+                Edit Draft Program Details
               </h3>
               <button
                 type="button"
@@ -1177,7 +1501,7 @@ export function CampaignsSettings() {
 
             <form onSubmit={handleEditDraftSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Campaign Name *</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Program Name *</label>
                 <input
                   type="text"
                   required
@@ -1189,12 +1513,13 @@ export function CampaignsSettings() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Description</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '4px' }}>Description (Optional)</label>
                 <textarea
                   rows={2}
                   maxLength={2000}
                   value={campaignDescription}
                   onChange={(e) => setCampaignDescription(e.target.value)}
+                  placeholder="Optional internal notes about this program"
                   style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
                 />
               </div>

@@ -22,6 +22,8 @@
     "test:ms38": "vitest run tests/ms38-voucher-price-propagation-and-auto-apply.test.ts",
     "test:ms39": "vitest run tests/ms39-voucher-single-use-redemption.test.ts",
     "test:ms40": "vitest run tests/ms40-voucher-concurrency-hold-and-reactivation.test.ts",
+    "test:ms41": "vitest run tests/ms41-admin-campaigns-polish-and-email-url.test.ts",
+    "test:ms42": "vitest run tests/ms42-customer-verify-lockout-timer.test.ts",
     "test:spec2": "vitest run tests/spec2-campaigns-and-rewards.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

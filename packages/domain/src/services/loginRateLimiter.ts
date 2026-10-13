@@ -46,9 +46,18 @@ export class LoginRateLimiter {
     this.map = globalStore.__deskAtlasLoginRateLimitMap;
   }
 
-  private buildKey(portal: 'admin' | 'staff', identifier: string, ip?: string): string {
+  private buildKey(portal: 'admin' | 'staff' | 'customer', identifier: string, ip?: string): string {
     const cleanId = (identifier || '').trim().toLowerCase();
     const cleanIp = (ip || '').trim().toLowerCase();
+    if (portal === 'customer') {
+      if (cleanId) {
+        if (cleanId.startsWith('customer-verify:')) {
+          return cleanId;
+        }
+        return `customer-verify:id:${cleanId}`;
+      }
+      return `customer-verify:ip:${cleanIp || 'unknown'}`;
+    }
     if (cleanId) {
       return `${portal}:email:${cleanId}`;
     }
@@ -56,7 +65,7 @@ export class LoginRateLimiter {
   }
 
   public checkRateLimit(
-    portal: 'admin' | 'staff',
+    portal: 'admin' | 'staff' | 'customer',
     identifier: string,
     ip?: string,
     now: number = Date.now()
@@ -108,7 +117,7 @@ export class LoginRateLimiter {
   }
 
   public recordFailedAttempt(
-    portal: 'admin' | 'staff',
+    portal: 'admin' | 'staff' | 'customer',
     identifier: string,
     ip?: string,
     now: number = Date.now()
@@ -161,12 +170,12 @@ export class LoginRateLimiter {
     };
   }
 
-  public recordSuccessfulLogin(portal: 'admin' | 'staff', identifier: string, ip?: string): void {
+  public recordSuccessfulLogin(portal: 'admin' | 'staff' | 'customer', identifier: string, ip?: string): void {
     const key = this.buildKey(portal, identifier, ip);
     this.map.delete(key);
   }
 
-  public reset(portal?: 'admin' | 'staff', identifier?: string, ip?: string): void {
+  public reset(portal?: 'admin' | 'staff' | 'customer', identifier?: string, ip?: string): void {
     if (portal && (identifier || ip)) {
       const key = this.buildKey(portal, identifier || '', ip);
       this.map.delete(key);
@@ -175,9 +184,19 @@ export class LoginRateLimiter {
     }
   }
 
-  public getStatus(portal: 'admin' | 'staff', identifier: string, ip?: string, now: number = Date.now()) {
+  public getStatus(portal: 'admin' | 'staff' | 'customer', identifier: string, ip?: string, now: number = Date.now()) {
     return this.checkRateLimit(portal, identifier, ip, now);
   }
 }
 
 export const loginRateLimiter = new LoginRateLimiter();
+
+export const customerVerifyRateLimiter = new LoginRateLimiter({
+  maxAttempts: 3,
+  lockoutDurationMs: 5 * 60 * 1000,
+  attemptWindowMs: 15 * 60 * 1000,
+});
+
+export function getCustomerVerifyRateLimiter(): LoginRateLimiter {
+  return customerVerifyRateLimiter;
+}

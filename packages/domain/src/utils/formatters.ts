@@ -47,3 +47,12 @@ export function formatBookingCheckInState(state: BookingCheckInState | string | 
         .join(" ");
   }
 }
+
+/**
+ * Formats a duration in seconds into mm:ss clock notation.
+ */
+export function formatLockoutTime(seconds: number): string {
+  const m = Math.floor(Math.max(0, seconds) / 60);
+  const s = Math.max(0, seconds) % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}

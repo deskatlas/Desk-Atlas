@@ -174,7 +174,9 @@ export class CampaignMemoryRepository implements CampaignRepository {
 
     // Validate lifecycle transitions
     if (existing.status === 'ARCHIVED') {
-      throw new Error('ARCHIVED status is terminal');
+      if (newStatus !== 'PAUSED') {
+        throw new Error('Archived campaigns can only be restored to PAUSED status');
+      }
     }
 
     if (newStatus === 'ACTIVE') {
@@ -186,7 +188,7 @@ export class CampaignMemoryRepository implements CampaignRepository {
         throw new Error('Campaign must have at least one valid rule before activation');
       }
     } else if (newStatus === 'PAUSED') {
-      if (existing.status !== 'ACTIVE') {
+      if (existing.status !== 'ACTIVE' && existing.status !== 'ARCHIVED') {
         throw new Error(`Invalid transition from ${existing.status} to PAUSED`);
       }
     }
