@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loginRateLimiter } from '@deskatlas/domain';
+import { issueAdminSession } from '../_lib/adminSession';
 
 export const runtime = 'nodejs';
 
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
           loginRateLimiter.recordSuccessfulLogin('admin', trimmedEmail, ip);
           return NextResponse.json({
             user: result.user,
-            token: `da_session_${Date.now()}_${result.user.id}`,
+            token: issueAdminSession(result.user.id, serviceRoleKey),
           });
         } else {
           const rawErr = String(result.error || '');

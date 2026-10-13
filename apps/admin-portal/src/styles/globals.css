@@ -48,6 +48,18 @@ input::placeholder, textarea::placeholder {
   }
 }
 
+/* Persistent management navigation: PRD-F9/F13, DSD responsive layout contract. */
+.manage-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
 /* Responsive Utilities */
 @media (max-width: 768px) {
   .desktop-only { display: none !important; }

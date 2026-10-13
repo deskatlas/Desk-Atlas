@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from 'next/link';
 import type { AdminDashboardRange, AdminDashboardSnapshot, OccupancySummary } from "@deskatlas/domain";
 import { UrgentClosureImpactBanner } from "@deskatlas/ui";
 import { WorkspaceOverview } from "./WorkspaceOverview";
@@ -208,6 +209,7 @@ export function DashboardPage() {
 
   return (
     <main data-screen-label="Dashboard" style={{ padding: "26px 28px 40px" }}>
+      <nav aria-label="Dashboard views" style={{ display: 'flex', gap: 16, marginBottom: 20, fontSize: 13 }}><Link href="/manage" aria-current="page" style={{ color: 'var(--da-brand-dark)', fontWeight: 800 }}>Operational Overview</Link><Link href="/manage/campaign-analytics" style={{ color: 'var(--da-text-secondary)' }}>Campaign Analytics</Link></nav>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "12px", marginBottom: "22px" }}>
         <div>
           <h1 style={{ fontSize: "26px", fontWeight: 800, color: "var(--da-brand-dark)", margin: "0 0 3px", letterSpacing: "-0.02em" }}>Dashboard</h1>

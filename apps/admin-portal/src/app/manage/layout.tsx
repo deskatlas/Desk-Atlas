@@ -59,6 +59,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { id: '/manage', label: 'Dashboard', iconType: 'dashboard' },
+    { id: '/manage/campaign-analytics', label: 'Promo Analytics', iconType: 'promo-analytics' },
     { id: '/manage/reservations', label: 'Reservations', iconType: 'reservations', badge: reservationsCount > 0 ? reservationsCount : undefined },
     { id: '/manage/workspace-map', label: 'Workspace Map', iconType: 'map' },
     { id: '/manage/payments', label: 'Payments', iconType: 'payments', badge: paymentsCount > 0 ? paymentsCount : undefined },
@@ -77,6 +78,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     // Return the specific SVG/HTML structures from the prototype for each icon
     const color = isActive ? 'var(--da-primary)' : 'currentColor';
     switch (type) {
+      case 'promo-analytics':
+        return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3v18h18M7 16v-4m5 4V7m5 9v-7" /></svg>;
       case 'dashboard':
         return (
           <div style={{ width: '15px', height: '15px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '3px', flexShrink: 0 }}>
@@ -170,7 +173,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       {mobileMenuOpen && (
         <div className="mobile-only" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 90 }} onClick={() => setMobileMenuOpen(false)}></div>
       )}
-      <aside className={mobileMenuOpen ? 'mobile-sidebar-overlay' : 'desktop-only'} style={{ width: sidebarOpen ? '240px' : '64px', background: 'var(--da-brand-dark)', color: '#fff', display: 'flex', flexDirection: 'column', padding: '22px 16px', flexShrink: 0, transition: 'width .18s ease', overflow: 'hidden' }}>
+      <aside className={`manage-sidebar ${mobileMenuOpen ? 'mobile-sidebar-overlay' : 'desktop-only'}`} style={{ width: sidebarOpen ? '240px' : '64px', background: 'var(--da-brand-dark)', color: '#fff', display: 'flex', flexDirection: 'column', padding: '22px 16px', flexShrink: 0, transition: 'width .18s ease' }}>
         {sidebarOpen && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '9px', padding: '0 4px 22px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
@@ -197,15 +200,15 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         )}
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, justifyContent: 'flex-start' }}>
-          {navItems.map((item, idx) => {
+          {navItems.map((item) => {
             const isActive = pathname === item.id || (item.id !== '/manage' && pathname?.startsWith(item.id));
             const navStyle = isActive ? { background: 'var(--da-brand-accent)', color: 'var(--da-brand-dark)' } : { color: 'rgba(255,255,255,.85)' };
 
             return (
               <React.Fragment key={item.id}>
-                {sidebarOpen && (idx === 1 || idx === 6 || idx === 8) && (
+                {sidebarOpen && ['/manage/reservations', '/manage/workspaces', '/manage/map'].includes(item.id) && (
                   <div style={{ fontSize: '10px', fontWeight: 800, color: 'rgba(255,255,255,.55)', letterSpacing: '.09em', padding: '16px 12px 6px', fontFamily: 'var(--da-font-family)', whiteSpace: 'nowrap' }}>
-                    {idx === 1 ? 'OPERATIONS' : idx === 6 ? 'SPACE' : 'ORGANIZATION'}
+                    {item.id === '/manage/reservations' ? 'OPERATIONS' : item.id === '/manage/workspaces' ? 'SPACE' : 'ORGANIZATION'}
                   </div>
                 )}
                 <div

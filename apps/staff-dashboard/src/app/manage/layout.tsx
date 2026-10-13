@@ -103,7 +103,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
       {mobileMenuOpen && (
         <div className="mobile-only" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 90 }} onClick={() => setMobileMenuOpen(false)}></div>
       )}
-      <aside className={mobileMenuOpen ? 'mobile-sidebar-overlay' : 'desktop-only'} style={{ width: sidebarOpen ? '240px' : '64px', background: 'var(--da-brand-dark)', color: '#fff', display: 'flex', flexDirection: 'column', padding: '22px 16px', flexShrink: 0, transition: 'width .18s ease', overflow: 'hidden' }}>
+      <aside className={`manage-sidebar ${mobileMenuOpen ? 'mobile-sidebar-overlay' : 'desktop-only'}`} style={{ width: sidebarOpen ? '240px' : '64px', background: 'var(--da-brand-dark)', color: '#fff', display: 'flex', flexDirection: 'column', padding: '22px 16px', flexShrink: 0, transition: 'width .18s ease' }}>
         {sidebarOpen && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '9px', padding: '0 4px 22px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>

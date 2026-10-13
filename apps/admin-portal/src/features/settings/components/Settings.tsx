@@ -299,6 +299,11 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<
     'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards'
   >('Business Profile');
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'campaigns') {
+      setActiveTab('Campaigns & Rewards');
+    }
+  }, []);
   const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards'> = [
     'Business Profile',
     'Business Hours',

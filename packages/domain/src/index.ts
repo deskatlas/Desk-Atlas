@@ -242,3 +242,8 @@ export * from './services/voucherService';
 export * from './services/rateLimiterService';
 export * from './services/confirmationQualificationHook';
 export * from './services/voucherRedemptionHelper';
+
+export * from './models/campaignAnalytics';
+export * from './services/campaignAnalyticsService';
+export * from './services/campaignAnalyticsSupabaseRepository';
+export * from './services/campaignAnalyticsExport';
