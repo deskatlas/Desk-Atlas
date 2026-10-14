@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "runtime": "ollama-cpu",
+  "model": "qwen3:4b",
+  "manifest_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+  "license": "Apache-2.0",
+  "num_gpu": 0,
+  "num_ctx": 16384,
+  "temperature": 0,
+  "status": "initial-candidate-pending-SPEC6-evaluation"
+}

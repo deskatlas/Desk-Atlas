@@ -19,6 +19,7 @@ import {
 import { handleNumericKeyDown } from '@deskatlas/ui';
 import { CancellationPolicyUploader } from './CancellationPolicyUploader';
 import { CampaignsSettings } from './CampaignsSettings';
+import { KnowledgeBaseSettings } from './KnowledgeBaseSettings';
 
 const DAY_NAMES = [
   'Sunday',
@@ -297,14 +298,15 @@ export function isPastDate(dateStr: string, timezone: string = 'Asia/Manila'): b
 
 export function Settings() {
   const [activeTab, setActiveTab] = useState<
-    'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards'
+    'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards' | 'Knowledge Base'
   >('Business Profile');
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('tab') === 'campaigns') {
       setActiveTab('Campaigns & Rewards');
     }
+    if (new URLSearchParams(window.location.search).get('tab') === 'knowledge') setActiveTab('Knowledge Base');
   }, []);
-  const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards'> = [
+  const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards' | 'Knowledge Base'> = [
     'Business Profile',
     'Business Hours',
     'Payment Methods',
@@ -312,6 +314,7 @@ export function Settings() {
     'Landing Preview',
     'Kiosk Settings',
     'Campaigns & Rewards',
+    'Knowledge Base',
   ];
 
   const [loading, setLoading] = useState(true);
@@ -4098,6 +4101,7 @@ export function Settings() {
           {activeTab === 'Campaigns & Rewards' && (
             <CampaignsSettings />
           )}
+          {activeTab === 'Knowledge Base' && <KnowledgeBaseSettings />}
         </div>
       )}
 

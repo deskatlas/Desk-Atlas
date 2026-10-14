@@ -47,3 +47,19 @@ Vercel
 TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Private assistant runtime artifacts
+services/rag/.venv/
+services/rag/.venv-service/
+services/rag/__pycache__/
+services/rag/tests/__pycache__/
+services/rag/models/
+
+# SPEC-6: private RAG runtime artifacts never belong in source control.
+services/rag/.venv/
+services/rag/.cache/
+services/rag/artifacts/
+services/rag/benchmark-results/
+__pycache__/
+.pytest_cache/
+*.pyc

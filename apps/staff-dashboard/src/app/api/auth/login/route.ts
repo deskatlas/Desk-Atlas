@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { issueStaffAssistantSession } from '../../../../../../admin-portal/src/server/assistant/session';
 import {
   AuthError,
   SupabaseAuthRepository,
@@ -77,8 +78,9 @@ export async function POST(request: NextRequest) {
         displayName: session.actor.displayName || 'Staff Member',
       },
       token: session.token,
+      assistantToken: issueStaffAssistantSession(session.actor.id, process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (trimmedEmail) {
       const failResult = loginRateLimiter.recordFailedAttempt('staff', trimmedEmail, ip);
       if (failResult.locked) {
@@ -97,10 +99,10 @@ export async function POST(request: NextRequest) {
       }
 
       const isDeactivatedOrUnauthorized =
-        error?.name === 'DeactivatedAccountError' ||
+        (error instanceof Error && error.name === 'DeactivatedAccountError') ||
         (error instanceof AuthError && error.statusCode === 403) ||
-        error?.message?.toLowerCase().includes('deactivated') ||
-        error?.message?.toLowerCase().includes('not authorized');
+        (error instanceof Error && error.message.toLowerCase().includes('deactivated')) ||
+        (error instanceof Error && error.message.toLowerCase().includes('not authorized'));
 
       const rawMessage = isDeactivatedOrUnauthorized
         ? 'Account deactivated or not authorized'

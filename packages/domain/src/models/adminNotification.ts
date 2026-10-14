@@ -9,7 +9,8 @@ export type AdminNotificationType =
   | "PAYMENT_EXPIRED"
   | "MANUAL_RESOLUTION_REQUIRED"
   | "ADMIN_INVITATION_ACCEPTED"
-  | "STAFF_INVITATION_ACCEPTED";
+  | "STAFF_INVITATION_ACCEPTED"
+  | "KNOWLEDGE_RESULT";
 
 export interface AdminNotificationItem {
   id: string;

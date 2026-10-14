@@ -1,0 +1,122 @@
+[
+  {
+    "id": "synthetic-policy-1",
+    "synthetic": true,
+    "text": "Selecting a desk never holds inventory. Inventory is reserved only on authorized payment confirmation and atomic allocation."
+  },
+  {
+    "id": "synthetic-policy-2",
+    "synthetic": true,
+    "text": "Only admins approve online payment proofs. Staff may confirm authorized kiosk counter payments."
+  },
+  {
+    "id": "synthetic-policy-3",
+    "synthetic": true,
+    "text": "Closing the assistant clears its in-memory conversation. Reopening starts an empty session."
+  },
+  {
+    "id": "synthetic-policy-4",
+    "synthetic": true,
+    "text": "READY uploads are not searchable. An authorized admin must review and explicitly Publish."
+  },
+  {
+    "id": "synthetic-policy-5",
+    "synthetic": true,
+    "text": "Failed replacement leaves the old published version active."
+  },
+  {
+    "id": "synthetic-policy-6",
+    "synthetic": true,
+    "text": "Staff may access currently authorized shared excerpts; original files remain admin-only."
+  },
+  {
+    "id": "synthetic-distractor-1",
+    "synthetic": true,
+    "text": "Synthetic UI glossary: Dashboard is a navigation label, and Settings is another label."
+  },
+  {
+    "id": "synthetic-distractor-2",
+    "synthetic": true,
+    "text": "Synthetic export example: CSV columns may contain quoted commas and escaped quotation marks."
+  },
+  {
+    "id": "synthetic-distractor-3",
+    "synthetic": true,
+    "text": "Synthetic map glossary: A floor contains named workspace instances and structural map elements."
+  },
+  {
+    "id": "synthetic-distractor-4",
+    "synthetic": true,
+    "text": "Synthetic date example: October 1 follows September 30 in the Gregorian calendar."
+  },
+  {
+    "id": "synthetic-distractor-5",
+    "synthetic": true,
+    "text": "Synthetic color glossary: Red, green, and blue are color words, not authorization rules."
+  },
+  {
+    "id": "synthetic-distractor-6",
+    "synthetic": true,
+    "text": "Synthetic timezone example: Asia/Manila is an IANA timezone name."
+  },
+  {
+    "id": "synthetic-distractor-7",
+    "synthetic": true,
+    "text": "Synthetic identity glossary: A UUID is an identifier, not a permission grant."
+  },
+  {
+    "id": "synthetic-distractor-8",
+    "synthetic": true,
+    "text": "Synthetic table glossary: A column header labels the values in its column."
+  },
+  {
+    "id": "synthetic-distractor-9",
+    "synthetic": true,
+    "text": "Synthetic browser glossary: A tab and a window describe different browser surfaces."
+  },
+  {
+    "id": "synthetic-distractor-10",
+    "synthetic": true,
+    "text": "Synthetic file glossary: PDF, DOCX, DOC, and MD are document formats."
+  },
+  {
+    "id": "synthetic-distractor-11",
+    "synthetic": true,
+    "text": "Synthetic job glossary: A checkpoint records completed processing progress."
+  },
+  {
+    "id": "synthetic-distractor-12",
+    "synthetic": true,
+    "text": "Synthetic encoder glossary: Normalization rescales a vector to unit length."
+  },
+  {
+    "id": "synthetic-distractor-13",
+    "synthetic": true,
+    "text": "Synthetic payment glossary: A QR image can encode a token or another payload."
+  },
+  {
+    "id": "synthetic-distractor-14",
+    "synthetic": true,
+    "text": "Synthetic review glossary: A preview lets an operator inspect extracted text."
+  },
+  {
+    "id": "synthetic-distractor-15",
+    "synthetic": true,
+    "text": "Synthetic status glossary: A title is metadata attached to a document."
+  },
+  {
+    "id": "synthetic-distractor-16",
+    "synthetic": true,
+    "text": "Synthetic model glossary: A revision identifies a specific model artifact."
+  },
+  {
+    "id": "synthetic-distractor-17",
+    "synthetic": true,
+    "text": "Synthetic occupancy glossary: An interval has a start and an end."
+  },
+  {
+    "id": "synthetic-distractor-18",
+    "synthetic": true,
+    "text": "Synthetic worker glossary: A heartbeat reports that a process remains active."
+  }
+]

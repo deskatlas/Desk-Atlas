@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
+import { AssistantLauncher } from '../../../../admin-portal/src/features/assistant/AssistantLauncher';
 import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
 import { NotificationBell, BookingEndAlertModal, NearCheckoutAlertToasts, AlertsProvider } from '@/features/alerts';
 
@@ -199,6 +200,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
 
         {/* PAGE CONTENT */}
         {children}
+        <AssistantLauncher key={`${user.id}:${user.role}:${user.assistantToken ?? user.token}:${pathname}`} token={user.assistantToken ?? user.token} />
 
         {/* BOOKING END-TIME ALERT MODAL & NEAR CHECKOUT TOASTS */}
         <BookingEndAlertModal />

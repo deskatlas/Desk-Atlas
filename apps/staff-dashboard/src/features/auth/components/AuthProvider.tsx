@@ -11,12 +11,13 @@ type User = {
   role: Role;
   name?: string;
   token?: string;
+  assistantToken?: string;
 } | null;
 
 type AuthContextType = {
   user: User;
   isDeactivated: boolean;
-  login: (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string }) => void;
+  login: (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string; assistantToken?: string }) => void;
   logout: () => void;
 };
 
@@ -112,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user, handleDeactivation]);
 
-  const login = (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string }) => {
+  const login = (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string; assistantToken?: string }) => {
     setIsDeactivated(false);
     const u = { role, name, ...details } as User;
     setUser(u);

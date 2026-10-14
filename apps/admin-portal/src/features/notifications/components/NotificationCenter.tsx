@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { AdminNotificationItem, AdminNotificationType } from "@deskatlas/domain";
 import { useActiveTabPolling } from "@deskatlas/ui";
+import { useAuth } from '../../auth';
 
 const STORAGE_KEY = "deskatlas_admin_read_notifications";
 
@@ -139,6 +140,7 @@ function getNotificationConfig(type: AdminNotificationType) {
 }
 
 export function NotificationCenter() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AdminNotificationItem[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(() => getStoredReadIds());
@@ -153,6 +155,7 @@ export function NotificationCenter() {
       setLoading(true);
       const res = await fetch("/api/admin/notifications?limit=50", {
         cache: "no-store",
+        headers: { Authorization: `Bearer ${user?.token ?? ''}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -204,6 +207,10 @@ export function NotificationCenter() {
     if (event) {
       event.stopPropagation();
     }
+    if (id.startsWith('kb:')) {
+      void fetch(`/api/admin/knowledge/notifications/${id.slice(3)}`, { method: 'PATCH', headers: { Authorization: `Bearer ${user?.token ?? ''}` } }).then(response => { if (response.ok) setNotifications(previous => previous.map(n => n.id === id ? { ...n, read: true } : n)); }).catch(() => {});
+      return;
+    }
     const next = new Set(readIds);
     next.add(id);
     setReadIds(next);
@@ -213,6 +220,7 @@ export function NotificationCenter() {
   const markAllAsRead = () => {
     const next = new Set(readIds);
     for (const n of notifications) {
+      if (n.id.startsWith('kb:')) { markSingleAsRead(n.id); continue; }
       next.add(n.id);
     }
     setReadIds(next);

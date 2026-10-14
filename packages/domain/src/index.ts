@@ -247,3 +247,7 @@ export * from './models/campaignAnalytics';
 export * from './services/campaignAnalyticsService';
 export * from './services/campaignAnalyticsSupabaseRepository';
 export * from './services/campaignAnalyticsExport';
+export * from './models/knowledge';
+export * from './services/assistantService';
+export { assistantAnswerSchema, assistantSourceSchema } from '@deskatlas/validation';
+export type { AssistantAnswer, AssistantSource } from '@deskatlas/validation';

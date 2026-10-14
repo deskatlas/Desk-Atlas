@@ -166,6 +166,7 @@ export function Login() {
         id: data.user.id,
         email: data.user.email,
         token: data.token,
+        assistantToken: data.assistantToken,
       });
 
       router.push('/manage');

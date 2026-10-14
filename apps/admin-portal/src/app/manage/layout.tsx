@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from '@/features/auth';
+import { AssistantLauncher } from '@/features/assistant/AssistantLauncher';
 import { NotificationCenter, UrgentPaymentModal } from '@/features/notifications';
 import { SearchProvider, useSearch, ProfileDropdown, useActiveTabPolling } from '@deskatlas/ui';
 
@@ -272,6 +273,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* PAGE CONTENT */}
         {children}
+        <AssistantLauncher key={`${user.id}:${user.role}:${user.token}:${pathname}`} token={user.token} />
 
         {/* URGENT PAYMENT NOTIFICATION MODAL */}
         <UrgentPaymentModal />

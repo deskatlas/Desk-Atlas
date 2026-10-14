@@ -264,3 +264,5 @@ export const outboxJobSchema = {
 
 export * from './campaignSchema';
 export * from './spec3Schema';
+export * from './assistantSchema';
+export * from './knowledgeSchema';

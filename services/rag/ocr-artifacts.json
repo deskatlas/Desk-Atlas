@@ -1,0 +1,19 @@
+{
+  "license": "Apache-2.0",
+  "artifacts": [
+    {
+      "language": "eng",
+      "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+      "bytes": 4113088,
+      "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/eng.traineddata"
+    },
+    {
+      "language": "fil",
+      "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+      "sha256": "2b17f68014ab44b88b5e2334ebcd0ce0090d9af7c6fbef6fab22e0bbd9a934dd",
+      "bytes": 1841715,
+      "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/fil.traineddata"
+    }
+  ]
+}
