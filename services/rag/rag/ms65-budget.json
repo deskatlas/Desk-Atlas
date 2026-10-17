@@ -1,0 +1,15 @@
+{
+  "contract": "ms65-v1",
+  "document_bytes": 240000,
+  "units": 1000,
+  "bundle_bytes": 5500,
+  "bundles": 24,
+  "model_calls": 50,
+  "aggregate_wire_bytes": 400000,
+  "aggregate_output_tokens": 120000,
+  "concurrency": 1,
+  "selected_bytes": 6500,
+  "proof_spans": 128,
+  "answer_utf16": 4000,
+  "deadline_seconds": 50
+}

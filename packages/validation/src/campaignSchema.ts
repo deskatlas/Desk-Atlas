@@ -94,10 +94,10 @@ export const CampaignRuleInputSchema = z.object({
   supersedes_rule_id: z.string().uuid().nullable().optional(),
 }).strict().superRefine((val, ctx) => {
   if (val.reward_type === 'PERCENTAGE_DISCOUNT') {
-    if (val.reward_value > 100) {
+    if (val.reward_value >= 100) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Percentage discount must be 100% or less',
+        message: 'Percentage discount must be less than 100%',
         path: ['reward_value'],
       });
     }

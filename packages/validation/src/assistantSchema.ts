@@ -69,7 +69,7 @@ export const assistantSourceSchema = z.object({
 // MS57-TC01/06: each inert answer block is a material claim, mapped to
 // request-local exact evidence indexes. No model-authored source identities.
 const synthesisBlock = z.object({ kind: z.enum(['text', 'bullet', 'step']), text: z.string().trim().min(1).max(1800),
-  support: z.array(z.number().int().min(0).max(5)).min(1).max(6),
+  support: z.array(z.number().int().min(0).max(127)).min(1).max(128),
 }).strict();
 const mainBlock = synthesisBlock.extend({ actions: z.array(z.number().int().min(0).max(127)).max(12) }).strict()
   .refine(b => new Set(b.support).size === b.support.length && new Set(b.actions).size === b.actions.length, 'Duplicate mapping');
@@ -91,7 +91,7 @@ export type AssistantSynthesis = z.infer<typeof assistantSynthesisSchema>;
 export type AssistantEvidenceSpan = { chunk_id: string; quote: string; start: number; end: number };
 // MS59-TC05/17: exact display atoms are separate from packed proof spans.
 export const assistantPresentationSchema = z.object({ version: z.literal('ms59-v1'), atoms: z.array(z.object({
-  kind: z.enum(['heading', 'text', 'step', 'bullet']), evidence: z.number().int().min(0).max(5),
+  kind: z.enum(['heading', 'text', 'step', 'bullet']), evidence: z.number().int().min(0).max(127),
   start: z.number().int().nonnegative(), end: z.number().int().positive(),
 }).strict().refine(a => a.end > a.start, 'Empty atom')).min(1).max(128) }).strict().refine(p => p.atoms.filter(a => a.kind === 'step').length <= 12, 'Action budget');
 export const assistantAnswerSchema = z.object({
@@ -99,7 +99,7 @@ export const assistantAnswerSchema = z.object({
   outcome: z.enum(['SUPPORTED', 'PARTIAL', 'CLARIFICATION', 'INSUFFICIENT', 'CONFLICT', 'SOURCE_REVIEW', 'LIMIT', 'SERVICE_FAILURE', 'UNSUPPORTED']).optional(),
   kind: assistantPlanSchema.shape.kind, summary: z.string().max(20000),
   tables: z.array(assistantTableSchema).max(12),
-  citations: z.array(assistantSourceSchema.omit({ content: true })).max(evidenceBudget.sources),
+  citations: z.array(assistantSourceSchema.omit({ content: true })).max(128),
   interpretation: z.array(z.string().max(1000)).max(30),
   as_of: z.string().datetime(), limitations: z.array(z.string().max(500)).max(30),
   knowledge_epoch: z.number().int().nonnegative(), request_id: id,
@@ -109,7 +109,7 @@ export const assistantAnswerSchema = z.object({
   answer_mode: z.enum(['EXACT', 'SYNTHESIZED', 'PARTIAL_GENERAL', 'CLARIFICATION', 'EVIDENCE_GAP', 'CONFLICT', 'FAILURE']).optional(),
   synthesis_status: z.enum(['DISABLED', 'NOT_ADMITTED', 'ACCEPTED', 'EXACT_FALLBACK']).optional(),
   // MS53-TC06: exact canonical source offsets, in JavaScript UTF-16 code units.
-  evidence_spans: z.array(z.object({ chunk_id: id, quote: z.string().min(1).max(evidenceBudget.quote_utf16), start: z.number().int().nonnegative(), end: z.number().int().positive() }).strict().refine(span => span.end - span.start === span.quote.length, 'Invalid evidence span')).max(6).optional(),
+  evidence_spans: z.array(z.object({ chunk_id: id, quote: z.string().min(1).max(evidenceBudget.quote_utf16), start: z.number().int().nonnegative(), end: z.number().int().positive() }).strict().refine(span => span.end - span.start === span.quote.length, 'Invalid evidence span')).max(128).optional(),
   business_timezone: z.string().max(100).refine(value => { try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; } }, 'Invalid business timezone').optional(),
 }).strict().refine(answer => !answer.evidence_spans?.length || ((answer.synthesis
   ? answer.summary.startsWith((answer.synthesis.main_blocks ?? answer.synthesis.blocks).map(block => block.text).join('\n\n'))
@@ -197,3 +197,21 @@ export type AssistantPlan = z.infer<typeof assistantPlanSchema>;
 export type AssistantAnswer = z.infer<typeof assistantAnswerSchema>;
 export type AssistantSource = z.infer<typeof assistantSourceSchema>;
 export type AssistantTable = z.infer<typeof assistantTableSchema>;
+
+// MS65 / SDD-C20,C21: contract negotiation never silently uses legacy closure.
+export const assistantDocumentEvidenceSchema = z.object({
+  contract: z.literal('ms65-v1'), epoch: z.number().int().nonnegative(),
+  sources: z.array(assistantSourceSchema).min(1).max(1000),
+}).strict().refine(v => new Set(v.sources.map(s => s.chunk_id)).size === v.sources.length, 'Duplicate sources');
+export const assistantDocumentSupportSchema = z.object({
+  contract: z.literal('ms65-v1'), binding: z.string().regex(/^[a-f0-9]{64}$/),
+  outcome: z.enum(['COMPLETE', 'INSUFFICIENT', 'CONFLICT', 'CLARIFY']),
+  clarification: z.string().min(1).max(300).refine(focusedClarification).nullable(),
+  spans: z.array(z.object({chunk_id: id, quote: z.string().min(1).max(evidenceBudget.quote_utf16),
+    start: z.number().int().nonnegative(), end: z.number().int().positive(),
+  }).strict().refine(s => s.end - s.start === s.quote.length)).max(128),
+  synthesis: assistantSynthesisSchema.nullable(),
+  counts: z.object({ bundles: z.number().int().min(1).max(24), calls: z.number().int().min(1).max(50), units: z.number().int().min(1).max(1000) }).strict(),
+}).strict().refine(v => v.outcome === 'COMPLETE' ? Boolean(v.synthesis && v.spans.length && v.synthesis.blocks.every(b => b.support.every(i => i < v.spans.length)))
+  : !v.synthesis && !v.spans.length, 'Invalid document support')
+  .refine(v => v.outcome !== 'CLARIFY' || Boolean(v.clarification), 'Missing clarification');

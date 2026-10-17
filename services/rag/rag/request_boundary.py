@@ -73,7 +73,7 @@ class RequestBoundary:
                     if message['type'] == 'http.disconnect':
                         return
                     body.extend(message.get('body', b''))
-                    if len(body) > 120000:
+                    if len(body) > (260000 if scope.get('path') == '/v1/document-support' else 120000):
                         return await JSONResponse({'error': 'INVALID_REQUEST'}, 413)(scope, receive, timed_send)
                     if not message.get('more_body', False):
                         break

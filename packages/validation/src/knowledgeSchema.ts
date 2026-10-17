@@ -70,6 +70,7 @@ export const KnowledgeCheckpointSchema = KnowledgeLeaseSchema.extend({
 }).strict();
 export const KnowledgeCompleteSchema = KnowledgeLeaseSchema.extend({
   preparation_policy: z.literal('kb-auto-v1').optional(),
+  support_contract: z.literal('ms65-v1').optional(),
   error_code: z.enum(['TYPE_MISMATCH', 'UNSAFE_FILE', 'ENCRYPTED_FILE', 'MALFORMED_FILE', 'EMPTY_TEXT', 'PARSER_FAILED', 'PARSER_REVISION_MISMATCH', 'STORAGE_FAILED', 'EMBEDDING_FAILED', 'RESOURCE_LIMIT', 'MANIFEST_INVALID', 'CONTENT_LIMIT', 'UNREADABLE_PAGE']).optional(),
   retryable: z.boolean().default(false),
   expected_chunk_count: z.number().int().positive().optional(),
