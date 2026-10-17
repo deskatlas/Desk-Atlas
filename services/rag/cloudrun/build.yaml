@@ -1,0 +1,14 @@
+# SPEC-6 / QAD-TC46: build images only. Never deploy or activate feature flags.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, --platform=linux/amd64, -f, cloudrun/api.Dockerfile, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/api:$BUILD_ID', .]
+  - name: gcr.io/cloud-builders/docker
+    args: [build, --platform=linux/amd64, -f, cloudrun/ollama.Dockerfile, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/ollama:$BUILD_ID', .]
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/api:$BUILD_ID'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/ollama:$BUILD_ID'
+substitutions:
+  _REGION: us-central1
+timeout: 3600s
+options:
+  logging: CLOUD_LOGGING_ONLY

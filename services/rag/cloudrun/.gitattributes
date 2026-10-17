@@ -1,0 +1,2 @@
+# SPEC-6: provisioning scripts must remain executable by Linux sh after checkout.
+*.sh text eol=lf

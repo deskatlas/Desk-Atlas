@@ -103,6 +103,26 @@ describe('MS44-TC01/02/03/04/06/09: SOP gateway experiment', () => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 describe('SPEC4-TC02/03: verified role and tool boundary', () => {
+  it('sends Cloud Run identity separately from the service token and capability', async () => {
+    vi.stubEnv('RAG_GOOGLE_AUTH', 'vercel-oidc');
+    vi.stubEnv('RAG_SERVICE_URL', 'https://preview-rag-example-uc.a.run.app');
+    vi.stubEnv('RAG_GOOGLE_WORKLOAD_PROVIDER', 'projects/123/locations/global/workloadIdentityPools/vercel-preview/providers/vercel');
+    vi.stubEnv('RAG_GOOGLE_SERVICE_ACCOUNT', 'vercel-rag-preview@example-project.iam.gserviceaccount.com');
+    vi.stubEnv('VERCEL', '1'); vi.stubEnv('VERCEL_ENV', 'preview'); vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'dev');
+    const incoming = request(issueAdminSession(user, key()), 'What task should I start with?');
+    incoming.headers.set('x-vercel-oidc-token', 'synthetic.vercel.assertion');
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).includes('sts.googleapis.com')) return Response.json({ access_token: 'synthetic-access' });
+      if (String(url).includes('iamcredentials.googleapis.com')) return Response.json({ token: 'synthetic.google.identity' });
+      const headers = new Headers(init?.headers);
+      expect(headers.get('X-Serverless-Authorization')).toBe('Bearer synthetic.google.identity');
+      expect(headers.get('Authorization')).toBe(`Bearer ${process.env.RAG_SERVICE_TOKEN}`);
+      expect(headers.get('X-Request-Capability')).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+      return Response.json({ kind: 'CLARIFY', query: '', tools: [], clarification: 'Which task do you mean?' });
+    });
+    expect((await assistantQuery(incoming)).status).toBe(200);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/v1/plan'))).toBe(true);
+  });
   it('denies unsigned synthetic staff credentials and caller actor fields', async () => {
     const response = await assistantQuery(request(`da_session_123_${user}`, 'today', { role: 'ADMIN' }));
     expect(response.status).toBe(401); expect(db.rpc).not.toHaveBeenCalled();

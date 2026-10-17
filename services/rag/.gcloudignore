@@ -1,0 +1,19 @@
+# SPEC-6: explicit upload allowlist; no env files, caches, uploads or evaluations.
+**
+!app.py
+!serve_local.py
+!models.json
+!answer-model.json
+!runtime-requirements.lock.txt
+!rag/
+!rag/*.py
+!rag/*.json
+!cloudrun/
+!cloudrun/api.Dockerfile
+!cloudrun/ollama.Dockerfile
+!cloudrun/provision_answer.sh
+!cloudrun/provision_embedding.py
+!cloudrun/verify_answer.py
+!cloudrun/build.yaml
+!.gcloudignore
+!.dockerignore

@@ -18,6 +18,7 @@ import { assistantOutcome } from '@deskatlas/domain';
 import { exactAssistantPresentation, exactAssistantMainAtoms } from '@deskatlas/domain';
 import { assistantEvidenceCostsSchema, assistantPackingCostSchema } from '../../../../../packages/validation/src/assistantSchema';
 import type { AssistantObligation } from '../../../../../packages/validation/src/assistantSchema';
+import { createCloudRunIdentity, type CloudRunIdentity } from './cloudRun';
 
 // SPEC-4: SDD-C20/C21/C22. This module is imported only by server route adapters.
 const noStore = { 'Cache-Control': 'no-store, private', 'Vary': 'Authorization', 'X-Content-Type-Options': 'nosniff' };
@@ -146,15 +147,17 @@ function capability(actor: AssistantActor, requestId: string, generation: string
   const payload = Buffer.from(JSON.stringify({ iss: 'deskatlas', aud: 'rag', sub: actor.id, role: actor.role, request_id: requestId, scope: config('RAG_SCOPE_ID'), ops: actor.role === 'ADMIN' ? ['search','tools','answer'] : ['search','operational_snapshot','workspace_availability','answer'], iat: now, exp: now + 60, generation })).toString('base64url');
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
 }
-async function model(path: string, payload: unknown, cap: string, signal: AbortSignal, timing?: AssistantTiming, budget?: RequestBudget, diagnostics?: AssistantDiagnostics): Promise<unknown> {
+async function model(path: string, payload: unknown, cap: string, signal: AbortSignal, timing?: AssistantTiming, budget?: RequestBudget, diagnostics?: AssistantDiagnostics, cloudIdentity?: CloudRunIdentity): Promise<unknown> {
   const base = new URL(config('RAG_SERVICE_URL'));
   if (base.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(base.hostname)) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant requires a private authenticated transport.', 503);
   const serviceSecret = config('RAG_SERVICE_TOKEN');
   if (serviceSecret.length < 32) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant configuration is incomplete.', 503);
   try {
+    const identity = await cloudIdentity?.();
+    budget?.check();
     diagnostics?.enter(path === '/v1/evidence-cost' ? 'expand' : path === '/v1/context' ? 'context' : path === '/v1/answer' ? 'answer' : path === '/v1/synthesis' ? 'synthesis' : path === '/v1/support' ? 'support' : path === '/v1/embed' || path === '/v1/embed-queries' ? 'embed' : 'plan');
     diagnostics?.count('model_request_bytes', Buffer.byteLength(JSON.stringify(payload), 'utf8'));
-    const res = await fetch(new URL(path, base), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceSecret}`, 'X-Request-Capability': cap, ...(budget ? { 'X-Request-Timeout-Ms': String(budget.remaining()) } : {}) }, body: JSON.stringify(payload), cache: 'no-store', signal });
+    const res = await fetch(new URL(path, base), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceSecret}`, 'X-Request-Capability': cap, ...(identity ? { 'X-Serverless-Authorization': `Bearer ${identity}` } : {}), ...(budget ? { 'X-Request-Timeout-Ms': String(budget.remaining()) } : {}) }, body: JSON.stringify(payload), cache: 'no-store', redirect: 'error', signal });
     for (const key of ['system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'] as const) {
       const value = res.headers.get(`x-rag-model-${key}`);
       if (value && /^\d{1,8}$/.test(value)) diagnostics?.count(key, Number(value));
@@ -279,6 +282,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     const parsed = assistantQuerySchema.safeParse(await measure('validate', () => jsonBody(request, signal)));
     if (!parsed.success) throw new AssistantError('INVALID_REQUEST', 'Invalid assistant request.');
     const input = parsed.data; requestId = input.request_id; checkSensitive(input);
+    const cloudIdentity = createCloudRunIdentity(request, signal);
     const language = assistantAnswerLanguage(), copy = assistantCopy(language);
     for (const [key, value] of active) if (value.expires < Date.now()) { value.controller.abort(); active.delete(key); }
     if (active.has(requestId) || [...active.values()].filter(v => v.actor.id === verified.actor.id).length >= 1 || active.size >= boundedConfig('RAG_CAPACITY',5,1,5)) throw new AssistantError('CAPACITY_BUSY', 'Assistant is at capacity. Retry shortly.', 429);
@@ -295,7 +299,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     const fastPlan = process.env.RAG_SOP_FAST_PATH === 'true' ? proceduralDocumentPlan(input.message, input.recent_context) : undefined;
     diagnostics.count('shortcut', fastPlan || currentOperationalPlan(input.message) ? 1 : 0);
     const hybrid = process.env.RAG_HYBRID_RETRIEVAL === 'true';
-    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true }, entry!.capability, signal, timing, budget, diagnostics)));
+    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
     if (!planResult.success) {
       diagnostics.fail('INVALID_PLAN', 'plan');
       diagnostics.count('plan_invalid_filters', planResult.error.issues.filter(issue => issue.path.includes('args')).length);
@@ -337,7 +341,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
             if (hybrid && (!['original', 'expanded'].includes(queryMode) || !['semantic', 'lexical', 'fused'].includes(searchMode))) throw new AssistantError('DATA_UNAVAILABLE', 'Invalid retrieval evaluation configuration.', 503);
             const queries = assistantSearchQueries(input.message, queryMode === 'original' ? undefined : plan.search);
             if (hybrid) {
-              const batch = assistantEmbeddingBatchSchema.safeParse(await measure('embed', () => model('/v1/embed-queries', { queries }, entry!.capability, signal, timing, budget, diagnostics)));
+              const batch = assistantEmbeddingBatchSchema.safeParse(await measure('embed', () => model('/v1/embed-queries', { queries }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
               if (!batch.success || batch.data.embeddings.length !== queries.length) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
               const branches = assistantHybridCandidatesSchema.safeParse(await measure('retrieve', () => rpc(verified.client, 'assistant_search_hybrid', {
                 p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'),
@@ -347,7 +351,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
               candidates = fuseAssistantCandidates({ semantic: searchMode === 'lexical' ? queries.map(() => []) : branches.data.semantic,
                 lexical: searchMode === 'semantic' ? queries.map(() => []) : branches.data.lexical });
             } else {
-              const embedding = assistantSearchSchema.safeParse(await measure('embed', () => model('/v1/embed', { query: assistantRetrievalQuery(input.message) }, entry!.capability, signal, timing, budget, diagnostics)));
+              const embedding = assistantSearchSchema.safeParse(await measure('embed', () => model('/v1/embed', { query: assistantRetrievalQuery(input.message) }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
               if (!embedding.success) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
               candidates = assistantSourcesSchema.parse(await measure('retrieve', () => rpc(verified.client, 'assistant_search_knowledge', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_vector: embedding.data.vector, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')) }, signal)));
               // QAD-TC44: one bounded aid batch also checks weak nonempty hits.
@@ -356,7 +360,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
               // no lexical migration or lowered similarity gate is required.
               const aids = assistantSearchQueries(input.message, plan.search).slice(1);
               if (aids.length) {
-                const alternatives = assistantEmbeddingBatchSchema.parse(await measure('embed', () => model('/v1/embed-queries', { queries: aids }, entry!.capability, signal, timing, budget, diagnostics)));
+                const alternatives = assistantEmbeddingBatchSchema.parse(await measure('embed', () => model('/v1/embed-queries', { queries: aids }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
                 if (alternatives.embeddings.length !== aids.length) throw new AssistantError('DATA_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
                 const branches = await Promise.all(alternatives.embeddings.map(alternative => measure('retrieve', async () => assistantSourcesSchema.parse(await rpc(verified.client, 'assistant_search_knowledge', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_vector: alternative.vector, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')) }, signal)))));
                 candidates = fuseAssistantCandidates({ semantic: [candidates, ...branches], lexical: [candidates, ...branches].map(() => []) });
@@ -407,7 +411,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
                 ...(reconsider ? { reconsider: true, prior_coverage: coverage, prior_obligations: obligations } : {}) };
               diagnostics.count('selection_bytes', Buffer.byteLength(JSON.stringify(selectionPayload), 'utf8'));
               if (Buffer.byteLength(JSON.stringify(selectionPayload), 'utf8') > evidenceBudget.request_bytes) throw new AssistantError('INCOMPLETE_EVIDENCE', 'Candidate comparison exceeds the supported context budget.', 400);
-              const parsed = assistantContextSelectionSchema.safeParse(await measure('context', () => model('/v1/context', selectionPayload, entry!.capability, signal, timing, budget, diagnostics)));
+              const parsed = assistantContextSelectionSchema.safeParse(await measure('context', () => model('/v1/context', selectionPayload, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
               if (!parsed.success || parsed.data.chunk_ids.some(id => !candidates.some(source => source.chunk_id === id))) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
               if (evidenceV3 || parsed.data.obligations) {
                 const mapped = parsed.data.obligations;
@@ -457,7 +461,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
             const packingOverflows = async () => {
               if (!expanded.complete || !expanded.sources.length || expansionOverflows()) return false;
               const packedPayload = evidencePayload();
-              const parsedCost = assistantPackingCostSchema.safeParse(await measure('expand', () => model('/v1/evidence-cost', packedPayload, entry!.capability, signal, timing, budget, diagnostics)));
+              const parsedCost = assistantPackingCostSchema.safeParse(await measure('expand', () => model('/v1/evidence-cost', packedPayload, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
               if (!parsedCost.success) throw new AssistantError('INVALID_MODEL_OUTPUT', 'Packing contract could not be verified.', 503);
               const cost = parsedCost.data;
               if (cost.binding !== createHash('sha256').update(JSON.stringify(packedPayload)).digest('hex')) throw new AssistantError('INVALID_MODEL_OUTPUT', 'Packing identity could not be verified.', 503);
@@ -501,7 +505,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
             // Prior assistant facts and report rows never enter the model context.
             entry.stage = 'preparing';
             let groundingReason: DiagnosticReason | undefined;
-            const selected = evidence.length ? groundedQuotes(await measure('answer', () => model('/v1/answer', payload, entry!.capability, signal, timing, budget, diagnostics)), evidence, query, groups, reason => { groundingReason = reason; diagnostics.fail(reason, 'grounding'); }, requiredChunkIds) : { summary: '', sources: [], conflicting: false };
+            const selected = evidence.length ? groundedQuotes(await measure('answer', () => model('/v1/answer', payload, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)), evidence, query, groups, reason => { groundingReason = reason; diagnostics.fail(reason, 'grounding'); }, requiredChunkIds) : { summary: '', sources: [], conflicting: false };
             summary = selected.summary; sources = selected.sources; evidenceSpans = 'evidence_spans' in selected ? selected.evidence_spans ?? [] : [];
             synthesis = undefined;
             // Synthesis is admitted only AFTER independently safe exact coverage.
@@ -520,10 +524,10 @@ export async function assistantQuery(request: Request): Promise<Response> {
               synthesisStatus = 'EXACT_FALLBACK';
               let optionalStage: 'SYNTHESIS' | 'SUPPORT' = 'SYNTHESIS';
               try {
-                const candidate = validateAssistantSynthesis(await synthesisBudget.run(() => measure('synthesis', () => model('/v1/synthesis', synthesisPayload, entry!.capability, synthesisBudget.signal, timing, synthesisBudget, diagnostics))), coverage, evidenceSpans, sources, contextualQuestion);
+                const candidate = validateAssistantSynthesis(await synthesisBudget.run(() => measure('synthesis', () => model('/v1/synthesis', synthesisPayload, entry!.capability, synthesisBudget.signal, timing, synthesisBudget, diagnostics, cloudIdentity))), coverage, evidenceSpans, sources, contextualQuestion);
                 if (candidate && (!candidate.main_blocks || conciseMain)) {
                   optionalStage = 'SUPPORT';
-                  const verdict = assistantSupportVerdictSchema.safeParse(await synthesisBudget.run(() => measure('support', () => model('/v1/support', { ...synthesisPayload, candidate }, entry!.capability, synthesisBudget.signal, timing, synthesisBudget, diagnostics))));
+                  const verdict = assistantSupportVerdictSchema.safeParse(await synthesisBudget.run(() => measure('support', () => model('/v1/support', { ...synthesisPayload, candidate }, entry!.capability, synthesisBudget.signal, timing, synthesisBudget, diagnostics, cloudIdentity))));
                   if (verdict.success) {
                     diagnostics.count('support_claims', verdict.data.supported.length);
                     diagnostics.count('support_accepted', verdict.data.supported.filter(Boolean).length);

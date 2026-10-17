@@ -1,0 +1,87 @@
+# SPEC-6 phase 7 / SDD-C20-C22 / QAD-TC46: private chat startup benchmark.
+# Project and image digests verified from successful build 005f9e44.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: deskatlas-rag-chat-staging
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: '0'
+        autoscaling.knative.dev/maxScale: '1'
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/cpu-throttling: 'true'
+        run.googleapis.com/startup-cpu-boost: 'true'
+        run.googleapis.com/container-dependencies: '{"api":["ollama"]}'
+    spec:
+      serviceAccountName: rag-chat-runtime@deskatlas-rag.iam.gserviceaccount.com
+      containerConcurrency: 1
+      timeoutSeconds: 300
+      containers:
+        - name: api
+          image: us-central1-docker.pkg.dev/deskatlas-rag/deskatlas-rag/api@sha256:0f090526302a36461f6071c0e14f56e0a79e42ae57e6859794488c5d6f1b0c43
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: '2'
+              memory: 8Gi
+          env:
+            - name: RAG_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rag-service-token
+                  key: '1'
+            - name: RAG_CAPABILITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rag-capability-secret
+                  key: '1'
+            - name: RAG_SCOPE_ID
+              value: deskatlas
+            - name: KB_ENABLED
+              value: 'true'
+            - name: RAG_EMBEDDING_FINGERPRINT
+              value: e8a8211561f2eeee9504e69cb6927ece0cf628c8ad52eb8da07a417849d7e2fe
+            - name: OLLAMA_URL
+              value: http://127.0.0.1:11434
+            - name: RAG_ANSWER_MODEL
+              value: qwen3:4b
+            - name: RAG_ANSWER_DIGEST
+              value: 359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7
+            - name: RAG_PRELOAD_MODEL
+              value: 'true'
+            - name: RAG_MODEL_GPU_LAYERS
+              value: '0'
+            - name: RAG_MODEL_KEEP_ALIVE
+              value: '-1'
+            - name: OMP_NUM_THREADS
+              value: '2'
+            - name: MKL_NUM_THREADS
+              value: '2'
+          startupProbe:
+            tcpSocket:
+              port: 8000
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 120
+        - name: ollama
+          image: us-central1-docker.pkg.dev/deskatlas-rag/deskatlas-rag/ollama@sha256:471ea0ddd073a89276a190c25af6090a07e4fb32259f5c5109b53ac26b52d871
+          resources:
+            limits:
+              cpu: '2'
+              memory: 8Gi
+          env:
+            # Sidecar socket must accept the startup probe. Only api has an
+            # ingress port; Ollama has no public service endpoint.
+            - name: OLLAMA_HOST
+              value: 0.0.0.0:11434
+          startupProbe:
+            tcpSocket:
+              port: 11434
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 120
