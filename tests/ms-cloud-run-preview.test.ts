@@ -22,6 +22,34 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('Cloud Run Preview identity', () => {
+  it('supports explicitly configured Production with its separate provider', async () => {
+    vi.stubEnv('RAG_GOOGLE_AUTH', 'vercel-oidc-production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'production-branch');
+    vi.stubEnv('RAG_GOOGLE_WORKLOAD_PROVIDER', 'projects/123/locations/global/workloadIdentityPools/vercel-production/providers/vercel');
+    vi.stubEnv('RAG_GOOGLE_SERVICE_ACCOUNT', 'vercel-rag-production@example-project.iam.gserviceaccount.com');
+    network.mockResolvedValueOnce(Response.json({ access_token: 'synthetic-access' }))
+      .mockResolvedValueOnce(Response.json({ token: 'synthetic.google.identity' }));
+    expect(await createCloudRunIdentity(request(), new AbortController().signal)()).toBe('synthetic.google.identity');
+    expect(JSON.parse(String(network.mock.calls[0][1]?.body)).audience)
+      .toContain('/workloadIdentityPools/vercel-production/providers/vercel');
+  });
+
+  it.each(['preview', 'development'])('rejects Production mode in %s', async environment => {
+    vi.stubEnv('RAG_GOOGLE_AUTH', 'vercel-oidc-production');
+    vi.stubEnv('VERCEL_ENV', environment);
+    vi.stubEnv('RAG_GOOGLE_WORKLOAD_PROVIDER', 'projects/123/locations/global/workloadIdentityPools/vercel-production/providers/vercel');
+    await expect(createCloudRunIdentity(request(), new AbortController().signal)()).rejects.toThrow();
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it('rejects Production mode with the Preview provider', async () => {
+    vi.stubEnv('RAG_GOOGLE_AUTH', 'vercel-oidc-production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    await expect(createCloudRunIdentity(request(), new AbortController().signal)()).rejects.toThrow();
+    expect(network).not.toHaveBeenCalled();
+  });
+
   it('exchanges the request assertion and mints an ID token for the service origin once per request', async () => {
     network.mockResolvedValueOnce(Response.json({ access_token: 'synthetic-access' }))
       .mockResolvedValueOnce(Response.json({ token: 'synthetic.google.identity' }));

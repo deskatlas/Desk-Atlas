@@ -1,6 +1,6 @@
 import { AssistantError } from '@deskatlas/domain';
 
-// SPEC-6 phase 7 / SDD-C20-C21 / QAD-TC44/46: request-scoped Preview federation.
+// SPEC-6 phase 7 / SDD-C20-C21 / QAD-TC44/46: request-scoped federation.
 // Google verifies the Vercel assertion. Never accept a browser-supplied Google
 // access token or use a build-time Vercel token as a runtime fallback.
 export type CloudRunIdentity = () => Promise<string | undefined>;
@@ -52,8 +52,12 @@ export function createCloudRunIdentity(request: Request, signal: AbortSignal): C
     let target: URL;
     try { target = new URL(process.env.RAG_SERVICE_URL ?? ''); } catch { throw unavailable(); }
     if (!mode && !target.hostname.endsWith('.run.app')) return undefined;
-    if (mode !== 'vercel-oidc' || process.env.VERCEL !== '1' || process.env.VERCEL_ENV !== 'preview'
-        || process.env.VERCEL_GIT_COMMIT_REF !== 'dev'
+    const preview = mode === 'vercel-oidc' && process.env.VERCEL_ENV === 'preview'
+      && process.env.VERCEL_GIT_COMMIT_REF === 'dev';
+    const production = mode === 'vercel-oidc-production' && process.env.VERCEL_ENV === 'production'
+      && (process.env.RAG_GOOGLE_WORKLOAD_PROVIDER ?? '').endsWith('/workloadIdentityPools/vercel-production/providers/vercel');
+    // Google additionally verifies the exact project/environment subject.
+    if ((!preview && !production) || process.env.VERCEL !== '1'
         || target.protocol !== 'https:' || !target.hostname.endsWith('.run.app')
         || target.username || target.password || target.port || target.pathname !== '/' || target.search || target.hash) throw unavailable();
     const assertion = request.headers.get('x-vercel-oidc-token');
