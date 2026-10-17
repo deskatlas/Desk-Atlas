@@ -17,6 +17,39 @@ async function handle(request: Request, context: Context) {
       checkDatabase(result.error); return result.data;
     };
     const body = async () => request.json().catch(() => { throw new KnowledgeError('INVALID_INPUT'); });
+    // MS65 / ERD-E25,E27: property-based inventory and explicit, durable repair.
+    if (resource === 'repairs' && path.length === 1 && request.method === 'GET') {
+      const after = new URL(request.url).searchParams.get('cursor');
+      const result = await client.rpc('kb_evidence_repairs', { p_scope: scope, p_actor: actor, p_after: after ? uuid.parse(after) : null });
+      checkDatabase(result.error);
+      const rows = z.array(z.object({id: uuid, revision: z.number().int().positive(), version_id: uuid, chunk_count: z.number().int().positive()}).strict()).max(21).parse(result.data);
+      return knowledgeResponse({ documents: rows.slice(0, 20), next_cursor: rows.length > 20 ? rows[19].id : null });
+    }
+    if (resource === 'documents' && id && action === 'repair' && path.length === 3 && request.method === 'POST') {
+      const input = KnowledgeRevisionSchema.parse(await body());
+      const result = await client.rpc('kb_begin_evidence_repair', {p_scope: scope, p_actor: actor, p_document: id, p_revision: input.expected_revision, p_request: input.request_id});
+      checkDatabase(result.error);
+      const repair = z.object({id: uuid, status: z.string(), source_object_key: z.string(), target_object_key: z.string(), source_sha256: z.string(), source_bytes: z.number().int().positive(), request_id: uuid}).strict().parse(result.data);
+      if (repair.status !== 'UPLOADING') return knowledgeResponse({version_id: repair.id, status: repair.status}, 202);
+      // Reuse the removal/issuance fence for delayed private storage copies.
+      const permitArgs = {p_scope: scope, p_actor: actor, p_version: repair.id, p_expiry_seconds: 86400};
+      const permit = await client.rpc('kb_upload_permit', permitArgs);
+      checkDatabase(permit.error);
+      const authorization = z.object({permit_id: uuid, issue_before: z.string(), object_key: z.string()}).strict().parse(permit.data);
+      // Copy into a distinct immutable object. A duplicate/lost copy response is
+      // reconciled by reading and hashing that exact target, never by upsert.
+      await client.storage.from('knowledge-base').copy(repair.source_object_key, repair.target_object_key);
+      const target = await client.storage.from('knowledge-base').download(repair.target_object_key);
+      if (target.error || !target.data) throw new KnowledgeError('STORAGE_UNAVAILABLE', 503);
+      const bytes = new Uint8Array(await target.data.arrayBuffer());
+      const hash = sha256(bytes);
+      if (hash !== repair.source_sha256 || bytes.length !== repair.source_bytes) throw new KnowledgeError('MANIFEST_INVALID', 409);
+      const confirmed = await client.rpc('kb_upload_permit', {...permitArgs, p_permit: authorization.permit_id});
+      checkDatabase(confirmed.error);
+      const completed = await client.rpc('kb_finalize_evidence_repair', {p_scope: scope, p_actor: actor, p_version: repair.id, p_hash: hash, p_bytes: bytes.length});
+      checkDatabase(completed.error);
+      return knowledgeResponse(completed.data, 202);
+    }
     // MS64-TC05: reconcile an ambiguous upload response before issuing writes.
     if (resource === 'uploads' && id && path.length === 2 && request.method === 'GET') {
       const result = await client.from('kb_document_versions')

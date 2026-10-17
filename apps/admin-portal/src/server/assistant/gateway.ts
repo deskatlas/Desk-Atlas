@@ -18,6 +18,8 @@ import { assistantOutcome } from '@deskatlas/domain';
 import { exactAssistantPresentation, exactAssistantMainAtoms } from '@deskatlas/domain';
 import { assistantEvidenceCostsSchema, assistantPackingCostSchema } from '../../../../../packages/validation/src/assistantSchema';
 import type { AssistantObligation } from '../../../../../packages/validation/src/assistantSchema';
+import { assistantDocumentEvidenceSchema } from '../../../../../packages/validation/src/assistantSchema';
+import { validateDocumentSupport } from '../../../../../packages/domain/src/services/assistantDocumentSupport';
 
 // SPEC-4: SDD-C20/C21/C22. This module is imported only by server route adapters.
 const noStore = { 'Cache-Control': 'no-store, private', 'Vary': 'Authorization', 'X-Content-Type-Options': 'nosniff' };
@@ -112,6 +114,7 @@ async function epoch(db: SupabaseClient, signal: AbortSignal): Promise<number> {
 async function rpc(db: SupabaseClient, name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
   const { data, error } = await db.rpc(name, args).abortSignal(signal);
   if (error) {
+    if (error.message.includes('CONTEXT_BUDGET_EXCEEDED')) throw new AssistantError('INCOMPLETE_EVIDENCE', 'CONTEXT_BUDGET: This request exceeds the verified document inspection capacity. Ask about one narrower task.', 400);
     if (error.message.includes('UNRESOLVED_CONTEXT')) throw new AssistantError('INCOMPLETE_CONTEXT', 'Reviewed source context could not be verified. Ask an administrator to review the applicable source structure.', 400);
     if (error.message.includes('MANIFEST_INVALID')) throw new AssistantError('INCOMPLETE_CONTEXT', 'REPROCESS_REQUIRED: Stored evidence integrity could not be verified. Ask an administrator to review or reprocess the document.', 400);
     const code = ['FORBIDDEN','KNOWLEDGE_CHANGED','UNSUPPORTED_REPORT','UNSUPPORTED_HISTORY'].find(c => error.message.includes(c));
@@ -155,11 +158,11 @@ async function model(path: string, payload: unknown, cap: string, signal: AbortS
     diagnostics?.enter(path === '/v1/evidence-cost' ? 'expand' : path === '/v1/context' ? 'context' : path === '/v1/answer' ? 'answer' : path === '/v1/synthesis' ? 'synthesis' : path === '/v1/support' ? 'support' : path === '/v1/embed' || path === '/v1/embed-queries' ? 'embed' : 'plan');
     diagnostics?.count('model_request_bytes', Buffer.byteLength(JSON.stringify(payload), 'utf8'));
     const res = await fetch(new URL(path, base), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceSecret}`, 'X-Request-Capability': cap, ...(budget ? { 'X-Request-Timeout-Ms': String(budget.remaining()) } : {}) }, body: JSON.stringify(payload), cache: 'no-store', signal });
-    for (const key of ['system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'] as const) {
+    for (const key of ['aggregate_model_bytes', 'aggregate_output_reserved', 'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'] as const) {
       const value = res.headers.get(`x-rag-model-${key}`);
       if (value && /^\d{1,8}$/.test(value)) diagnostics?.count(key, Number(value));
     }
-    const stage = path === '/v1/context' ? 'answer' : path === '/v1/embed-queries' ? 'embed' : path.slice(4);
+    const stage = path === '/v1/document-support' ? 'support' : path === '/v1/context' ? 'answer' : path === '/v1/embed-queries' ? 'embed' : path.slice(4);
     if (stage === 'plan' || stage === 'embed' || stage === 'answer' || stage === 'synthesis' || stage === 'support') timing?.upstream(stage, res.headers.get('server-timing'), res.headers.get('x-rag-input-tokens'), res.headers.get('x-rag-output-tokens'));
     if (res.status === 403) throw new AssistantError('FORBIDDEN', 'Historical and financial reports require administrator access.', 403);
     if (!res.ok) {
@@ -168,6 +171,7 @@ async function model(path: string, payload: unknown, cap: string, signal: AbortS
       if (typeof detail === 'string' && ['CONTEXT_BUDGET_EXCEEDED','OUTPUT_BUDGET_EXCEEDED','UNRESOLVED_CONTEXT','INVALID_MODEL_OUTPUT','MODEL_TIMEOUT','REQUEST_TIMEOUT','CAPACITY_BUSY'].includes(detail)) diagnostics?.fail(detail as DiagnosticReason);
       if (['CONTEXT_BUDGET_EXCEEDED','OUTPUT_BUDGET_EXCEEDED'].includes(String(detail))) throw new AssistantError('INCOMPLETE_EVIDENCE', `${detail}: ${path === '/v1/context' ? 'Evidence comparison could not be completed within the supported capacity. Please retry.' : 'Complete applicable evidence could not be prepared within the verified capacity. Please retry.'}`, 400);
       if (detail === 'UNRESOLVED_CONTEXT') throw new AssistantError('INCOMPLETE_CONTEXT', 'Required procedure context could not be verified.', 400);
+      if (detail === 'CONFLICTING_SOURCES') throw new AssistantError('CONFLICTING_SOURCES', 'The applicable published sources conflict. Ask an administrator to resolve the policy.', 400);
       if (detail === 'INVALID_MODEL_OUTPUT') throw new AssistantError('INVALID_MODEL_OUTPUT', 'The model returned an incomplete selection.', 503);
       if (detail === 'MODEL_TIMEOUT' || detail === 'REQUEST_TIMEOUT') throw new AssistantError(detail, 'Answer preparation took too long.', 408);
       throw new AssistantError(res.status === 429 ? 'CAPACITY_BUSY' : 'MODEL_UNAVAILABLE', res.status === 429 ? 'Assistant is at capacity. Retry shortly.' : 'Local model is unavailable.', res.status === 429 ? 429 : 503);
@@ -257,11 +261,12 @@ export async function assistantQuery(request: Request): Promise<Response> {
   // disabling does not promise cancellation of already admitted requests.
   const synthesisEnabled = process.env.RAG_SYNTHESIS_ENABLED === 'true';
   const evidenceV3 = process.env.RAG_EVIDENCE_CONTRACT === 'ms59-v1';
+  const documentContract = process.env.RAG_EVIDENCE_CONTRACT === 'ms65-v1';
   const answerContract = request.headers.get('X-DeskAtlas-Answer-Contract');
   const conciseMain = answerContract === 'ms59-v1' && request.headers.get('X-DeskAtlas-Main-Answer-Contract') === 'ms60-v1';
   let selectionAttempts = 0, expansionAttempts = 0;
   const timing = new AssistantTiming();
-  const diagnostics = new AssistantDiagnostics(process.env.RAG_DIAGNOSTICS_ENABLED === 'true' || process.env.NODE_ENV === 'development' && request.headers.get('X-DeskAtlas-Diagnostics') === 'ms60-v1');
+  const diagnostics = new AssistantDiagnostics(process.env.RAG_DIAGNOSTICS_ENABLED === 'true' || process.env.NODE_ENV === 'development' && request.headers.get('X-DeskAtlas-Diagnostics') === 'ms60-v1', documentContract ? 2 : 1);
   if (!synthesisEnabled) diagnostics.fallback('DISABLED');
   const finish = (response: Response) => diagnostics.finish(timing.finish(response, requestId));
   let entry: Active | undefined, requestId = '';
@@ -273,7 +278,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     if (mainContract && (mainContract !== 'ms60-v1' || answerContract !== 'ms59-v1')) throw new AssistantError('INVALID_REQUEST', 'Unsupported main answer contract.', 400);
     const signal = budget.signal;
     const measure: typeof timing.measure = (stage, work) => { diagnostics.enter(stage); return budget!.run(() => timing.measure(stage, work)); };
-    if (!['legacy', 'ms59-v1'].includes(process.env.RAG_EVIDENCE_CONTRACT ?? 'legacy')) throw new AssistantError('MODEL_UNAVAILABLE', 'Unsupported evidence contract.', 503);
+    if (!['legacy', 'ms59-v1', 'ms65-v1'].includes(process.env.RAG_EVIDENCE_CONTRACT ?? 'legacy')) throw new AssistantError('MODEL_UNAVAILABLE', 'Unsupported evidence contract.', 503);
     sameOrigin(request); const verified = await measure('auth', () => authorizeAssistant(request, signal)); diagnostics.authorize(); enabled();
     await measure('catalog', () => requireKnowledge(verified, signal));
     const parsed = assistantQuerySchema.safeParse(await measure('validate', () => jsonBody(request, signal)));
@@ -295,7 +300,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     const fastPlan = process.env.RAG_SOP_FAST_PATH === 'true' ? proceduralDocumentPlan(input.message, input.recent_context) : undefined;
     diagnostics.count('shortcut', fastPlan || currentOperationalPlan(input.message) ? 1 : 0);
     const hybrid = process.env.RAG_HYBRID_RETRIEVAL === 'true';
-    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true }, entry!.capability, signal, timing, budget, diagnostics)));
+    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true, ...(documentContract ? {evidence_contract: 'ms65-v1'} : {}) }, entry!.capability, signal, timing, budget, diagnostics)));
     if (!planResult.success) {
       diagnostics.fail('INVALID_PLAN', 'plan');
       diagnostics.count('plan_invalid_filters', planResult.error.issues.filter(issue => issue.path.includes('args')).length);
@@ -364,6 +369,34 @@ export async function assistantQuery(request: Request): Promise<Response> {
             }
             diagnostics.count('candidate_count', candidates.length);
             diagnostics.units('ranked', candidates.map(source => source.chunk_id));
+            if (documentContract && candidates.length) {
+              entry.stage = 'preparing';
+              const documentEvidence = assistantDocumentEvidenceSchema.parse(await measure('expand', () => rpc(verified.client, 'assistant_document_evidence', {
+                p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'),
+                p_chunks: candidates.map(source => source.chunk_id),
+              }, signal)));
+              if (documentEvidence.epoch !== knowledgeEpoch || documentEvidence.sources.some(s => s.epoch !== knowledgeEpoch || createHash('sha256').update(s.content).digest('hex') !== s.content_hash)) throw new AssistantError('KNOWLEDGE_CHANGED', 'Source generation changed. Please retry.', 409);
+              const supportPayload = { contract: 'ms65-v1', synthesis: synthesisEnabled, query: assistantContextualQuestion(input.message, input.recent_context?.user_turns?.at(-1)), sources: documentEvidence.sources };
+              if (Buffer.byteLength(JSON.stringify(supportPayload), 'utf8') > 260000) throw new AssistantError('INCOMPLETE_EVIDENCE', 'CONTEXT_BUDGET: Ask about one narrower task.', 400);
+              const result = validateDocumentSupport(await measure('support', () => model('/v1/document-support', supportPayload, entry!.capability, signal, timing, budget, diagnostics)), createHash('sha256').update(JSON.stringify(supportPayload)).digest('hex'), documentEvidence.sources);
+              if (!result) throw new AssistantError('INVALID_MODEL_OUTPUT', 'Document support could not be verified.', 503);
+              diagnostics.count('closure_count', documentEvidence.sources.length);
+              diagnostics.count('bundle_count', result.counts.bundles);
+              diagnostics.count('support_passes', result.counts.calls);
+              diagnostics.count('support_units', result.counts.units);
+              if (result.outcome === 'CONFLICT') throw new AssistantError('CONFLICTING_SOURCES', copy.conflict, 400);
+              if (result.outcome === 'CLARIFY') throw new AssistantError('AMBIGUOUS_SCOPE', result.clarification!, 400);
+              if (result.outcome === 'COMPLETE') {
+                synthesis = synthesisEnabled ? result.synthesis! : undefined;
+                synthesisStatus = synthesisEnabled ? 'ACCEPTED' : 'DISABLED';
+                evidenceSpans = result.spans.map(span => ({chunk_id: span.chunk_id!, quote: span.quote!, start: span.start!, end: span.end!}));
+                sources = documentEvidence.sources.filter(s => result.spans.some(span => span.chunk_id === s.chunk_id));
+                diagnostics.units('closure', sources.map(source => source.chunk_id));
+                // All inspected sources influence completeness, even if uncited.
+                contextSources = documentEvidence.sources.filter(s => !sources.some(used => used.chunk_id === s.chunk_id));
+                summary = synthesis ? synthesis.blocks.map(block => block.text).join('\n\n') : result.spans.map(span => span.quote).join('\n\n');
+              } else limitations.push(`NO_RELEVANT_SOURCE: ${copy.gap}`);
+            } else {
             const faqSeed = !input.recent_context?.user_turns?.length && !input.recent_context?.selections
               ? selectFaqSeed(input.message, candidates.map(source => ({ chunk_id: source.chunk_id!, heading_path: source.heading_path!, content: source.content! }))) : undefined;
             // Only user history may resolve a document follow-up for answering.
@@ -469,7 +502,9 @@ export async function assistantQuery(request: Request): Promise<Response> {
             const expansionOverflows = () => expanded.complete && Buffer.byteLength(JSON.stringify(evidencePayload()), 'utf8') > evidenceBudget.request_bytes;
             // MS59-TC10/12: reconsider direct support, never cut a dependency.
             let packedOverflow = await packingOverflows();
+            let reconsiderationCause: 'OUTPUT_BUDGET_EXCEEDED' | 'CONTEXT_BUDGET' | undefined;
             if (!guaranteeSeeds && (packedOverflow || expansionOverflows() || !expanded.complete && 'reason' in expanded && expanded.reason === 'CONTEXT_BUDGET') && selectionAttempts < 2 && expansionAttempts < 2 && budget.remaining() > 10000) {
+              reconsiderationCause = packedOverflow ? 'OUTPUT_BUDGET_EXCEEDED' : 'CONTEXT_BUDGET';
               diagnostics.fail('CONTEXT_BUDGET', 'expand');
               diagnostics.fail('SELECTION_OVERFLOW', 'expand');
               const selection = await choose(true);
@@ -480,6 +515,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
               expanded = selectedIds.length ? await expand() : { complete: true as const, sources: [], groups: [] };
               packedOverflow = await packingOverflows();
             }
+            if (!selectedIds.length && reconsiderationCause) throw new AssistantError('INCOMPLETE_EVIDENCE', `SELECTION_EXHAUSTED: ${reconsiderationCause}: Complete evidence could not be prepared within the verified capacity. Ask about one narrower task.`, 400);
             if (packedOverflow) throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: OUTPUT_BUDGET_EXCEEDED: Complete applicable support could not be prepared within the verified output capacity. Please retry.', 400);
             if (expansionOverflows()) throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: CONTEXT_BUDGET: Evidence selection could not be completed reliably within the supported request size. Please retry.', 400);
             if (!expanded.complete && 'reason' in expanded && expanded.reason === 'CONTEXT_BUDGET') throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: CONTEXT_BUDGET: Evidence selection could not be completed reliably within the supported capacity. Please retry.', 400);
@@ -551,6 +587,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
             if (fits && !summary) diagnostics.fail(selected.conflicting ? 'CONFLICTING_SOURCES' : 'NO_RELEVANT_SOURCE', 'grounding');
             if (summary && coverage?.outcome === 'PARTIAL_GENERAL') limitations.push(...coverage.gaps.map(gap => `PARTIAL_GENERAL: Not verified from retrieved passages: ${gap}`));
             if (fits && !summary && !limitations.some(line => line.startsWith('NO_RELEVANT_SOURCE:'))) limitations.push(...(groundingReason && ['INVALID_QUOTES', 'INVALID_GROUPS', 'INVALID_SOURCE_QUOTE'].includes(groundingReason) ? [`INVALID_MODEL_OUTPUT: ${copy.modelOutput}`] : groundingReason === 'INCOMPLETE_COVERAGE' || groundingReason === 'INJECTION_REJECTED' ? [`INCOMPLETE_CONTEXT: Required selected evidence could not be completely verified. Ask an administrator to review the applicable source context.`] : selected.conflicting ? [`CONFLICTING_SOURCES: ${copy.conflict}`] : coverage?.outcome === 'INSUFFICIENT' && coverage.gaps.length ? coverage.gaps.map(gap => `NO_RELEVANT_SOURCE: Not verified from retrieved passages: ${gap}`) : [`NO_RELEVANT_SOURCE: ${copy.gap}`]));
+            }
           } catch (e) {
             diagnostics.error(e);
             if (e instanceof AssistantError && e.status === 403) throw e;
@@ -574,7 +611,8 @@ export async function assistantQuery(request: Request): Promise<Response> {
     // Final source and actor checks happen before returning even one byte of evidence.
     const finalIdentity = await measure('auth', () => authorizeAssistant(request, signal));
     if (finalIdentity.actor.id !== verified.actor.id || finalIdentity.actor.role !== verified.actor.role) throw new AssistantError('FORBIDDEN', 'Account permissions changed.', 403);
-    await Promise.all([...sources, ...contextSources].map(async source => {
+    const finalSources = [...sources, ...contextSources];
+    for (let offset = 0; offset < finalSources.length; offset += 4) await Promise.all(finalSources.slice(offset, offset + 4).map(async source => {
       const current = await measure('evidence', () => rpc(verified.client, 'assistant_read_source', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_version: source.version_id, p_chunk: source.chunk_id }, signal));
       const checked = assistantSourceSchema.safeParse(current);
       if (!checked.success || checked.data.content_hash !== source.content_hash || checked.data.content !== source.content || checked.data.epoch !== knowledgeEpoch) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);

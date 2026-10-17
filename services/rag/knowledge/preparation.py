@@ -50,3 +50,23 @@ def verify_preparation(extraction, chunks):
     if {s['section_id'] for s in sections if s['text'].strip()} != set(by_section):
         raise ValueError('MANIFEST_INVALID')
     return POLICY
+
+
+def verify_support_preparation(extraction, chunks):
+    """MS65: source integrity plus actual canonical-unit partition admission.
+
+    Publication certifies preparation, not all possible answers. No local policy
+    scope is inferred; answering must inspect the complete source generation.
+    """
+    verify_preparation(extraction, chunks)
+    from rag.document_support import canonical_units, partition
+    sources = [{'chunk_id': str(c['ordinal']), 'heading_path': c['heading_path'],
+                'content': c['content'], 'content_hash': c['content_sha256']} for c in chunks]
+    try:
+        partition(canonical_units(sources))
+    except Exception as error:
+        from fastapi import HTTPException
+        if isinstance(error, HTTPException):
+            raise ValueError('CONTENT_LIMIT') from None
+        raise
+    return 'ms65-v1'

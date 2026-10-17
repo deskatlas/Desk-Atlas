@@ -33,11 +33,14 @@ COMMANDS['test-ms63'] = ['-m', 'pytest', str(ROOT / 'tests/test_ms63.py'), '-q']
 COMMANDS['ms63-acceptance'] = [str(ROOT / 'ms63_acceptance.py')]
 COMMANDS['test-ms62'] = ['-m', 'pytest', str(ROOT / 'tests/test_ms62.py'), str(ROOT / 'tests/test_conversation_remediation.py'), str(ROOT / 'tests/test_ms57.py'), str(ROOT / 'tests/test_ms61.py'), '-q']
 COMMANDS['ms61-localization'] = [str(ROOT / 'ms61_localization.py')]
+COMMANDS['test-ms65-postgres'] = [str(ROOT.parents[1] / 'tests/ms65-postgres-document-support.py')]
+COMMANDS['ms65-acceptance'] = [str(ROOT / 'ms65_acceptance.py')]
+COMMANDS['test-ms65'] = ['-m', 'pytest', str(ROOT / 'tests/test_ms65.py'), '-q']
 
 if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
     raise SystemExit("Use test, test-ms44, benchmark, gateway-benchmark, readiness, evaluate, or load")
 environment = '.venv-service' if sys.argv[1] in ('test-ms60', 'test-ms59', 'test-ms44', 'test-ms50', 'ms53-acceptance', 'test-ms53', 'test-ms54', 'ms54-baseline', 'test-ms56', 'test-ms55', 'ms55-compare', 'test-ms57', 'ms57-compare', 'test-ms58', 'ms58-acceptance') else '.venv'
-if sys.argv[1] in ('test-ms61', 'test-ms62', 'ms61-localization', 'test-ms63', 'ms63-acceptance'):
+if sys.argv[1] in ('test-ms61', 'test-ms62', 'ms61-localization', 'test-ms63', 'ms63-acceptance', 'test-ms65', 'test-ms65-postgres', 'ms65-acceptance'):
     environment = '.venv-service'
 python = ROOT / environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
 if not python.is_file():

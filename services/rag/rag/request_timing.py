@@ -7,15 +7,33 @@ import math
 current: ContextVar[dict | None] = ContextVar('rag_timing', default=None)
 tokens: ContextVar[dict | None] = ContextVar('rag_token_counts', default=None)
 metrics: ContextVar[dict | None] = ContextVar('rag_model_metrics', default=None)
+work: ContextVar[dict | None] = ContextVar('rag_model_work', default=None)
 STAGES = {'queue', 'verify', 'inference', 'schema', 'load', 'prompt', 'generation', 'deterministic'}
 
 
 def model_metric(key, value):
     """MS54-TC04/08: last model request sizes/budgets, without prompt retention."""
     values = metrics.get()
-    if (values is not None and key in {'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'}
+    if (values is not None and key in {'aggregate_model_bytes', 'aggregate_output_reserved', 'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'}
             and type(value) is int and 0 <= value <= 10_000_000):
         values[key] = value
+
+
+def reserve_model_work(serialized_bytes, output_tokens):
+    """MS65: actual transport serialization, checked BEFORE inference starts."""
+    state = work.get()
+    if state is None:
+        return True
+    if (state['calls'] + 1 > state['max_calls']
+            or state['bytes'] + serialized_bytes > state['max_bytes']
+            or state['output'] + output_tokens > state['max_output']):
+        return False
+    state['calls'] += 1
+    state['bytes'] += serialized_bytes
+    state['output'] += output_tokens
+    model_metric('aggregate_model_bytes', state['bytes'])
+    model_metric('aggregate_output_reserved', state['output'])
+    return True
 
 
 def token_count(key, value):

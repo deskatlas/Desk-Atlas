@@ -68,6 +68,7 @@ class PlanInput(Strict):
     business_date: str = Field(pattern=r'^\d{4}-\d{2}-\d{2}$')
     timezone: str = Field(max_length=100)
     search_enabled: bool = False
+    evidence_contract: Literal['ms65-v1'] | None = None
 
 
 class QueryUnderstanding(Strict):
@@ -564,6 +565,33 @@ from rag import request_timing
 app.add_middleware(RequestBoundary)
 
 
+# MS65 / SDD-C21: reuse the existing inference, authentication and cancellation.
+from rag.document_support import document_answer, BUDGET as DOCUMENT_BUDGET
+
+
+class DocumentSupportInput(Strict):
+    contract: Literal['ms65-v1']
+    query: str = Field(min_length=1, max_length=3000)
+    sources: list[Source] = Field(min_length=1, max_length=1000)
+    synthesis: bool = False
+
+
+@app.post('/v1/document-support')
+async def document_support(body: DocumentSupportInput, request: Request):
+    claims = await authenticate(request, request.headers.get('authorization', ''), request.headers.get('x-request-capability', ''))
+    if 'answer' not in claims.ops:
+        raise HTTPException(403, detail='FORBIDDEN')
+    token = request_timing.work.set({'calls': 0, 'bytes': 0, 'output': 0,
+        'max_calls': DOCUMENT_BUDGET['model_calls'], 'max_bytes': DOCUMENT_BUDGET['aggregate_wire_bytes'],
+        'max_output': DOCUMENT_BUDGET['aggregate_output_tokens']})
+    try:
+        async with asyncio.timeout(DOCUMENT_BUDGET['deadline_seconds']):
+            result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis)
+    finally:
+        request_timing.work.reset(token)
+    return {'contract': 'ms65-v1', 'binding': hashlib.sha256(await request.body()).hexdigest(), **result}
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(_request: Request, _error: RequestValidationError):
     return JSONResponse({'error': 'INVALID_REQUEST'}, status_code=422)
@@ -646,6 +674,8 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
             # retain output and chat-template headroom inside num_ctx.
             request_timing.model_metric('serialized_model_bytes', len(model_wire(payload)))
             if len(model_wire(payload)) > min(LIMITS['model_request_bytes'], LIMITS['context_tokens'] - budget - LIMITS['template_headroom']):
+                raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
+            if not request_timing.reserve_model_work(len(model_wire(payload)), budget):
                 raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
             response = await model_request('/api/chat', payload)
     for key, field in [('load', 'load_duration'), ('prompt', 'prompt_eval_duration'), ('generation', 'eval_duration')]:
@@ -741,6 +771,7 @@ def scope_clarification(message, fresh):
                             r'where do (?:i|we) start|what (?:should|do) (?:i|we) (?:focus on|prioritize|need to know)|'
                             r'what are (?:my|our) priorities)\??\s*$', text)):
         return 'Which task or part of your shift do you need help with?'
+    # MS65: monitoring advice has a retrievable task; preserve qualifications.
     return None
 
 
@@ -749,6 +780,8 @@ async def plan(body: PlanInput, claims: Claims = Depends(authenticate)):
     if 'answer' not in claims.ops:
         raise HTTPException(403, detail='FORBIDDEN')
     clarification = scope_clarification(body.message, not body.recent_context.user_turns)
+    if body.evidence_contract == 'ms65-v1' and clarification == 'Which task or part of your shift do you need help with?':
+        clarification = None
     if clarification:
         return Plan(kind='CLARIFY', query='', tools=[], clarification=clarification).model_dump(exclude_none=True)
     data_admitted = measured_data_request(body.message, body.recent_context.user_turns)
@@ -763,7 +796,7 @@ async def plan(body: PlanInput, claims: Claims = Depends(authenticate)):
         # A task-free priorities question does not identify a procedure or
         # shift stage. Ask for scope instead of inventing one or returning
         # an evidence gap. Qualified priorities still use semantic planning.
-        if re.search(r'(?:^|[.!?]\s*)(?:what should (?:i|we) (?:focus on|prioritize)|what are (?:my|our) priorities)\??\s*$',
+        if body.evidence_contract != 'ms65-v1' and re.search(r'(?:^|[.!?]\s*)(?:what should (?:i|we) (?:focus on|prioritize)|what are (?:my|our) priorities)\??\s*$',
                      body.message.strip(), re.I):
             return Plan(kind='CLARIFY', query='', tools=[],
                         clarification='Which task or part of your shift do you need help with?').model_dump(exclude_none=True)
@@ -1090,7 +1123,7 @@ async def context_selection(body: ContextInput, claims: Claims = Depends(authent
         if minimal.ambiguous:
             coverage = Coverage(scope=coverage.scope, outcome='CLARIFY', gaps=[], clarification='Which procedure or task do you mean?')
         elif not minimal.passages:
-            coverage = Coverage(scope=coverage.scope, outcome='INSUFFICIENT', gaps=['The requested task could not be verified from the retrieved passages.'])
+            coverage = Coverage(scope=coverage.scope, outcome='INSUFFICIENT', gaps=['Evidence selection could not be completed reliably within the supported capacity.'])
         selected_ids = [] if minimal.ambiguous else [body.sources[index].chunk_id for index in dict.fromkeys(minimal.passages)]
         return {'chunk_ids': selected_ids, 'ambiguous': minimal.ambiguous, 'coverage': coverage.model_dump(exclude_none=True),
                 **({'obligations': [{**part, 'chunk_ids': selected_ids if part.get('status') == 'SUPPORTED' else [],

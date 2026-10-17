@@ -14,6 +14,7 @@ const targets = [
   'packages/domain/src/services/assistantService.ts', 'packages/domain/src/services/assistantLanguage.ts',
   'packages/domain/src/services/assistantHybridRetrieval.ts',
   'packages/domain/src/services/assistantSynthesis.ts',
+  'packages/domain/src/services/assistantDocumentSupport.ts',
   'packages/domain/src/services/assistantPresentation.ts',
   'packages/domain/src/services/assistantOutcome.ts',
   'packages/ui/src/components/assistantPresentation.tsx',

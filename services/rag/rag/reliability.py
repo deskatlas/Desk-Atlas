@@ -19,7 +19,7 @@ REASONS = {'UNSUPPORTED', 'AMBIGUOUS_SCOPE', 'CLARIFY', 'NO_RELEVANT_SOURCE', 'C
            'MODEL_UNAVAILABLE', 'DATA_UNAVAILABLE', 'INVALID_REQUEST', 'MODEL_TIMEOUT',
            'REQUEST_TIMEOUT', 'REQUEST_CANCELLED', 'CAPACITY_BUSY', 'KNOWLEDGE_CHANGED',
            'FORBIDDEN', 'AUTH_REQUIRED'}
-COUNTS = {'candidate_count', 'selected_count', 'closure_count', 'group_count', 'evidence_bytes',
+COUNTS = {'aggregate_model_bytes', 'aggregate_output_reserved', 'bundle_count', 'support_passes', 'support_units', 'candidate_count', 'selected_count', 'closure_count', 'group_count', 'evidence_bytes',
           'selection_bytes', 'model_request_bytes', 'model_response_bytes', 'epoch', 'shortcut',
           'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom'}
 FIELDS = {'attempt_id', 'case_id', 'identity', 'role', 'outcome', 'duration_ms', 'queue_ms',
@@ -82,13 +82,13 @@ def validate_diagnostics(value):
     if value is None:
         return
     if (not isinstance(value, dict) or set(value) != {'schema_version', 'stage', 'failures', 'counts', 'ranked_units', 'closure_units'}
-            or value['schema_version'] != 1 or value['stage'] not in STAGES
+            or value['schema_version'] not in (1, 2) or value['stage'] not in STAGES
             or not isinstance(value['counts'], dict) or set(value['counts']) - COUNTS
             or any(type(n) is not int or not 0 <= n <= 10_000_000 for n in value['counts'].values())
             or not isinstance(value['failures'], list) or len(value['failures']) > 12):
         raise ValueError('UNSAFE_DIAGNOSTICS')
     for key in ('ranked_units', 'closure_units'):
-        if not isinstance(value[key], list) or len(value[key]) > 6 or any(not digest(unit) for unit in value[key]):
+        if not isinstance(value[key], list) or len(value[key]) > ((128 if key == 'closure_units' else 12) if value['schema_version'] == 2 else 6) or any(not digest(unit) for unit in value[key]):
             raise ValueError('UNSAFE_SUPPORT_IDENTIFIERS')
     for failure in value['failures']:
         if (set(failure) != {'stage', 'reason', 'category'} or failure['stage'] not in STAGES

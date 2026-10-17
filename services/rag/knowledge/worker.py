@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from knowledge.chunk import chunk_sections
-from knowledge.preparation import verify_preparation
+from knowledge.preparation import verify_preparation, verify_support_preparation
 from knowledge.structure import manifest_hash
 from rag.encoder import Encoder
 
@@ -147,7 +147,8 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
             extraction['warning_codes'].append('SECTION_SCOPE_REVIEW')
             if any(chunk['section_context']['unresolved'] for chunk in chunks):
                 extraction['warning_codes'].append('SECTION_CONTEXT_UNRESOLVED')
-            preparation = {'preparation_policy': verify_preparation(extraction, chunks)} if version.get('upload_intent') else {}
+            preparation = {'preparation_policy': verify_preparation(extraction, chunks),
+                           'support_contract': verify_support_preparation(extraction, chunks)} if version.get('upload_intent') else {}
             for offset in range(0, len(chunks), 4):
                 batch = chunks[offset:offset + 4]
                 vectors = encoder.encode([chunk["content"] for chunk in batch])

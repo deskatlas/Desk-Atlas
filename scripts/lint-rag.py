@@ -10,6 +10,7 @@ paths = [SERVICE / 'app.py', *sorted((SERVICE / 'knowledge').glob('*.py')), *sor
 paths.append(SERVICE / 'ms58_acceptance.py')
 paths.append(SERVICE / 'ms61_localization.py')
 paths.append(SERVICE / 'ms63_acceptance.py')
+paths.append(SERVICE / 'ms65_acceptance.py')
 for path in paths:
     try:
         source = path.read_text(encoding='utf-8')

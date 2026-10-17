@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 const service = path.join(root, 'services/rag');
 function fingerprint(directory = service) {
   const hash = createHash('sha256');
-  for (const name of ['app.py', 'rag/encoder.py', 'rag/evidence.py', 'rag/evidence_budget.py', 'rag/evidence-budget.json', 'rag/governance.py', 'rag/procedure.py', 'rag/obligations.py', 'rag/request_boundary.py', 'rag/request_timing.py', 'rag/runtime_identity.py', 'serve_local.py']) {
+  for (const name of ['rag/document_support.py', 'rag/ms65-budget.json', 'app.py', 'rag/encoder.py', 'rag/evidence.py', 'rag/evidence_budget.py', 'rag/evidence-budget.json', 'rag/governance.py', 'rag/procedure.py', 'rag/obligations.py', 'rag/request_boundary.py', 'rag/request_timing.py', 'rag/runtime_identity.py', 'serve_local.py']) {
     hash.update(name + '\0'); hash.update(fs.readFileSync(path.join(directory, name)));
   }
   return hash.digest('hex');
