@@ -1,3 +1,6 @@
+import type { AssistantLanguage } from './assistantLanguage';
+import { standaloneProcedureTask } from './assistantRetrieval';
+import { sopGovernanceIntent } from './assistantGovernance';
 import { assistantToolSchema, type AssistantFilters, type AssistantTool, type AssistantTable, type AssistantPlan } from '@deskatlas/validation';
 
 // SPEC-4: SDD-C22, QAD-TC44. Date and tool policies are independent of the model.
@@ -10,15 +13,23 @@ export interface AssistantToolResult { tables: AssistantTable[]; limitations: st
 export interface AssistantRepository {
   execute(actor: AssistantActor, tool: AssistantTool, period: AssistantPeriod, asOf: string): Promise<AssistantToolResult>;
 }
+// MS53-TC02/03: normalize task spelling only, preserving names, dates and negation.
+// This is a bounded search aid, never evidence or an authorization decision.
 // MS44-TC04/05: an exact grammar deliberately favors planner fallback over recall.
 // This selects retrieval only. It never answers a procedure or grants permissions.
 export function proceduralDocumentPlan(message: string, context?: { user_turns?: string[]; selections?: unknown }): AssistantPlan | undefined {
-  if (context?.user_turns?.length || context?.selections) return undefined;
+  if (context?.selections) return undefined;
+  const task = standaloneProcedureTask(message) || sopGovernanceIntent(message);
+  if (context?.user_turns?.length && !task) return undefined;
+  if (task) return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
   const text = message.normalize('NFKC').trim().toLowerCase().replace(/[?]$/, '').replace(/\s+/g, ' ');
+  // These standalone task questions avoid a planner round trip. Near misses,
+  // mixed requests, execution requests and follow-ups still use the planner.
+  if (/^(?:what should i do when (?:a |the )?(?:customer|guest) leaves|steps to finish (?:a |the )?(?:customer|guest)'s workspace session|(?:customer|guest) is leaving,? paano ang check[ -]?out|paano mag-check[ -]?out ng (?:customer|guest))$/.test(text)) return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
   if (/^who is responsible for (?:reviewing and updating|reviewing|updating) the sop$/.test(text)) return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
   if (/^(?:according to the sop,? )?what is the check-(?:in|out) procedure$/.test(text)) return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
-  const prefix = '(?:how do i|how do staff|how can i|what is the procedure to|paano|paano ko|paano mag|paano i)';
-  const action = '(?:check in a guest|check out a guest|check-in ng guest|check-out ng guest|mag-check in ng guest|mag-check out ng guest|scan a booking qr|scan ang booking qr|verify a reference code|verify ang reference code|review an online payment proof|review ang online payment proof)';
+  const prefix = '(?:how do i|how do staff|how can i|how to|what is the procedure to|paano|paano ko|paano mag|paano i)';
+  const action = '(?:check[ -]?(?:in|out) (?:a |the )?(?:guest|customer)|check-in ng guest|check-out ng guest|mag-check in ng guest|mag-check out ng guest|scan a booking qr|scan ang booking qr|verify a reference code|verify ang reference code|review an online payment proof|review ang online payment proof)';
   if (!new RegExp(`^${prefix} ${action}$`).test(text)) return undefined;
   return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
 }
@@ -29,6 +40,13 @@ export function currentOperationalPlan(message: string): AssistantPlan | undefin
   if (/history|yesterday|last|previous|noong|kahapon|nakaraan|revenue|payment|kita|magkano|compare|comparison|floor|desk|template|\d/.test(text)) return undefined;
   if (!/how many|count|\bilang\b|\bilan\b|\bbilang\b/.test(text) || !/bookings?|reservations?|reserbasyon/.test(text) || !/today|ngayong araw|ngayon/.test(text)) return undefined;
   return { kind: 'OPERATIONAL', query: '', tools: [assistantToolSchema.parse({ name: 'operational_snapshot', args: {} })] };
+}
+
+// QAD-TC44: previous user intent qualifies references, never a new named task.
+export function assistantContextualQuestion(message: string, previous?: string): string {
+  if (!previous || !/^(?:and\s+(?:if|before|after|what)|(?:what|how)\s+(?:about|if)\s+(?:they|it|that)|(?:they|he|she|it)\s+(?:ignored|still|just|keep|keeps|won.t|didn.t)|(?:now|then)\s+what\b|can you remind)/i.test(message.trim())) return message;
+  const contextual = `${message}\nPrevious user question (intent only): ${previous}`;
+  return contextual.length <= 3000 ? contextual : message;
 }
 export function businessDate(asOf: string, timezone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(asOf));
@@ -173,24 +191,49 @@ export async function executeAssistantTool(repository: AssistantRepository, acto
 }
 function partialComparisonLabel(filters: AssistantFilters): string { return filters.start_date ? 'Explicit full calendar periods compared.' : 'Incomplete current period compared with the same elapsed portion of the prior period.'; }
 export function percentChange(current: number, previous: number): number | null { return previous > 0 ? (current - previous) / previous * 100 : null; }
-export function assistantToolNarrative(name: AssistantTool['name'], result: AssistantToolResult): string {
+export function assistantToolNarrative(name: AssistantTool['name'], result: AssistantToolResult, language: AssistantLanguage = 'en'): string {
   const table = result.tables[0];
   if (!table) return '';
   const sum = (index: number) => table.rows.reduce((total,row) => total + (typeof row[index] === 'number' ? row[index] : 0),0);
   if (name === 'operational_snapshot' && table.rows.length) return table.columns.map((label,index) => `${label}: ${table.rows[0][index] ?? 'N/A'}`).join('; ') + '.';
+  if (language !== 'en') return localizedNarrative(name, result, language);
   if (name === 'booking_report' || name === 'operational_report' && table.columns.length === 4) return `${sum(3)} reservation requests in the selected current-status cohort. The table breaks down the period, status and source.`;
   if (name === 'workspace_usage_report') return `${sum(2)} qualifying bookings attributed to current candidates across ${table.rows.length} desks. Historical desk hours and occupancy remain unavailable.`;
   if (name === 'workspace_availability') return `${table.rows.filter(row=>row[2]==='AVAILABLE').length} of ${table.rows.length} desks are available for the specified interval. This creates no inventory hold.`;
-  if (name === 'payment_report') {
-    const amounts = new Map<string,bigint>();
-    for (const row of table.rows) {
-      if (typeof row[1] !== 'string' || typeof row[2] !== 'string' || !/^\d+\.\d{2}$/.test(row[2])) throw new AssistantError('DATA_UNAVAILABLE','Invalid monetary result.',503);
-      amounts.set(row[1],(amounts.get(row[1]) ?? BigInt(0)) + BigInt(row[2].replace('.','')));
-    }
-    if (!amounts.size) return 'No verified initial payment records matched this successful aggregate. Refund and extension coverage remain unavailable.';
-    return `${[...amounts].map(([currency,cents])=>`${currency} ${cents/BigInt(100)}.${String(cents%BigInt(100)).padStart(2,'0')}`).join(', ')} in verified initial booking payments across ${sum(3)} approved records. Extension receipts and net revenue are excluded.`;
-  }
+  if (name === 'payment_report') return `${paymentNarrativeAmounts(table)} in verified initial booking payments across ${sum(3)} approved records. Extension receipts and net revenue are excluded.`;
   return `${table.title}. See the verified table for counts and coverage.`;
+}
+function paymentNarrativeAmounts(table: AssistantTable): string {
+  const amounts = new Map<string, bigint>();
+  for (const row of table.rows) {
+    if (typeof row[1] !== 'string' || typeof row[2] !== 'string' || !/^\d+\.\d{2}$/.test(row[2])) throw new AssistantError('DATA_UNAVAILABLE', 'Invalid monetary result.', 503);
+    amounts.set(row[1], (amounts.get(row[1]) ?? BigInt(0)) + BigInt(row[2].replace('.', '')));
+  }
+  return [...amounts].map(([currency, cents]) => `${currency} ${cents / BigInt(100)}.${String(cents % BigInt(100)).padStart(2, '0')}`).join(', ');
+}
+function localizedNarrative(name: AssistantTool['name'], result: AssistantToolResult, language: AssistantLanguage): string {
+  const table = result.tables[0];
+  if (!table) return '';
+  const sum = (index: number) => table.rows.reduce((total, row) => total + (typeof row[index] === 'number' ? row[index] : 0), 0);
+  const tl = language === 'tl';
+  if (name === 'booking_report' || name === 'operational_report' && table.columns.length === 4) return tl
+    ? `${sum(3)} kahilingan sa reserbasyon sa napiling pangkat ng kasalukuyang status. Nasa talahanayan ang panahon, status at source.`
+    : `${sum(3)} reservation requests sa selected current-status cohort. Nasa table ang period, status at source.`;
+  if (name === 'workspace_usage_report') return tl
+    ? `${sum(2)} kuwalipikadong booking sa kasalukuyang mga candidate para sa ${table.rows.length} desk. Hindi pa makukuha ang historical desk hours at occupancy.`
+    : `${sum(2)} qualifying bookings sa current candidates para sa ${table.rows.length} desks. Unavailable pa ang historical desk hours at occupancy.`;
+  if (name === 'workspace_availability') {
+    const available = table.rows.filter(row => row[2] === 'AVAILABLE').length;
+    return tl ? `${available} sa ${table.rows.length} desk ang available sa tinukoy na pagitan. Hindi nito hinahawakan ang imbentaryo.`
+      : `${available} of ${table.rows.length} desks ang available sa specified interval. Walang inventory hold.`;
+  }
+  if (name === 'payment_report') {
+    const amounts = paymentNarrativeAmounts(table);
+    return tl ? `${amounts} sa beripikadong paunang bayad ng booking mula sa ${sum(3)} aprubadong rekord. Hindi kasama ang extension receipts at net revenue.`
+      : `${amounts} sa verified initial booking payments mula sa ${sum(3)} approved records. Excluded ang extension receipts at net revenue.`;
+  }
+  return tl ? `${table.title}. Tingnan ang beripikadong talahanayan para sa bilang at saklaw.`
+    : `${table.title}. Tingnan ang verified table para sa counts at coverage.`;
 }
 export function unionMilliseconds(intervals: ReadonlyArray<readonly [number, number]>, start: number, end: number): number {
   const sorted = intervals.map(([a, b]) => [Math.max(a, start), Math.min(b, end)] as const).filter(([a, b]) => b > a).sort((a, b) => a[0] - b[0]);

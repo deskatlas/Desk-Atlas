@@ -7,6 +7,7 @@ import argparse
 import asyncio
 from collections import Counter
 from datetime import datetime
+from functools import lru_cache
 import importlib.metadata
 import json
 import os
@@ -19,6 +20,22 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 import httpx
 from rag.evaluation import percentile
+from rag.identity import freeze_identity, source_snapshot, valid_identity
+
+
+@lru_cache(maxsize=32)
+def valid_timezone(value):
+    # Use the same installed Node Intl authority as the gateway. The approved
+    # Windows service environment does not contain a Python IANA database.
+    if not isinstance(value, str) or len(value) > 100:
+        return False
+    try:
+        result = subprocess.run(['node', '-e',
+            "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{new Intl.DateTimeFormat('en',{timeZone:JSON.parse(s)});process.exit(0)}catch{process.exit(1)}})"],
+            input=json.dumps(value), text=True, capture_output=True, timeout=5)
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def timings(header):
@@ -55,8 +72,13 @@ def validate_cases(cases):
 def document_contract(data):
     """Document-only subset of assistantAnswerSchema; reject unknown/prose fields."""
     required = {'kind', 'summary', 'tables', 'citations', 'interpretation', 'as_of', 'limitations', 'knowledge_epoch', 'request_id'}
-    if not isinstance(data, dict) or set(data) != required or data['kind'] != 'DOCUMENT':
+    optional = {'evidence_spans', 'business_timezone'}
+    if (not isinstance(data, dict) or not required.issubset(data)
+            or set(data) - required - optional or data['kind'] != 'DOCUMENT'):
         return False
+    if 'business_timezone' in data:
+        if not isinstance(data['business_timezone'], str) or not valid_timezone(data['business_timezone']):
+            return False
     if (not isinstance(data['summary'], str) or not data['summary'].strip() or len(data['summary']) > 20000
             or data['tables'] != [] or type(data['knowledge_epoch']) is not int or data['knowledge_epoch'] < 0):
         return False
@@ -89,6 +111,20 @@ def document_contract(data):
         if any(not isinstance(citation[key], str) or len(citation[key]) > size
                for key, size in [('title', 200), ('heading_path', 500), ('extraction_method', 50)]):
             return False
+    if 'evidence_spans' in data:
+        spans = data['evidence_spans']
+        if not isinstance(spans, list) or len(spans) > 6:
+            return False
+        for span in spans:
+            if (not isinstance(span, dict) or set(span) != {'chunk_id', 'quote', 'start', 'end'}
+                    or not isinstance(span['quote'], str) or not 1 <= len(span['quote'].encode('utf-16-le')) // 2 <= 1500
+                    or type(span['start']) is not int or type(span['end']) is not int
+                    or span['start'] < 0
+                    or span['end'] - span['start'] != len(span['quote'].encode('utf-16-le')) // 2
+                    or not any(c['chunk_id'] == span['chunk_id'] for c in data['citations'])):
+                return False
+        if spans and not data['summary'].startswith('\n\n'.join(span['quote'] for span in spans)):
+            return False
     return True
 
 
@@ -113,6 +149,7 @@ async def check_answer(client, url, headers, response, request_id, case):
     # Independently read current authorized sources. These requests are outside
     # query latency and reported separately as harness evidence-check cost.
     contents = []
+    by_chunk = {}
     base = url.rsplit('/query', 1)[0]
     for citation in data['citations']:
         version, chunk = citation.get('version_id', ''), citation.get('chunk_id', '')
@@ -130,6 +167,11 @@ async def check_answer(client, url, headers, response, request_id, case):
         if any(current.get(key) != value for key, value in citation.items()):
             return False
         contents.append(current['content'])
+        by_chunk[chunk] = current['content']
+    for span in data.get('evidence_spans', []):
+        source = by_chunk.get(span['chunk_id'], '').encode('utf-16-le')
+        if source[span['start'] * 2:span['end'] * 2] != span['quote'].encode('utf-16-le'):
+            return False
     # Summary is deterministically joined exact extracts. Check every paragraph
     # and every required restriction against current text, not HTTP status alone.
     return (all(any(part in text for text in contents) for part in summary.split('\n\n'))
@@ -160,6 +202,7 @@ async def run(args, cases, tokens):
     async with httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=60) as client:
         # Distinct tokens alone do not establish distinct active actors.
         actors = set()
+        roles = []
         count = 5 if args.profile in {'five', 'ingestion'} else 1
         for token in tokens[:count]:
             verified = await client.get(args.url, headers={'Authorization': token})
@@ -170,9 +213,10 @@ async def run(args, cases, tokens):
             if state.get('enabled') is not True or actor.get('role') not in {'ADMIN', 'STAFF'}:
                 raise ValueError('AVAILABLE_AUTHORIZED_GATEWAY_REQUIRED')
             actors.add(str(UUID(actor['id'])))
+            roles.append(actor['role'])
         if len(actors) != count:
             raise ValueError('DISTINCT_ACTIVE_TEST_ACTORS_REQUIRED')
-        async def execute(case, actor):
+        async def execute(case, actor, batch=None):
             request_id = str(uuid4())
             headers = {'Authorization': tokens[actor], 'Origin': f'{origin.scheme}://{origin.netloc}'}
             start = perf_counter()
@@ -201,7 +245,12 @@ async def run(args, cases, tokens):
                     duration = (perf_counter() - start) * 1000
                 else:
                     outcome = 'quality_or_schema_failure'
-            return {'language': case['language'], 'duration_ms': duration, 'http_status': status,
+            return {'identity': getattr(args, 'identity', None), 'attempt_id': str(uuid4()),
+                    'case_id': case.get('id', str(cases.index(case))), 'profile': args.profile,
+                    'role': roles[actor], 'actor_slot': actor, 'batch_id': batch,
+                    'reset_id': getattr(args, 'reset_id', None),
+                    'ingestion_active': args.profile == 'ingestion' and getattr(args, 'ingestion_verified', False),
+                    'queue_ms': sum(value for key, value in stages.items() if key.startswith('python_') and key.endswith('_queue')) if any(key.startswith('python_') and key.endswith('_queue') for key in stages) else None, 'language': case['language'], 'duration_ms': duration, 'http_status': status,
                     'stages': stages, 'tokens': token_counts, 'outcome': outcome, 'evidence_check_ms': check_ms}
 
         if args.profile != 'cold':
@@ -211,7 +260,7 @@ async def run(args, cases, tokens):
         records, batches = [], []
         if args.profile in {'five', 'ingestion'}:
             for batch in range(args.batches):
-                rows = await asyncio.gather(*(execute(cases[(batch * 5 + i) % len(cases)], i) for i in range(5)))
+                rows = await asyncio.gather(*(execute(cases[(batch * 5 + i) % len(cases)], i, batch) for i in range(5)))
                 records.extend(rows)
                 batches.append(summarize(rows))
         elif args.profile == 'representative':
@@ -235,6 +284,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', default='http://localhost:3003/api/assistant/query')
     parser.add_argument('--cases', type=Path, required=True)
+    parser.add_argument('--corpus-manifest', type=Path, required=True)
+    parser.add_argument('--runtime-settings', type=Path, required=True)
+    parser.add_argument('--run-manifest', type=Path, required=True)
     parser.add_argument('--profile', choices=['repeat', 'representative', 'five', 'cold', 'ingestion'], required=True)
     parser.add_argument('--samples', type=int, default=30)
     parser.add_argument('--batches', type=int, default=20)
@@ -255,7 +307,17 @@ def main():
         if (not isinstance(tokens, list) or len(tokens) < count or len(set(tokens)) != len(tokens)
                 or any(not isinstance(t, str) or not t.startswith('Bearer ') for t in tokens)):
             raise ValueError('ACTIVE_DISTINCT_TEST_SESSIONS_REQUIRED')
+        root = Path(__file__).resolve().parents[2]
+        corpus = json.loads(args.corpus_manifest.read_text(encoding='utf-8'))
+        settings = json.loads(args.runtime_settings.read_text(encoding='utf-8'))
+        current = freeze_identity(root, corpus, cases, settings)
+        args.identity = json.loads(args.run_manifest.read_text(encoding='utf-8'))
+        if not valid_identity(args.identity) or any(args.identity[key] != value for key, value in current.items() if key != 'run_id'):
+            raise ValueError('FROZEN_RUN_DOES_NOT_MATCH_ACTUAL_ARTIFACTS')
+        args.reset_id = str(uuid4()) if args.profile == 'cold' else None
         result = asyncio.run(run(args, cases, tokens))
+        if source_snapshot(root) != args.identity['source_snapshot']:
+            raise ValueError('CANDIDATE_CHANGED_DURING_RUN')
     except Exception:
         print(json.dumps({'status': 'BLOCKED', 'error_code': 'GATEWAY_BENCHMARK_NOT_COMPLETED',
                           'requirements': ['local gateway', 'active test sessions', 'permitted published synthetic corpus'],
@@ -264,7 +326,7 @@ def main():
     root = Path(__file__).resolve().parents[2]
     revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(['git', 'status', '--porcelain'], cwd=root, capture_output=True, text=True).stdout
-    print(json.dumps({'profile': args.profile, 'app_mode': args.app_mode,
+    print(json.dumps({'identity': args.identity, 'profile': args.profile, 'app_mode': args.app_mode,
                       'revision': revision, 'working_tree_dirty': bool(dirty),
                       'os': platform.system(), 'architecture': platform.machine(), 'cpu_count': os.cpu_count(),
                       'python': platform.python_version(), 'httpx': importlib.metadata.version('httpx'),

@@ -1,0 +1,37 @@
+# MS-57 implementation
+
+Authority: the October 15, 2026 request to implement `docs/milestone/ms57.md` supersedes the planning document's earlier Markdown-only authoring scope. Trace: PRD-F26/F27, SDD-C20/C21/C22/C23/C24, DSD-UI16/UI17, ERD-E24 through E29, QAD-TC44/45/46.
+
+## Delivered behavior
+
+The server-only `RAG_SYNTHESIS_ENABLED` admission flag defaults off in both portal gateway environment examples. Clients cannot submit it. Its value is frozen per request. Changing environment configuration requires a gateway restart; disabling affects new admissions and does not claim to cancel already admitted requests. Retrieval, independently verified excerpts and deterministic read-only tools remain available when synthesis is disabled. No runtime environment file was changed or service activated.
+
+With synthesis enabled, request-local joint selection supplies typed scope and coverage even when a deterministic retrieval shortcut could otherwise skip selection. Reviewed closure expansion, exact-answer grounding and injection/conflict checks still run first. Synthesis never makes incomplete or unauthorized evidence eligible. Source hashes are checked before admission. Canonical spans use the existing JavaScript UTF-16 offsets; Python explicitly checks UTF-16 bytes, including astral characters, rather than treating offsets as code points.
+
+One authenticated `/v1/synthesis` call produces bounded inert text/list blocks, each representing a material claim with indexes into the current exact evidence spans. Generated text cannot author source IDs, URLs, hashes, original-source offsets or operational arithmetic. Domain validation independently checks schema, scope/gap equality, indexes, complete support references, span fidelity, quoted labels, quantities, role vocabulary and explicit negation. Complete procedures retain all exact canonical units in order; a supported introduction may accompany them. Conservative checks may reject valid rewordings or translations and use exact evidence instead.
+
+A separate `/v1/support` inference reviews every claim against its cited evidence and checks required coverage against the entire input closure. All claim verdicts must be affirmative, with complete answer coverage, consistent sources and safe source context. Candidate omissions or unsupported prose may use the independently verified exact fallback. A source conflict or unsafe/incomplete source-context verdict blocks both prose and fallback. Invalid verifier output and optional-stage timeout cannot emit unverified prose.
+
+The two optional calls share one maximum 8-second child budget, capped to preserve 2 seconds of the existing total request budget for fallback and final checks. Inference cancellation propagates through the existing service boundary. There is no repair loop, persistent answer cache or transcript storage. `Server-Timing` includes synthesis, support and fallback plus final actor/source/catalog checks. Rejected attempt cost stays in total latency. `synthesis_status` distinguishes disabled, not admitted, accepted and exact fallback; `answer_mode` identifies the emitted result. Final source reads compare immutable content, hashes and epoch, and final actor/catalog checks remain mandatory. The existing bounded catalog retry discards generated candidates and exact support together.
+
+Both portals use the shared inert renderer. Generated blocks have evidence-index mappings, while a separate exact-evidence disclosure retains unchanged source text and offsets. Existing permission-checked source buttons remain available. Verified operational tables and deterministic narratives stay outside both synthesis prompts. Partial-general gaps remain explicit in the existing limitations presentation. Rejected prose is never returned or logged.
+
+## Evaluation and rollback
+
+The existing MS-54 frozen baseline accepts content-free synthesis status, synthesis/support/fallback timings and token counts. Reports separately count reviewer-accepted synthesis and exact fallback for language and document-type partitions. `RAG_SYNTHESIS_ENABLED` is included in the allowlisted configuration digest.
+
+Collect exact and synthesis runs with the existing `rag:ms54:baseline` freeze/probe/report workflow against the same approved corpus, actors and source snapshot. Reviewers must inspect actual answers privately and record the existing factual support, conditions, procedures, safety and usefulness rubric. Language/translation fidelity and recommendation qualification require independent review. Do not mark model verdicts as human acceptance.
+
+Package each resulting report with its frozen nonsecret `settings` object. Compare with `pnpm rag:ms57:compare --exact <exact-bundle.json> --synthesis <synthesis-bundle.json> --out services/rag/benchmark-results/<comparison.json>`. The comparison requires identical held-out case/corpus/source identities and unchanged settings other than the synthesis flag. It separately reports accepted synthesis, accepted fallback, missing cases and no accepted answer by language/type. All-attempt p95 includes rejected paths. It rejects incomparable runs and does not certify release readiness or enable the feature.
+
+Rollback is disabling the flag and restarting the gateway. No source publication, migration, model replacement, external dependency, outbound administrator contact or persistent chat state is introduced.
+
+## Local verification and remaining gates
+
+- `pnpm test:ms57`: 32 tests passed, including authenticated orchestration, independent support verdicts, safe partial gaps, exact procedure order, fake indexes/spans, UTF-16, translated prose separation, semantic failure fallback, source-conflict fallback denial, actual child-deadline cancellation, final revocation/removal/epoch races, frozen flag behavior, mixed tools and inert rendering.
+- `pnpm test:ms57:python`: 34 tests passed, including inherited authenticated boundary regressions, hash/span/UTF-16 validation, independent generation/review inputs, scope/citation rejection, output bounds, language-contract paths and frozen mode comparison checks.
+- Existing MS-54/55/56 and runtime identity Python regressions: 43 tests passed.
+- Final typecheck, boundary lint and all four production application builds passed after the contract and timing additions. The final focused TypeScript regression run passed 98 tests across MS-57, MS-56, MS-54, MS-53 presentation and SPEC-4.
+- The full repository run completed with 240 passing files, one skipped file and one failing file: 2,167 passed tests, three skipped tests and the previously documented unrelated `SPEC2-TC05` campaign reward vocabulary validation failure. This run preceded the final additional MS-57 cases; the final focused suite validates those changes. Full-suite success is not claimed.
+
+Synthesis remains disabled. MS-54 independently reviewed labels and fixed refusal gate, MS-55 recall improvement/95% recall@6, MS-56 complete applicable closure acceptance, MS-57 at least 90% reviewer acceptance by language/document type, mandatory live authorization/source-race acceptance and complete-path p95 below 5 seconds remain pending. Mocked semantic verdicts establish orchestration behavior, not actual model factual quality. No dangerous accepted guidance, missing human review or high fallback rate may be hidden by the aggregate acceptance rate. The comparison deliberately reports release readiness as false until the separate release process verifies these gates.

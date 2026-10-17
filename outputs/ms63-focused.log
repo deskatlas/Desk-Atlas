@@ -1,0 +1,6 @@
+
+> deskatlas-monorepo@ test:ms63 C:\Users\reyna\Desk-Atlas
+> python services/rag/run.py test-ms63
+
+..................................                                       [100%]
+34 passed in 2.08s

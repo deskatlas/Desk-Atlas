@@ -1,0 +1,26 @@
+............F..........                                                  [100%]
+================================== FAILURES ===================================
+___ test_disabling_search_aids_keeps_reference_intent_without_emitting_aids ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A3A4ECAA80>
+
+    def test_disabling_search_aids_keeps_reference_intent_without_emitting_aids(monkeypatch):
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='Noise follow-up', tools=[])))
+        request = api.PlanInput(message='They ignored me. Now what?', recent_context=api.Context(
+            user_turns=['The place is getting noisy. What should I do?']),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=False)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='STAFF')))
+        assert 'noisy' in result['query']
+>       assert 'search' not in result
+E       AssertionError: assert 'search' not in {'clarification': '', 'kind': 'DOCUMENT', 'query': 'They ignored me. Now what?\nPrevious user question: The place is g...ored me. Now what?\nPrevious user question: The place is getting noisy. What should I do?', 'version': 'ms55-v1'}, ...}
+
+services\rag\tests\test_current_browser_repair.py:79: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_current_browser_repair.py::test_disabling_search_aids_keeps_reference_intent_without_emitting_aids
+1 failed, 22 passed, 1 warning in 1.03s

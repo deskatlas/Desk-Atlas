@@ -1,0 +1,74 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: broad-advice
+{"case":"broad-advice","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"SYNTHESIZED","scope":"COMPLETE_PROCEDURE","useful":false,"no_tools":true,"main_block_count":3,"elapsed_ms":12965,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":4263,"system_bytes":1485,"serialized_model_bytes":3580,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":85,"candidate_count":3,"selected_count":1,"selection_attempts":1,"selection_bytes":2091,"requested_count":1,"supported_count":1,"expansion_attempts":1,"packed_quote_count":3,"max_quote_utf16":388,"context_source_count":0,"closure_count":3,"group_count":3,"evidence_bytes":2731,"evidence_packed":1,"evidence_supported":1,"support_claims":3,"support_accepted":3,"support_complete":1,"support_consistent":1,"support_evidence_safe":1},"ranked_units":["aac951b78d9127fae9ace018f7e01b10b63c089a8d6b98090cb56be53926f013","34a11c3f6174cef42435cace8c98db38b458f2650a860fdeb9647efe5f1f7c4b","af1ccf7aa412f9b124f3014badfc7001e014fa376f5ddb085f8db662ba06d66e"],"closure_units":["34f6bf0892a0ee7756f37f66d8595a3476f6df826c7a6c2254972a4057d19f2a","c6cbedd6de4fa8772e184046469ee154a46960ccda38c951b50cd0f6d84acbe8","aac951b78d9127fae9ace018f7e01b10b63c089a8d6b98090cb56be53926f013"]},"timing":"auth;dur=186.733, catalog;dur=370.801, validate;dur=5.145, settings;dur=102.949, python_plan_queue;dur=0.006, python_plan_verify;dur=90.798, python_plan_inference;dur=4100.220, python_plan_load;dur=12.312, python_plan_prompt;dur=345.427, python_plan_generation;dur=3718.755, python_plan_schema;dur=0.060, python_plan_residual;dur=0.747, python_plan_total;dur=4191.831, plan;dur=4212.177, python_embed_queue;dur=0.011, python_embed_inference;dur=1091.335, python_embed_residual;dur=6.701, python_embed_total;dur=1098.046, embed;dur=1106.481, retrieve;dur=593.492, python_answer_queue;dur=0.013, python_answer_verify;dur=172.804, python_answer_inference;dur=3222.626, python_answer_load;dur=23.635, python_answer_prompt;dur=287.974, python_answer_generation;dur=2670.384, python_answer_schema;dur=0.087, python_answer_residual;dur=1.520, python_answer_total;dur=3397.050, context;dur=2487.757, expand;dur=189.783, answer;dur=914.130, python_synthesis_queue;dur=0.006, python_synthesis_verify;dur=99.271, python_synthesis_inference;dur=1041.237, python_synthesis_load;dur=11.672, python_synthesis_prompt;dur=521.281, python_synthesis_generation;dur=406.878, python_synthesis_schema;dur=0.039, python_synthesis_residual;dur=1.171, python_synthesis_total;dur=1141.723, synthesis;dur=1144.058, python_support_queue;dur=0.007, python_support_verify;dur=134.980, python_support_inference;dur=1554.831, python_support_load;dur=15.732, python_support_prompt;dur=641.447, python_support_generation;dur=799.905, python_support_schema;dur=0.033, python_support_residual;dur=2.631, python_support_total;dur=1692.483, support;dur=1695.144, evidence;dur=385.508, serialize;dur=0.694, residual;dur=0.000, total;dur=12960.588"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: complaint-followup
+{"case":"complaint-followup","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"FAILURE","useful":false,"no_tools":true,"elapsed_ms":20573,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"context","reason":"INCOMPLETE_CONTEXT","category":"unresolved_context"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":780,"system_bytes":1259,"serialized_model_bytes":4615,"context_tokens":16384,"output_budget":384,"template_headroom":512,"model_response_bytes":343,"candidate_count":1,"selected_count":1,"selection_attempts":1,"selection_bytes":780,"requested_count":1,"supported_count":1},"ranked_units":["4c01809e5237bae59275bd78e1f9bb2410e78dfb14c9fc63440ed14347ee05fe"],"closure_units":[]},"timing":"auth;dur=154.394, catalog;dur=319.248, validate;dur=0.202, settings;dur=81.865, python_plan_queue;dur=0.008, python_plan_verify;dur=282.902, python_plan_inference;dur=6298.878, python_plan_load;dur=973.212, python_plan_prompt;dur=537.683, python_plan_generation;dur=4479.440, python_plan_schema;dur=0.093, python_plan_residual;dur=1.040, python_plan_total;dur=6582.922, plan;dur=6586.027, python_embed_queue;dur=0.014, python_embed_inference;dur=9168.856, python_embed_residual;dur=10.643, python_embed_total;dur=9179.513, embed;dur=9197.755, retrieve;dur=777.919, python_answer_queue;dur=0.010, python_answer_verify;dur=797.361, python_answer_inference;dur=2917.018, python_answer_load;dur=28.807, python_answer_prompt;dur=680.826, python_answer_generation;dur=2010.555, python_answer_schema;dur=0.065, python_answer_residual;dur=1.207, python_answer_total;dur=3715.660, context;dur=3718.405, serialize;dur=0.169, residual;dur=0.000, total;dur=20570.555"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-context
+{"case":"extension-context","component_probe":true,"status":200,"valid":true,"kind":"MIXED","mode":"EXACT","useful":false,"no_tools":false,"elapsed_ms":21704,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"synthesis","reason":"INVALID_MODEL_OUTPUT","category":"invalid_model_output"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":7116,"system_bytes":1043,"serialized_model_bytes":4998,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":2690,"candidate_count":1,"selected_count":1,"selection_attempts":1,"selection_bytes":1043,"requested_count":1,"supported_count":1,"expansion_attempts":1,"packed_quote_count":5,"max_quote_utf16":1202,"context_source_count":0,"closure_count":4,"group_count":4,"evidence_bytes":5162,"evidence_packed":1,"evidence_supported":1},"ranked_units":["e9f4c23d7c6be615cdf74de3025bb56ecf92284cd79e5566ee4df9a0091ef65d"],"closure_units":["34f6bf0892a0ee7756f37f66d8595a3476f6df826c7a6c2254972a4057d19f2a","03a3eb8d854cbb52ac20ba2858d045c1c7c5b4d0339b5048147d955bfe21e299","a604c5b848b248b73e4ba7913d18c88e0c5d443d8ded26c3c13dfa1d25b42695","e9f4c23d7c6be615cdf74de3025bb56ecf92284cd79e5566ee4df9a0091ef65d"],"fallback_reason":"SCHEMA_REJECTED","fallback_stage":"SYNTHESIS","exact_presentation":{"status":"STRUCTURAL_ONLY","omitted_atoms":1,"visible_atoms":16,"acceptance":"PENDING"}},"timing":"auth;dur=157.302, catalog;dur=333.154, validate;dur=0.189, settings;dur=96.111, python_plan_queue;dur=0.009, python_plan_verify;dur=171.907, python_plan_inference;dur=6036.309, python_plan_load;dur=23.057, python_plan_prompt;dur=892.751, python_plan_generation;dur=4931.198, python_plan_schema;dur=0.101, python_plan_residual;dur=1.172, python_plan_total;dur=6209.499, plan;dur=6212.507, tools;dur=289.160, python_embed_queue;dur=0.013, python_embed_inference;dur=3831.324, python_embed_residual;dur=10.400, python_embed_total;dur=3841.738, embed;dur=3857.536, retrieve;dur=433.153, python_answer_queue;dur=0.039, python_answer_verify;dur=769.929, python_answer_inference;dur=5384.246, python_answer_load;dur=58.690, python_answer_prompt;dur=1956.899, python_answer_generation;dur=3033.254, python_answer_schema;dur=0.104, python_answer_residual;dur=2.631, python_answer_total;dur=6156.947, context;dur=3304.520, expand;dur=175.070, answer;dur=2858.406, python_synthesis_queue;dur=0.008, python_synthesis_verify;dur=1007.188, python_synthesis_inference;dur=3038.992, python_synthesis_load;dur=45.461, python_synthesis_prompt;dur=2431.683, python_synthesis_generation;dur=440.249, python_synthesis_schema;dur=0.034, python_synthesis_residual;dur=1.354, python_synthesis_total;dur=4047.575, synthesis;dur=4050.043, fallback;dur=0.006, evidence;dur=498.692, serialize;dur=0.189, residual;dur=0.000, total;dur=21701.874"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-history-only
+{"case":"extension-history-only","component_probe":true,"status":503,"valid":false,"useful":false,"no_tools":true,"elapsed_ms":6738,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"plan","failures":[{"stage":"plan","reason":"INVALID_PLAN","category":"invalid_model_output"},{"stage":"plan","reason":"MODEL_UNAVAILABLE","category":"service_failure"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":375,"system_bytes":5006,"serialized_model_bytes":10036,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":463},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=84.124, catalog;dur=157.178, validate;dur=0.181, settings;dur=102.682, python_plan_queue;dur=0.009, python_plan_verify;dur=522.236, python_plan_inference;dur=5865.299, python_plan_load;dur=24.707, python_plan_prompt;dur=725.875, python_plan_generation;dur=4915.492, python_plan_schema;dur=0.102, python_plan_residual;dur=1.213, python_plan_total;dur=6388.860, plan;dur=6392.229, residual;dur=1.326, total;dur=6737.720"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-followup
+{"case":"noise-followup","component_probe":true,"status":503,"valid":false,"useful":false,"no_tools":true,"elapsed_ms":5090,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"plan","failures":[{"stage":"plan","reason":"INVALID_PLAN","category":"invalid_model_output"},{"stage":"plan","reason":"MODEL_UNAVAILABLE","category":"service_failure"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":250,"system_bytes":5006,"serialized_model_bytes":9863,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":355},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=73.078, catalog;dur=182.475, validate;dur=0.252, settings;dur=77.632, python_plan_queue;dur=0.006, python_plan_verify;dur=94.127, python_plan_inference;dur=4657.628, python_plan_load;dur=12.886, python_plan_prompt;dur=356.901, python_plan_generation;dur=4143.626, python_plan_schema;dur=0.071, python_plan_residual;dur=0.767, python_plan_total;dur=4752.599, plan;dur=4754.795, residual;dur=0.866, total;dur=5089.098"}
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts (7 tests | 5 failed) 134701ms
+   × current browser audit: broad-advice 12975ms
+   × current browser audit: complaint-followup 20576ms
+   × current browser audit: extension-context 21707ms
+   × current browser audit: extension-history-only 6742ms
+   × current browser audit: noise-followup 5092ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: broad-advice
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: complaint-followup
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-context
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:76:18
+     74|   expect(response.status).toBe(200);
+     75|   expect(parsed.success).toBe(true);
+     76|   expect(useful).toBe(true);
+       |                  ^
+     77| }, 60000);
+     78|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-history-only
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-followup
+AssertionError: expected 503 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 503
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:74:27
+     72|   writeFileSync(`${directory}/${item.id}-${randomUUID()}.json`, JSON.s…
+     73|   console.log(JSON.stringify(record));
+     74|   expect(response.status).toBe(200);
+       |                           ^
+     75|   expect(parsed.success).toBe(true);
+     76|   expect(useful).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 2 passed (7)
+   Start at  15:06:20
+   Duration  137.74s (tests 98%, transform 1%, import 1%)
+

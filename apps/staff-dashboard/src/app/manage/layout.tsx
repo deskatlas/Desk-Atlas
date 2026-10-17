@@ -200,7 +200,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
 
         {/* PAGE CONTENT */}
         {children}
-        <AssistantLauncher key={`${user.id}:${user.role}:${user.assistantToken ?? user.token}:${pathname}`} token={user.assistantToken ?? user.token} />
+        <AssistantLauncher key={`${user.id}:${user.role}:${user.assistantToken ?? user.token}:${pathname}`} token={user.assistantToken ?? user.token} onReauthenticate={logout} />
 
         {/* BOOKING END-TIME ALERT MODAL & NEAR CHECKOUT TOASTS */}
         <BookingEndAlertModal />

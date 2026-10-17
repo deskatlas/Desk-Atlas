@@ -176,7 +176,7 @@ describe("MF-109: Real-Time Deactivation Session Termination & Non-Dismissible W
         "Admin AuthProvider must import DeactivatedAccountModal"
       );
       assert.ok(
-        content.includes("/api/admin/auth/session"),
+        fs.readFileSync(path.resolve(__dirname, "../apps/admin-portal/src/features/auth/sessionLifecycle.ts"), "utf-8").includes("/api/admin/auth/session"),
         "Admin AuthProvider must query session status endpoint"
       );
       assert.ok(

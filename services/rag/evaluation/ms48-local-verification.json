@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "run_id": "1b23f7a8-a0d7-4692-96b5-f45005ed7fa9",
+  "recorded_at_utc": "2026-10-14T19:44:41.864222+00:00",
+  "base_revision": "c7aecd83abd3d2bccee297ec9f4d8478e13e7eac",
+  "working_tree_files_sha256": {
+    "apps/admin-portal/src/server/assistant/gateway.ts": "77a0555a4a08c9af0e2d37f71c00abfa569b1a9156140da63df9b5641dac6445",
+    "apps/admin-portal/src/app/api/admin/knowledge/[...path]/route.ts": "b4c9e31049399d57a0e148dfa04ce49780bb8da5adce5bbf8be8e0fd519a6122",
+    "apps/admin-portal/src/features/settings/components/KnowledgeBaseSettings.tsx": "4beddd59e37a09a763761c49d617315d6af8e3430f018025da0e82d3464af81e",
+    "packages/validation/src/assistantSchema.ts": "cd81cb616f5807f084ddf6a4b442fdacecd0d5531e408e45ffe31ca1bf744acb",
+    "packages/validation/src/knowledgeSchema.ts": "62056c08963becce5337887504c119bc4d6ab7767556112167755cf4b5d1a6f1",
+    "packages/domain/src/services/assistantLanguage.ts": "443e6eaa5e08f79a1f2158953f45964b9937f8d47bd2a47b91b428fbd7d55c6c",
+    "services/rag/app.py": "10ddf3bb32f895e0917684386e30362484ea9b53e052758acae0a93f09cefa3c",
+    "services/rag/knowledge/structure.py": "258b71ec9542b671e4c4ee1bc5929cc0c05f0fbc4ada0b72431c38ee2cf09803",
+    "services/rag/knowledge/chunk.py": "48ac1a0fcbd72af2b313b7b42720ba02e2f82810ad61e297164f66ec2643bf5b",
+    "services/rag/knowledge/extract.py": "358130b762ffcd0e764308d6e1923c45157b61b206971f90050fc27b6ea85fb9",
+    "services/rag/knowledge/worker.py": "6cdf3f0753322f89b127c4734effd560a366187e729509fc7692dc13a5e8618d",
+    "services/rag/run.py": "93792cceec5028bbf88985e0b2a60414b02a3f2ba0ecaa22d96603cf673c578f",
+    "supabase/migrations/019_section_context.sql": "d26f8177c3f20942e7197f8b5c6ad3046c59337720e651302f26deea800d4842",
+    "supabase/migrations/019_section_context_down.sql": "fca10bd90673c592eea3063b87fc1403a2f8d9b63b7fac76faa4ddd8f100050d",
+    "services/rag/tests/test_ms48.py": "1b638a58392b46465f7f1268554809d2d3244e2dd2f8ca401c2164f9e970fd5b",
+    "tests/ms48-section-context-retrieval.test.ts": "f329a150d152a07c18b4fb528b22005175ac52c8cab5c6bfd96beb680c8bb595",
+    "tests/ms48-postgres-context.py": "3d49597bd1e5cf0e9b228fc272e3aad3f606165ff39eee0a544bd58e8b7c9be3",
+    "services/rag/models.json": "131d28c417ffec105dfb4a9d02081751dc6b92092fd19305d56802e85564d244"
+  },
+  "snapshot_sha256": "c62075b00f8755f11a02a3562ffd2b419cf3dd47b75174d6378ebc6297ada370",
+  "corpus": "synthetic large_sop() in services/rag/tests/test_ms48.py; 119 chunks",
+  "model_inference": "not performed by local contract checks",
+  "retrieval": "six sources; 12 candidates; configured similarity unchanged; deterministic distance/chunk-ID ties",
+  "verification": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "focused_typescript": "86 passed",
+    "ms48_python": "11 passed",
+    "ms46_python": "75 passed",
+    "service_python": "35 passed using .venv-service",
+    "postgres": "passed with test vector domain; no pgvector similarity acceptance",
+    "full_vitest": "2007 passed, 3 skipped, 1 existing SPEC2-TC05 failure",
+    "build": "blocked by stale generated fixture type and concurrent build locks"
+  },
+  "production_release_ready": false
+}

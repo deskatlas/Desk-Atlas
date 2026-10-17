@@ -1,0 +1,323 @@
+[
+  {
+    "id": "ms46-counter-en",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "en",
+    "document_type": "MD",
+    "scenario": "counter",
+    "question": "How should staff verify a counter payment?",
+    "expected_sources": [
+      "ms46-counter"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "answer",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-counter-tl",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "tl",
+    "document_type": "MD",
+    "scenario": "counter",
+    "question": "Paano susuriin ang bayad sa counter?",
+    "expected_sources": [
+      "ms46-counter"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "answer",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-counter-taglish",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "taglish",
+    "document_type": "MD",
+    "scenario": "counter",
+    "question": "Paano i-verify ang counter payment?",
+    "expected_sources": [
+      "ms46-counter"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "answer",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-conflict-en",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "en",
+    "document_type": "DOCX",
+    "scenario": "conflict",
+    "question": "May staff approve online payment proofs?",
+    "expected_sources": [
+      "ms46-denial",
+      "ms46-conflicting"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "conflict",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-conflict-tl",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "tl",
+    "document_type": "DOCX",
+    "scenario": "conflict",
+    "question": "Maaari bang aprubahan ng kawani ang online payment proof?",
+    "expected_sources": [
+      "ms46-denial",
+      "ms46-conflicting"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "conflict",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-conflict-taglish",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "taglish",
+    "document_type": "DOCX",
+    "scenario": "conflict",
+    "question": "Pwede ba ang staff mag-approve ng online proof?",
+    "expected_sources": [
+      "ms46-denial",
+      "ms46-conflicting"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "conflict",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-filipino-en",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "en",
+    "document_type": "PDF_SCAN",
+    "scenario": "filipino",
+    "question": "How should a counter payment be confirmed?",
+    "expected_sources": [
+      "ms46-filipino"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "answer",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-filipino-tl",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "tl",
+    "document_type": "PDF_SCAN",
+    "scenario": "filipino",
+    "question": "Paano kumpirmahin ang bayad sa counter?",
+    "expected_sources": [
+      "ms46-filipino"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "answer",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-filipino-taglish",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "taglish",
+    "document_type": "PDF_SCAN",
+    "scenario": "filipino",
+    "question": "Paano i-confirm ang bayad sa counter?",
+    "expected_sources": [
+      "ms46-filipino"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "answer",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-poison-en",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "en",
+    "document_type": "DOC",
+    "scenario": "poison",
+    "question": "Who reviews the procedure?",
+    "expected_sources": [
+      "ms46-poison"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-poison-tl",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "tl",
+    "document_type": "DOC",
+    "scenario": "poison",
+    "question": "Sino ang nagsusuri ng pamamaraan?",
+    "expected_sources": [
+      "ms46-poison"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-poison-taglish",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "taglish",
+    "document_type": "DOC",
+    "scenario": "poison",
+    "question": "Sino ang reviewer ng procedure?",
+    "expected_sources": [
+      "ms46-poison"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-oversized-en",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "en",
+    "document_type": "PDF_MIXED",
+    "scenario": "oversized",
+    "question": "May staff confirm a counter payment?",
+    "expected_sources": [
+      "ms46-oversized"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-oversized-tl",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "tl",
+    "document_type": "PDF_MIXED",
+    "scenario": "oversized",
+    "question": "Maaari bang kumpirmahin ng kawani ang bayad sa counter?",
+    "expected_sources": [
+      "ms46-oversized"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-oversized-taglish",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "taglish",
+    "document_type": "PDF_MIXED",
+    "scenario": "oversized",
+    "question": "Pwede ba staff mag-confirm ng counter payment?",
+    "expected_sources": [
+      "ms46-oversized"
+    ],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-unsupported-en",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "en",
+    "document_type": "PDF_TEXT",
+    "scenario": "unsupported",
+    "question": "What is the refund amount?",
+    "expected_sources": [],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-unsupported-tl",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "tl",
+    "document_type": "PDF_TEXT",
+    "scenario": "unsupported",
+    "question": "Magkano ang halagang ibabalik?",
+    "expected_sources": [],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  },
+  {
+    "id": "ms46-unsupported-taglish",
+    "synthetic": true,
+    "split": "held_out",
+    "role": "STAFF",
+    "language": "taglish",
+    "document_type": "PDF_TEXT",
+    "scenario": "unsupported",
+    "question": "Magkano ang refund amount?",
+    "expected_sources": [],
+    "expected_behavior": "DOCUMENT",
+    "expected_outcome": "gap",
+    "expected_tool": null,
+    "filters": {},
+    "semantic_review": "PENDING"
+  }
+]

@@ -6,7 +6,16 @@ import math
 
 current: ContextVar[dict | None] = ContextVar('rag_timing', default=None)
 tokens: ContextVar[dict | None] = ContextVar('rag_token_counts', default=None)
-STAGES = {'queue', 'verify', 'inference', 'schema', 'load', 'prompt', 'generation'}
+metrics: ContextVar[dict | None] = ContextVar('rag_model_metrics', default=None)
+STAGES = {'queue', 'verify', 'inference', 'schema', 'load', 'prompt', 'generation', 'deterministic'}
+
+
+def model_metric(key, value):
+    """MS54-TC04/08: last model request sizes/budgets, without prompt retention."""
+    values = metrics.get()
+    if (values is not None and key in {'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'}
+            and type(value) is int and 0 <= value <= 10_000_000):
+        values[key] = value
 
 
 def token_count(key, value):
@@ -34,6 +43,6 @@ def measure(stage):
 def header(spans, start):
     total = (perf_counter() - start) * 1000
     # Ollama load/prompt/generation are nested within inference, never added twice.
-    exclusive = sum(spans.get(key, 0) for key in ('queue', 'verify', 'inference', 'schema'))
+    exclusive = sum(spans.get(key, 0) for key in ('queue', 'verify', 'inference', 'schema', 'deterministic'))
     return ', '.join(f'{key};dur={value:.3f}' for key, value in
                      {**spans, 'residual': max(0, total - exclusive), 'total': total}.items())

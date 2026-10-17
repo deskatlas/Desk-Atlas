@@ -1,0 +1,36 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: temporary-exit
+{"case":"temporary-exit","component_probe":true,"status":200,"valid":true,"kind":"UNSUPPORTED","mode":"EVIDENCE_GAP","useful":false,"elapsed_ms":6965,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"plan","reason":"UNSUPPORTED","category":"out_of_scope"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":172,"system_bytes":8757,"serialized_model_bytes":13503,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":63},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=429.023, catalog;dur=403.814, validate;dur=0.375, settings;dur=136.997, python_plan_queue;dur=0.006, python_plan_verify;dur=305.724, python_plan_inference;dur=5667.994, python_plan_load;dur=43.755, python_plan_prompt;dur=296.850, python_plan_generation;dur=4993.292, python_plan_schema;dur=0.128, python_plan_residual;dur=0.941, python_plan_total;dur=5974.792, plan;dur=5990.997, serialize;dur=0.123, residual;dur=3.364, total;dur=6964.694"}
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts (6 tests | 1 failed | 2 skipped) 59718ms
+   × broad question gateway audit: temporary-exit 6973ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: temporary-exit
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts:72:18
+     70|   expect(response.status).toBe(200);
+     71|   expect(parsed.success).toBe(true);
+     72|   expect(useful).toBe(true);
+       |                  ^
+     73| }, 60000);
+     74|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed | 2 skipped (6)
+   Start at  12:19:45
+   Duration  63.55s (tests 94%, transform 3%, import 3%)
+

@@ -1,6 +1,7 @@
 import { knowledgeValidation as z } from '@deskatlas/validation';
+import { knowledgeDisplayTitle, knowledgeWorkingDocument, type KnowledgeDocument } from '@deskatlas/domain';
 import { KnowledgeAudienceChangeSchema, KnowledgeFinalizeSchema, KnowledgePublishSchema, KnowledgeRevisionSchema, KnowledgeUploadSchema } from '@deskatlas/validation';
-import { authorizeKnowledge, checkDatabase, detectKnowledgeType, KnowledgeError, knowledgeFailure, knowledgeResponse, sha256 } from '../_lib/server';
+import { authorizeKnowledge, checkDatabase, detectKnowledgeType, KnowledgeError, knowledgeFailure, knowledgeResponse, missingUploadIntent, sha256 } from '../_lib/server';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path: string[] }> };
@@ -16,29 +17,76 @@ async function handle(request: Request, context: Context) {
       checkDatabase(result.error); return result.data;
     };
     const body = async () => request.json().catch(() => { throw new KnowledgeError('INVALID_INPUT'); });
+    // MS64-TC05: reconcile an ambiguous upload response before issuing writes.
+    if (resource === 'uploads' && id && path.length === 2 && request.method === 'GET') {
+      const result = await client.from('kb_document_versions')
+        .select('id,document_id,status,document:kb_documents!kb_document_versions_document_id_fkey!inner(scope_id,deleted_at)')
+        .eq('request_id', id).eq('uploaded_by', actor).eq('document.scope_id', scope).is('document.deleted_at', null).maybeSingle();
+      checkDatabase(result.error);
+      return knowledgeResponse(result.data);
+    }
     if (request.method === 'GET' && resource === 'documents' && path.length === 1) {
       const cursor = new URL(request.url).searchParams.get('cursor');
-      let query = client.from('kb_documents').select('*,versions:kb_document_versions!kb_document_versions_document_id_fkey(id,document_id,version_number,status,original_filename,warning_codes,created_at,reviewed_at,published_at,chunk_count,expected_revision,generation),jobs:kb_jobs(id,version_id,kind,status,stage,last_error_code)').eq('scope_id', scope).order('id').limit(21);
+      // MS51-TC05: filter parents and nested files before applying the page limit.
+      let query = client.from('kb_documents').select('*,versions:kb_document_versions!kb_document_versions_document_id_fkey!inner(id,document_id,version_number,status,original_filename,warning_codes,created_at,reviewed_at,published_at,chunk_count,expected_revision,generation,upload_intent),jobs:kb_jobs(id,version_id,kind,status,stage,last_error_code)').eq('scope_id', scope).is('deleted_at', null).not('versions.status', 'in', '(REMOVED,SUPERSEDED)').order('id').limit(21);
+      if (cursor) query = query.gt('id', uuid.parse(cursor));
+      const result = await query;
+      let rows = result.data ?? [];
+      if (missingUploadIntent(result.error)) {
+        // MS-64 rollout compatibility: existing files remain readable before 025.
+        // Keep identical scope, lifecycle filters and pagination on the retry.
+        let legacy = client.from('kb_documents').select('*,versions:kb_document_versions!kb_document_versions_document_id_fkey!inner(id,document_id,version_number,status,original_filename,warning_codes,created_at,reviewed_at,published_at,chunk_count,expected_revision,generation),jobs:kb_jobs(id,version_id,kind,status,stage,last_error_code)').eq('scope_id', scope).is('deleted_at', null).not('versions.status', 'in', '(REMOVED,SUPERSEDED)').order('id').limit(21);
+        if (cursor) legacy = legacy.gt('id', uuid.parse(cursor));
+        const fallback = await legacy;
+        checkDatabase(fallback.error);
+        rows = (fallback.data ?? []).map(row => ({ ...row, versions: row.versions.map(version => ({ ...version, upload_intent: null })) }));
+      } else checkDatabase(result.error);
+      return knowledgeResponse({ documents: (rows.slice(0, 20).map(row => ({ ...row, versions: row.versions.map(({ upload_intent, ...version }) => ({ ...version, automatic_preparation: Boolean(upload_intent) })) })) as KnowledgeDocument[]).map(knowledgeWorkingDocument).filter(document => document !== null), next_cursor: rows.length > 20 ? rows[19].id : null });
+    }
+    if (request.method === 'GET' && resource === 'cleanup' && path.length === 1) {
+      // Compact, separately paged feedback keeps tombstones out of working files.
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      let query = client.from('kb_documents').select('id,title,revision,jobs:kb_jobs!inner(status,stage,lease_until,next_attempt_at)')
+        .eq('scope_id', scope).eq('jobs.kind', 'PURGE').in('jobs.status', ['QUEUED', 'RUNNING', 'RETRY', 'FAILED']).order('id').limit(21);
       if (cursor) query = query.gt('id', uuid.parse(cursor));
       const result = await query; checkDatabase(result.error);
       const rows = result.data ?? [];
-      return knowledgeResponse({ documents: rows.slice(0, 20), next_cursor: rows.length > 20 ? rows[19].id : null });
+      return knowledgeResponse({ documents: rows.slice(0, 20).map(row => ({ id: row.id, title: row.title, revision: row.revision,
+        pending: row.jobs.filter(job => job.status !== 'FAILED').length, failed: row.jobs.filter(job => job.status === 'FAILED').length,
+        waiting_upload: row.jobs.filter(job => job.stage === 'WAITING_UPLOAD' && Date.parse(job.next_attempt_at) > Date.now()).length,
+        retrying: row.jobs.filter(job => job.status === 'RETRY' && job.stage !== 'WAITING_UPLOAD' && job.stage !== 'CLEANING_CHUNKS').length,
+        cleaning_chunks: row.jobs.filter(job => job.stage === 'CLEANING_CHUNKS').length,
+        running: row.jobs.filter(job => job.status === 'RUNNING' && job.lease_until && Date.parse(job.lease_until) > Date.now()).length,
+        awaiting_worker: row.jobs.filter(job => (job.status === 'QUEUED' && (job.stage !== 'WAITING_UPLOAD' || Date.parse(job.next_attempt_at) <= Date.now())) || (job.status === 'RETRY' && job.stage === 'WAITING_UPLOAD' && Date.parse(job.next_attempt_at) <= Date.now()) || (job.status === 'RUNNING' && (!job.lease_until || Date.parse(job.lease_until) <= Date.now()))).length })), next_cursor: rows.length > 20 ? rows[19].id : null });
     }
     if (resource === 'uploads' && request.method === 'POST' && path.length === 1) {
       const input = KnowledgeUploadSchema.parse(await body());
       const fingerprint = process.env.RAG_EMBEDDING_FINGERPRINT;
       if (!fingerprint || !/^[a-f0-9]{64}$/.test(fingerprint)) throw new KnowledgeError('NOT_CONFIGURED', 503);
+      // Do not create catalog state or upload intent against an older schema.
+      const readiness = await client.from('kb_document_versions').select('upload_intent').limit(0);
+      if (missingUploadIntent(readiness.error)) throw new KnowledgeError('UPDATE_REQUIRED', 503);
+      checkDatabase(readiness.error);
       const catalog = await client.rpc('kb_initialize_catalog', { p_scope: scope, p_fingerprint: fingerprint });
       checkDatabase(catalog.error);
-      const version = await command('upload', input);
+      const version = await command('upload_auto', { ...input, title: input.title ?? knowledgeDisplayTitle(input.filename) });
       const state = await client.from('kb_document_versions').select('status,created_at').eq('id', version.id).single();
       checkDatabase(state.error);
       if (state.data.status !== 'UPLOADING') return knowledgeResponse({ version_id: version.id, document_id: version.document_id, status: state.data.status });
       const expiry = Number(process.env.KB_UPLOAD_EXPIRY_SECONDS ?? 86400);
       if (!Number.isSafeInteger(expiry) || expiry < 7200) throw new KnowledgeError('NOT_CONFIGURED', 503);
       if (new Date(state.data.created_at).getTime() + expiry * 1000 <= Date.now()) throw new KnowledgeError('UPLOAD_EXPIRED', 409);
-      const target = await client.storage.from('knowledge-base').createSignedUploadUrl(`${version.document_id}/${version.id}/source`, { upsert: false });
+      // MS46-TC08: removal and issuance reserve the same document lock. Never
+      // expose a provider token until the live permit is confirmed afterward.
+      const permitArgs = { p_scope: scope, p_actor: actor, p_version: version.id, p_expiry_seconds: expiry };
+      const permit = await client.rpc('kb_upload_permit', permitArgs);
+      checkDatabase(permit.error);
+      const authorization = z.object({ permit_id: uuid, issue_before: z.string().datetime({ offset: true }), object_key: z.string().min(1) }).strict().parse(permit.data);
+      const target = await client.storage.from('knowledge-base').createSignedUploadUrl(authorization.object_key, { upsert: false });
       if (target.error) throw new KnowledgeError('STORAGE_UNAVAILABLE', 503);
+      const confirmed = await client.rpc('kb_upload_permit', { ...permitArgs, p_permit: authorization.permit_id });
+      checkDatabase(confirmed.error);
+      if (Date.now() >= Date.parse(authorization.issue_before)) throw new KnowledgeError('UPLOAD_EXPIRED', 409);
       return knowledgeResponse({ version_id: version.id, document_id: version.document_id, upload_url: target.data.signedUrl, request_id: input.request_id }, 201);
     }
     if (resource === 'uploads' && id && action === 'finalize' && path.length === 3 && request.method === 'POST') {
@@ -89,11 +137,11 @@ async function handle(request: Request, context: Context) {
         // Page by ordinal: never silently truncate the review preview.
         const chunks: { content: string; heading_path: string; page_start: number | null; page_end: number | null; ordinal: number }[] = [];
         for (let offset = 0; ; offset += 200) {
-          const batch = await client.from('kb_chunks').select('content,heading_path,page_start,page_end,ordinal').eq('version_id', id).eq('generation', version.generation).order('ordinal').range(offset, offset + 199);
+          const batch = await client.from('kb_chunks').select('content,heading_path,page_start,page_end,ordinal,section_context,extraction_method').eq('version_id', id).eq('generation', version.generation).order('ordinal').range(offset, offset + 199);
           checkDatabase(batch.error); chunks.push(...(batch.data ?? []));
           if ((batch.data?.length ?? 0) < 200) break;
         }
-        return knowledgeResponse({ chunks, warning_codes: version.warning_codes });
+        return knowledgeResponse({ chunks, warning_codes: version.warning_codes, extraction_manifest: version.extraction_manifest, review_identity: version.parser_fingerprint?.startsWith('kb-parser-v5:') ? { source_sha256: version.source_sha256, content_sha256: version.content_sha256, structure_manifest_sha256: version.structure_manifest_sha256, generation: version.generation } : null });
       }
       if (request.method === 'POST' && action === 'download') {
         const target = await client.storage.from('knowledge-base').createSignedUrl(version.source_object_key, 60, { download: version.original_filename });

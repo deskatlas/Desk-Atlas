@@ -1,0 +1,104 @@
+.....F.................................................................. [ 14%]
+........................................................................ [ 29%]
+........................................................................ [ 44%]
+........................................................FF.............. [ 59%]
+........F.............................F....................F............ [ 73%]
+........................................................................ [ 88%]
+.........ssssssssssssssss...............................                 [100%]
+================================== FAILURES ===================================
+_____________ AssistantTests.test_staff_historical_plan_is_denied _____________
+
+self = <test_assistant.AssistantTests testMethod=test_staff_historical_plan_is_denied>
+
+    def test_staff_historical_plan_is_denied(self):
+        plan=api.Plan(kind='REPORT',query='',tools=[api.Tool(name='payment_report',args=api.Filters())])
+        with patch.object(api,'generate',new=AsyncMock(return_value=plan)):
+            response=self.client.post('/v1/plan',headers=self.headers('STAFF'),json={'message':'Magkano last month?','recent_context':{'user_turns':[]},'business_date':'2026-10-14','timezone':'Asia/Manila'})
+>       self.assertEqual(response.status_code,403)
+E       AssertionError: 200 != 403
+
+services\rag\tests\test_assistant.py:62: AssertionError
+_ test_meaning_scope_followups_and_conditions_are_part_of_single_planner_contract _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022C0759A180>
+
+    def test_meaning_scope_followups_and_conditions_are_part_of_single_planner_contract(monkeypatch):
+        search = {'version': 'ms55-v1', 'original': body().message, 'standalone': 'Documented workspace characteristics for interviews', 'alternatives': []}
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query=body().message, tools=[], search=search))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(body(), SimpleNamespace(ops=['answer'], role='STAFF')))
+        assert result['search'] == search
+        instructions = generate.call_args.args[0]
+        # Prompt prose may be compacted; assert the externally supplied current
+        # question and existing bounded search contract, not particular adjectives.
+        assert generate.call_args.args[1]['message'] == body().message
+>       assert generate.call_args.args[2] is api.Plan
+E       AssertionError: assert <class 'assistant_api.KnowledgePlan'> is <class 'assistant_api.Plan'>
+E        +  where <class 'assistant_api.Plan'> = api.Plan
+
+services\rag\tests\test_ms55.py:34: AssertionError
+____________ test_staff_report_is_forbidden_even_with_valid_search ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022C07598050>
+
+    def test_staff_report_is_forbidden_even_with_valid_search(monkeypatch):
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=api.Plan(kind='REPORT', query='', tools=[])))
+>       with pytest.raises(HTTPException) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'fastapi.exceptions.HTTPException'>
+
+services\rag\tests\test_ms55.py:42: Failed
+_____________ AssistantTests.test_staff_historical_plan_is_denied _____________
+
+self = <test_assistant.AssistantTests testMethod=test_staff_historical_plan_is_denied>
+
+    def test_staff_historical_plan_is_denied(self):
+        plan=api.Plan(kind='REPORT',query='',tools=[api.Tool(name='payment_report',args=api.Filters())])
+        with patch.object(api,'generate',new=AsyncMock(return_value=plan)):
+            response=self.client.post('/v1/plan',headers=self.headers('STAFF'),json={'message':'Magkano last month?','recent_context':{'user_turns':[]},'business_date':'2026-10-14','timezone':'Asia/Manila'})
+>       self.assertEqual(response.status_code,403)
+E       AssertionError: 200 != 403
+
+services\rag\tests\test_assistant.py:62: AssertionError
+___________ TestSynthesisHTTP.test_staff_historical_plan_is_denied ____________
+
+self = <test_ms57.TestSynthesisHTTP testMethod=test_staff_historical_plan_is_denied>
+
+    def test_staff_historical_plan_is_denied(self):
+        plan=api.Plan(kind='REPORT',query='',tools=[api.Tool(name='payment_report',args=api.Filters())])
+        with patch.object(api,'generate',new=AsyncMock(return_value=plan)):
+            response=self.client.post('/v1/plan',headers=self.headers('STAFF'),json={'message':'Magkano last month?','recent_context':{'user_turns':[]},'business_date':'2026-10-14','timezone':'Asia/Manila'})
+>       self.assertEqual(response.status_code,403)
+E       AssertionError: 200 != 403
+
+services\rag\tests\test_assistant.py:62: AssertionError
+____________ test_invalid_aids_do_not_destroy_a_resolved_followup _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022C07528BF0>
+
+    def test_invalid_aids_do_not_destroy_a_resolved_followup(monkeypatch):
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='Handling repeated noise complaints', tools=[], search=None)))
+        request = api.PlanInput(message='And if they keep doing it?', recent_context=api.Context(user_turns=['A guest is noisy']), business_date='2026-10-16', timezone='Asia/Manila', search_enabled=True)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='ADMIN')))
+>       assert result['query'] == 'Handling repeated noise complaints'
+E       AssertionError: assert 'And if they ...uest is noisy' == 'Handling rep...se complaints'
+E         
+E         - Handling repeated noise complaints
+E         + And if they keep doing it?
+E         + Previous user question: A guest is noisy
+
+services\rag\tests\test_ms59.py:66: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_assistant.py::AssistantTests::test_staff_historical_plan_is_denied
+FAILED services/rag/tests/test_ms55.py::test_meaning_scope_followups_and_conditions_are_part_of_single_planner_contract
+FAILED services/rag/tests/test_ms55.py::test_staff_report_is_forbidden_even_with_valid_search
+FAILED services/rag/tests/test_ms57.py::AssistantTests::test_staff_historical_plan_is_denied
+FAILED services/rag/tests/test_ms57.py::TestSynthesisHTTP::test_staff_historical_plan_is_denied
+FAILED services/rag/tests/test_ms59.py::test_invalid_aids_do_not_destroy_a_resolved_followup
+6 failed, 466 passed, 16 skipped, 1 warning in 35.45s

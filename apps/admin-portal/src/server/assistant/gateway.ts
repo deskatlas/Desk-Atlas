@@ -1,16 +1,28 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AssistantError, executeAssistantTool, businessDate, currentOperationalPlan, assistantToolNarrative, type AssistantActor, type AssistantRepository, type AssistantToolResult } from '@deskatlas/domain';
-import { assistantAvailabilitySchema, assistantKnowledgeAvailabilitySchema, assistantAnswerSchema, assistantCancelSchema, assistantExtractSchema, assistantPlanSchema, assistantQuerySchema, assistantSearchSchema, assistantSourceSchema, assistantIdSchema, assistantSourcesSchema, assistantToolResultSchema, type AssistantAnswer, type AssistantQuery, type AssistantSource } from '../../../../../packages/validation/src/assistantSchema';
+import { AssistantError, assistantAnswerLanguage, assistantCopy, executeAssistantTool, businessDate, currentOperationalPlan, assistantToolNarrative, type AssistantActor, type AssistantRepository, type AssistantToolResult } from '@deskatlas/domain';
+import { assistantAvailabilitySchema, assistantContextSelectionSchema, assistantEvidenceSchema, assistantKnowledgeAvailabilitySchema, assistantAnswerSchema, assistantCancelSchema, assistantExtractSchema, assistantPlanSchema, assistantQuerySchema, assistantSearchSchema, assistantSourceSchema, assistantIdSchema, assistantSourcesSchema, assistantToolResultSchema, type AssistantAnswer, type AssistantQuery, type AssistantSource } from '../../../../../packages/validation/src/assistantSchema';
 import { verifyAdminSession } from '../../app/api/admin/auth/_lib/adminSession';
 import { verifyStaffAssistantSession } from './session';
-import { proceduralDocumentPlan } from '@deskatlas/domain';
+import { proceduralDocumentPlan, assistantContextualQuestion, assistantRetrievalQuery, assistantSearchQueries, fuseAssistantCandidates, selectProcedureSeed, selectGovernanceSeeds, selectFaqSeed, selectBookingGuaranteeSeeds } from '@deskatlas/domain';
+import { assistantEmbeddingBatchSchema, assistantHybridCandidatesSchema } from '../../../../../packages/validation/src/assistantSchema';
 import { AssistantTiming } from './timing';
+import { RequestBudget } from './budget';
+import { assistantEvidenceBudget as evidenceBudget } from '../../../../../packages/validation/src/assistantEvidenceBudget';
+import type { AssistantCoverage } from '../../../../../packages/validation/src/assistantSchema';
+import { AssistantDiagnostics, type DiagnosticReason } from './diagnostics';
+import { validateAssistantSynthesis, assistantSynthesisSupported, assistantSynthesisLanguageAdmitted } from '@deskatlas/domain';
+import type { AssistantSynthesis } from '../../../../../packages/validation/src/assistantSchema';
+import { assistantSupportVerdictSchema } from '../../../../../packages/validation/src/assistantSchema';
+import { assistantOutcome } from '@deskatlas/domain';
+import { exactAssistantPresentation, exactAssistantMainAtoms } from '@deskatlas/domain';
+import { assistantEvidenceCostsSchema, assistantPackingCostSchema } from '../../../../../packages/validation/src/assistantSchema';
+import type { AssistantObligation } from '../../../../../packages/validation/src/assistantSchema';
 
 // SPEC-4: SDD-C20/C21/C22. This module is imported only by server route adapters.
 const noStore = { 'Cache-Control': 'no-store, private', 'Vary': 'Authorization', 'X-Content-Type-Options': 'nosniff' };
 type Verified = { actor: AssistantActor; client: SupabaseClient };
-type Active = { actor: AssistantActor; session: string; controller: AbortController; capability: string; expires: number; stage: 'waiting' | 'retrieving' | 'preparing'; timezone?: string; asOf: string; callbacks: number };
+type Active = { actor: AssistantActor; session: string; controller: AbortController; capability: string; expires: number; stage: 'checking' | 'retrieving' | 'preparing'; timezone?: string; asOf: string; callbacks: number };
 // No transcript or facts in shared state: only bounded, short-lived cancellation/admission metadata.
 const state = globalThis as typeof globalThis & { deskAtlasAssistantActive?: Map<string, Active> };
 const active = state.deskAtlasAssistantActive ??= new Map<string, Active>();
@@ -25,16 +37,16 @@ function boundedConfig(name: string, fallback: number, min: number, max: number)
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant resource configuration is invalid.', 503);
   return value;
 }
-function client(): SupabaseClient {
+function client(signal?: AbortSignal): SupabaseClient {
   return createClient(process.env.SUPABASE_URL || config('NEXT_PUBLIC_SUPABASE_URL'), config('SUPABASE_SERVICE_ROLE_KEY'), {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { fetch: (url, init) => fetch(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) }) },
+    global: { fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.any([...(init?.signal ? [init.signal] : []), ...(signal ? [signal] : []), AbortSignal.timeout(10000)]) }) },
   });
 }
-export async function authorizeAssistant(request: Request): Promise<Verified> {
+export async function authorizeAssistant(request: Request, signal: AbortSignal = request.signal): Promise<Verified> {
   const token = request.headers.get('authorization')?.match(/^Bearer (\S+)$/i)?.[1];
   if (!token || token.length > 4096) throw new AssistantError('AUTH_REQUIRED', 'Sign in again to use the assistant.', 401);
-  const db = client();
+  const db = client(signal);
   let userId: string | null = null;
   if (token.startsWith('da_admin_v1.')) userId = verifyAdminSession(token, config('SUPABASE_SERVICE_ROLE_KEY'));
   else if (token.startsWith('da_staff_v1.')) userId = verifyStaffAssistantSession(token, config('SUPABASE_SERVICE_ROLE_KEY'));
@@ -60,20 +72,24 @@ function sameOrigin(request: Request): void {
   const host = request.headers.get('host') ?? url.host;
   if (request.headers.get('origin') !== `${url.protocol}//${host}` || request.headers.get('sec-fetch-site') === 'cross-site') throw new AssistantError('FORBIDDEN', 'Same-origin request required.', 403);
 }
-async function jsonBody(request: Request): Promise<unknown> {
+async function jsonBody(request: Request, signal: AbortSignal = request.signal): Promise<unknown> {
   if (!request.headers.get('content-type')?.startsWith('application/json')) throw new AssistantError('INVALID_REQUEST', 'Expected JSON.', 400);
   if (Number(request.headers.get('content-length')) > 24000) throw new AssistantError('INVALID_REQUEST', 'Request is too large.', 413);
   const reader = request.body?.getReader();
   if (!reader) throw new AssistantError('INVALID_REQUEST', 'Expected a request body.');
   const decoder = new TextDecoder(); let size = 0, body = '';
   let expired = false;
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener('abort', cancel, { once: true });
+  if (signal.aborted) cancel();
   const timer = setTimeout(() => { expired = true; void reader.cancel().catch(() => undefined); }, 10000);
   try {
     while (true) { const part = await reader.read(); if (part.done) break; size += part.value.byteLength; if (size > 24000) throw new AssistantError('INVALID_REQUEST', 'Request is too large.', 413); body += decoder.decode(part.value, { stream: true }); }
+    if (signal.aborted) throw new AssistantError('REQUEST_CANCELLED', 'Request cancelled.', 408);
     if (expired) throw new AssistantError('REQUEST_TIMEOUT', 'Request body timed out.', 408);
     return JSON.parse(body + decoder.decode()) as unknown;
   } catch (error) { if (error instanceof AssistantError) throw error; throw new AssistantError('INVALID_REQUEST', 'Invalid JSON.'); }
-  finally { clearTimeout(timer); reader.releaseLock(); }
+  finally { clearTimeout(timer); signal.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
 function enabled(): void { if (process.env.RAG_ENABLED !== 'true') throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant is not enabled.', 503); }
 function toolResult(input: unknown): AssistantToolResult {
@@ -96,7 +112,9 @@ async function epoch(db: SupabaseClient, signal: AbortSignal): Promise<number> {
 async function rpc(db: SupabaseClient, name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
   const { data, error } = await db.rpc(name, args).abortSignal(signal);
   if (error) {
-    const code = ['FORBIDDEN','UNSUPPORTED_REPORT','UNSUPPORTED_HISTORY'].find(c => error.message.includes(c));
+    if (error.message.includes('UNRESOLVED_CONTEXT')) throw new AssistantError('INCOMPLETE_CONTEXT', 'Reviewed source context could not be verified. Ask an administrator to review the applicable source structure.', 400);
+    if (error.message.includes('MANIFEST_INVALID')) throw new AssistantError('INCOMPLETE_CONTEXT', 'REPROCESS_REQUIRED: Stored evidence integrity could not be verified. Ask an administrator to review or reprocess the document.', 400);
+    const code = ['FORBIDDEN','KNOWLEDGE_CHANGED','UNSUPPORTED_REPORT','UNSUPPORTED_HISTORY'].find(c => error.message.includes(c));
     throw new AssistantError(code ?? 'DATA_UNAVAILABLE', code === 'FORBIDDEN' ? 'This request is not permitted.' : code ? 'Unsupported metric, filters, or result size. Use a smaller range or coarser grouping.' : 'Verified data is unavailable.', code === 'FORBIDDEN' ? 403 : code ? 400 : 503);
   }
   return data as unknown;
@@ -128,68 +146,164 @@ function capability(actor: AssistantActor, requestId: string, generation: string
   const payload = Buffer.from(JSON.stringify({ iss: 'deskatlas', aud: 'rag', sub: actor.id, role: actor.role, request_id: requestId, scope: config('RAG_SCOPE_ID'), ops: actor.role === 'ADMIN' ? ['search','tools','answer'] : ['search','operational_snapshot','workspace_availability','answer'], iat: now, exp: now + 60, generation })).toString('base64url');
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
 }
-async function model(path: string, payload: unknown, cap: string, signal: AbortSignal, timing?: AssistantTiming): Promise<unknown> {
+async function model(path: string, payload: unknown, cap: string, signal: AbortSignal, timing?: AssistantTiming, budget?: RequestBudget, diagnostics?: AssistantDiagnostics): Promise<unknown> {
   const base = new URL(config('RAG_SERVICE_URL'));
   if (base.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(base.hostname)) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant requires a private authenticated transport.', 503);
   const serviceSecret = config('RAG_SERVICE_TOKEN');
   if (serviceSecret.length < 32) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant configuration is incomplete.', 503);
   try {
-    const res = await fetch(new URL(path, base), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceSecret}`, 'X-Request-Capability': cap }, body: JSON.stringify(payload), cache: 'no-store', signal });
-    const stage = path.slice(4);
-    if (stage === 'plan' || stage === 'embed' || stage === 'answer') timing?.upstream(stage, res.headers.get('server-timing'), res.headers.get('x-rag-input-tokens'), res.headers.get('x-rag-output-tokens'));
+    diagnostics?.enter(path === '/v1/evidence-cost' ? 'expand' : path === '/v1/context' ? 'context' : path === '/v1/answer' ? 'answer' : path === '/v1/synthesis' ? 'synthesis' : path === '/v1/support' ? 'support' : path === '/v1/embed' || path === '/v1/embed-queries' ? 'embed' : 'plan');
+    diagnostics?.count('model_request_bytes', Buffer.byteLength(JSON.stringify(payload), 'utf8'));
+    const res = await fetch(new URL(path, base), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceSecret}`, 'X-Request-Capability': cap, ...(budget ? { 'X-Request-Timeout-Ms': String(budget.remaining()) } : {}) }, body: JSON.stringify(payload), cache: 'no-store', signal });
+    for (const key of ['system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'] as const) {
+      const value = res.headers.get(`x-rag-model-${key}`);
+      if (value && /^\d{1,8}$/.test(value)) diagnostics?.count(key, Number(value));
+    }
+    const stage = path === '/v1/context' ? 'answer' : path === '/v1/embed-queries' ? 'embed' : path.slice(4);
+    if (stage === 'plan' || stage === 'embed' || stage === 'answer' || stage === 'synthesis' || stage === 'support') timing?.upstream(stage, res.headers.get('server-timing'), res.headers.get('x-rag-input-tokens'), res.headers.get('x-rag-output-tokens'));
     if (res.status === 403) throw new AssistantError('FORBIDDEN', 'Historical and financial reports require administrator access.', 403);
-    if (!res.ok) throw new AssistantError(res.status === 429 ? 'CAPACITY_BUSY' : 'MODEL_UNAVAILABLE', res.status === 429 ? 'Assistant is at capacity. Retry shortly.' : 'Local model is unavailable.', res.status === 429 ? 429 : 503);
-    return await res.json() as unknown;
+    if (!res.ok) {
+      const failure: unknown = await res.json().catch(() => null);
+      const detail = failure && typeof failure === 'object' ? ('detail' in failure ? failure.detail : 'error' in failure ? failure.error : undefined) : undefined;
+      if (typeof detail === 'string' && ['CONTEXT_BUDGET_EXCEEDED','OUTPUT_BUDGET_EXCEEDED','UNRESOLVED_CONTEXT','INVALID_MODEL_OUTPUT','MODEL_TIMEOUT','REQUEST_TIMEOUT','CAPACITY_BUSY'].includes(detail)) diagnostics?.fail(detail as DiagnosticReason);
+      if (['CONTEXT_BUDGET_EXCEEDED','OUTPUT_BUDGET_EXCEEDED'].includes(String(detail))) throw new AssistantError('INCOMPLETE_EVIDENCE', `${detail}: ${path === '/v1/context' ? 'Evidence comparison could not be completed within the supported capacity. Please retry.' : 'Complete applicable evidence could not be prepared within the verified capacity. Please retry.'}`, 400);
+      if (detail === 'UNRESOLVED_CONTEXT') throw new AssistantError('INCOMPLETE_CONTEXT', 'Required procedure context could not be verified.', 400);
+      if (detail === 'INVALID_MODEL_OUTPUT') throw new AssistantError('INVALID_MODEL_OUTPUT', 'The model returned an incomplete selection.', 503);
+      if (detail === 'MODEL_TIMEOUT' || detail === 'REQUEST_TIMEOUT') throw new AssistantError(detail, 'Answer preparation took too long.', 408);
+      throw new AssistantError(res.status === 429 ? 'CAPACITY_BUSY' : 'MODEL_UNAVAILABLE', res.status === 429 ? 'Assistant is at capacity. Retry shortly.' : 'Local model is unavailable.', res.status === 429 ? 429 : 503);
+    }
+    const result: unknown = await res.json();
+    diagnostics?.count('model_response_bytes', Buffer.byteLength(JSON.stringify(result), 'utf8'));
+    return result;
   } catch (e) { if (signal.aborted || e instanceof AssistantError) throw e; throw new AssistantError('MODEL_UNAVAILABLE', 'Local model is unavailable.', 503); }
 }
 function checkSensitive(input: AssistantQuery): void {
   const text = [input.message, ...(input.recent_context?.user_turns ?? [])].join(' ');
   if (/[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b[a-f0-9]{32,}\b|\b(?:\+?\d[\s()-]*){9,}\b/i.test(text) || /\b(guest|customer|booking|reservation)\s+(token|email|phone|contact|proof|reference|history|record)|\b(password|api.?key|service.?role|secret|bank reference)\b/i.test(text)) throw new AssistantError('UNSUPPORTED_REPORT', 'Individual guest records, private identifiers, and credentials are unavailable through chat.');
 }
-export function groundedQuotes(value: unknown, sources: AssistantSource[]): { summary: string; sources: AssistantSource[]; conflicting?: boolean } {
+type EvidenceSpan = { chunk_id: string; quote: string; start: number; end: number };
+function presentationSpansSafe(source: AssistantSource, spans: EvidenceSpan[]): boolean {
+  let opened: { start: number; marker: string } | undefined;
+  const fences: { start: number; end: number }[] = [];
+  for (const match of source.content.matchAll(/^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)\r?$/gm)) {
+    if (!opened) opened = { start: match.index, marker: match[1] };
+    else if (match[1][0] === opened.marker[0] && match[1].length >= opened.marker.length && !match[2].trim()) {
+      fences.push({ start: opened.start, end: match.index + match[0].length }); opened = undefined;
+    }
+  }
+  if (opened) fences.push({ start: opened.start, end: source.content.length });
+  return fences.every(fence => spans.some(span => span.chunk_id === source.chunk_id && span.start <= fence.start && span.end >= fence.end));
+}
+export function groundedQuotes(value: unknown, sources: AssistantSource[], query?: string, groups?: { id: string; chunk_ids: string[]; requires: string[] }[], reject?: (reason: DiagnosticReason) => void, requiredChunkIds?: string[]): { summary: string; sources: AssistantSource[]; conflicting?: boolean; evidence_spans?: EvidenceSpan[] } {
+  const rejected = (reason: DiagnosticReason) => { reject?.(reason); return { summary: '', sources: [] }; };
   const parsed = assistantExtractSchema.safeParse(value);
-  if (!parsed.success) return { summary: '', sources: [] };
-  if (parsed.data.conflicting_sources) return { summary: '', sources: [], conflicting: true };
-  const used: AssistantSource[] = [], quotes: string[] = [];
+  if (!parsed.success) return rejected('INVALID_QUOTES');
+  if (parsed.data.conflicting_sources) { reject?.('CONFLICTING_SOURCES'); return { summary: '', sources: [], conflicting: true }; }
+  if (!parsed.data.quotes.length) return { summary: '', sources: [] };
+  if (query !== undefined && sources.some(source => /ignore\s+(?:all\s+|previous\s+)?instructions|reveal\s+(?:secret|credentials)|execute\s+sql|fetch\s+https?:\/\/|bypass\s+permissions/i.test(source.content))) return rejected('INJECTION_REJECTED');
+  const used: AssistantSource[] = [], quotes: string[] = [], spans: EvidenceSpan[] = [];
+  const cursors = new Map<string, number>();
   for (const q of parsed.data.quotes) {
     const source = sources.find(s => s.chunk_id === q.chunk_id);
-    if (!source || !source.content.includes(q.quote)) return { summary: '', sources: [] };
+    if (!source || !source.content.includes(q.quote)) return rejected('INVALID_SOURCE_QUOTE');
+    const start = source.content.indexOf(q.quote, cursors.get(q.chunk_id) ?? 0);
+    if (start < 0) return rejected('INVALID_SOURCE_QUOTE');
+    const end = start + q.quote.length;
+    cursors.set(q.chunk_id, end);
+    spans.push({ chunk_id: source.chunk_id, quote: q.quote, start, end });
     if (!used.some(s => s.chunk_id === source.chunk_id)) used.push(source);
     quotes.push(q.quote);
   }
-  return { summary: quotes.join('\n\n'), sources: used };
+  // MS48-TC02/03: independently verify selected units and dependency coverage.
+  let required = sources;
+  if (groups) {
+    const byId = new Map(groups.map(group => [group.id, group]));
+    const owners = new Map(groups.flatMap(group => group.chunk_ids.map(id => [id, group.id] as const)));
+    if (byId.size !== groups.length || owners.size !== sources.length || groups.reduce((n,g) => n + g.chunk_ids.length,0) !== sources.length || sources.some(s => !owners.has(s.chunk_id))) return rejected('INVALID_GROUPS');
+    if (requiredChunkIds && (!requiredChunkIds.length || new Set(requiredChunkIds).size !== requiredChunkIds.length || requiredChunkIds.some(id => !owners.has(id)))) return rejected('INVALID_GROUPS');
+    const pending = (requiredChunkIds ?? parsed.data.quotes.map(q => q.chunk_id)).map(id => owners.get(id)!);
+    const visited = new Set<string>();
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (visited.has(id)) continue;
+      const group = byId.get(id);
+      if (!group) return rejected('INVALID_GROUPS');
+      visited.add(id); pending.push(...group.requires);
+    }
+    required = sources.filter(s => visited.has(owners.get(s.chunk_id)!));
+  }
+  if (query !== undefined && required.some(source => {
+    const coverage = spans.filter(span => span.chunk_id === source.chunk_id).sort((a,b) => a.start - b.start);
+    let offset = 0;
+    return source.content.split(/\n\s*\n/).some(raw => {
+      const part = raw.trim();
+      const start = source.content.indexOf(part, offset), end = start + part.length;
+      offset = end;
+      if (!part || (!requiredChunkIds && (part === source.heading_path || part === query))) return false;
+      let cursor = start;
+      for (const span of coverage) {
+        if (span.end <= cursor || span.start >= end) continue;
+        if (source.content.slice(cursor, Math.max(cursor, span.start)).trim()) return true;
+        cursor = Math.max(cursor, Math.min(span.end, end));
+      }
+      return Boolean(source.content.slice(cursor, end).trim());
+    });
+  })) return rejected('INCOMPLETE_COVERAGE');
+  return { summary: quotes.join('\n\n'), sources: used, ...(used.every(source => presentationSpansSafe(source, spans)) ? { evidence_spans: spans } : {}) };
 }
 export async function assistantQuery(request: Request): Promise<Response> {
+  const arrived = performance.now();
+  // MS57-TC12: freeze server-only admission. Changes affect new requests;
+  // disabling does not promise cancellation of already admitted requests.
+  const synthesisEnabled = process.env.RAG_SYNTHESIS_ENABLED === 'true';
+  const evidenceV3 = process.env.RAG_EVIDENCE_CONTRACT === 'ms59-v1';
+  const answerContract = request.headers.get('X-DeskAtlas-Answer-Contract');
+  const conciseMain = answerContract === 'ms59-v1' && request.headers.get('X-DeskAtlas-Main-Answer-Contract') === 'ms60-v1';
+  let selectionAttempts = 0, expansionAttempts = 0;
   const timing = new AssistantTiming();
-  const finish = (response: Response) => timing.finish(response, requestId);
+  const diagnostics = new AssistantDiagnostics(process.env.RAG_DIAGNOSTICS_ENABLED === 'true' || process.env.NODE_ENV === 'development' && request.headers.get('X-DeskAtlas-Diagnostics') === 'ms60-v1');
+  if (!synthesisEnabled) diagnostics.fallback('DISABLED');
+  const finish = (response: Response) => diagnostics.finish(timing.finish(response, requestId));
   let entry: Active | undefined, requestId = '';
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let onAbort: (() => void) | undefined;
+  let budget: RequestBudget | undefined;
   try {
-    sameOrigin(request); const verified = await timing.measure('auth', () => authorizeAssistant(request)); enabled();
-    await timing.measure('catalog', () => requireKnowledge(verified, request.signal));
-    const parsed = assistantQuerySchema.safeParse(await timing.measure('validate', () => jsonBody(request)));
+    budget = new RequestBudget(request.signal, boundedConfig('RAG_REQUEST_DEADLINE_MS',55000,1000,55000), arrived);
+    if (answerContract && answerContract !== 'ms59-v1') throw new AssistantError('INVALID_REQUEST', 'Unsupported answer presentation contract.', 400);
+    const mainContract = request.headers.get('X-DeskAtlas-Main-Answer-Contract');
+    if (mainContract && (mainContract !== 'ms60-v1' || answerContract !== 'ms59-v1')) throw new AssistantError('INVALID_REQUEST', 'Unsupported main answer contract.', 400);
+    const signal = budget.signal;
+    const measure: typeof timing.measure = (stage, work) => { diagnostics.enter(stage); return budget!.run(() => timing.measure(stage, work)); };
+    if (!['legacy', 'ms59-v1'].includes(process.env.RAG_EVIDENCE_CONTRACT ?? 'legacy')) throw new AssistantError('MODEL_UNAVAILABLE', 'Unsupported evidence contract.', 503);
+    sameOrigin(request); const verified = await measure('auth', () => authorizeAssistant(request, signal)); diagnostics.authorize(); enabled();
+    await measure('catalog', () => requireKnowledge(verified, signal));
+    const parsed = assistantQuerySchema.safeParse(await measure('validate', () => jsonBody(request, signal)));
     if (!parsed.success) throw new AssistantError('INVALID_REQUEST', 'Invalid assistant request.');
     const input = parsed.data; requestId = input.request_id; checkSensitive(input);
+    const language = assistantAnswerLanguage(), copy = assistantCopy(language);
     for (const [key, value] of active) if (value.expires < Date.now()) { value.controller.abort(); active.delete(key); }
     if (active.has(requestId) || [...active.values()].filter(v => v.actor.id === verified.actor.id).length >= 1 || active.size >= boundedConfig('RAG_CAPACITY',5,1,5)) throw new AssistantError('CAPACITY_BUSY', 'Assistant is at capacity. Retry shortly.', 429);
-    const controller = new AbortController();
-    entry = { actor: verified.actor, session: input.session_id, controller, capability: capability(verified.actor, requestId, randomUUID()), expires: Date.now() + 60000, stage: 'waiting', asOf: new Date().toISOString(), callbacks: 0 };
+    const controller = budget.controller;
+    entry = { actor: verified.actor, session: input.session_id, controller, capability: capability(verified.actor, requestId, randomUUID()), expires: Date.now() + budget.remaining(), stage: 'checking', asOf: new Date().toISOString(), callbacks: 0 };
     active.set(requestId, entry);
-    onAbort = () => controller.abort(); request.signal.addEventListener('abort', onAbort, { once: true });
-    if (request.signal.aborted) controller.abort();
-    timer = setTimeout(() => controller.abort(new Error('deadline')), boundedConfig('RAG_REQUEST_DEADLINE_MS',55000,1000,55000));
-    const signal = controller.signal;
     const asOf = entry.asOf;
-    const settings = await timing.measure('settings', async () => await verified.client.from('business_settings').select('timezone').eq('id', 1).abortSignal(signal).single());
+    const settings = await measure('settings', async () => await verified.client.from('business_settings').select('timezone').eq('id', 1).abortSignal(signal).single());
     if (settings.error || !settings.data?.timezone) throw new AssistantError('DATA_UNAVAILABLE', 'Business timezone is unavailable.', 503);
     const timezone = String(settings.data.timezone);
     entry.timezone = timezone;
-    let knowledgeEpoch = await timing.measure('catalog', () => epoch(verified.client, signal));
+    let knowledgeEpoch = await measure('catalog', () => epoch(verified.client, signal));
+    diagnostics.count('epoch', knowledgeEpoch);
     const fastPlan = process.env.RAG_SOP_FAST_PATH === 'true' ? proceduralDocumentPlan(input.message, input.recent_context) : undefined;
-    const planResult = assistantPlanSchema.safeParse(await timing.measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone }, entry!.capability, signal, timing)));
-    if (!planResult.success) throw new AssistantError('MODEL_UNAVAILABLE', 'The model returned an invalid plan. Retry or specify the metric and dates.', 503);
+    diagnostics.count('shortcut', fastPlan || currentOperationalPlan(input.message) ? 1 : 0);
+    const hybrid = process.env.RAG_HYBRID_RETRIEVAL === 'true';
+    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true }, entry!.capability, signal, timing, budget, diagnostics)));
+    if (!planResult.success) {
+      diagnostics.fail('INVALID_PLAN', 'plan');
+      diagnostics.count('plan_invalid_filters', planResult.error.issues.filter(issue => issue.path.includes('args')).length);
+      diagnostics.count('plan_invalid_clarification', planResult.error.issues.filter(issue => issue.path.includes('clarification')).length);
+    }
+    if (!planResult.success) throw new AssistantError('MODEL_UNAVAILABLE', 'I could not interpret that question reliably. Please rephrase it or retry.', 503);
     const plan = planResult.data;
+    if (plan.kind === 'CLARIFY' || plan.kind === 'UNSUPPORTED') diagnostics.fail(plan.kind, 'plan');
     entry.stage = 'retrieving';
     const tables: AssistantAnswer['tables'] = [], interpretation: string[] = [], limitations: string[] = [], narratives: string[] = [];
     const repo: AssistantRepository = { execute: async (actor, tool, period, frozen) => {
@@ -203,65 +317,294 @@ export async function assistantQuery(request: Request): Promise<Response> {
     if (verified.actor.role === 'STAFF' && (plan.kind === 'REPORT' || plan.tools.some(t => !['operational_snapshot','workspace_availability'].includes(t.name)))) throw new AssistantError('FORBIDDEN', 'Historical and financial reports require administrator access.', 403);
     for (const tool of plan.tools) {
       try {
-        const result = await timing.measure('tools', () => executeAssistantTool(repo, verified.actor, tool, timezone, asOf));
+        const result = await measure('tools', () => executeAssistantTool(repo, verified.actor, tool, timezone, asOf));
         tables.push(...result.tables); interpretation.push(...result.interpretation); limitations.push(...result.limitations);
-        narratives.push(assistantToolNarrative(tool.name,result));
+        narratives.push(assistantToolNarrative(tool.name,result,language));
       } catch (e) { if (!(e instanceof AssistantError) || e.status === 403) throw e; limitations.push(`${e.code}: ${e.message}`); }
     }
-    let sources: AssistantSource[] = [], summary = '';
+    let sources: AssistantSource[] = [], contextSources: AssistantSource[] = [], summary = '', evidenceSpans: EvidenceSpan[] = [];
+    let synthesis: AssistantSynthesis | undefined;
+    let synthesisStatus: 'DISABLED' | 'NOT_ADMITTED' | 'ACCEPTED' | 'EXACT_FALLBACK' = synthesisEnabled ? 'NOT_ADMITTED' : 'DISABLED';
+    let documentClarification: string | undefined;
     if (['DOCUMENT', 'MIXED'].includes(plan.kind)) {
-      if (process.env.KB_ENABLED !== 'true') limitations.push('NO_RELEVANT_SOURCE: Published knowledge is not enabled. Ask an administrator.');
+      if (process.env.KB_ENABLED !== 'true') { diagnostics.fail('NO_RELEVANT_SOURCE', 'catalog'); limitations.push('NO_RELEVANT_SOURCE: Published knowledge is not enabled. Ask an administrator.'); }
       else {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const embedding = assistantSearchSchema.safeParse(await timing.measure('embed', () => model('/v1/embed', { query: plan.query || input.message }, entry!.capability, signal, timing)));
-            if (!embedding.success) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
-            const candidates = assistantSourcesSchema.parse(await timing.measure('retrieve', () => rpc(verified.client, 'assistant_search_knowledge', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_vector: embedding.data.vector, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')) }, signal)));
-            const query = plan.query || input.message;
-            const evidence: AssistantSource[] = [];
-            for (const candidate of candidates) {
-              if (evidence.length === 6) break;
-              // UTF-8 bytes conservatively bound tokenizer input. Keep complete chunks.
-              if (Buffer.byteLength(JSON.stringify({ query, sources: [...evidence, candidate] }), 'utf8') <= 12000) evidence.push(candidate);
+            let candidates: AssistantSource[];
+            const queryMode = process.env.RAG_HYBRID_QUERY_MODE ?? 'expanded';
+            const searchMode = process.env.RAG_HYBRID_MODE ?? 'fused';
+            if (hybrid && (!['original', 'expanded'].includes(queryMode) || !['semantic', 'lexical', 'fused'].includes(searchMode))) throw new AssistantError('DATA_UNAVAILABLE', 'Invalid retrieval evaluation configuration.', 503);
+            const queries = assistantSearchQueries(input.message, queryMode === 'original' ? undefined : plan.search);
+            if (hybrid) {
+              const batch = assistantEmbeddingBatchSchema.safeParse(await measure('embed', () => model('/v1/embed-queries', { queries }, entry!.capability, signal, timing, budget, diagnostics)));
+              if (!batch.success || batch.data.embeddings.length !== queries.length) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
+              const branches = assistantHybridCandidatesSchema.safeParse(await measure('retrieve', () => rpc(verified.client, 'assistant_search_hybrid', {
+                p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'),
+                p_vectors: batch.data.embeddings.map(item => item.vector), p_queries: queries, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')),
+              }, signal)));
+              if (!branches.success || branches.data.semantic.length !== queries.length || branches.data.lexical.length !== queries.length) throw new AssistantError('DATA_UNAVAILABLE', 'Invalid retrieval result.', 503);
+              candidates = fuseAssistantCandidates({ semantic: searchMode === 'lexical' ? queries.map(() => []) : branches.data.semantic,
+                lexical: searchMode === 'semantic' ? queries.map(() => []) : branches.data.lexical });
+            } else {
+              const embedding = assistantSearchSchema.safeParse(await measure('embed', () => model('/v1/embed', { query: assistantRetrievalQuery(input.message) }, entry!.capability, signal, timing, budget, diagnostics)));
+              if (!embedding.success) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
+              candidates = assistantSourcesSchema.parse(await measure('retrieve', () => rpc(verified.client, 'assistant_search_knowledge', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_vector: embedding.data.vector, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')) }, signal)));
+              // QAD-TC44: one bounded aid batch also checks weak nonempty hits.
+              // A similarity hit alone does not prove the requested task was found.
+              // Original wording remains in every search and final query;
+              // no lexical migration or lowered similarity gate is required.
+              const aids = assistantSearchQueries(input.message, plan.search).slice(1);
+              if (aids.length) {
+                const alternatives = assistantEmbeddingBatchSchema.parse(await measure('embed', () => model('/v1/embed-queries', { queries: aids }, entry!.capability, signal, timing, budget, diagnostics)));
+                if (alternatives.embeddings.length !== aids.length) throw new AssistantError('DATA_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
+                const branches = await Promise.all(alternatives.embeddings.map(alternative => measure('retrieve', async () => assistantSourcesSchema.parse(await rpc(verified.client, 'assistant_search_knowledge', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_vector: alternative.vector, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')) }, signal)))));
+                candidates = fuseAssistantCandidates({ semantic: [candidates, ...branches], lexical: [candidates, ...branches].map(() => []) });
+              }
             }
+            diagnostics.count('candidate_count', candidates.length);
+            diagnostics.units('ranked', candidates.map(source => source.chunk_id));
+            const faqSeed = !input.recent_context?.user_turns?.length && !input.recent_context?.selections
+              ? selectFaqSeed(input.message, candidates.map(source => ({ chunk_id: source.chunk_id!, heading_path: source.heading_path!, content: source.content! }))) : undefined;
+            // Only user history may resolve a document follow-up for answering.
+            // Model alternatives remain search aids, not part of the question.
+            const previous = input.recent_context?.user_turns?.at(-1);
+            const contextualQuestion = assistantContextualQuestion(input.message, previous);
+            const query = hybrid ? contextualQuestion.length <= 3000 ? contextualQuestion : input.message : faqSeed ? input.message : plan.query || input.message;
+            // MS56-TC01/05: select before closure. SQL still validates every
+            // chunk and manifest of each selected generation before expansion.
+            // No guessed paragraph scopes or independent batch unions are used.
+            const directSeed = faqSeed || selectProcedureSeed(input.message, candidates.map(source => ({ chunk_id: source.chunk_id, heading_path: source.heading_path, content: source.content })));
+            diagnostics.count('selected_count', candidates.length);
+            const directSeeds = directSeed ? [directSeed] : selectGovernanceSeeds(input.message, candidates.map(source => ({ chunk_id: source.chunk_id!, content: source.content! })));
+            const guaranteeSeeds = selectBookingGuaranteeSeeds(input.message,
+              candidates.map(source => ({ chunk_id: source.chunk_id!, content: source.content! })));
+            let selectedIds = guaranteeSeeds ?? directSeeds ?? candidates.map(source => source.chunk_id);
+            // PRD-F4: a source-backed single inventory decision need not ask
+            // a generative selector to choose it over an unrelated checklist.
+            // This is provisional support: canonical expansion, independent
+            // applicability and final actor/source/epoch checks still run.
+            let coverage: AssistantCoverage | undefined = guaranteeSeeds
+              ? { scope: 'FACTUAL', outcome: 'COMPLETE', gaps: [] } : undefined;
+            let obligations: AssistantObligation[] = guaranteeSeeds ? [{ id: 'o0',
+              request: 'Whether workspace selection establishes reservation inventory', kind: 'FACT',
+              status: 'SUPPORTED', chunk_ids: guaranteeSeeds }] : [];
+            if (guaranteeSeeds) {
+              diagnostics.count('requested_count', 1); diagnostics.count('supported_count', 1);
+            }
+            const costs = evidenceV3 && candidates.length ? assistantEvidenceCostsSchema.parse(await measure('expand', () => rpc(verified.client, 'assistant_evidence_costs', {
+              p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_chunks: candidates.map(source => source.chunk_id),
+            }, signal))) : undefined;
+            if (costs && (costs.epoch !== knowledgeEpoch || costs.roots.length !== candidates.length || costs.roots.some(root => !candidates.some(source => source.chunk_id === root.chunk_id)))) throw new AssistantError('KNOWLEDGE_CHANGED', 'Evidence costs changed. Please retry.', 409);
+            const choose = async (reconsider = false): Promise<ReturnType<typeof assistantContextSelectionSchema.parse>> => {
+              if (selectionAttempts >= 2) throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: Evidence selection could not be completed reliably. Please retry.', 400);
+              selectionAttempts++; diagnostics.count('selection_attempts', selectionAttempts);
+              try {
+              // MS60-TC15: omit unused database metadata, never candidate text.
+              const selectionPayload = { query, original_query: input.message, reliability_contract: 'ms60-v1',
+                sources: candidates.map(({ chunk_id, title, heading_path, content }) => ({ chunk_id, title, heading_path, content })), contract_version: evidenceV3 ? 3 : 2,
+                ...(costs ? { costs: costs.roots.map(root => ({ index: candidates.findIndex(source => source.chunk_id === root.chunk_id), source_count: root.source_count, bytes: root.bytes, complete: root.complete })) } : {}),
+                ...(reconsider ? { reconsider: true, prior_coverage: coverage, prior_obligations: obligations } : {}) };
+              diagnostics.count('selection_bytes', Buffer.byteLength(JSON.stringify(selectionPayload), 'utf8'));
+              if (Buffer.byteLength(JSON.stringify(selectionPayload), 'utf8') > evidenceBudget.request_bytes) throw new AssistantError('INCOMPLETE_EVIDENCE', 'Candidate comparison exceeds the supported context budget.', 400);
+              const parsed = assistantContextSelectionSchema.safeParse(await measure('context', () => model('/v1/context', selectionPayload, entry!.capability, signal, timing, budget, diagnostics)));
+              if (!parsed.success || parsed.data.chunk_ids.some(id => !candidates.some(source => source.chunk_id === id))) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
+              if (evidenceV3 || parsed.data.obligations) {
+                const mapped = parsed.data.obligations;
+                if (!mapped || new Set(mapped.map(o => o.id)).size !== mapped.length || mapped.some(o => o.chunk_ids.some(id => !parsed.data.chunk_ids.includes(id))) || parsed.data.coverage?.outcome === 'COMPLETE' && (!mapped.length || mapped.some(o => o.status !== 'SUPPORTED'))) throw new AssistantError('INVALID_MODEL_OUTPUT', 'Requested-detail coverage could not be verified.', 503);
+                obligations = mapped;
+                diagnostics.count('requested_count', mapped.length);
+                diagnostics.count('supported_count', mapped.filter(o => o.status === 'SUPPORTED').length);
+              }
+              return parsed.data;
+              } catch (error) {
+                // QAD-TC44: malformed selection consumes the same global ceiling.
+                if (error instanceof AssistantError && error.code === 'INVALID_MODEL_OUTPUT' && selectionAttempts < 2 && budget.remaining() > 10000) {
+                  diagnostics.fail('INVALID_SELECTION', 'context');
+                  return choose(reconsider);
+                }
+                throw error;
+              }
+            };
+            if (!guaranteeSeeds && candidates.length && (synthesisEnabled || !directSeeds?.length || candidates.some(source => !directSeeds.includes(source.chunk_id)))) {
+              entry.stage = 'preparing';
+              const selection = await choose();
+              if (selection.chunk_ids.some(id => !candidates.some(candidate => candidate.chunk_id === id))) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
+              if (selection.ambiguous) throw new AssistantError('AMBIGUOUS_SCOPE', selection.coverage?.clarification ?? copy.documentClarify, 400);
+              coverage = selection.coverage;
+              if (coverage?.scope === 'DOCUMENT_WIDE' && coverage.outcome === 'COMPLETE') throw new AssistantError('INCOMPLETE_CONTEXT', 'Document-wide coverage has not been verified. Ask for a specific topic or ask an administrator to review broader source coverage.', 400);
+              if (coverage?.outcome === 'CONFLICT') throw new AssistantError('CONFLICTING_SOURCES', copy.conflict, 400);
+              selectedIds = selection.chunk_ids;
+            }
+            diagnostics.count('selected_count', selectedIds.length);
+            const expand = async () => {
+              if (expansionAttempts >= 2) throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: Evidence selection could not be completed reliably. Please retry.', 400);
+              if (costs) {
+                const unique = new Set(costs.roots.filter(root => selectedIds.includes(root.chunk_id)).flatMap(root => root.members));
+                diagnostics.count(expansionAttempts === 0 ? 'first_union_count' : 'final_union_count', unique.size);
+              }
+              expansionAttempts++; diagnostics.count('expansion_attempts', expansionAttempts);
+              return assistantEvidenceSchema.parse(await measure('expand', () => rpc(verified.client, evidenceV3 ? 'assistant_expand_evidence_v3' : 'assistant_expand_evidence', {
+              p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_chunks: selectedIds,
+              }, signal)));
+            };
+            let expanded = selectedIds.length ? await expand() : { complete: true as const, sources: [], groups: [] };
+            const evidencePayload = () => ({ query, original_query: input.message, reliability_contract: 'ms60-v1', sources: expanded.sources,
+              ...(expanded.complete && expanded.groups ? { groups: expanded.groups, required_chunk_ids: expanded.sources.map(source => source.chunk_id) } : {}),
+              ...(coverage && expanded.complete && expanded.groups && expanded.sources.length ? { coverage } : {}), ...(faqSeed ? { exact_faq: true } : {}),
+              ...('context_sources' in expanded && expanded.context_sources?.length ? { context_sources: expanded.context_sources } : {}),
+            });
+            const packingOverflows = async () => {
+              if (!expanded.complete || !expanded.sources.length || expansionOverflows()) return false;
+              const packedPayload = evidencePayload();
+              const parsedCost = assistantPackingCostSchema.safeParse(await measure('expand', () => model('/v1/evidence-cost', packedPayload, entry!.capability, signal, timing, budget, diagnostics)));
+              if (!parsedCost.success) throw new AssistantError('INVALID_MODEL_OUTPUT', 'Packing contract could not be verified.', 503);
+              const cost = parsedCost.data;
+              if (cost.binding !== createHash('sha256').update(JSON.stringify(packedPayload)).digest('hex')) throw new AssistantError('INVALID_MODEL_OUTPUT', 'Packing identity could not be verified.', 503);
+              diagnostics.count('packed_quote_count', cost.quote_count);
+              diagnostics.count('max_quote_utf16', cost.max_quote_utf16);
+              if (!cost.fits) diagnostics.fail('OUTPUT_BUDGET_EXCEEDED', 'expand');
+              return !cost.fits;
+            };
+            const expansionOverflows = () => expanded.complete && Buffer.byteLength(JSON.stringify(evidencePayload()), 'utf8') > evidenceBudget.request_bytes;
+            // MS59-TC10/12: reconsider direct support, never cut a dependency.
+            let packedOverflow = await packingOverflows();
+            if (!guaranteeSeeds && (packedOverflow || expansionOverflows() || !expanded.complete && 'reason' in expanded && expanded.reason === 'CONTEXT_BUDGET') && selectionAttempts < 2 && expansionAttempts < 2 && budget.remaining() > 10000) {
+              diagnostics.fail('CONTEXT_BUDGET', 'expand');
+              diagnostics.fail('SELECTION_OVERFLOW', 'expand');
+              const selection = await choose(true);
+              if (selection.ambiguous) throw new AssistantError('AMBIGUOUS_SCOPE', selection.coverage?.clarification ?? copy.documentClarify, 400);
+              if (selection.coverage?.outcome === 'CONFLICT') throw new AssistantError('CONFLICTING_SOURCES', copy.conflict, 400);
+              if (selection.coverage?.scope === 'DOCUMENT_WIDE') throw new AssistantError('INCOMPLETE_CONTEXT', 'Document-wide coverage has not been verified.', 400);
+              coverage = selection.coverage; selectedIds = selection.chunk_ids;
+              expanded = selectedIds.length ? await expand() : { complete: true as const, sources: [], groups: [] };
+              packedOverflow = await packingOverflows();
+            }
+            if (packedOverflow) throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: OUTPUT_BUDGET_EXCEEDED: Complete applicable support could not be prepared within the verified output capacity. Please retry.', 400);
+            if (expansionOverflows()) throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: CONTEXT_BUDGET: Evidence selection could not be completed reliably within the supported request size. Please retry.', 400);
+            if (!expanded.complete && 'reason' in expanded && expanded.reason === 'CONTEXT_BUDGET') throw new AssistantError('INCOMPLETE_EVIDENCE', 'SELECTION_EXHAUSTED: CONTEXT_BUDGET: Evidence selection could not be completed reliably within the supported capacity. Please retry.', 400);
+            contextSources = expanded.complete && 'context_sources' in expanded ? expanded.context_sources ?? [] : [];
+            diagnostics.count('context_source_count', contextSources.length);
+            const groups = expanded.complete ? expanded.groups?.map(group => ({ id: group.id!, chunk_ids: group.chunk_ids!, requires: group.requires! })) : undefined;
+            const reason = 'reason' in expanded ? expanded.reason : 'CONTEXT_BUDGET';
+            if (coverage && expanded.complete && expanded.sources.length && !groups) throw new AssistantError('INCOMPLETE_CONTEXT', 'Reviewed support structure is unavailable. Ask an administrator to review or reprocess the document.', 400);
+            const requiredChunkIds = groups ? expanded.sources.map(source => source.chunk_id) : undefined;
+            const payload = evidencePayload();
+            diagnostics.count('closure_count', expanded.sources.length);
+            diagnostics.units('closure', expanded.sources.map(source => source.chunk_id));
+            diagnostics.count('group_count', groups?.length ?? 0);
+            diagnostics.count('evidence_bytes', Buffer.byteLength(JSON.stringify(payload), 'utf8'));
+            const fits = expanded.complete && Buffer.byteLength(JSON.stringify(payload), 'utf8') <= evidenceBudget.request_bytes;
+            const evidence: AssistantSource[] = fits ? expanded.sources : [];
+            if (!fits) diagnostics.fail(!expanded.complete && reason !== 'CONTEXT_BUDGET' ? reason === 'REPROCESS_REQUIRED' ? 'REPROCESS_REQUIRED' : 'UNRESOLVED_CONTEXT' : 'CONTEXT_BUDGET', 'expand');
+            if (!fits) limitations.push(!expanded.complete && reason !== 'CONTEXT_BUDGET' ? `INCOMPLETE_CONTEXT: ${reason}: ${reason === 'REPROCESS_REQUIRED' ? copy.reprocess : copy.context}` : `INCOMPLETE_EVIDENCE: CONTEXT_BUDGET: ${copy.incomplete}`);
             // Prior assistant facts and report rows never enter the model context.
             entry.stage = 'preparing';
-            const selected = evidence.length ? groundedQuotes(await timing.measure('answer', () => model('/v1/answer', { query: plan.query || input.message, sources: evidence }, entry!.capability, signal, timing)), evidence) : { summary: '', sources: [], conflicting: false };
-            summary = selected.summary; sources = selected.sources;
-            if (!summary) limitations.push(selected.conflicting ? 'CONFLICTING_SOURCES: Published sources disagree. Ask an administrator to reconcile the rule.' : 'NO_RELEVANT_SOURCE: No validated answer was found in published documents. Ask an administrator.');
+            let groundingReason: DiagnosticReason | undefined;
+            const selected = evidence.length ? groundedQuotes(await measure('answer', () => model('/v1/answer', payload, entry!.capability, signal, timing, budget, diagnostics)), evidence, query, groups, reason => { groundingReason = reason; diagnostics.fail(reason, 'grounding'); }, requiredChunkIds) : { summary: '', sources: [], conflicting: false };
+            summary = selected.summary; sources = selected.sources; evidenceSpans = 'evidence_spans' in selected ? selected.evidence_spans ?? [] : [];
+            synthesis = undefined;
+            // Synthesis is admitted only AFTER independently safe exact coverage.
+            // Failure cannot use excerpts to bypass any closure/integrity gate.
+            if (synthesisEnabled && summary && budget.remaining() <= 2500) diagnostics.fallback('BUDGET_NOT_ADMITTED');
+            if (synthesisEnabled && summary && !assistantSynthesisLanguageAdmitted(language, conciseMain)) diagnostics.fallback('TRANSLATION_GATED');
+            if (synthesisEnabled && summary && coverage?.scope === 'COMPLETE_PROCEDURE' && !conciseMain) {
+              synthesisStatus = 'EXACT_FALLBACK'; diagnostics.fallback('PROCEDURE_EXACT');
+            }
+            if (synthesisEnabled && assistantSynthesisLanguageAdmitted(language, conciseMain) && summary && !selected.conflicting && coverage && (coverage.scope !== 'COMPLETE_PROCEDURE' || conciseMain) && groups && evidenceSpans.length && budget.remaining() > 2500) {
+              if (sources.some(source => createHash('sha256').update(source.content).digest('hex') !== source.content_hash)) throw new AssistantError('INCOMPLETE_CONTEXT', 'Source integrity could not be verified.', 400);
+              const synthesisBudget = new RequestBudget(signal, Math.min(8000, budget.remaining() - 2000));
+              // MS61: preserve multilingual intent while independently requesting English output.
+              const synthesisPayload = { query: contextualQuestion, coverage, sources, spans: evidenceSpans,
+                ...(conciseMain ? { presentation_contract: 'ms60-concise-v1', language } : {}) };
+              synthesisStatus = 'EXACT_FALLBACK';
+              let optionalStage: 'SYNTHESIS' | 'SUPPORT' = 'SYNTHESIS';
+              try {
+                const candidate = validateAssistantSynthesis(await synthesisBudget.run(() => measure('synthesis', () => model('/v1/synthesis', synthesisPayload, entry!.capability, synthesisBudget.signal, timing, synthesisBudget, diagnostics))), coverage, evidenceSpans, sources, contextualQuestion);
+                if (candidate && (!candidate.main_blocks || conciseMain)) {
+                  optionalStage = 'SUPPORT';
+                  const verdict = assistantSupportVerdictSchema.safeParse(await synthesisBudget.run(() => measure('support', () => model('/v1/support', { ...synthesisPayload, candidate }, entry!.capability, synthesisBudget.signal, timing, synthesisBudget, diagnostics))));
+                  if (verdict.success) {
+                    diagnostics.count('support_claims', verdict.data.supported.length);
+                    diagnostics.count('support_accepted', verdict.data.supported.filter(Boolean).length);
+                    diagnostics.count('support_complete', Number(verdict.data.complete));
+                    diagnostics.count('support_consistent', Number(verdict.data.consistent));
+                    diagnostics.count('support_evidence_safe', Number(verdict.data.evidence_safe));
+                  }
+                  if (verdict.success && !verdict.data.consistent) throw new AssistantError('CONFLICTING_SOURCES', copy.conflict, 400);
+                  if (verdict.success && !verdict.data.evidence_safe) throw new AssistantError('INCOMPLETE_CONTEXT', 'Required source context could not be verified.', 400);
+                  if (verdict.success && assistantSynthesisSupported(verdict.data, candidate)) {
+                    synthesis = candidate;
+                    synthesisStatus = 'ACCEPTED';
+                    summary = (candidate.main_blocks ?? candidate.blocks).map(block => block.text).join('\n\n');
+                  } else diagnostics.fallback(verdict.success ? 'SUPPORT_REJECTED' : 'SUPPORT_SCHEMA_REJECTED', optionalStage);
+                } else diagnostics.fallback('SCHEMA_REJECTED', optionalStage);
+              } catch (error) {
+                diagnostics.fallback(synthesisBudget.signal.aborted || error instanceof AssistantError && ['MODEL_TIMEOUT', 'REQUEST_TIMEOUT'].includes(error.code) ? 'TIMEOUT' : error instanceof AssistantError && error.code === 'INCOMPLETE_EVIDENCE' ? 'BUDGET_NOT_ADMITTED' : error instanceof AssistantError && error.code === 'INVALID_MODEL_OUTPUT' ? optionalStage === 'SUPPORT' ? 'SUPPORT_SCHEMA_REJECTED' : 'SCHEMA_REJECTED' : 'SERVICE_FAILURE', optionalStage);
+                if (signal.aborted || error instanceof AssistantError && (error.status === 403 || ['CONFLICTING_SOURCES', 'INCOMPLETE_CONTEXT'].includes(error.code))) throw error;
+                // Rejected prose stays request-local and is never emitted/logged.
+                // Already grounded exact evidence remains the independent fallback.
+              } finally { synthesisBudget.close(); }
+              if (!synthesis) summary = await measure('fallback', async () => selected.summary);
+            }
+            if (fits && !summary && !selected.conflicting && !groundingReason && /\b(how much|magkano|amount|refund rate|cancellation fee)\b/i.test(input.message)) limitations.push(`NO_RELEVANT_SOURCE: ${copy.amountGap}`);
+            if (fits && !summary) diagnostics.fail(selected.conflicting ? 'CONFLICTING_SOURCES' : 'NO_RELEVANT_SOURCE', 'grounding');
+            if (summary && coverage?.outcome === 'PARTIAL_GENERAL') limitations.push(...coverage.gaps.map(gap => `PARTIAL_GENERAL: Not verified from retrieved passages: ${gap}`));
+            if (fits && !summary && !limitations.some(line => line.startsWith('NO_RELEVANT_SOURCE:'))) limitations.push(...(groundingReason && ['INVALID_QUOTES', 'INVALID_GROUPS', 'INVALID_SOURCE_QUOTE'].includes(groundingReason) ? [`INVALID_MODEL_OUTPUT: ${copy.modelOutput}`] : groundingReason === 'INCOMPLETE_COVERAGE' || groundingReason === 'INJECTION_REJECTED' ? [`INCOMPLETE_CONTEXT: Required selected evidence could not be completely verified. Ask an administrator to review the applicable source context.`] : selected.conflicting ? [`CONFLICTING_SOURCES: ${copy.conflict}`] : coverage?.outcome === 'INSUFFICIENT' && coverage.gaps.length ? coverage.gaps.map(gap => `NO_RELEVANT_SOURCE: Not verified from retrieved passages: ${gap}`) : [`NO_RELEVANT_SOURCE: ${copy.gap}`]));
           } catch (e) {
+            diagnostics.error(e);
             if (e instanceof AssistantError && e.status === 403) throw e;
             if (signal.aborted) throw e;
-            limitations.push('MODEL_UNAVAILABLE: Document evidence could not be prepared. Verified tables remain available.'); sources = []; summary = '';
+            const code = e instanceof AssistantError ? e.code : 'DATA_UNAVAILABLE';
+            if (code === 'AMBIGUOUS_SCOPE' && e instanceof AssistantError) documentClarification = e.message;
+            limitations.push(`${code}: ${code === 'AMBIGUOUS_SCOPE' ? 'Clarification is required to choose the applicable task.' : (code === 'INCOMPLETE_CONTEXT' || code === 'INCOMPLETE_EVIDENCE') && e instanceof AssistantError ? e.message : code === 'CONFLICTING_SOURCES' ? copy.conflict : code === 'INVALID_MODEL_OUTPUT' ? copy.modelOutput : code === 'MODEL_TIMEOUT' || code === 'REQUEST_TIMEOUT' ? copy.modelTimeout : code === 'MODEL_UNAVAILABLE' ? 'Local model is unavailable. Verified tables remain available.' : 'The document service is unavailable. Please retry. Verified tables remain available.'}`); sources = []; contextSources = []; summary = ''; synthesis = undefined; evidenceSpans = [];
           }
-          const current = await timing.measure('catalog', () => epoch(verified.client, signal));
+          const current = await measure('catalog', () => epoch(verified.client, signal));
+          if (!summary) synthesisStatus = synthesisEnabled ? 'NOT_ADMITTED' : 'DISABLED';
           if (current === knowledgeEpoch) break;
-          sources = []; summary = ''; knowledgeEpoch = current;
-          if (attempt === 1) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
+          diagnostics.fail('KNOWLEDGE_CHANGED', 'catalog');
+          diagnostics.count('epoch', current);
+          sources = []; contextSources = []; summary = ''; evidenceSpans = []; synthesis = undefined; documentClarification = undefined; knowledgeEpoch = current;
+          synthesisStatus = synthesisEnabled ? 'NOT_ADMITTED' : 'DISABLED';
+          limitations.splice(0, limitations.length, ...limitations.filter(item => !/^(PARTIAL_GENERAL|AMBIGUOUS_SCOPE|INCOMPLETE_|NO_RELEVANT_SOURCE|CONFLICTING_SOURCES|DATA_UNAVAILABLE|MODEL_UNAVAILABLE|KNOWLEDGE_CHANGED)/.test(item)));
+          if (attempt === 1 || selectionAttempts >= 2 || expansionAttempts >= 2) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
         }
       }
     }
     // Final source and actor checks happen before returning even one byte of evidence.
-    const finalIdentity = await timing.measure('auth', () => authorizeAssistant(request));
+    const finalIdentity = await measure('auth', () => authorizeAssistant(request, signal));
     if (finalIdentity.actor.id !== verified.actor.id || finalIdentity.actor.role !== verified.actor.role) throw new AssistantError('FORBIDDEN', 'Account permissions changed.', 403);
-    for (const source of sources) {
-      const current = await timing.measure('evidence', () => rpc(verified.client, 'assistant_read_source', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_version: source.version_id, p_chunk: source.chunk_id }, signal));
+    await Promise.all([...sources, ...contextSources].map(async source => {
+      const current = await measure('evidence', () => rpc(verified.client, 'assistant_read_source', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_version: source.version_id, p_chunk: source.chunk_id }, signal));
       const checked = assistantSourceSchema.safeParse(current);
-      if (!checked.success || checked.data.content_hash !== source.content_hash || checked.data.epoch !== knowledgeEpoch) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
+      if (!checked.success || checked.data.content_hash !== source.content_hash || checked.data.content !== source.content || checked.data.epoch !== knowledgeEpoch) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
+    }));
+    if (await measure('catalog', () => requireKnowledge(finalIdentity, signal)) !== knowledgeEpoch) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
+    budget.check();
+    if (sources.length) limitations.push(copy.sourceLanguage);
+    diagnostics.count('epoch', knowledgeEpoch);
+    const presentation = answerContract === 'ms59-v1' && !synthesis && evidenceSpans.length ? exactAssistantPresentation(evidenceSpans) : undefined;
+    if (presentation) {
+      const projection = exactAssistantMainAtoms(evidenceSpans, presentation.atoms, sources);
+      diagnostics.exact(projection.status, projection.omitted, projection.atoms.length);
     }
-    if (await timing.measure('catalog', () => requireKnowledge(finalIdentity, signal)) !== knowledgeEpoch) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
-    if (signal.aborted) throw new AssistantError('REQUEST_CANCELLED', 'Request cancelled.', 499);
     const answer = assistantAnswerSchema.parse({ kind: plan.kind,
-      summary: [summary,...narratives].filter(Boolean).join('\n\n') || (tables.length ? 'Verified results are shown below. Review the filters and coverage limitations.' : plan.kind === 'CLARIFY' ? 'Please specify the metric, date range, or workspace you want to examine.' : plan.kind === 'UNSUPPORTED' ? 'This assistant supports published documentation and read-only aggregate inquiries. It cannot execute business changes or look up individual guests.' : 'No verified answer is available. Ask an administrator or retry with a specific metric and dates.'),
+      outcome: assistantOutcome({ kind: plan.kind, citations: sources, limitations }),
+      summary: [summary,...narratives].filter(Boolean).join('\n\n') || (tables.length ? copy.verified : plan.kind === 'CLARIFY' ? plan.clarification || copy.clarify : plan.kind === 'UNSUPPORTED' ? copy.unsupported : limitations.some(item => /^(INCOMPLETE_|DATA_UNAVAILABLE|MODEL_UNAVAILABLE|MODEL_TIMEOUT|REQUEST_TIMEOUT|INVALID_MODEL_OUTPUT|CAPACITY_BUSY|KNOWLEDGE_CHANGED)/.test(item)) ? copy.documentUnavailable : limitations.some(item => item.startsWith('AMBIGUOUS_SCOPE:')) ? documentClarification ?? copy.documentClarify : limitations.some(item => item.startsWith('CONFLICTING_SOURCES:')) ? copy.conflict : copy.gap),
       tables, citations: sources.map(({ content: _content, ...metadata }) => metadata), interpretation: [...new Set(interpretation)], as_of: asOf,
+      business_timezone: timezone, ...(sources.length && evidenceSpans.length ? { evidence_spans: evidenceSpans } : {}),
+      ...(synthesis ? { synthesis } : {}),
+      ...(presentation ? { presentation } : {}),
+      synthesis_status: synthesisStatus,
+      answer_mode: synthesis ? synthesis.outcome === 'PARTIAL_GENERAL' ? 'PARTIAL_GENERAL' : 'SYNTHESIZED' : summary ? 'EXACT' : documentClarification || plan.kind === 'CLARIFY' ? 'CLARIFICATION' : limitations.some(line => line.startsWith('CONFLICTING_SOURCES:')) ? 'CONFLICT' : limitations.some(line => /^(INCOMPLETE_|DATA_UNAVAILABLE|MODEL_UNAVAILABLE|MODEL_TIMEOUT|REQUEST_TIMEOUT|INVALID_MODEL_OUTPUT)/.test(line)) ? 'FAILURE' : tables.length ? 'EXACT' : 'EVIDENCE_GAP',
       limitations: [...new Set(limitations)], knowledge_epoch: knowledgeEpoch, request_id: requestId, selections: plan.tools[0] });
-    return finish(await timing.measure('serialize', async () => Response.json({ data: answer }, { headers: noStore })));
+    return finish(await measure('serialize', async () => Response.json({ data: answer }, { headers: noStore })));
   } catch (e) {
-    if (entry?.controller.signal.aborted) return finish(assistantFailure(new AssistantError(entry.controller.signal.reason instanceof Error && entry.controller.signal.reason.message === 'deadline' ? 'REQUEST_TIMEOUT' : 'REQUEST_CANCELLED', 'Request ended. Retry if needed.', 408)));
+    diagnostics.error(budget?.signal.aborted ? budget.failure() : e);
+    if (budget?.signal.aborted) return finish(assistantFailure(budget.failure()));
     return finish(assistantFailure(e));
   } finally {
-    if (timer) clearTimeout(timer);
-    if (onAbort) request.signal.removeEventListener('abort', onAbort);
+    budget?.close();
     if (entry && active.get(requestId) === entry) active.delete(requestId);
   }
 }
@@ -291,7 +634,7 @@ export async function assistantProgress(request: Request): Promise<Response> {
     const parsed = assistantCancelSchema.safeParse(await jsonBody(request));
     if (!parsed.success) throw new AssistantError('INVALID_REQUEST', 'Invalid progress request.');
     const item = active.get(parsed.data.request_id);
-    const stage = item?.actor.id === actor.id && item.session === parsed.data.session_id ? item.stage : 'waiting';
+    const stage = item?.actor.id === actor.id && item.session === parsed.data.session_id ? item.stage : 'checking';
     return Response.json({ data: { stage } }, { headers: noStore });
   } catch (e) { return assistantFailure(e); }
 }
@@ -306,8 +649,8 @@ export async function assistantInternal(request: Request, operation: 'tools' | '
     const cap = request.headers.get('x-request-capability') ?? '';
     const item = [...active.values()].find(v => constantEqual(v.capability, cap));
     if (!item || item.expires <= Date.now() || item.controller.signal.aborted || !item.timezone || item.callbacks >= 3) throw new AssistantError('FORBIDDEN', 'Live request capability required.', 403);
-    const db = client(); await recheck(db, item.actor); item.callbacks++;
-    const input = await jsonBody(request);
+    const db = client(item.controller.signal); await recheck(db, item.actor); item.callbacks++;
+    const input = await jsonBody(request, item.controller.signal);
     if (operation === 'tools') {
       const result = await executeAssistantTool({ execute: async (actor, tool, period, asOf) => toolResult(await rpc(db, 'assistant_read_tool', { p_actor: actor.id, p_tool: tool.name, p_args: tool.args, p_start: period.start, p_end: period.end, p_as_of: asOf }, item.controller.signal)) }, item.actor, input, item.timezone, item.asOf);
       await recheck(db, item.actor);

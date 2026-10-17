@@ -1,0 +1,42 @@
+
+> deskatlas-monorepo@ test C:\Users\reyna\Desk-Atlas
+> vitest run
+
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/spec2-campaigns-and-rewards.test.ts (18 tests | 1 failed) 71ms
+   ❯ SPEC-2: Admin Campaign Configuration & Automated Reward Voucher Engine (QAD-TC37) (18)
+     × SPEC2-TC05: ALL takes min(cycles) and ANY takes max(cycles) with strict typed vocabulary rejection 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/spec2-campaigns-and-rewards.test.ts > SPEC-2: Admin Campaign Configuration & Automated Reward Voucher Engine (QAD-TC37) > SPEC2-TC05: ALL takes min(cycles) and ANY takes max(cycles) with strict typed vocabulary rejection
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/spec2-campaigns-and-rewards.test.ts:327:70
+    325|       },
+    326|     };
+    327|     expect(CampaignRuleInputSchema.safeParse(invalidReward).success).t…
+       |                                                                      ^
+    328|
+    329|     // 2. ALL logic: count 10 (threshold 5 -> 2 cycles) AND spend 1200…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 250 passed | 5 skipped (256)
+      Tests  1 failed | 2254 passed | 20 skipped (2275)
+   Start at  12:22:21
+   Duration  136.75s (import 93%, transform 4%, tests 3%, worker 1%)
+
+    Isolate  256 workers spawned · ~572ms startup each (spawn + environment, per file)
+             at least ~12.74s faster with isolate: false — reuses workers across files instead of one per file
+
+ ELIFECYCLE  Test failed. See above for more details.

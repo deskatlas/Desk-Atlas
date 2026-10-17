@@ -28,8 +28,8 @@ def normalize(text: str) -> str:
 
 def parser_fingerprint(kind: str) -> str:
     versions = {name: importlib.metadata.version(name) for name in ('python-docx', 'pypdf', 'pypdfium2', 'olefile')}
-    versions['normalizer'] = 'nfc-v1'
-    versions['chunker'] = 'kb-tokenizer-v1'
+    versions['normalizer'] = 'nfc-v2-page-coverage'
+    versions['chunker'] = 'kb-tokenizer-v5-ordinary-document-review'
     for name, command in (('libreoffice', ['libreoffice', '--version']), ('tesseract', ['tesseract', '--version'])):
         if (name == 'libreoffice' and kind == 'DOC') or (name == 'tesseract' and kind == 'PDF'):
             try:
@@ -42,7 +42,7 @@ def parser_fingerprint(kind: str) -> str:
         for language in ('eng', 'fil'):
             trained = data / (language + '.traineddata')
             versions[language] = digest(trained.read_bytes()) if trained.exists() else 'unavailable'
-    return 'kb-parser-v1:' + digest(json.dumps(versions, sort_keys=True, separators=(',', ':')).encode())
+    return 'kb-parser-v5:' + digest(json.dumps(versions, sort_keys=True, separators=(',', ':')).encode())
 
 
 def inspect_docx(path: Path) -> list[str]:
@@ -94,10 +94,13 @@ def extract_docx(path: Path) -> tuple[list[dict], list[str]]:
     document = Document(path)
     sections = []
     heading = []
+    instances = []
+    instance_count = 0
     counters = {}
     def append(text):
         if normalize(text):
-            sections.append({"heading": " / ".join(heading), "page": None, "method": "TEXT", "text": normalize(text)})
+            sections.append({"heading": " / ".join(heading), "page": None, "method": "TEXT", "text": normalize(text),
+                             "section_id": instances[-1] if instances else 's0', "ancestors": ['s0'] + instances[:-1] if instances else []})
     for child in document.element.body:
         if child.tag.endswith("}p"):
             paragraph = Paragraph(child, document)
@@ -105,6 +108,8 @@ def extract_docx(path: Path) -> tuple[list[dict], list[str]]:
             text = paragraph.text
             if style.startswith("Heading ") and style.split()[-1].isdigit():
                 level = int(style.split()[-1])
+                instance_count += 1
+                instances[:] = instances[:level - 1] + [f's{instance_count}']
                 heading[:] = heading[:level - 1] + [text]
                 append("#" * min(level, 6) + " " + text)
             else:
@@ -125,6 +130,9 @@ def extract_docx(path: Path) -> tuple[list[dict], list[str]]:
         elif not child.tag.endswith("}sectPr"):
             warnings.append("WORD_EMBEDDED_CONTENT")
     furniture = set()
+    # Headers/footers have document scope, never the last procedure's scope.
+    heading.clear()
+    instances.clear()
     for section in document.sections:
         for part in (section.header, section.footer, section.first_page_header, section.first_page_footer, section.even_page_header, section.even_page_footer):
             for paragraph in part.paragraphs:
@@ -148,29 +156,56 @@ def extract_pdf(path: Path, scratch: Path) -> tuple[list[dict], list[str]]:
     sections, warnings = [], set()
     try:
         for index, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
+            text = normalize(page.extract_text() or "")
             method = "TEXT"
             readable = sum(character.isalnum() for character in text)
-            if readable < 20 or text.count("\ufffd") > max(2, len(text) // 100):
+            # Images require coverage review even when a readable header exists.
+            needs_ocr = bool(page.images) or readable < 20 or text.count("\ufffd") > max(2, len(text) // 100)
+            if needs_ocr:
                 if renderer is None:
                     renderer = pdfium.PdfDocument(str(path))
                 rendered_page = renderer[index]
-                bitmap = rendered_page.render(scale=2)
+                bitmap = None
                 image = scratch / f"page-{index}.png"
-                bitmap.to_pil().save(image)
-                bitmap.close()
-                rendered_page.close()
-                process = subprocess.run([os.environ.get("TESSERACT_PATH", "tesseract"), str(image), "stdout", "-l", "eng+fil", "--psm", "3"], capture_output=True, timeout=120, check=False)
-                image.unlink(missing_ok=True)
-                if process.returncode:
-                    raise ExtractionError("PARSER_FAILED")
-                text = process.stdout.decode("utf-8", errors="strict")
-                method = "OCR"
-                warnings.add("OCR_REVIEW")
-            if not text.strip():
-                raise ExtractionError("EMPTY_TEXT")
-            warnings.add("TABLE_REVIEW")  # Reading order/numeric tables need source comparison.
-            sections.append({"heading": "", "page": index + 1, "method": method, "text": normalize(text)})
+                try:
+                    width, height = rendered_page.get_size()
+                    if width <= 0 or height <= 0 or width * height * 4 > 24_000_000:
+                        raise ExtractionError("CONTENT_LIMIT")
+                    bitmap = rendered_page.render(scale=2)
+                    pixels = bitmap.to_pil().convert("L")
+                    # Empty OCR alone never proves blankness. Inspect every pixel.
+                    if not text and pixels.getextrema()[0] >= 250:
+                        sections.append({"heading": "", "page": index + 1, "method": "TEXT",
+                                         "text": "", "outcome": "SKIPPED_BLANK"})
+                        warnings.add("BLANK_PAGE_SKIPPED")
+                        continue
+                    pixels.save(image)
+                    process = subprocess.run([os.environ.get("TESSERACT_PATH", "tesseract"), str(image), "stdout", "-l", "eng+fil", "--psm", "3"], capture_output=True, timeout=120, check=False)
+                    if process.returncode:
+                        raise ExtractionError("PARSER_FAILED")
+                    ocr = normalize(process.stdout.decode("utf-8", errors="strict"))
+                    if sum(char.isalnum() for char in ocr) < 3:
+                        raise ExtractionError("UNREADABLE_PAGE")
+                    # Keep native lines once; append OCR-only lines. Differences
+                    # are visible for review instead of guessed corrections.
+                    if text and readable >= 20:
+                        native_lines = {re.sub(r'\s+', ' ', line).strip().casefold() for line in text.splitlines()}
+                        additions = [line for line in ocr.splitlines()
+                                     if re.sub(r'\s+', ' ', line).strip().casefold() not in native_lines]
+                        text = normalize(text + '\n' + '\n'.join(dict.fromkeys(additions)))
+                        method = "MIXED"
+                        warnings.add("MIXED_CONTENT_REVIEW")
+                    else:
+                        text, method = ocr, "OCR"
+                    warnings.add("OCR_REVIEW")
+                finally:
+                    image.unlink(missing_ok=True)
+                    if bitmap is not None:
+                        bitmap.close()
+                    rendered_page.close()
+            warnings.add("TABLE_REVIEW")
+            sections.append({"heading": "", "page": index + 1, "method": method,
+                             "text": normalize(text), "outcome": "EXTRACTED"})
     finally:
         if renderer is not None:
             renderer.close()
@@ -191,15 +226,31 @@ def extract(path: Path, kind: str, scratch: Path) -> dict:
         text, removed = re.subn(r"<!--.*?-->|<(script|style)\b[^>]*>.*?</\1\s*>|<[^>]+>", "", text, flags=re.S | re.I)
         if removed:
             warnings.append("HTML_REMOVED")
-        sections, heading, lines = [], [], []
+        sections, heading, lines, instances = [], [], [], []
+        instance_count = 0
+        fence = None
         def flush():
             if normalize("\n".join(lines)):
-                sections.append({"heading": " / ".join(heading), "page": None, "method": "TEXT", "text": normalize("\n".join(lines))})
+                sections.append({"heading": " / ".join(heading), "page": None, "method": "TEXT", "text": normalize("\n".join(lines)),
+                                 "section_id": instances[-1] if instances else 's0', "ancestors": ['s0'] + instances[:-1] if instances else []})
             lines.clear()
         for line in text.splitlines():
+            marker = re.match(r'^\s{0,3}(`{3,}|~{3,})', line)
+            if marker:
+                if fence is None:
+                    fence = marker[1][0]
+                elif marker[1][0] == fence:
+                    fence = None
+                lines.append(line)
+                continue
+            if fence:
+                lines.append(line)
+                continue
             match = re.match(r"^(#{1,6})\s+(.+)$", line)
             if match:
                 flush()
+                instance_count += 1
+                instances[:] = instances[:len(match[1]) - 1] + [f's{instance_count}']
                 heading[:] = heading[:len(match[1]) - 1] + [match[2]]
             lines.append(line)
         flush()
@@ -236,7 +287,24 @@ def extract(path: Path, kind: str, scratch: Path) -> dict:
         raise ExtractionError("TYPE_MISMATCH")
     if not sections or not any(section["text"].strip() for section in sections):
         raise ExtractionError("EMPTY_TEXT")
+    # MS53-TC08/10: absent headings do not mean absent readable structure.
+    # Keep the entire source as one support unit, with paragraph/list/table and
+    # page boundaries retained. This conservative closure never guesses where
+    # a procedure ends or treats a generated display label as a policy heading.
+    # OCR/mixed reading order still requires focused verification.
+    if not any(section.get('heading') for section in sections):
+        for section in sections:
+            if section['text'].strip():
+                section['section_id'] = 's1'
+                section['ancestors'] = []
     content = "\n\n".join(section["text"] for section in sections)
+    offset = 0
+    for section in sections:
+        # Offsets address the content_sha256-bound normalized extraction, not
+        # invented byte positions in binary Word/PDF source files.
+        section['normalized_start'] = offset
+        section['normalized_end'] = offset + len(section['text'])
+        offset = section['normalized_end'] + 2
     return {"sections": sections, "warning_codes": sorted(set(warnings)), "source_sha256": digest(raw), "content_sha256": digest(content.encode()), "parser_fingerprint": parser_fingerprint(kind)}
 
 

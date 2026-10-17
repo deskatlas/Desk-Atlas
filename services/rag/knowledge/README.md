@@ -2,7 +2,7 @@
 
 Traceability: PRD-F27, SDD-C23/C24, ERD-E24 through ERD-E29, DSD-UI17, QAD-TC45.
 
-The admin Settings Knowledge Base tab uploads private sources, queues durable PostgreSQL work, previews extraction, and explicitly publishes reviewed versions. Replacements keep their published predecessor active. Document removal revokes retrieval before physical cleanup. Unapproved SOP files are never imported automatically.
+The MS-64 Settings Knowledge Base tab accepts a file and audience with one Upload action. Durable PostgreSQL jobs verify extraction and automatically publish the authorized version after system checks. Preview is read-only and optional; legacy human review records remain intact. Replacements keep their published predecessor active. Document removal revokes retrieval before physical cleanup. Unapproved SOP files are never imported automatically.
 
 ## Local setup
 
@@ -48,3 +48,26 @@ Superseded content remains admin-only pending the owner's retention decision; no
 - `pnpm typecheck`, `pnpm lint`, and `pnpm build` passed. The configured lint commands are package placeholders and do not constitute an ESLint review of the application.
 - `pnpm test`: 1888 passed, 2 skipped, 1 failed in unchanged `tests/spec2-campaigns-and-rewards.test.ts` (SPEC2-TC05 expects a 100-percent discount to be rejected). No campaign validation code was changed for SPEC-5.
 - Docker's Linux engine is unavailable on the workstation, including after an attempted desktop start. The isolated image build, real DOC conversion/eng+fil OCR, real storage/RLS, and full end-to-end ingestion have not passed. Feature activation and production release remain gated on those checks.
+
+## MS-46 ingestion and cleanup extension
+
+Apply additive migration 018 only through the normal reviewed migration workflow, after stopping old issuers/workers and disabling KB/RAG. The matching gateway reserves and confirms upload permits; purge retains paths until authorization expiry and final absence verification. Parser v2 preserves blank-page provenance and mixed-content review. Existing publications remain unchanged; changed extraction requires explicit successor review/publication. See [MS-46 implementation and acceptance record](../MS46-IMPLEMENTATION.md) for recovery, rollback protection, verification and pending provider/container/pgvector gates.
+
+## MS-52 cleanup scheduling
+
+After deploying additive migration `021_knowledge_purge_scheduling.sql` and its matching gateway/worker, `pnpm rag:worker` runs one ingestion lane and one independent cleanup lane. Each lane has one active job and polls idle queues once per second. A purge claim skips upload reconciliation and cannot load parser containers or embedding weights. `pnpm rag:purge` starts a standalone cleanup lane using only KB gateway settings and the worker authority, independent of the answer API and answer-model manifest. `KB_WORKER_MODE=ingest` runs only ingestion; provision a cleanup process when using this setting. No launcher starts automatically.
+
+Disable KB/RAG and drain gateways/workers before applying 021 through the normal migration workflow, following 020. Do not execute down migrations in the forward sequence. Roll back matching runtime and `021_knowledge_purge_scheduling_down.sql` together after draining workers. The down migration restores the effective 019 worker function while retaining 020 section-review behavior and all 018 upload safety fences. No production migration or feature activation was performed.
+
+Removed versions with outstanding upload permits wait until the existing authorization deadline. They remain unavailable to retrieval immediately. Eligible jobs drain at most 1,000 chunks across all generations per database operation, yielding for one second between batches so other cleanup jobs can progress, retaining private object references until verified storage completion. Storage targets are deduplicated and exact absence is verified once per directory. A full 100-object page is inconclusive and triggers durable retry; listing errors, partial deletion and transport exceptions never become success. Retained SUPERSEDED versions are unchanged.
+
+The compact cleanup panel distinguishes authorization waits, indexed-content batches, active cleanup, provider retries, failed jobs and work awaiting a worker. Awaiting a worker is not proof that a worker is offline. Check worker availability if this state persists. No estimated completion time is presented. Completion leaves the pending panel; the job's SUCCEEDED state and timing checkpoint are retained. The working list reconciles immediately after authoritative removal through MS-51.
+
+Content-free job checkpoints record `eligible_at`, `claimed_at`, `storage_ms`, `object_count`, and `verified_at`; existing `removed_at`, `created_at`, and `completed_at` distinguish withdrawal, eligibility, claim, and finalization. Worker service metrics contain only kind and duration and do not claim success. Do not log source content, private object paths, request bodies or credentials. See [MS-52 implementation evidence](../MS52-IMPLEMENTATION.md) for actual verification and pending provider acceptance.
+
+
+## MS-64 automatic preparation
+
+Apply forward migration 025 after 024, then deploy matching readers, gateway and worker before exposing the new upload form. Upload admissions call `upload_auto`; an unmigrated database cannot accept the new intent. No environment flag silently converts legacy jobs. New jobs require the `kb-auto-v1` preparation contract. Old parser/container fingerprints fail safely, never receive forged human acknowledgment, and leave active predecessors usable.
+
+Run `pnpm test:ms64`, `pnpm test:ms64:python` and `pnpm test:ms64:postgres`. The SQL command uses a disposable local PostgreSQL with an array vector adapter, never configured application databases. Stop new admissions and drain workers before rollback. The 025 down migration refuses while automated provenance or accepted work remains; preserve forward readers until dependent versions have been explicitly retired through lifecycle operations. Do not discard provenance or run reverse migrations against active auto publications. See [implementation record](../MS64-IMPLEMENTATION.md).

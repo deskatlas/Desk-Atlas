@@ -1,0 +1,41 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: facility-fresh
+{"case":"facility-fresh","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"elapsed_ms":12287,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":2813,"system_bytes":1718,"serialized_model_bytes":3000,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":41,"candidate_count":1,"selected_count":1,"selection_attempts":1,"selection_bytes":894,"requested_count":1,"supported_count":1,"expansion_attempts":1,"packed_quote_count":3,"max_quote_utf16":445,"context_source_count":0,"closure_count":3,"group_count":3,"evidence_bytes":2813,"evidence_packed":1,"evidence_supported":0},"ranked_units":["b802583f750dde1410fdd3ab4d827c18f510be86b90c395523db63101059c0f3"],"closure_units":["34f6bf0892a0ee7756f37f66d8595a3476f6df826c7a6c2254972a4057d19f2a","a604c5b848b248b73e4ba7913d18c88e0c5d443d8ded26c3c13dfa1d25b42695","b802583f750dde1410fdd3ab4d827c18f510be86b90c395523db63101059c0f3"]},"timing":"auth;dur=183.375, catalog;dur=436.962, validate;dur=0.277, settings;dur=90.937, python_plan_queue;dur=0.006, python_plan_verify;dur=117.771, python_plan_inference;dur=4257.218, python_plan_load;dur=16.712, python_plan_prompt;dur=226.832, python_plan_generation;dur=3854.864, python_plan_schema;dur=0.079, python_plan_residual;dur=1.101, python_plan_total;dur=4376.174, plan;dur=4378.442, python_embed_queue;dur=0.013, python_embed_inference;dur=1476.164, python_embed_residual;dur=9.569, python_embed_total;dur=1485.745, embed;dur=1494.394, retrieve;dur=535.350, python_answer_queue;dur=0.016, python_answer_verify;dur=254.994, python_answer_inference;dur=4994.498, python_answer_load;dur=47.240, python_answer_prompt;dur=1449.151, python_answer_generation;dur=3277.053, python_answer_schema;dur=0.106, python_answer_residual;dur=2.289, python_answer_total;dur=5251.905, context;dur=3563.318, expand;dur=138.915, answer;dur=1694.402, serialize;dur=0.168, residual;dur=0.000, total;dur=12285.511"}
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: complaint-followup
+{"case":"complaint-followup","component_probe":true,"status":200,"valid":true,"kind":"UNSUPPORTED","mode":"EVIDENCE_GAP","useful":false,"elapsed_ms":6767,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"plan","reason":"UNSUPPORTED","category":"out_of_scope"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":258,"system_bytes":5006,"serialized_model_bytes":9871,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":63},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=205.376, catalog;dur=329.667, validate;dur=0.185, settings;dur=72.493, python_plan_queue;dur=0.010, python_plan_verify;dur=497.445, python_plan_inference;dur=5653.612, python_plan_load;dur=46.995, python_plan_prompt;dur=374.829, python_plan_generation;dur=5050.831, python_plan_schema;dur=0.100, python_plan_residual;dur=1.160, python_plan_total;dur=6152.327, plan;dur=6155.175, serialize;dur=0.151, residual;dur=1.757, total;dur=6764.804"}
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts (8 tests | 2 failed) 168916ms
+   × broad question gateway audit: facility-fresh 12296ms
+   × broad question gateway audit: complaint-followup 6770ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: facility-fresh
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: complaint-followup
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts:77:18
+     75|   expect(response.status).toBe(200);
+     76|   expect(parsed.success).toBe(true);
+     77|   expect(useful).toBe(true);
+       |                  ^
+     78| }, 60000);
+     79|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  14:28:26
+   Duration  172.20s (tests 98%, transform 1%, import 1%)
+

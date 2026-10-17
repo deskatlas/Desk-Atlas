@@ -37,9 +37,9 @@ describe('SPEC5-TC01/05/15: strict inputs and verified actor boundary', () => {
   it('verifies the signature and fresh active admin profile', async () => {
     expect((await authorizeKnowledge(request())).actor).toBe(actor);
     stub.profile.is_active = false;
-    await expect(authorizeKnowledge(request())).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(authorizeKnowledge(request())).rejects.toMatchObject({ code: 'ACCOUNT_INACTIVE', status: 403 });
     stub.profile = { role: 'STAFF', is_active: true };
-    await expect(authorizeKnowledge(request())).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(authorizeKnowledge(request())).rejects.toMatchObject({ code: 'ACCESS_REVOKED', status: 403 });
   });
   it('accepts same-origin uploads when Next.js binds to 0.0.0.0', async () => {
     const upload = new Request('http://0.0.0.0:3000/api/admin/knowledge/uploads', {
@@ -64,9 +64,9 @@ describe('SPEC5-TC01/05/15: strict inputs and verified actor boundary', () => {
     expect(stub.calls).toBe(0);
   });
   it('denies forged role headers, expired sessions and cross-origin mutations', async () => {
-    await expect(authorizeKnowledge(request('GET', { Authorization: 'Bearer forged', 'x-user-role': 'ADMIN', 'x-user-id': actor }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(authorizeKnowledge(request('GET', { Authorization: 'Bearer forged', 'x-user-role': 'ADMIN', 'x-user-id': actor }))).rejects.toMatchObject({ code: 'AUTH_REQUIRED', status: 401 });
     const expired = issueAdminSession(actor, secret, Date.now() - 3600001);
-    await expect(authorizeKnowledge(request('GET', { Authorization: `Bearer ${expired}` }))).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(authorizeKnowledge(request('GET', { Authorization: `Bearer ${expired}` }))).rejects.toMatchObject({ code: 'AUTH_REQUIRED', status: 401 });
     await expect(authorizeKnowledge(request('POST', { Origin: 'https://attacker.invalid' }))).rejects.toMatchObject({ code: 'ORIGIN_DENIED' });
     await expect(authorizeKnowledge(request('POST', { Origin: '' }))).rejects.toMatchObject({ code: 'ORIGIN_DENIED' });
   });
@@ -77,7 +77,7 @@ describe('SPEC5-TC01/05/15: strict inputs and verified actor boundary', () => {
     await expect(authorizeKnowledge(request())).rejects.toMatchObject({ code: 'AUTH_UNAVAILABLE' });
     const response = knowledgeFailure(new Error('source content and credentials'));
     expect(await response.text()).not.toContain('credentials');
-    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('cache-control')).toContain('no-store');
   });
   it('worker ingress never accepts an admin/user session as a worker credential', async () => {
     expect(() => authorizeKnowledgeWorker(request())).toThrow('FORBIDDEN');

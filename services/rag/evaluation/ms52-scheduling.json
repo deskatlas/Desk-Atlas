@@ -1,0 +1,18 @@
+{
+  "profile": "scheduler-only, 30 synthetic purge jobs, ingestion blocked 1000ms, no provider calls",
+  "release_evidence": false,
+  "baseline_sha256": "f7777aa4643949a7820cc45dd3b687489298377905bb28d96647d2f2920b097f",
+  "before": {
+    "samples": 30,
+    "eligible_to_claim_p50_ms": 1039.093,
+    "eligible_to_claim_p95_ms": 1039.14,
+    "max_ms": 1039.144
+  },
+  "after": {
+    "samples": 30,
+    "eligible_to_claim_p50_ms": 0.63,
+    "eligible_to_claim_p95_ms": 0.753,
+    "max_ms": 0.763
+  },
+  "normal_provider_latency_acceptance": "PENDING"
+}

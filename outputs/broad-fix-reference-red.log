@@ -1,0 +1,31 @@
+..F.                                                                     [100%]
+================================== FAILURES ===================================
+___________ test_genuine_reference_can_resolve_to_the_previous_task ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FB342D3CE0>
+
+    def test_genuine_reference_can_resolve_to_the_previous_task(monkeypatch):
+        prior = 'How should staff handle noise complaints?'
+        result = api.Plan(kind='DOCUMENT', query=prior, tools=[], resolution=api.IntentResolution(
+            request='KNOWLEDGE', process='noise control', referents=['noise complaint'], turn=0,
+            question=prior, distinction=''))
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message='Can you remind me how to handle that?',
+            recent_context=api.Context(user_turns=[prior]), business_date='2026-10-17', timezone='Asia/Manila',
+            search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['query'] == prior
+E       AssertionError: assert 'Can you remi... handle that?' == 'How should s...e complaints?'
+E         
+E         - How should staff handle noise complaints?
+E         + Can you remind me how to handle that?
+
+services\rag\tests\test_broad_remediation.py:41: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_broad_remediation.py::test_genuine_reference_can_resolve_to_the_previous_task
+1 failed, 3 passed, 1 warning in 1.19s

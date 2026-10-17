@@ -248,6 +248,15 @@ export * from './services/campaignAnalyticsService';
 export * from './services/campaignAnalyticsSupabaseRepository';
 export * from './services/campaignAnalyticsExport';
 export * from './models/knowledge';
+export * from './services/knowledgeStructure';
 export * from './services/assistantService';
+export * from './services/assistantRetrieval';
 export { assistantAnswerSchema, assistantSourceSchema } from '@deskatlas/validation';
 export type { AssistantAnswer, AssistantSource } from '@deskatlas/validation';
+
+export * from './services/assistantLanguage';
+export * from './services/assistantGovernance';
+export * from './services/assistantHybridRetrieval';
+export * from './services/assistantOutcome';
+export * from './services/assistantSynthesis';
+export * from './services/assistantPresentation';

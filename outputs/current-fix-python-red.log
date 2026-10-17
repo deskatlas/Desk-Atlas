@@ -1,0 +1,257 @@
+FFFFFFFFFFF....                                                          [100%]
+================================== FAILURES ===================================
+_ test_advice_never_dispatches_a_carried_data_selection[And if they still aren't happy?] _
+
+message = "And if they still aren't happy?"
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B8431DD250>
+
+    @pytest.mark.parametrize('message', [
+        "And if they still aren't happy?", 'Someone wants to stay longer. How does that work?',
+        'Somebody forgot their stuff here. What now?', 'They ignored me. Now what?',
+        'A visitor wants more time. How would I arrange that?',
+    ])
+    def test_advice_never_dispatches_a_carried_data_selection(message, monkeypatch):
+        generated = api.Plan(kind='MIXED', query=message, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        generate = AsyncMock(return_value=generated)
+        monkeypatch.setattr(api, 'generate', generate)
+        request = api.PlanInput(message=message, recent_context=api.Context(
+            user_turns=['The place is getting noisy. What should I do?'],
+            selections=api.Tool(name='operational_snapshot', args=api.Filters())),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'DOCUMENT'
+E       AssertionError: assert 'MIXED' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + MIXED
+
+services\rag\tests\test_current_browser_repair.py:25: AssertionError
+_ test_advice_never_dispatches_a_carried_data_selection[Someone wants to stay longer. How does that work?] _
+
+message = 'Someone wants to stay longer. How does that work?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B8431DEAE0>
+
+    @pytest.mark.parametrize('message', [
+        "And if they still aren't happy?", 'Someone wants to stay longer. How does that work?',
+        'Somebody forgot their stuff here. What now?', 'They ignored me. Now what?',
+        'A visitor wants more time. How would I arrange that?',
+    ])
+    def test_advice_never_dispatches_a_carried_data_selection(message, monkeypatch):
+        generated = api.Plan(kind='MIXED', query=message, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        generate = AsyncMock(return_value=generated)
+        monkeypatch.setattr(api, 'generate', generate)
+        request = api.PlanInput(message=message, recent_context=api.Context(
+            user_turns=['The place is getting noisy. What should I do?'],
+            selections=api.Tool(name='operational_snapshot', args=api.Filters())),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'DOCUMENT'
+E       AssertionError: assert 'MIXED' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + MIXED
+
+services\rag\tests\test_current_browser_repair.py:25: AssertionError
+_ test_advice_never_dispatches_a_carried_data_selection[Somebody forgot their stuff here. What now?] _
+
+message = 'Somebody forgot their stuff here. What now?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B843258140>
+
+    @pytest.mark.parametrize('message', [
+        "And if they still aren't happy?", 'Someone wants to stay longer. How does that work?',
+        'Somebody forgot their stuff here. What now?', 'They ignored me. Now what?',
+        'A visitor wants more time. How would I arrange that?',
+    ])
+    def test_advice_never_dispatches_a_carried_data_selection(message, monkeypatch):
+        generated = api.Plan(kind='MIXED', query=message, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        generate = AsyncMock(return_value=generated)
+        monkeypatch.setattr(api, 'generate', generate)
+        request = api.PlanInput(message=message, recent_context=api.Context(
+            user_turns=['The place is getting noisy. What should I do?'],
+            selections=api.Tool(name='operational_snapshot', args=api.Filters())),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'DOCUMENT'
+E       AssertionError: assert 'MIXED' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + MIXED
+
+services\rag\tests\test_current_browser_repair.py:25: AssertionError
+_ test_advice_never_dispatches_a_carried_data_selection[They ignored me. Now what?] _
+
+message = 'They ignored me. Now what?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B84325BD40>
+
+    @pytest.mark.parametrize('message', [
+        "And if they still aren't happy?", 'Someone wants to stay longer. How does that work?',
+        'Somebody forgot their stuff here. What now?', 'They ignored me. Now what?',
+        'A visitor wants more time. How would I arrange that?',
+    ])
+    def test_advice_never_dispatches_a_carried_data_selection(message, monkeypatch):
+        generated = api.Plan(kind='MIXED', query=message, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        generate = AsyncMock(return_value=generated)
+        monkeypatch.setattr(api, 'generate', generate)
+        request = api.PlanInput(message=message, recent_context=api.Context(
+            user_turns=['The place is getting noisy. What should I do?'],
+            selections=api.Tool(name='operational_snapshot', args=api.Filters())),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'DOCUMENT'
+E       AssertionError: assert 'MIXED' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + MIXED
+
+services\rag\tests\test_current_browser_repair.py:25: AssertionError
+_ test_advice_never_dispatches_a_carried_data_selection[A visitor wants more time. How would I arrange that?] _
+
+message = 'A visitor wants more time. How would I arrange that?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B84325AA80>
+
+    @pytest.mark.parametrize('message', [
+        "And if they still aren't happy?", 'Someone wants to stay longer. How does that work?',
+        'Somebody forgot their stuff here. What now?', 'They ignored me. Now what?',
+        'A visitor wants more time. How would I arrange that?',
+    ])
+    def test_advice_never_dispatches_a_carried_data_selection(message, monkeypatch):
+        generated = api.Plan(kind='MIXED', query=message, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        generate = AsyncMock(return_value=generated)
+        monkeypatch.setattr(api, 'generate', generate)
+        request = api.PlanInput(message=message, recent_context=api.Context(
+            user_turns=['The place is getting noisy. What should I do?'],
+            selections=api.Tool(name='operational_snapshot', args=api.Filters())),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True)
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'DOCUMENT'
+E       AssertionError: assert 'MIXED' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + MIXED
+
+services\rag\tests\test_current_browser_repair.py:25: AssertionError
+_ test_task_free_advice_clarifies_scope[Hi, I'm helping out at the front desk today. Any advice?] _
+
+message = "Hi, I'm helping out at the front desk today. Any advice?"
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B84324A960>
+
+    @pytest.mark.parametrize('message', ["Hi, I'm helping out at the front desk today. Any advice?",
+        "I'm new here. Where do I start?", 'Any tips for my first shift?'])
+    def test_task_free_advice_clarifies_scope(message, monkeypatch):
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='Check-in', tools=[]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message=message, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila'), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'CLARIFY'
+E       AssertionError: assert 'DOCUMENT' == 'CLARIFY'
+E         
+E         - CLARIFY
+E         + DOCUMENT
+
+services\rag\tests\test_current_browser_repair.py:37: AssertionError
+___ test_task_free_advice_clarifies_scope[I'm new here. Where do I start?] ____
+
+message = "I'm new here. Where do I start?"
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B8432499A0>
+
+    @pytest.mark.parametrize('message', ["Hi, I'm helping out at the front desk today. Any advice?",
+        "I'm new here. Where do I start?", 'Any tips for my first shift?'])
+    def test_task_free_advice_clarifies_scope(message, monkeypatch):
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='Check-in', tools=[]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message=message, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila'), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'CLARIFY'
+E       AssertionError: assert 'DOCUMENT' == 'CLARIFY'
+E         
+E         - CLARIFY
+E         + DOCUMENT
+
+services\rag\tests\test_current_browser_repair.py:37: AssertionError
+_____ test_task_free_advice_clarifies_scope[Any tips for my first shift?] _____
+
+message = 'Any tips for my first shift?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B84324B200>
+
+    @pytest.mark.parametrize('message', ["Hi, I'm helping out at the front desk today. Any advice?",
+        "I'm new here. Where do I start?", 'Any tips for my first shift?'])
+    def test_task_free_advice_clarifies_scope(message, monkeypatch):
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='Check-in', tools=[]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message=message, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila'), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'CLARIFY'
+E       AssertionError: assert 'DOCUMENT' == 'CLARIFY'
+E         
+E         - CLARIFY
+E         + DOCUMENT
+
+services\rag\tests\test_current_browser_repair.py:37: AssertionError
+____ test_finishing_day_does_not_guess_shift_handover_or_facility_closing _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B843266C60>
+
+    def test_finishing_day_does_not_guess_shift_handover_or_facility_closing(monkeypatch):
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='Closing', tools=[]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message="I'm about to finish for the day. Anything I should remember?",
+            recent_context=api.Context(user_turns=['Someone left a bag.']), business_date='2026-10-17', timezone='Asia/Manila'),
+            SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert result['kind'] == 'CLARIFY'
+E       AssertionError: assert 'DOCUMENT' == 'CLARIFY'
+E         
+E         - CLARIFY
+E         + DOCUMENT
+
+services\rag\tests\test_current_browser_repair.py:48: AssertionError
+__ test_followup_keeps_previous_question_as_context_not_generated_occupancy ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B8432657C0>
+
+    def test_followup_keeps_previous_question_as_context_not_generated_occupancy(monkeypatch):
+        prior = 'The place is getting noisy. What should I do?'
+        generate = AsyncMock(return_value=api.Plan(kind='OPERATIONAL', query='Current occupancy',
+            tools=[api.Tool(name='operational_snapshot', args=api.Filters())]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message='They ignored me. Now what?',
+            recent_context=api.Context(user_turns=['An extension request', prior]), business_date='2026-10-17',
+            timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert prior in result['query']
+E       AssertionError: assert 'The place is getting noisy. What should I do?' in 'Current occupancy'
+
+services\rag\tests\test_current_browser_repair.py:60: AssertionError
+_________ test_workflow_scope_cannot_hide_numbered_duties_as_factual __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B8432673E0>
+
+    def test_workflow_scope_cannot_hide_numbered_duties_as_factual(monkeypatch):
+        request = request_for('1. Prepare reception.\n2. Check reservations.\n3. Check supplies.')
+        request.query = 'What should I do before people start arriving?'
+        request.presentation_contract = 'ms60-concise-v1'
+        request.coverage = api.Coverage(scope='FACTUAL', outcome='COMPLETE', gaps=[])
+        projection = api.MainProjection(p=[0])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=projection))
+>       with pytest.raises(api.HTTPException):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'fastapi.exceptions.HTTPException'>
+
+services\rag\tests\test_current_browser_repair.py:72: Failed
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_current_browser_repair.py::test_advice_never_dispatches_a_carried_data_selection[And if they still aren't happy?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_advice_never_dispatches_a_carried_data_selection[Someone wants to stay longer. How does that work?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_advice_never_dispatches_a_carried_data_selection[Somebody forgot their stuff here. What now?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_advice_never_dispatches_a_carried_data_selection[They ignored me. Now what?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_advice_never_dispatches_a_carried_data_selection[A visitor wants more time. How would I arrange that?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_task_free_advice_clarifies_scope[Hi, I'm helping out at the front desk today. Any advice?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_task_free_advice_clarifies_scope[I'm new here. Where do I start?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_task_free_advice_clarifies_scope[Any tips for my first shift?]
+FAILED services/rag/tests/test_current_browser_repair.py::test_finishing_day_does_not_guess_shift_handover_or_facility_closing
+FAILED services/rag/tests/test_current_browser_repair.py::test_followup_keeps_previous_question_as_context_not_generated_occupancy
+FAILED services/rag/tests/test_current_browser_repair.py::test_workflow_scope_cannot_hide_numbered_duties_as_factual
+11 failed, 4 passed, 1 warning in 1.34s

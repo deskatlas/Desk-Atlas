@@ -1,0 +1,42 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms57-gateway.test.ts (37 tests | 1 failed | 36 skipped) 93ms
+   × MS62-TC05 attributes projection-capacity without leaking prose or changing exact proof 91ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms57-gateway.test.ts > MS62-TC05 attributes projection-capacity without leaking prose or changing exact proof
+AssertionError: expected { schema_version: 1, …(8) } to match object { …(3) }
+(21 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -3,8 +3,8 @@
+      "acceptance": "PENDING",
+      "omitted_atoms": 0,
+      "status": "ORIGINAL_EXACT",
+      "visible_atoms": 2,
+    },
+-   "fallback_reason": "BUDGET_NOT_ADMITTED",
++   "fallback_reason": "SERVICE_FAILURE",
+    "fallback_stage": "SYNTHESIS",
+  }
+
+ ❯ tests/ms57-gateway.test.ts:102:35
+    100|   expect(answer.evidence_spans.map((span: { quote: string }) => span.q…
+    101|   const diagnostics = response.headers.get('X-RAG-Diagnostics')!;
+    102|   expect(JSON.parse(diagnostics)).toMatchObject({ fallback_reason: rea…
+       |                                   ^
+    103|     exact_presentation: { status: 'ORIGINAL_EXACT', omitted_atoms: 0, …
+    104|   expect(diagnostics).not.toContain('Rooms');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 36 skipped (37)
+   Start at  14:19:08
+   Duration  12.95s (import 82%, transform 17%, tests 1%, worker 1%)
+

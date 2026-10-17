@@ -1,0 +1,31 @@
+..............F.....                                                     [100%]
+================================== FAILURES ===================================
+____ test_general_explanation_without_ordered_steps_is_not_a_full_workflow ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FE818076B0>
+
+    def test_general_explanation_without_ordered_steps_is_not_a_full_workflow(monkeypatch):
+        from test_ms56 import body
+        question = 'Someone wants to stay longer. How does that work?'
+        decision = api.ApplicabilityDecision(conditions=[], direct_answer='Follow the published change policy.',
+            scope='COMPLETE_PROCEDURE', parts=[api.RequestedSupport(request='Explain extensions', p=[0])], clarification='', conflict=False)
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=decision))
+        request = api.ContextInput(query=question, original_query=question, sources=body().sources,
+            contract_version=2, reliability_contract='ms60-v1')
+        result = asyncio.run(api.context_selection(request, SimpleNamespace(ops=['answer'])))
+>       assert result['coverage']['scope'] == 'FACTUAL'
+E       AssertionError: assert 'COMPLETE_PROCEDURE' == 'FACTUAL'
+E         
+E         - FACTUAL
+E         + COMPLETE_PROCEDURE
+
+services\rag\tests\test_current_browser_repair.py:105: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_current_browser_repair.py::test_general_explanation_without_ordered_steps_is_not_a_full_workflow
+1 failed, 19 passed, 1 warning in 1.00s

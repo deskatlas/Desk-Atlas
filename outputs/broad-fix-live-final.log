@@ -1,0 +1,59 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: nohold-context
+{"case":"nohold-context","component_probe":true,"status":503,"valid":false,"useful":false,"elapsed_ms":9720,"diagnostics":{"schema_version":1,"stage":"plan","failures":[{"stage":"plan","reason":"INVALID_PLAN","category":"invalid_model_output"},{"stage":"plan","reason":"MODEL_UNAVAILABLE","category":"service_failure"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":365,"system_bytes":4728,"serialized_model_bytes":9748,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":580},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=133.217, catalog;dur=312.957, validate;dur=28.097, settings;dur=82.766, python_plan_queue;dur=0.017, python_plan_verify;dur=227.380, python_plan_inference;dur=8797.415, python_plan_load;dur=70.391, python_plan_prompt;dur=2875.669, python_plan_generation;dur=5610.140, python_plan_schema;dur=0.134, python_plan_residual;dur=3.281, python_plan_total;dur=9028.227, plan;dur=9071.900, residual;dur=16.558, total;dur=9645.495"}
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: reception-fresh
+{"case":"reception-fresh","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"elapsed_ms":18634,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":384,"system_bytes":4728,"serialized_model_bytes":9465,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":65119,"candidate_count":0,"selected_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":220},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=152.956, catalog;dur=338.396, validate;dur=0.173, settings;dur=77.871, python_plan_queue;dur=0.007, python_plan_verify;dur=552.965, python_plan_inference;dur=4638.083, python_plan_load;dur=49.701, python_plan_prompt;dur=195.748, python_plan_generation;dur=4164.964, python_plan_schema;dur=0.082, python_plan_residual;dur=1.017, python_plan_total;dur=5192.154, plan;dur=5195.482, python_embed_queue;dur=0.017, python_embed_inference;dur=12453.209, python_embed_residual;dur=10.833, python_embed_total;dur=12464.059, embed;dur=12473.811, retrieve;dur=695.398, serialize;dur=0.171, residual;dur=0.000, total;dur=18632.830"}
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts (6 tests | 2 failed) 122144ms
+   × broad question gateway audit: nohold-context 9858ms
+   × broad question gateway audit: reception-fresh 18641ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: nohold-context
+AssertionError: expected 503 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 503
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts:70:27
+     68|   writeFileSync(`${dir}/${item.id}-${randomUUID()}.json`, JSON.stringi…
+     69|   console.log(JSON.stringify(record));
+     70|   expect(response.status).toBe(200);
+       |                           ^
+     71|   expect(parsed.success).toBe(true);
+     72|   expect(useful).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: reception-fresh
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts:72:18
+     70|   expect(response.status).toBe(200);
+     71|   expect(parsed.success).toBe(true);
+     72|   expect(useful).toBe(true);
+       |                  ^
+     73| }, 60000);
+     74|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)
+   Start at  12:22:56
+   Duration  136.90s (tests 90%, transform 8%, import 3%)
+

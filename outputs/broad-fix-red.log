@@ -1,0 +1,100 @@
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_____ test_declared_knowledge_intent_cannot_dispatch_an_operational_tool ______
+
+    def test_declared_knowledge_intent_cannot_dispatch_an_operational_tool():
+>       plan = api.Plan.model_validate({'kind': 'OPERATIONAL', 'query': 'Walk-in seating',
+            'tools': [{'name': 'operational_snapshot', 'args': {}}], 'resolution': {
+                'request': 'KNOWLEDGE', 'process': 'walk-in booking', 'referents': ['walk-in guest'],
+                'turn': -1, 'question': 'How should staff help a walk-in guest?', 'distinction': ''}})
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for Plan
+E       resolution.request
+E         Extra inputs are not permitted [type=extra_forbidden, input_value='KNOWLEDGE', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.12/v/extra_forbidden
+
+services\rag\tests\test_broad_remediation.py:12: ValidationError
+_______ test_current_question_is_last_and_prior_query_cannot_replace_it _______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028AD2543350>
+
+    def test_current_question_is_last_and_prior_query_cannot_replace_it(monkeypatch):
+        question = 'Someone left something behind. What do we do?'
+        prior = 'What should I pass on when my shift ends?'
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query=prior, tools=[]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(user_turns=[prior]),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert list(generate.call_args.args[1])[-1] == 'message'
+E       AssertionError: assert 'verified_role' == 'message'
+E         
+E         - message
+E         + verified_role
+
+services\rag\tests\test_broad_remediation.py:28: AssertionError
+___________ test_model_admission_measures_the_actual_lossless_wire ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028AD24FB3E0>
+
+    def test_model_admission_measures_the_actual_lossless_wire(monkeypatch):
+        async def run():
+            api.app.state.slots = asyncio.Semaphore(1)
+            monkeypatch.setenv('RAG_ANSWER_DIGEST', 'a' * 64)
+            monkeypatch.setattr(api, 'verify_model', AsyncMock())
+            response = {'message': {'content': '{"p":[0],"a":false}'}}
+            inference = AsyncMock(return_value=response)
+            monkeypatch.setattr(api, 'model_request', inference)
+            content = {'candidates': [{'content': 'Required restriction and qualification.'} for _ in range(45)]}
+            await api.generate('Select complete applicable evidence.', content, api.ContextIndexSelection)
+            payload = inference.call_args.args[1]
+            expected = json.dumps(payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
+            assert api.model_wire(payload) == expected
+            assert json.loads(payload['messages'][1]['content']) == content
+            assert payload['messages'][1]['content'] == json.dumps(content, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+            # Byte-exact boundary: no source text is removed to fit a request.
+            monkeypatch.setitem(api.LIMITS, 'model_request_bytes', len(expected) - 1)
+            with pytest.raises(api.HTTPException) as error:
+                await api.generate('Select complete applicable evidence.', content, api.ContextIndexSelection)
+            assert error.value.detail == 'CONTEXT_BUDGET_EXCEEDED'
+            assert inference.await_count == 1
+>       asyncio.run(run())
+
+services\rag\tests\test_broad_remediation.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def run():
+        api.app.state.slots = asyncio.Semaphore(1)
+        monkeypatch.setenv('RAG_ANSWER_DIGEST', 'a' * 64)
+        monkeypatch.setattr(api, 'verify_model', AsyncMock())
+        response = {'message': {'content': '{"p":[0],"a":false}'}}
+        inference = AsyncMock(return_value=response)
+        monkeypatch.setattr(api, 'model_request', inference)
+        content = {'candidates': [{'content': 'Required restriction and qualification.'} for _ in range(45)]}
+        await api.generate('Select complete applicable evidence.', content, api.ContextIndexSelection)
+        payload = inference.call_args.args[1]
+        expected = json.dumps(payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
+>       assert api.model_wire(payload) == expected
+               ^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'model_wire'
+
+services\rag\tests\test_broad_remediation.py:44: AttributeError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_broad_remediation.py::test_declared_knowledge_intent_cannot_dispatch_an_operational_tool
+FAILED services/rag/tests/test_broad_remediation.py::test_current_question_is_last_and_prior_query_cannot_replace_it
+FAILED services/rag/tests/test_broad_remediation.py::test_model_admission_measures_the_actual_lossless_wire
+3 failed, 1 warning in 1.15s

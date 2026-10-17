@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 import { NextResponse } from 'next/server';
-import { verifyAdminSession } from '../../auth/_lib/adminSession';
+import { AdminAccessError, verifyAdministrator } from '../../auth/_lib/verifiedAdmin';
 
 // SPEC-5: only server-verified identities reach privileged KB persistence.
 export class KnowledgeError extends Error {
@@ -29,16 +29,13 @@ export async function authorizeKnowledge(request: Request) {
     if (request.headers.get('origin') !== `${url.protocol}//${host}` || request.headers.get('sec-fetch-site') === 'cross-site')
       throw new KnowledgeError('ORIGIN_DENIED', 403);
   }
-  const token = request.headers.get('authorization')?.match(/^Bearer (\S+)$/i)?.[1];
-  if (!token) throw new KnowledgeError('FORBIDDEN', 403);
-  const client = knowledgeClient();
-  const id = token.startsWith('da_admin_v1.') ? verifyAdminSession(token, process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
-    : (await client.auth.getUser(token)).data.user?.id;
-  if (!id) throw new KnowledgeError('FORBIDDEN', 403);
-  const profile = await client.from('staff_profiles').select('role,is_active').eq('user_id', id).maybeSingle();
-  if (profile.error) throw new KnowledgeError('AUTH_UNAVAILABLE', 503);
-  if (!profile.data?.is_active || profile.data.role !== 'ADMIN') throw new KnowledgeError('FORBIDDEN', 403);
-  return { client, actor: id, scope: knowledgeScope() };
+  try {
+    const { client, actor } = await verifyAdministrator(request);
+    return { client, actor, scope: knowledgeScope() };
+  } catch (error) {
+    if (error instanceof AdminAccessError) throw new KnowledgeError(error.code, error.status);
+    throw error;
+  }
 }
 export function authorizeKnowledgeWorker(request: Request) {
   const expected = process.env.KB_WORKER_TOKEN;
@@ -53,12 +50,34 @@ export function knowledgeResponse(data: unknown, status = 200) {
 export function knowledgeFailure(error: unknown) {
   const code = error instanceof KnowledgeError ? error.code : 'INTERNAL_ERROR';
   const status = error instanceof KnowledgeError ? error.status : 500;
+  // MS64-TC06/07: technical diagnostics remain in the code, never the normal UI.
+  const remedies: Record<string, string> = {
+    ENCRYPTED_FILE: 'Upload an unlocked copy of this file.',
+    TYPE_MISMATCH: 'The file does not match its format. Save a new copy and upload it again.',
+    UNSAFE_FILE: 'This file cannot be processed safely. Upload a plain document copy.',
+    UPLOAD_MISSING: 'The file transfer did not finish. Try Upload again.',
+    UPLOAD_EXPIRED: 'This upload expired. Select the file again.',
+    STORAGE_UNAVAILABLE: 'File storage is temporarily unavailable. Try again.',
+    DATABASE_UNAVAILABLE: 'Knowledge Base is temporarily unavailable. Try again.',
+    UPDATE_REQUIRED: 'Knowledge Base needs a system update before new files can be uploaded. Contact your administrator.',
+    FINGERPRINT_MISMATCH: 'Document preparation is temporarily unavailable. Try again later.',
+    MANIFEST_INVALID: 'We could not prepare the complete file. Upload a clearer copy.',
+    INVALID_INPUT: 'Check the selected file and audience, then try again.',
+  };
   return NextResponse.json({ error: { code, message: code === 'VERSION_CONFLICT' ? 'This document changed. Refresh before continuing.'
-    : code === 'FORBIDDEN' ? 'Active administrator access required.' : code === 'NOT_CONFIGURED' ? 'Knowledge Base is not configured yet.' : code.replaceAll('_', ' ').toLowerCase() } }, { status, headers: { 'Cache-Control': 'no-store' } });
+    : code === 'AUTH_REQUIRED' ? 'Your session ended. Sign in again.'
+    : code === 'AUTH_UNAVAILABLE' ? 'Unable to verify your session. Please retry.'
+    : code === 'ACCESS_REVOKED' ? 'Administrator access denied.'
+    : code === 'ACCOUNT_INACTIVE' ? 'Your administrator account is inactive.'
+    : code === 'FORBIDDEN' ? 'Active administrator access required.' : code === 'NOT_CONFIGURED' ? 'Knowledge Base is not configured yet.' : remedies[code] ?? 'Unable to complete this request. Refresh and try again.' } }, { status, headers: { 'Cache-Control': 'private, no-store' } });
+}
+// PRD-F27 / QAD-TC45: recognize only the additive MS-64 column gap.
+export function missingUploadIntent(error: { code?: string; message: string } | null) {
+  return error?.code === '42703' && /\b(?:kb_document_versions(?:_\d+)?\.)?upload_intent\b/.test(error.message);
 }
 export function checkDatabase(error: { message: string } | null) {
   if (!error) return;
-  const allowed = ['FORBIDDEN', 'NOT_FOUND', 'VERSION_CONFLICT', 'REVIEW_REQUIRED', 'FINGERPRINT_MISMATCH', 'MANIFEST_INVALID', 'ACTIVE_VERSION', 'INVALID_STATE', 'LEASE_LOST'];
+  const allowed = ['FORBIDDEN', 'NOT_FOUND', 'VERSION_CONFLICT', 'REVIEW_REQUIRED', 'FINGERPRINT_MISMATCH', 'MANIFEST_INVALID', 'ACTIVE_VERSION', 'INVALID_STATE', 'LEASE_LOST', 'UPLOAD_EXPIRED', 'UPLOAD_AUTHORIZATION_ACTIVE', 'STORAGE_NOT_VERIFIED'];
   const code = allowed.find(value => error.message === value);
   throw new KnowledgeError(code ?? 'DATABASE_UNAVAILABLE', code === 'FORBIDDEN' ? 403 : code === 'NOT_FOUND' ? 404 : code ? 409 : 503);
 }

@@ -1,0 +1,269 @@
+{
+  "release_evidence": false,
+  "scope": "Diagnostic admin/staff checkout replay; no transcript/source text retained; not five-user or semantic release acceptance",
+  "profile": "Existing pinned model, private Vulkan GPU, compact numeric selection, question-first prompts, independent support check",
+  "observations": [
+    {
+      "role": "ADMIN",
+      "trial": 0,
+      "elapsed_ms": 22105,
+      "status": 200,
+      "citations": 3,
+      "checkout_present": true,
+      "failure_codes": [],
+      "plan_ms": 0.015,
+      "retrieval_ms": 564.026,
+      "model_prompt_ms": 17459.168,
+      "model_generation_ms": 2048.947,
+      "tokens": {
+        "answer_input": 1985,
+        "answer_output": 64
+      }
+    },
+    {
+      "role": "ADMIN",
+      "trial": 1,
+      "elapsed_ms": 4538,
+      "status": 200,
+      "citations": 3,
+      "checkout_present": true,
+      "failure_codes": [],
+      "plan_ms": 0.018,
+      "retrieval_ms": 384.036,
+      "model_prompt_ms": 153.681,
+      "model_generation_ms": 2031.217,
+      "tokens": {
+        "answer_input": 1985,
+        "answer_output": 64
+      }
+    },
+    {
+      "role": "ADMIN",
+      "trial": 2,
+      "elapsed_ms": 4606,
+      "status": 200,
+      "citations": 3,
+      "checkout_present": true,
+      "failure_codes": [],
+      "plan_ms": 0.016,
+      "retrieval_ms": 484.119,
+      "model_prompt_ms": 166.203,
+      "model_generation_ms": 2036.475,
+      "tokens": {
+        "answer_input": 1985,
+        "answer_output": 64
+      }
+    },
+    {
+      "role": "STAFF",
+      "trial": 0,
+      "elapsed_ms": 4969,
+      "status": 200,
+      "citations": 3,
+      "checkout_present": true,
+      "failure_codes": [],
+      "plan_ms": 0.122,
+      "retrieval_ms": 667.35,
+      "model_prompt_ms": 160.452,
+      "model_generation_ms": 2044.325,
+      "tokens": {
+        "answer_input": 1985,
+        "answer_output": 64
+      }
+    },
+    {
+      "role": "STAFF",
+      "trial": 1,
+      "elapsed_ms": 4576,
+      "status": 200,
+      "citations": 3,
+      "checkout_present": true,
+      "failure_codes": [],
+      "plan_ms": 0.02,
+      "retrieval_ms": 441.485,
+      "model_prompt_ms": 154.448,
+      "model_generation_ms": 2049.039,
+      "tokens": {
+        "answer_input": 1985,
+        "answer_output": 64
+      }
+    },
+    {
+      "role": "STAFF",
+      "trial": 2,
+      "elapsed_ms": 4653,
+      "status": 200,
+      "citations": 3,
+      "checkout_present": true,
+      "failure_codes": [],
+      "plan_ms": 0.013,
+      "retrieval_ms": 489.287,
+      "model_prompt_ms": 165.374,
+      "model_generation_ms": 2038.327,
+      "tokens": {
+        "answer_input": 1985,
+        "answer_output": 64
+      }
+    }
+  ],
+  "rejected_prompt_layout_experiment": [
+    {
+      "trial": 0,
+      "elapsed_ms": 28804,
+      "status": 200,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "NO_RELEVANT_SOURCE"
+      ],
+      "plan_ms": 0.021,
+      "retrieval_ms": 640.12,
+      "model_prompt_ms": 24298.906,
+      "model_generation_ms": 2184.219,
+      "tokens": {
+        "answer_input": 2159,
+        "answer_output": 66
+      }
+    },
+    {
+      "trial": 1,
+      "elapsed_ms": 4811,
+      "status": 200,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "NO_RELEVANT_SOURCE"
+      ],
+      "plan_ms": 0.016,
+      "retrieval_ms": 582.441,
+      "model_prompt_ms": 162.384,
+      "model_generation_ms": 2230.94,
+      "tokens": {
+        "answer_input": 2159,
+        "answer_output": 66
+      }
+    },
+    {
+      "trial": 2,
+      "elapsed_ms": 4747,
+      "status": 200,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "NO_RELEVANT_SOURCE"
+      ],
+      "plan_ms": 0.023,
+      "retrieval_ms": 490.14,
+      "model_prompt_ms": 160.127,
+      "model_generation_ms": 2336.877,
+      "tokens": {
+        "answer_input": 2159,
+        "answer_output": 66
+      }
+    },
+    {
+      "trial": 3,
+      "elapsed_ms": 4602,
+      "status": 200,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "NO_RELEVANT_SOURCE"
+      ],
+      "plan_ms": 0.019,
+      "retrieval_ms": 540.557,
+      "model_prompt_ms": 163.613,
+      "model_generation_ms": 2179.707,
+      "tokens": {
+        "answer_input": 2159,
+        "answer_output": 66
+      }
+    },
+    {
+      "trial": 4,
+      "elapsed_ms": 4485,
+      "status": 200,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "NO_RELEVANT_SOURCE"
+      ],
+      "plan_ms": 0.053,
+      "retrieval_ms": 442.88,
+      "model_prompt_ms": 157.587,
+      "model_generation_ms": 2206.952,
+      "tokens": {
+        "answer_input": 2159,
+        "answer_output": 66
+      }
+    }
+  ],
+  "diagnostic_auth_setup_errors": [
+    {
+      "role": "STAFF",
+      "trial": 0,
+      "elapsed_ms": 1730,
+      "status": 401,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "AUTH_REQUIRED"
+      ],
+      "plan_ms": 0,
+      "retrieval_ms": 0,
+      "model_prompt_ms": 0,
+      "model_generation_ms": 0,
+      "tokens": {}
+    },
+    {
+      "role": "STAFF",
+      "trial": 1,
+      "elapsed_ms": 25,
+      "status": 401,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "AUTH_REQUIRED"
+      ],
+      "plan_ms": 0,
+      "retrieval_ms": 0,
+      "model_prompt_ms": 0,
+      "model_generation_ms": 0,
+      "tokens": {}
+    },
+    {
+      "role": "STAFF",
+      "trial": 2,
+      "elapsed_ms": 20,
+      "status": 401,
+      "citations": 0,
+      "checkout_present": false,
+      "failure_codes": [
+        "AUTH_REQUIRED"
+      ],
+      "plan_ms": 0,
+      "retrieval_ms": 0,
+      "model_prompt_ms": 0,
+      "model_generation_ms": 0,
+      "tokens": {}
+    }
+  ],
+  "candidate_files_sha256": {
+    "services/rag/app.py": "71bf888c747b3c4b71c0d03df5e589398eb6f5a03d132284a58c9c2e7838026c",
+    "services/rag/serve_local.py": "aaf4eb6010d9190f869a7961330640e65676bbd406a3fffaec9c09f3f0049045",
+    "scripts/rag-start.cjs": "878a2dea673ca4a9c3668318e5f3b67dbee12011d53483b66352b1381032d2d5",
+    "apps/admin-portal/src/server/assistant/gateway.ts": "fad623e854a21575e47ee36242b0d0e469f4f181f4b6baea1202a0832837e717",
+    "packages/domain/src/services/assistantService.ts": "d76c2b24dd453711000c28015d712f60907a3df42e8a24ae58235a6fbcdd544f",
+    "packages/domain/src/services/assistantLanguage.ts": "78404ab9add2e3ed63ec9180462956383820504011804e0a628b906d6f9a7c58"
+  },
+  "answer_model_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+  "diagnostic_auth_setup_note": "The initial staff diagnostic used an incorrectly signed test credential. Those three rejected requests are setup failures, not model latency samples; the corrected authenticated staff observations are retained separately.",
+  "summary": {
+    "successful_cited_answers": 6,
+    "observed_requests": 6,
+    "first_admin_ms": 22105,
+    "warm_count": 5,
+    "warm_min_ms": 4538,
+    "warm_max_ms": 4969
+  }
+}

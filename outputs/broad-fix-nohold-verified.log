@@ -1,0 +1,36 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: nohold-context
+{"case":"nohold-context","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"elapsed_ms":18403,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"expand","reason":"OUTPUT_BUDGET_EXCEEDED","category":"overflow"},{"stage":"expand","reason":"CONTEXT_BUDGET","category":"overflow"},{"stage":"expand","reason":"SELECTION_OVERFLOW","category":"overflow"},{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":3406,"system_bytes":1718,"serialized_model_bytes":3737,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":41,"candidate_count":6,"selected_count":3,"selection_attempts":2,"selection_bytes":6021,"requested_count":1,"supported_count":1,"expansion_attempts":2,"packed_quote_count":3,"max_quote_utf16":1074,"context_source_count":0,"closure_count":3,"group_count":3,"evidence_bytes":3406,"evidence_packed":1,"evidence_supported":0},"ranked_units":["99d00e0ac488c55f0577592c3203a1a43d1578936eab849f6774c598165e9d14","03a3eb8d854cbb52ac20ba2858d045c1c7c5b4d0339b5048147d955bfe21e299","b802583f750dde1410fdd3ab4d827c18f510be86b90c395523db63101059c0f3","87c1a61bfd8eb014363e7bfb4664524d6d13a0aff670332db279a2703161497e","e43acad14578c5e01ed674e728865aa6d6dca883e72fa66b76db4acd5f2855b8","af1ccf7aa412f9b124f3014badfc7001e014fa376f5ddb085f8db662ba06d66e"],"closure_units":["34f6bf0892a0ee7756f37f66d8595a3476f6df826c7a6c2254972a4057d19f2a","ec4fb4994914c8feab567bfadee1243c78c9d5ae61f312932618efb2f66ee823","99d00e0ac488c55f0577592c3203a1a43d1578936eab849f6774c598165e9d14"]},"timing":"auth;dur=224.873, catalog;dur=469.155, validate;dur=5.257, settings;dur=85.849, python_plan_queue;dur=0.017, python_plan_verify;dur=95.201, python_plan_inference;dur=4833.899, python_plan_load;dur=11.903, python_plan_prompt;dur=41.929, python_plan_generation;dur=4748.918, python_plan_schema;dur=0.134, python_plan_residual;dur=4.533, python_plan_total;dur=4933.785, plan;dur=4952.397, python_embed_queue;dur=0.013, python_embed_inference;dur=1102.362, python_embed_residual;dur=9.004, python_embed_total;dur=1111.378, embed;dur=1119.976, retrieve;dur=566.022, python_answer_queue;dur=0.019, python_answer_verify;dur=301.689, python_answer_inference;dur=10600.792, python_answer_load;dur=37.729, python_answer_prompt;dur=6216.605, python_answer_generation;dur=3820.251, python_answer_schema;dur=0.127, python_answer_residual;dur=9.345, python_answer_total;dur=10911.970, context;dur=9690.320, expand;dur=287.869, answer;dur=1229.796, serialize;dur=0.639, residual;dur=0.000, total;dur=18398.635"}
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts (6 tests | 1 failed | 5 skipped) 19075ms
+   × broad question gateway audit: nohold-context 18413ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: nohold-context
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts:72:18
+     70|   expect(response.status).toBe(200);
+     71|   expect(parsed.success).toBe(true);
+     72|   expect(useful).toBe(true);
+       |                  ^
+     73| }, 60000);
+     74|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)
+   Start at  14:23:17
+   Duration  22.48s (tests 86%, transform 7%, import 7%)
+

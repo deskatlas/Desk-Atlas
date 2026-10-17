@@ -1,0 +1,41 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: nohold-context
+{"case":"nohold-context","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"FAILURE","useful":false,"elapsed_ms":7735,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"context","reason":"CONTEXT_BUDGET_EXCEEDED","category":"overflow"},{"stage":"context","reason":"INCOMPLETE_EVIDENCE","category":"overflow"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":11759,"system_bytes":1259,"serialized_model_bytes":15067,"context_tokens":16384,"output_budget":384,"template_headroom":512,"model_response_bytes":21703,"candidate_count":12,"selected_count":12,"selection_attempts":1,"selection_bytes":11759},"ranked_units":["af1ccf7aa412f9b124f3014badfc7001e014fa376f5ddb085f8db662ba06d66e","87c1a61bfd8eb014363e7bfb4664524d6d13a0aff670332db279a2703161497e","e43acad14578c5e01ed674e728865aa6d6dca883e72fa66b76db4acd5f2855b8","4488639a23f35fc8f8e75266051ca80caead600f2843237214230e8e5507f027","4c46d8c16b6dd81310b76de8383555f067cb93d3b01ca7359a7e4084cf38ce69","e0597acd119d0e55d685fea8c384c5f098a0024fe34764bfe707c17ad974ab27"],"closure_units":[]},"timing":"auth;dur=254.291, catalog;dur=620.985, validate;dur=7.658, settings;dur=138.364, python_plan_queue;dur=0.006, python_plan_verify;dur=123.674, python_plan_inference;dur=5816.683, python_plan_load;dur=14.453, python_plan_prompt;dur=1159.044, python_plan_generation;dur=4612.389, python_plan_schema;dur=0.056, python_plan_residual;dur=0.798, python_plan_total;dur=5941.216, plan;dur=5963.610, python_embed_queue;dur=0.006, python_embed_inference;dur=265.089, python_embed_residual;dur=3.135, python_embed_total;dur=268.229, embed;dur=272.685, retrieve;dur=317.651, python_answer_queue;dur=0.009, python_answer_verify;dur=127.958, python_answer_inference;dur=1.184, python_answer_residual;dur=4.095, python_answer_total;dur=133.246, context;dur=137.599, serialize;dur=0.540, residual;dur=16.409, total;dur=7729.792"}
+
+stdout | tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: facility-fresh
+{"case":"facility-fresh","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"elapsed_ms":9808,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":1491,"system_bytes":1259,"serialized_model_bytes":4952,"context_tokens":16384,"output_budget":384,"template_headroom":512,"model_response_bytes":193,"candidate_count":2,"selected_count":0,"selection_attempts":1,"selection_bytes":1491,"requested_count":0,"supported_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":232},"ranked_units":["ee38c440a435841154c6088e7eedaad02e2433f3388ad5233948acab00f56ac9","b802583f750dde1410fdd3ab4d827c18f510be86b90c395523db63101059c0f3"],"closure_units":[]},"timing":"auth;dur=163.810, catalog;dur=323.945, validate;dur=0.166, settings;dur=76.774, python_plan_queue;dur=0.007, python_plan_verify;dur=88.785, python_plan_inference;dur=3966.646, python_plan_load;dur=14.430, python_plan_prompt;dur=497.215, python_plan_generation;dur=3423.775, python_plan_schema;dur=0.050, python_plan_residual;dur=0.817, python_plan_total;dur=4056.305, plan;dur=4059.377, python_embed_queue;dur=0.012, python_embed_inference;dur=1179.905, python_embed_residual;dur=9.062, python_embed_total;dur=1188.979, embed;dur=1196.383, retrieve;dur=552.643, python_answer_queue;dur=0.007, python_answer_verify;dur=100.141, python_answer_inference;dur=3554.521, python_answer_load;dur=13.328, python_answer_prompt;dur=729.512, python_answer_generation;dur=2651.522, python_answer_schema;dur=0.072, python_answer_residual;dur=5.009, python_answer_total;dur=3659.751, context;dur=3662.061, serialize;dur=0.126, residual;dur=0.000, total;dur=9806.513"}
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts (2 tests | 2 failed) 17996ms
+   × broad question gateway audit: nohold-context 7745ms
+   × broad question gateway audit: facility-fresh 9811ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: nohold-context
+ FAIL  tests/ms63-broad-question-audit-live.test.ts > broad question gateway audit: facility-fresh
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-broad-question-audit-live.test.ts:57:18
+     55|   expect(response.status).toBe(200);
+     56|   expect(parsed.success).toBe(true);
+     57|   expect(useful).toBe(true);
+       |                  ^
+     58| }, 60000);
+     59|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  11:35:28
+   Duration  21.63s (tests 84%, transform 8%, import 7%)
+

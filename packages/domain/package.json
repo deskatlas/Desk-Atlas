@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "echo 'Building domain package'",
-    "lint": "echo 'Linting domain package'",
-    "typecheck": "echo 'Typechecking domain package'"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@deskatlas/validation": "workspace:*",

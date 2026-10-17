@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "material": "synthetic-unreviewed",
+  "cases": [
+    {
+      "id": "property-fresh-tl", "language": "tl", "split": "development",
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "question": "May naiwan na payong. Ano ang gagawin ko?", "history": [],
+      "meanings": ["Staff record the item.", "Staff store the item securely.", "Staff verify ownership before releasing it to its owner."],
+      "adversarial": [
+        {"text": "Ilagay ang gamit kung saan makukuha ito ng kahit sino.", "failure": "storage"},
+        {"text": "Ibigay sa unang humingi; hindi kailangang patunayan ang pagmamay-ari.", "failure": "ownership"},
+        {"text": "Itago nang ligtas at huwag nang ibalik sa may-ari.", "failure": "release"}
+      ]
+    },
+    {
+      "id": "property-mixed-tl", "language": "tl", "split": "development",
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "history": ["How do I prepare for opening?", "What about a noise complaint?", "Can staff approve online payment proof?"],
+      "meanings": ["Answer the found-property task directly.", "Record, securely store, then verify ownership before returning the item."],
+      "adversarial": [
+        {"text": "May naiwan bang payong? Sino ang may-ari?", "failure": "wrong_task"},
+        {"text": "Ibalik muna ang payong bago tiyakin kung sino ang may-ari.", "failure": "order"}
+      ]
+    },
+    {
+      "id": "permission-taglish", "language": "taglish", "split": "development",
+      "source": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+      "question": "Pwede bang staff ang mag-approve ng online payment proof?", "history": [],
+      "meanings": ["Only administrators approve online payment proofs.", "Staff counter-payment verification does not authorize online-proof approval."],
+      "adversarial": [
+        {"text": "Pwede ang staff mag-approve ng online payment proof kapag verified na.", "failure": "role"},
+        {"text": "Staff can approve online payment proofs.", "failure": "negation"}
+      ]
+    },
+    {
+      "id": "conditional-taglish", "language": "taglish", "split": "development",
+      "source": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+      "question": "Pwede na bang i-release ang item kung hindi sure ang owner?", "history": [],
+      "meanings": ["Verify ownership before release.", "If uncertain, keep the item secure and ask the supervisor."],
+      "adversarial": [{"text": "I-release na kahit uncertain ang owner; ask the supervisor later.", "failure": "condition"}]
+    },
+    {
+      "id": "no-hold-tl", "language": "tl", "split": "held_out",
+      "source": "Selecting a desk or submitting a reservation does not hold inventory. Only authorized payment confirmation with atomic candidate allocation reserves inventory.",
+      "question": "Nakapili na ako ng mesa pero hindi pa bayad. Nakareserba na ba ito?", "history": [],
+      "meanings": ["Selection and submission do not hold inventory.", "Reservation requires authorized payment confirmation paired with atomic allocation."],
+      "adversarial": [{"text": "Nakareserba na ang mesa habang hinihintay ang bayad.", "failure": "negation"}]
+    },
+    {
+      "id": "allocation-taglish", "language": "taglish", "split": "held_out",
+      "source": "Allocate Main, then Alternative 1, then Alternative 2. If all are unavailable, use Manual Resolution. Never automatically select a fourth unapproved option.",
+      "question": "Ano ang next kapag occupied lahat ng three candidates?", "history": [],
+      "meanings": ["Preserve Main, Alternative 1, Alternative 2 priority.", "Exhaustion requires Manual Resolution, never an automatic fourth option."],
+      "adversarial": [
+        {"text": "Alternative 2 muna bago Main para mas mabilis.", "failure": "order"},
+        {"text": "Automatic na pumili ng fourth desk kapag occupied lahat.", "failure": "condition"}
+      ]
+    },
+    {
+      "id": "synthetic-amount-tl", "language": "tl", "split": "held_out",
+      "source": "Synthetic evaluation policy only: an administrator may authorize a refund of PHP 120 within 24 hours. This fixture is not a facility policy.",
+      "question": "Magkano at kailan ang maaaring aprubahan sa halimbawang patakaran?", "history": [],
+      "meanings": ["This is an evaluation example, not facility policy.", "Only an administrator may authorize PHP 120 within 24 hours."],
+      "adversarial": [
+        {"text": "Maaaring aprubahan ng administrator ang PHP 1,200 sa loob ng 24 oras.", "failure": "amount"},
+        {"text": "Maaaring aprubahan ng administrator ang PHP 120 pagkatapos ng 24 oras.", "failure": "timing"}
+      ]
+    },
+    {
+      "id": "procedure-faq-taglish", "language": "taglish", "split": "held_out",
+      "source": "Authorized staff only. Procedure: 1. Open \"Review item\". 2. Verify ownership. 3. Select \"Release item\" only after verification. FAQ: Can I release before verification? No. If verification fails, keep the item securely stored.",
+      "question": "Paano ang complete release procedure pati kapag failed ang verification?", "history": [],
+      "meanings": ["Authorized staff open the exact UI label Review item.", "Verify ownership before selecting the exact UI label Release item.", "Failed verification requires continued secure storage.", "Equivalent FAQ does not add duplicate steps."],
+      "adversarial": [
+        {"text": "Open Review item, verify ownership, then select Delete item.", "failure": "ui_label"},
+        {"text": "Open Review item then select Release item. Complete na.", "failure": "omission"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms63-booking-guarantee-search.test.ts (12 tests | 3 failed) 16ms
+   × normalizes facility malfunction terminology without inventing repair guidance: Something in the workspace isn't working. What should I do? 6ms
+   × normalizes facility malfunction terminology without inventing repair guidance: The equipment is out of order. How do I handle it? 1ms
+   × normalizes facility malfunction terminology without inventing repair guidance: Our office printer is broken. Who should I tell? 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > normalizes facility malfunction terminology without inventing repair guidance: Something in the workspace isn't working. What should I do?
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > normalizes facility malfunction terminology without inventing repair guidance: The equipment is out of order. How do I handle it?
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > normalizes facility malfunction terminology without inventing repair guidance: Our office printer is broken. Who should I tell?
+AssertionError: expected [ Array(1) ] to have a length of 2 but got 1
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ tests/ms63-booking-guarantee-search.test.ts:44:19
+     42| ])('normalizes facility malfunction terminology without inventing repa…
+     43|   const queries = assistantSearchQueries(message, undefined);
+     44|   expect(queries).toHaveLength(2);
+       |                   ^
+     45|   expect(queries[1]).toContain('Facility equipment malfunction and mai…
+     46|   expect(queries.every(query => query.startsWith(message))).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 9 passed (12)
+   Start at  14:31:56
+   Duration  557ms (transform 57%, import 29%, worker 8%, tests 6%)
+

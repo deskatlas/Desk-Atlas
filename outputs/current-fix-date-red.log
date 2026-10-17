@@ -1,0 +1,47 @@
+.............FF.......                                                   [100%]
+================================== FAILURES ===================================
+________ test_date_followup_preserves_a_real_data_selection[history1] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024168838D10>
+history = ['How many bookings today?', 'And yesterday?']
+
+    @pytest.mark.parametrize('history', [['How many bookings today?'], ['How many bookings today?', 'And yesterday?']])
+    def test_date_followup_preserves_a_real_data_selection(monkeypatch, history):
+        generate = AsyncMock(return_value=api.Plan(kind='OPERATIONAL', query='',
+            tools=[api.Tool(name='operational_snapshot', args=api.Filters())]))
+        monkeypatch.setattr(api, 'generate', generate)
+        result = asyncio.run(api.plan(api.PlanInput(message='And yesterday?',
+            recent_context=api.Context(user_turns=history,
+                selections=api.Tool(name='booking_report', args=api.Filters(period='today'))),
+            business_date='2026-10-17', timezone='Asia/Manila'), SimpleNamespace(ops=['answer'], role='ADMIN')))
+>       assert result['tools']
+E       assert []
+
+services\rag\tests\test_current_browser_repair.py:81: AssertionError
+_______ test_a_date_after_a_topic_change_cannot_reuse_old_data_filters ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000241688389B0>
+
+    def test_a_date_after_a_topic_change_cannot_reuse_old_data_filters(monkeypatch):
+        generate = AsyncMock(return_value=api.Plan(kind='DOCUMENT', query='What happened yesterday?', tools=[]))
+        monkeypatch.setattr(api, 'generate', generate)
+        request = api.PlanInput(message='And yesterday?', recent_context=api.Context(
+            user_turns=['How many bookings today?', 'A guest is noisy. What should I do?'],
+            selections=api.Tool(name='booking_report', args=api.Filters(period='today'))),
+            business_date='2026-10-17', timezone='Asia/Manila')
+        result = asyncio.run(api.plan(request, SimpleNamespace(ops=['answer'], role='ADMIN')))
+        assert not result['tools']
+>       assert 'selections' not in generate.call_args.args[1]['recent_context']
+E       AssertionError: assert 'selections' not in {'selections': {'args': {'basis': 'scheduled', 'grouping': 'day', 'period': 'today'}, 'name': 'booking_report'}}
+
+services\rag\tests\test_current_browser_repair.py:95: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_current_browser_repair.py::test_date_followup_preserves_a_real_data_selection[history1]
+FAILED services/rag/tests/test_current_browser_repair.py::test_a_date_after_a_topic_change_cannot_reuse_old_data_filters
+2 failed, 20 passed, 1 warning in 1.11s

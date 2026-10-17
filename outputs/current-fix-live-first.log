@@ -1,0 +1,56 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: complaint-followup
+{"case":"complaint-followup","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"no_tools":true,"elapsed_ms":5640,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":186,"system_bytes":3302,"serialized_model_bytes":8225,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":21681,"candidate_count":0,"selected_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":259},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=165.934, catalog;dur=322.515, validate;dur=0.160, settings;dur=85.993, python_plan_queue;dur=0.006, python_plan_verify;dur=99.456, python_plan_inference;dur=4162.401, python_plan_load;dur=12.405, python_plan_prompt;dur=204.877, python_plan_generation;dur=3807.763, python_plan_schema;dur=0.070, python_plan_residual;dur=0.832, python_plan_total;dur=4262.764, plan;dur=4265.284, python_embed_queue;dur=0.013, python_embed_inference;dur=575.028, python_embed_residual;dur=4.130, python_embed_total;dur=579.171, embed;dur=584.472, retrieve;dur=208.958, serialize;dur=0.122, residual;dur=5.565, total;dur=5639.001"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-context
+{"case":"extension-context","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"no_tools":true,"elapsed_ms":6335,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":202,"system_bytes":3302,"serialized_model_bytes":8301,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":43391,"candidate_count":0,"selected_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":236},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=155.974, catalog;dur=337.526, validate;dur=0.131, settings;dur=73.325, python_plan_queue;dur=0.006, python_plan_verify;dur=88.987, python_plan_inference;dur=4208.144, python_plan_load;dur=11.387, python_plan_prompt;dur=338.266, python_plan_generation;dur=3830.931, python_plan_schema;dur=0.063, python_plan_residual;dur=0.867, python_plan_total;dur=4298.066, plan;dur=4300.121, python_embed_queue;dur=0.013, python_embed_inference;dur=1193.693, python_embed_residual;dur=6.621, python_embed_total;dur=1200.327, embed;dur=1206.142, retrieve;dur=371.332, serialize;dur=0.107, residual;dur=0.000, total;dur=6334.344"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-history-only
+{"case":"extension-history-only","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"no_tools":true,"elapsed_ms":5773,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":202,"system_bytes":3302,"serialized_model_bytes":8301,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":43391,"candidate_count":0,"selected_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":236},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=164.103, catalog;dur=337.685, validate;dur=0.140, settings;dur=71.539, python_plan_queue;dur=0.009, python_plan_verify;dur=104.540, python_plan_inference;dur=3962.229, python_plan_load;dur=13.477, python_plan_prompt;dur=36.873, python_plan_generation;dur=3887.145, python_plan_schema;dur=0.061, python_plan_residual;dur=0.934, python_plan_total;dur=4067.773, plan;dur=4069.947, python_embed_queue;dur=0.010, python_embed_inference;dur=886.407, python_embed_residual;dur=5.934, python_embed_total;dur=892.351, embed;dur=897.643, retrieve;dur=322.006, serialize;dur=0.114, residual;dur=0.000, total;dur=5771.987"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-followup
+{"case":"noise-followup","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"no_tools":true,"elapsed_ms":4614,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":164,"system_bytes":3302,"serialized_model_bytes":8128,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":21711,"candidate_count":0,"selected_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":237},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=176.380, catalog;dur=379.892, validate;dur=0.288, settings;dur=93.669, python_plan_queue;dur=0.007, python_plan_verify;dur=90.885, python_plan_inference;dur=3106.554, python_plan_load;dur=12.792, python_plan_prompt;dur=144.670, python_plan_generation;dur=2818.804, python_plan_schema;dur=0.082, python_plan_residual;dur=0.843, python_plan_total;dur=3198.371, plan;dur=3200.801, python_embed_queue;dur=0.010, python_embed_inference;dur=566.442, python_embed_residual;dur=4.365, python_embed_total;dur=570.817, embed;dur=576.425, retrieve;dur=182.845, serialize;dur=0.133, residual;dur=2.402, total;dur=4612.834"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-minimal
+{"case":"noise-minimal","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"no_tools":true,"elapsed_ms":4835,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":164,"system_bytes":3302,"serialized_model_bytes":8052,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":21711,"candidate_count":0,"selected_count":0,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":237},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=181.659, catalog;dur=368.823, validate;dur=0.158, settings;dur=68.100, python_plan_queue;dur=0.006, python_plan_verify;dur=93.676, python_plan_inference;dur=3340.309, python_plan_load;dur=14.534, python_plan_prompt;dur=123.889, python_plan_generation;dur=3179.044, python_plan_schema;dur=0.059, python_plan_residual;dur=0.747, python_plan_total;dur=3434.797, plan;dur=3436.933, python_embed_queue;dur=0.013, python_embed_inference;dur=593.838, python_embed_residual;dur=5.269, python_embed_total;dur=599.121, embed;dur=604.817, retrieve;dur=170.863, serialize;dur=0.113, residual;dur=2.228, total;dur=4833.693"}
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts (9 tests | 5 failed) 68355ms
+   × current browser audit: complaint-followup 5646ms
+   × current browser audit: extension-context 6337ms
+   × current browser audit: extension-history-only 5775ms
+   × current browser audit: noise-followup 4616ms
+   × current browser audit: noise-minimal 4839ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: complaint-followup
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-context
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: extension-history-only
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-followup
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-minimal
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:94:18
+     92|   expect(response.status).toBe(200);
+     93|   expect(parsed.success).toBe(true);
+     94|   expect(useful).toBe(true);
+       |                  ^
+     95| }, 60000);
+     96|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 4 passed (9)
+   Start at  15:28:37
+   Duration  74.16s (tests 93%, transform 4%, import 3%)
+

@@ -1,0 +1,61 @@
+
+> deskatlas-monorepo@ test C:\Users\reyna\Desk-Atlas
+> vitest run
+
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/spec2-campaigns-and-rewards.test.ts (18 tests | 1 failed) 49ms
+   ❯ SPEC-2: Admin Campaign Configuration & Automated Reward Voucher Engine (QAD-TC37) (18)
+     × SPEC2-TC05: ALL takes min(cycles) and ANY takes max(cycles) with strict typed vocabulary rejection 15ms
+ ❯ tests/ms59-reliability.test.ts (6 tests | 1 failed) 185ms
+   × MS59-TC07 uses bounded semantic aids without requiring the hybrid SQL contract 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms59-reliability.test.ts > MS59-TC07 uses bounded semantic aids without requiring the hybrid SQL contract
+AssertionError: expected 'I could not prepare a verified docume…' to contain 'Escalate repeated violations'
+
+Expected: "Escalate repeated violations"
+Received: "I could not prepare a verified document answer."
+
+ ❯ tests/ms59-reliability.test.ts:86:26
+     84|   });
+     85|   const answer = await query();
+     86|   expect(answer.summary).toContain('Escalate repeated violations');
+       |                          ^
+     87|   expect(db.rpc.mock.calls.some(([name]) => name === 'assistant_search…
+     88| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/spec2-campaigns-and-rewards.test.ts > SPEC-2: Admin Campaign Configuration & Automated Reward Voucher Engine (QAD-TC37) > SPEC2-TC05: ALL takes min(cycles) and ANY takes max(cycles) with strict typed vocabulary rejection
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/spec2-campaigns-and-rewards.test.ts:327:70
+    325|       },
+    326|     };
+    327|     expect(CampaignRuleInputSchema.safeParse(invalidReward).success).t…
+       |                                                                      ^
+    328|
+    329|     // 2. ALL logic: count 10 (threshold 5 -> 2 cycles) AND spend 1200…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 251 passed | 6 skipped (259)
+      Tests  2 failed | 2276 passed | 40 skipped (2318)
+   Start at  15:51:45
+   Duration  82.39s (import 92%, tests 4%, transform 3%, worker 1%)
+
+     Import  521 modules were evaluated 2668 times · 710.94s total, 92% of tracked time
+             ~13.47s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation
+
+ ELIFECYCLE  Test failed. See above for more details.

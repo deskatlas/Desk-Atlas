@@ -1,87 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  createStaffManagementService,
-  StaffManagementSupabaseRepository,
-} from "@deskatlas/domain";
+import { AssistantError } from '@deskatlas/domain';
+import { authorizeAssistant } from '../../../../../../admin-portal/src/server/assistant/gateway';
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
+const headers = { 'Cache-Control': 'no-store, private', Vary: 'Authorization' };
 
-function getStaffService() {
-  return createStaffManagementService(new StaffManagementSupabaseRepository());
-}
-
-export async function GET(request: NextRequest) {
+// PRD-F13/F26 / QAD-TC23/44: staff identity and assistant share credential validation.
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId =
-      request.headers.get("x-user-id") ||
-      searchParams.get("userId") ||
-      searchParams.get("id");
-    const email =
-      request.headers.get("x-user-email") ||
-      searchParams.get("email");
-
-    if (!userId && !email) {
-      return NextResponse.json({
-        active: false,
-        deactivated: false,
-      });
-    }
-
-    const service = getStaffService();
-    let staff = null;
-
-    if (userId) {
-      staff = await service.getStaffById(userId);
-    }
-
-    if (!staff && email) {
-      const allStaff = await service.listStaff();
-      staff = allStaff.find(
-        (s) => s.email.toLowerCase() === email.trim().toLowerCase()
-      ) || null;
-    }
-
-    if (!staff) {
-      return NextResponse.json(
-        {
-          active: false,
-          deactivated: true,
-          error: "Account deactivated or not authorized",
-        },
-        { status: 403 }
-      );
-    }
-
-    if (!staff.isActive) {
-      return NextResponse.json(
-        {
-          active: false,
-          deactivated: true,
-          error: "Account deactivated or not authorized",
-        },
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.json({
-      active: true,
-      deactivated: false,
-      user: {
-        id: staff.id,
-        email: staff.email,
-        name: staff.name,
-        role: staff.role.toLowerCase(),
-      },
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        active: false,
-        deactivated: false,
-        error: error?.message || "Failed to verify session",
-      },
-      { status: 500 }
-    );
+    const { actor } = await authorizeAssistant(request);
+    const token = request.headers.get('authorization')?.replace(/^Bearer /i, '') ?? '';
+    let expiresAt: number | null = null;
+    try {
+      const claims: unknown = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+      if (claims && typeof claims === 'object' && 'exp' in claims && typeof claims.exp === 'number') {
+        const expiry = token.startsWith('da_') ? claims.exp : claims.exp * 1000;
+        if (Number.isSafeInteger(expiry)) expiresAt = expiry;
+      }
+    } catch { /* Authorization above remains authoritative. */ }
+    return Response.json({ active: true, deactivated: false, expiresAt,
+      user: { id: actor.id, role: actor.role.toLowerCase() } }, { headers });
+  } catch (error: unknown) {
+    const status = error instanceof AssistantError ? error.status : 503;
+    const code = status === 401 ? 'AUTH_REQUIRED' : status === 403 ? 'ACCOUNT_INACTIVE' : 'AUTH_UNAVAILABLE';
+    return Response.json({ active: false, deactivated: status === 403, error: { code } }, { status, headers });
   }
 }

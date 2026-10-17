@@ -1,0 +1,11 @@
+{
+  "identity_digest": "04dea203c7a57b275e53653850a39b35e79ca7614dba3d33b89438c6aa8ae8ed",
+  "collector_digest": "f9b8884aa32c95dba658b4c14266c65f1ec8fe69b8cd200e2467c2d849f3fa95",
+  "prompt_digest": "0b2e9cdbac2049957f74dd3d7158003a50a72cd9b4a4937bd2421addb6a93dcc",
+  "schema_digest": "04b7c5d57adf4340f5377806d402e91998010df364acb6542bb27a3b230b5223",
+  "deadline_seconds_per_case": 8,
+  "attempts_per_candidate": 1,
+  "changed": "smaller experimental output schema and translation instruction",
+  "runtime_translation_enabled": false,
+  "held_out_generation_count": 0
+}

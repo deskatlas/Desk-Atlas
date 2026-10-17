@@ -1,0 +1,126 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms63-current-browser-repair.test.ts (4 tests | 4 failed) 60ms
+   × staff heartbeat rejects an expired signed credential despite a stored user ID 48ms
+   × staff heartbeat verifies the same signed credential as the assistant 4ms
+   × staff restoration withholds the dashboard until its assistant credential is verified 2ms
+   × a factual label cannot permit missing numbered duties in procedural main guidance 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-current-browser-repair.test.ts > staff heartbeat rejects an expired signed credential despite a stored user ID
+AssertionError: expected 500 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 500
+
+ ❯ tests/ms63-current-browser-repair.test.ts:19:27
+     17|   const token = issueStaffAssistantSession(randomUUID(), process.env.S…
+     18|   const response = await GET(new Request('http://localhost/api/auth/se…
+     19|   expect(response.status).toBe(401);
+       |                           ^
+     20| });
+     21|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/ms63-current-browser-repair.test.ts > staff heartbeat verifies the same signed credential as the assistant
+AssertionError: expected { active: false, deactivated: false } to match object { active: true, user: { …(2) } }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": true,
+-   "user": {
+-     "id": "77c60c4b-7708-47fb-b5d8-26b17df6f23f",
+-     "role": "staff",
+-   },
++   "active": false,
+  }
+
+ ❯ tests/ms63-current-browser-repair.test.ts:29:33
+     27|   const response = await GET(new Request('http://localhost/api/auth/se…
+     28|   expect(response.status).toBe(200);
+     29|   expect(await response.json()).toMatchObject({ active: true, user: { …
+       |                                 ^
+     30| });
+     31|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/ms63-current-browser-repair.test.ts > staff restoration withholds the dashboard until its assistant credential is verified
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-current-browser-repair.test.ts:41:40
+     39|   const restoring = lifecycle.restore(JSON.stringify({ id: 'staff', ro…
+     40|   expect(lifecycle.snapshot().user).toBeNull();
+     41|   expect(lifecycle.snapshot().loading).toBe(true);
+       |                                        ^
+     42|   expect(transport).toHaveBeenCalledWith('/api/auth/session', expect.o…
+     43|   resolve(Response.json({ active: true, user: { id: 'staff', role: 'st…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/ms63-current-browser-repair.test.ts > a factual label cannot permit missing numbered duties in procedural main guidance
+AssertionError: expected { version: 'ms57-v1', …(5) } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+{
+  "blocks": [
+    {
+      "kind": "text",
+      "support": [
+        0,
+      ],
+      "text": "1. Prepare reception.
+2. Check reservations.
+3. Check supplies.",
+    },
+  ],
+  "gaps": [],
+  "main_blocks": [
+    {
+      "actions": [],
+      "kind": "bullet",
+      "support": [
+        0,
+      ],
+      "text": "Prepare reception.",
+    },
+  ],
+  "outcome": "COMPLETE",
+  "scope": "FACTUAL",
+  "version": "ms57-v1",
+}
+
+ ❯ tests/ms63-current-browser-repair.test.ts:58:126
+     56|   const candidate = { version: 'ms57-v1', ...coverage, blocks: [{ kind…
+     57|     main_blocks: [{ kind: 'bullet', text: 'Prepare reception.', suppor…
+     58|   expect(validateAssistantSynthesis(candidate, coverage, spans, [sourc…
+       |                                                                                                                              ^
+     59| });
+     60|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  15:25:05
+   Duration  3.20s (transform 51%, import 46%, tests 2%, worker 1%)
+

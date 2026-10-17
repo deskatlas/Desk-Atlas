@@ -3,8 +3,6 @@
   "version": "0.1.0",
   "main": "index.ts",
   "scripts": {
-    "build": "echo 'Building config package'",
-    "lint": "echo 'Linting config package'",
-    "typecheck": "echo 'Typechecking config package'"
+    "build": "echo 'Building config package'"
   }
 }

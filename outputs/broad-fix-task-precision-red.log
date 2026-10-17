@@ -1,0 +1,59 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms63-natural-task-search.test.ts (15 tests | 2 failed) 19ms
+   × does not invent booking-guarantee intent: Does choosing this room guarantee privacy? 6ms
+   × does not invent booking-guarantee intent: I picked a loose desk. Is choosing it enough to secure its legs? 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-natural-task-search.test.ts > does not invent booking-guarantee intent: Does choosing this room guarantee privacy?
+AssertionError: expected [ …(2) ] to deeply equal [ Array(1) ]
+
+- Expected
++ Received
+
+  [
+    "Does choosing this room guarantee privacy?",
++   "Does choosing this room guarantee privacy?
++ Search interpretation: Workspace selection, reservation confirmation and inventory allocation",
+  ]
+
+ ❯ tests/ms63-natural-task-search.test.ts:42:54
+     40|   'I picked a loose desk. Is choosing it enough to secure its legs?',
+     41| ])('does not invent booking-guarantee intent: %s', message => {
+     42|   expect(assistantSearchQueries(message, undefined)).toEqual([message]…
+       |                                                      ^
+     43| });
+     44|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/ms63-natural-task-search.test.ts > does not invent booking-guarantee intent: I picked a loose desk. Is choosing it enough to secure its legs?
+AssertionError: expected [ …(2) ] to deeply equal [ Array(1) ]
+
+- Expected
++ Received
+
+  [
+    "I picked a loose desk. Is choosing it enough to secure its legs?",
++   "I picked a loose desk. Is choosing it enough to secure its legs?
++ Search interpretation: Workspace selection, reservation confirmation and inventory allocation",
+  ]
+
+ ❯ tests/ms63-natural-task-search.test.ts:42:54
+     40|   'I picked a loose desk. Is choosing it enough to secure its legs?',
+     41| ])('does not invent booking-guarantee intent: %s', message => {
+     42|   expect(assistantSearchQueries(message, undefined)).toEqual([message]…
+       |                                                      ^
+     43| });
+     44|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 13 passed (15)
+   Start at  14:47:22
+   Duration  534ms (transform 56%, import 28%, worker 10%, tests 7%)
+

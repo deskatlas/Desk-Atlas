@@ -1,0 +1,578 @@
+{
+  "schema_version": 1,
+  "identity_digest": "04dea203c7a57b275e53653850a39b35e79ca7614dba3d33b89438c6aa8ae8ed",
+  "items": [
+    {
+      "case_id": "conditional-taglish",
+      "language": "taglish",
+      "fixture_digest": "a5459f29af24bed17abad9f1c4f1671f8204e74d49d9051a215e64ebeb53d9dd",
+      "question": "Pwede na bang i-release ang item kung hindi sure ang owner?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+      "source_sha256": "46cd9daca2beb2653b31ab20e053ee88a2a760d69bc9e367439925da129ff70a",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+          "start": 0,
+          "end": 131
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "I-release na kahit uncertain ang owner; ask the supervisor later.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "efc22569b41d9cdb007124b101c52815b703e69a2b74a4c6a016dc330dedd273",
+      "review_id": "R01"
+    },
+    {
+      "case_id": "permission-taglish",
+      "language": "taglish",
+      "fixture_digest": "55a85549c6b0fd2fe2da5d2d21f34f6a7e48cf31b984856628ad1318195ff6fd",
+      "question": "Pwede bang staff ang mag-approve ng online payment proof?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+      "source_sha256": "8e65ccb2b41d894e5b96ea2f6293b88799cd26c04c722be70850d0afd75760e3",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+          "start": 0,
+          "end": 130
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Pwede ang staff mag-approve ng online payment proof kapag verified na.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "8f5efae9885338cabcf322eddd4714beac8eb4224b9540ba6fb3eb20c986b4df",
+      "review_id": "R02"
+    },
+    {
+      "case_id": "property-fresh-tl",
+      "language": "tl",
+      "fixture_digest": "83e38a4c3e66f59946113d99d5bdbf95ad49f80be810cf73f8133a8db6b81a50",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Ibigay sa unang humingi; hindi kailangang patunayan ang pagmamay-ari.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "3716f66035dab7d47196fa4a128a450b3a3dfa25ff5ce8e76274436d20c304ae",
+      "review_id": "R03"
+    },
+    {
+      "case_id": "property-mixed-tl",
+      "language": "tl",
+      "fixture_digest": "f15330d57babf3917a7e79bee6486d9b5fff75e91e032658a812ce0b55c9bd21",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [
+        "How do I prepare for opening?",
+        "What about a noise complaint?",
+        "Can staff approve online payment proof?"
+      ],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Staff only.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "1. Record the found item.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "2. Store it securely.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "3. Verify ownership before releasing the item to its owner.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "2993d9152f6ee2a4c4705eaa808cea1f1832dcc4c8bf85b8600e37cbf44d7cd1",
+      "review_id": "R04"
+    },
+    {
+      "case_id": "permission-taglish",
+      "language": "taglish",
+      "fixture_digest": "55a85549c6b0fd2fe2da5d2d21f34f6a7e48cf31b984856628ad1318195ff6fd",
+      "question": "Pwede bang staff ang mag-approve ng online payment proof?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+      "source_sha256": "8e65ccb2b41d894e5b96ea2f6293b88799cd26c04c722be70850d0afd75760e3",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+          "start": 0,
+          "end": 130
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Pwede bang staff ang mag-approve ng online payment proof?",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "Wala. Lamang administrator ang pwedeng mag-approve ng online payment proof. Staff ay maaaring mag-check ng counter payments pero hindi pwedeng mag-approve ng online payment proofs.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "ead37e8808561ee424abe6c6d09a8065da9b6f2f584122f5f0d235d7e4c2059a",
+      "review_id": "R05"
+    },
+    {
+      "case_id": "conditional-taglish",
+      "language": "taglish",
+      "fixture_digest": "a5459f29af24bed17abad9f1c4f1671f8204e74d49d9051a215e64ebeb53d9dd",
+      "question": "Pwede na bang i-release ang item kung hindi sure ang owner?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+      "source_sha256": "46cd9daca2beb2653b31ab20e053ee88a2a760d69bc9e367439925da129ff70a",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+          "start": 0,
+          "end": 131
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Pwede na bang i-release ang item kung hindi sure ang owner?",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "Hindi pwede. Pwede mong i-release ang item lamang kung may sigurado ka na ang owner. Kung hindi sure, i-store mo ito nang maayos at kumonsulta sa supervisor.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "7ce3dfe3d2cd99efea5082b56d06d61e7624695fd40ab158c1f63b1f6bf1df59",
+      "review_id": "R06"
+    },
+    {
+      "case_id": "conditional-taglish",
+      "language": "taglish",
+      "fixture_digest": "a5459f29af24bed17abad9f1c4f1671f8204e74d49d9051a215e64ebeb53d9dd",
+      "question": "Pwede na bang i-release ang item kung hindi sure ang owner?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+      "source_sha256": "46cd9daca2beb2653b31ab20e053ee88a2a760d69bc9e367439925da129ff70a",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+          "start": 0,
+          "end": 131
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Pwede na bang i-release ang item kung hindi sure ang owner?",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "562069361e65982d42e7b810c6ced7ba92583e92e48e49cfb25e30e84dcd4db7",
+      "review_id": "R07"
+    },
+    {
+      "case_id": "property-fresh-tl",
+      "language": "tl",
+      "fixture_digest": "83e38a4c3e66f59946113d99d5bdbf95ad49f80be810cf73f8133a8db6b81a50",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Itago nang ligtas at huwag nang ibalik sa may-ari.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "c137143ec618474f5df30fbc542d5139a958677aa35c88c4dfd57457fad18f5b",
+      "review_id": "R08"
+    },
+    {
+      "case_id": "permission-taglish",
+      "language": "taglish",
+      "fixture_digest": "55a85549c6b0fd2fe2da5d2d21f34f6a7e48cf31b984856628ad1318195ff6fd",
+      "question": "Pwede bang staff ang mag-approve ng online payment proof?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+      "source_sha256": "8e65ccb2b41d894e5b96ea2f6293b88799cd26c04c722be70850d0afd75760e3",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+          "start": 0,
+          "end": 130
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Only administrators may approve online payment proofs.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "Staff may verify counter payments but cannot approve online payment proofs.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "f53a469e7ceba515533176c0540f1f543bad50143e34d7ce6abc455bffde2e1a",
+      "review_id": "R09"
+    },
+    {
+      "case_id": "property-fresh-tl",
+      "language": "tl",
+      "fixture_digest": "83e38a4c3e66f59946113d99d5bdbf95ad49f80be810cf73f8133a8db6b81a50",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Ilagay ang gamit kung saan makukuha ito ng kahit sino.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "1beb0661e3ef5183cb48a17a29e728f713192f6e11e0f3cbb500cb8d171221d6",
+      "review_id": "R10"
+    },
+    {
+      "case_id": "property-mixed-tl",
+      "language": "tl",
+      "fixture_digest": "f15330d57babf3917a7e79bee6486d9b5fff75e91e032658a812ce0b55c9bd21",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [
+        "How do I prepare for opening?",
+        "What about a noise complaint?",
+        "Can staff approve online payment proof?"
+      ],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "May naiwan bang payong? Sino ang may-ari?",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "ad79c1046cb0ee451ec71fa5151a18e9fa0987674f9f28ffeb28cbbdc384bfa9",
+      "review_id": "R11"
+    },
+    {
+      "case_id": "property-fresh-tl",
+      "language": "tl",
+      "fixture_digest": "83e38a4c3e66f59946113d99d5bdbf95ad49f80be810cf73f8133a8db6b81a50",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Staff only.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "1. Record the found item.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "2. Store it securely.",
+            "support": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "3. Verify ownership before releasing the item to its owner.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "21422dc7104e67a40bd240869f8e5534dd63c4e558a3caca011ceee36e19cb89",
+      "review_id": "R12"
+    },
+    {
+      "case_id": "property-mixed-tl",
+      "language": "tl",
+      "fixture_digest": "f15330d57babf3917a7e79bee6486d9b5fff75e91e032658a812ce0b55c9bd21",
+      "question": "May naiwan na payong. Ano ang gagawin ko?",
+      "prior_user_turns": [
+        "How do I prepare for opening?",
+        "What about a noise complaint?",
+        "Can staff approve online payment proof?"
+      ],
+      "history_supplied_to_translation": false,
+      "source": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+      "source_sha256": "c0e79dfcfecc44e80c47b36c0718714d495318ca8f28c7787f2808b07d8d6a0e",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner.",
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Ibalik muna ang payong bago tiyakin kung sino ang may-ari.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "0ad9445c0839fd71e475eb0604eb4611ddcf6ba4ceadb4db994676e1c6e82197",
+      "review_id": "R13"
+    },
+    {
+      "case_id": "permission-taglish",
+      "language": "taglish",
+      "fixture_digest": "55a85549c6b0fd2fe2da5d2d21f34f6a7e48cf31b984856628ad1318195ff6fd",
+      "question": "Pwede bang staff ang mag-approve ng online payment proof?",
+      "prior_user_turns": [],
+      "history_supplied_to_translation": false,
+      "source": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+      "source_sha256": "8e65ccb2b41d894e5b96ea2f6293b88799cd26c04c722be70850d0afd75760e3",
+      "evidence": [
+        {
+          "index": 0,
+          "quote": "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs.",
+          "start": 0,
+          "end": 130
+        }
+      ],
+      "candidate": {
+        "version": "ms57-v1",
+        "scope": "FACTUAL",
+        "outcome": "COMPLETE",
+        "blocks": [
+          {
+            "kind": "text",
+            "text": "Staff can approve online payment proofs.",
+            "support": [
+              0
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "candidate_digest": "3e8c3f73f986602b613f278025fd8b12f798562a281c2010755e4add697366f9",
+      "review_id": "R14"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "cases": 4,
+  "review_items": 12,
+  "generated_candidates": 2,
+  "held_out_generation_count": 0,
+  "translation_admitted": false,
+  "release_ready": false,
+  "source_snapshot_unchanged": true
+}

@@ -1,3 +1,4 @@
+import { admittedPacking } from './fixtures/assistantPacking';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -48,10 +49,12 @@ describe('MS44-TC01/02/03/04/06/09: SOP gateway experiment', () => {
   function documentFixture() {
     vi.stubEnv('RAG_SOP_FAST_PATH', 'true'); vi.stubEnv('KB_ENABLED', 'true'); db.role = 'STAFF';
     const s = { ...source(), content: 'Before check-in, verify the booking QR. Do not approve online payment proofs as staff. Only admins may approve them, except counter payments handled by staff.' };
-    db.rpc.mockImplementation(async (name: string) => ({ data: name === 'assistant_search_knowledge' ? [s] : s, error: null }));
-    vi.mocked(fetch).mockImplementation(async url => {
+    db.rpc.mockImplementation(async (name: string) => ({ data: name === 'assistant_search_knowledge' ? [s] : name === 'assistant_expand_evidence' ? { complete: true, sources: [s] } : s, error: null }));
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/v1/evidence-cost')) return admittedPacking(init);
       if (String(url).endsWith('/v1/plan')) return Response.json({ kind: 'DOCUMENT', query: 'How do I check in a guest?', tools: [] }, { headers: { 'Server-Timing': 'queue;dur=0, total;dur=3' } });
       if (String(url).endsWith('/v1/embed')) return Response.json({ vector: [1, ...Array(1023).fill(0)] }, { headers: { 'Server-Timing': 'queue;dur=2, inference;dur=4, total;dur=7' } });
+      if (String(url).endsWith('/v1/context')) return Response.json({ chunk_ids: [s.chunk_id], ambiguous: false }, { headers: { 'Server-Timing': 'queue;dur=0, total;dur=1' } });
       return Response.json({ quotes: [{ chunk_id: s.chunk_id, quote: s.content }] }, { headers: { 'Server-Timing': 'queue;dur=0, total;dur=2' } });
     });
     return s;
@@ -82,15 +85,17 @@ describe('MS44-TC01/02/03/04/06/09: SOP gateway experiment', () => {
     expect(response.status).toBe(403); expect(db.rpc).not.toHaveBeenCalled();
   });
   it.each([{}, { quotes: [] }, { quotes: [{ chunk_id: randomUUID(), quote: 'fabricated' }] }, { quotes: [], conflicting_sources: true }])('does not treat invalid or empty selection as a grounded answer', async selection => {
-    documentFixture();
-    vi.mocked(fetch).mockImplementation(async url => String(url).endsWith('/v1/embed') ? Response.json({ vector: [1, ...Array(1023).fill(0)] }) : Response.json(selection));
+    const s = documentFixture();
+    vi.mocked(fetch).mockImplementation(async (url, init) => String(url).endsWith('/v1/evidence-cost') ? admittedPacking(init) : String(url).endsWith('/v1/embed') ? Response.json({ vector: [1, ...Array(1023).fill(0)] }) : String(url).endsWith('/v1/context') ? Response.json({ chunk_ids: [s.chunk_id], ambiguous: false }) : Response.json(selection));
     const body = await (await assistantQuery(request(issueStaffAssistantSession(user, key()), 'How do I check in a guest?'))).json();
-    expect(body.data.citations).toEqual([]); expect(body.data.summary).toContain('No verified answer');
+    expect(body.data.citations).toEqual([]);
+    const expected = 'conflicting_sources' in selection ? 'CONFLICTING_SOURCES' : 'quotes' in selection && selection.quotes.length === 0 ? 'NO_RELEVANT_SOURCE' : 'INVALID_MODEL_OUTPUT';
+    expect(body.data.limitations.join()).toContain(expected);
     expect(body.data.limitations.length).toBeGreaterThan(0);
   });
   it('blocks a source revoked during the fast path final evidence check', async () => {
     const s = documentFixture();
-    db.rpc.mockImplementation(async (name: string) => ({ data: name === 'assistant_search_knowledge' ? [s] : null, error: null }));
+    db.rpc.mockImplementation(async (name: string) => ({ data: name === 'assistant_search_knowledge' ? [s] : name === 'assistant_expand_evidence' ? { complete: true, sources: [s] } : null, error: null }));
     const response = await assistantQuery(request(issueStaffAssistantSession(user, key()), 'How do I check in a guest?'));
     expect(response.status).toBe(409); expect(JSON.stringify(await response.json())).not.toContain(s.content);
   });
@@ -206,10 +211,12 @@ describe('SPEC4-TC05/08/17/18: evidence integrity and failures', () => {
   it('re-retrieves once on epoch change and releases only current authorized sources', async () => {
     vi.stubEnv('KB_ENABLED','true');
     const old=source(), current={...source(),epoch:2}; let answers=0;
-    db.rpc.mockImplementation(async (name:string) => ({data:name==='assistant_search_knowledge'?[db.epoch===1?old:current]:current,error:null}));
+    db.rpc.mockImplementation(async (name:string) => ({data:name==='assistant_search_knowledge'?[db.epoch===1?old:current]:name==='assistant_expand_evidence'?{complete:true,sources:[db.epoch===1?old:current]}:current,error:null}));
     vi.mocked(fetch).mockImplementation(async (url,_options) => {
+      if (String(url).endsWith('/v1/evidence-cost')) return admittedPacking(_options);
       if (String(url).endsWith('/v1/plan')) return Response.json({kind:'DOCUMENT',query:'policy',tools:[]});
       if (String(url).endsWith('/v1/embed')) return Response.json({vector:[1,...Array(1023).fill(0)]});
+      if (String(url).endsWith('/v1/context')) return Response.json({chunk_ids:[(db.epoch===1?old:current).chunk_id],ambiguous:false});
       const selected=++answers===1?old:current;
       db.epoch=2;
       return Response.json({quotes:[{chunk_id:selected.chunk_id,quote:selected.content}]});

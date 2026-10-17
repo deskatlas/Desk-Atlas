@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* MS-49 / DSD-UI16: this is the active Tailwind entry, unlike tailwind.css. */
+@source '../../../../packages/ui/src/**/*.{ts,tsx}';
 
 @theme {
   --color-border: var(--da-border);

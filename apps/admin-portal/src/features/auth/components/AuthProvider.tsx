@@ -1,207 +1,89 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { DeactivatedAccountModal, useActiveTabPolling } from '@deskatlas/ui';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useSyncExternalStore, useCallback } from 'react';
+import { Button, DeactivatedAccountModal, useActiveTabPolling } from '@deskatlas/ui';
+import { AdminSessionLifecycle, initialSession, STORAGE_KEY, type Role, type SessionUser } from '../sessionLifecycle';
 
-type Role = 'admin' | 'staff' | 'member' | null;
-
-type User = {
-  id?: string;
-  email?: string;
-  role: Role;
-  name?: string;
-  token?: string;
-  isSuperAdmin?: boolean;
-} | null;
-
+type User = SessionUser | null;
 type AuthContextType = {
-  user: User;
-  loading: boolean;
-  isDeactivated: boolean;
-  login: (role: Exclude<Role, null>, name?: string, details?: { id?: string; email?: string; token?: string; isSuperAdmin?: boolean }) => void;
+  user: User; loading: boolean; isDeactivated: boolean; sessionGeneration: number; isSessionCurrent: (generation: number, token?: string) => boolean;
+  login: (role: Exclude<Role, null>, name?: string, details?: Omit<SessionUser, 'role' | 'name'>) => void;
   logout: () => void;
 };
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const STORAGE_KEY = 'desk_atlas_user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.role === 'admin') {
-            return parsed;
-          }
-        }
-        return null;
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
-
-  const [loading, setLoading] = useState(true);
-  const [isDeactivated, setIsDeactivated] = useState(false);
-
-  const handleDeactivation = useCallback(() => {
-    setIsDeactivated(true);
-    setUser(null);
+  const [session] = useState(() => new AdminSessionLifecycle((input, init) => window.fetch(input, init), user => {
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      sessionStorage.clear();
-    } catch (e) {
-      // ignore
-    }
-  }, []);
-
+      if (user) { const value = JSON.stringify(user); if (localStorage.getItem(STORAGE_KEY) !== value) localStorage.setItem(STORAGE_KEY, value); }
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch { /* Storage may be unavailable. */ }
+  }));
+  const state = useSyncExternalStore(session.subscribe, session.snapshot, () => initialSession);
+  const isSessionCurrent = useCallback((generation: number, token?: string) => {
+    const current = session.snapshot();
+    return current.generation === generation && Boolean(token) && current.user?.token === token && !current.loading;
+  }, [session]);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.role === 'admin') {
-          setUser(parsed);
-          // If isSuperAdmin is not set on stored user, auto-sync from staff endpoint
-          if (parsed.id && parsed.isSuperAdmin === undefined) {
-            fetch(`/api/admin/staff/${encodeURIComponent(parsed.id)}`, {
-              headers: { 'x-user-id': parsed.id, 'x-user-role': 'ADMIN' },
-            })
-              .then((r) => (r.ok ? r.json() : null))
-              .then((d) => {
-                if (d?.staff?.isSuperAdmin) {
-                  const updated = { ...parsed, isSuperAdmin: true };
-                  setUser(updated);
-                  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-                }
-              })
-              .catch(() => {});
-          }
-        } else {
-          setUser(null);
-          localStorage.removeItem(STORAGE_KEY);
-        }
-      }
-    } catch (e) {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Heartbeat check every 60 seconds with active tab visibility guard
-  const checkSession = useCallback(async () => {
-    if (!user?.id || isDeactivated) return;
-    try {
-      const res = await fetch('/api/admin/auth/session', {
-        headers: {
-          'x-user-id': user.id || '',
-          'x-user-role': (user.role || 'ADMIN').toUpperCase(),
-        },
-        cache: 'no-store',
-      });
-
-      if (res.status === 403) {
-        handleDeactivation();
-        return;
-      }
-
-      const data = await res.json().catch(() => ({}));
-      if (data?.deactivated === true || (data?.active === false && res.status !== 200)) {
-        handleDeactivation();
-      }
-    } catch {
-      // ignore network error
-    }
-  }, [user?.id, user?.role, isDeactivated, handleDeactivation]);
-
-  useActiveTabPolling(checkSession, 60000, {
-    enabled: Boolean(user?.id) && !isDeactivated,
-    immediate: true,
-  });
-
-  // Global fetch response interceptor for 403 deactivations (for active logged-in sessions)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
+    // MS-47: intercept only same-origin requests carrying this credential generation.
     const originalFetch = window.fetch;
-    window.fetch = async (...args) => {
-      const response = await originalFetch(...args);
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] instanceof Request ? args[0].url : '');
-      const isLoginRequest = url.includes('/auth/login');
-
-      if (response.status === 403 && !isLoginRequest && user) {
+    const intercepted: typeof fetch = async (input, init) => {
+      const generation = session.snapshot().generation;
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, window.location.origin);
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      const token = headers.get('authorization');
+      const response = await originalFetch(input, init);
+      const current = session.snapshot();
+      if (url.origin === window.location.origin && url.pathname.startsWith('/api/')
+        && generation === current.generation && token && token === `Bearer ${current.user?.token}`
+        && [401, 403, 503].includes(response.status)) {
         try {
-          const clone = response.clone();
-          const text = await clone.text();
-          if (
-            text.toLowerCase().includes('deactivated') ||
-            text.toLowerCase().includes('not authorized or is deactivated')
-          ) {
-            handleDeactivation();
-          }
-        } catch (e) {
-          // ignore
-        }
+          const body = await response.clone().json();
+          session.reject(generation, body.error?.code ?? '');
+        } catch { /* Non-contract errors do not change identity. */ }
       }
       return response;
     };
-
-    return () => {
-      window.fetch = originalFetch;
+    window.fetch = intercepted;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* Verify only available credentials. */ }
+    void session.restore(raw);
+    const synchronize = (event: StorageEvent) => {
+      if (event.storageArea === localStorage && (event.key === STORAGE_KEY || event.key === null)) {
+        void session.restore(event.newValue);
+      }
     };
-  }, [user, handleDeactivation]);
-
-  const login = (
-    role: Exclude<Role, null>,
-    name?: string,
-    details?: { id?: string; email?: string; token?: string; isSuperAdmin?: boolean }
-  ) => {
-    setIsDeactivated(false);
-    const u = { role, name, ...details } as User;
-    setUser(u);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-    } catch (e) {
-      // ignore
+    window.addEventListener('storage', synchronize);
+    return () => {
+      window.removeEventListener('storage', synchronize);
+      if (window.fetch === intercepted) window.fetch = originalFetch;
+      session.abandon();
+    };
+  }, [session]);
+  useActiveTabPolling(session.check, 60000, { enabled: Boolean(state.user) || state.retryable, immediate: false });
+  useEffect(() => {
+    if (!state.expiresAt || !state.user) return;
+    const timer = setTimeout(() => session.reject(state.generation, 'AUTH_REQUIRED'), Math.max(0, state.expiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [session, state.expiresAt, state.generation, state.user]);
+  useEffect(() => {
+    if (state.isDeactivated) {
+      try { sessionStorage.clear(); } catch { /* Storage may be unavailable. */ }
     }
-  };
-
-  const logout = () => {
-    setUser(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-      // ignore
-    }
-  };
-
-  const handleReturnToLogin = () => {
-    setIsDeactivated(false);
-    if (typeof window !== 'undefined') {
-      window.location.href = '/manage/login';
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, loading, isDeactivated, login, logout }}>
-      {children}
-      <DeactivatedAccountModal
-        isOpen={isDeactivated}
-        onReturnToLogin={handleReturnToLogin}
-        loginUrl="/manage/login"
-      />
-    </AuthContext.Provider>
-  );
+  }, [state.isDeactivated]);
+  const login: AuthContextType['login'] = (role, name, details) => { void session.login({ role, name, ...details }); };
+  return <AuthContext.Provider value={{ user: state.user, loading: state.loading, isDeactivated: state.isDeactivated,
+    sessionGeneration: state.generation, isSessionCurrent, login, logout: session.logout }}>
+    {state.error && !state.isDeactivated && <div role="alert"><p>{state.error}</p>{state.retryable
+      ? <Button onClick={() => { void session.check(); }}>Retry session verification</Button>
+      : <Button onClick={() => { window.location.href = '/manage/login'; }}>Sign in</Button>}</div>}
+    {children}
+    <DeactivatedAccountModal isOpen={state.isDeactivated} onReturnToLogin={() => { window.location.href = '/manage/login'; }} loginUrl="/manage/login" />
+  </AuthContext.Provider>;
 }
-
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 }
-
 export type { Role, User };

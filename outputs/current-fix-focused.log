@@ -1,0 +1,91 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms60-gateway.test.ts (4 tests | 4 failed) 78ms
+   × MS60-TC08 packed overflow shares the existing reconsideration and expansion ceiling 61ms
+   × MS60-TC28 mismatched packing binding cannot release evidence 7ms
+   × QAD-TC44 malformed model clarification retries within two selection calls 6ms
+   × MS60-TC12 expansion retry followed by packed overflow never gets a third selection 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms60-gateway.test.ts > MS60-TC08 packed overflow shares the existing reconsideration and expansion ceiling
+AssertionError: expected 'I could not prepare a verified docume…' to contain 'Escalate'
+
+Expected: "Escalate"
+Received: "I could not prepare a verified document answer."
+
+ ❯ tests/ms60-gateway.test.ts:70:26
+     68|   });
+     69|   const answer = await query();
+     70|   expect(answer.summary).toContain('Escalate');
+       |                          ^
+     71|   expect(packing).toBe(2);
+     72|   expect(selections).toBe(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/ms60-gateway.test.ts > MS60-TC28 mismatched packing binding cannot release evidence
+AssertionError: expected 'DATA_UNAVAILABLE: The document servic…' to contain 'INVALID_MODEL_OUTPUT'
+
+Expected: "INVALID_MODEL_OUTPUT"
+Received: "DATA_UNAVAILABLE: The document service is unavailable. Please retry. Verified tables remain available."
+
+ ❯ tests/ms60-gateway.test.ts:80:37
+     78|   const answer = await query();
+     79|   expect(answer.citations).toEqual([]);
+     80|   expect(answer.limitations.join()).toContain('INVALID_MODEL_OUTPUT');
+       |                                     ^
+     81| });
+     82| it('QAD-TC44 malformed model clarification retries within two selectio…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/ms60-gateway.test.ts > QAD-TC44 malformed model clarification retries within two selection calls
+AssertionError: expected +0 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ tests/ms60-gateway.test.ts:98:17
+     96|   });
+     97|   const result = await query();
+     98|   expect(calls).toBe(2);
+       |                 ^
+     99|   expect(result.summary).toContain('Escalate');
+    100|   expect(result.summary).not.toContain('The user');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/ms60-gateway.test.ts > MS60-TC12 expansion retry followed by packed overflow never gets a third selection
+AssertionError: expected +0 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ tests/ms60-gateway.test.ts:108:22
+    106|   const answer = await query();
+    107|   expect(answer.citations).toEqual([]);
+    108|   expect(selections).toBe(2);
+       |                      ^
+    109|   expect(expansions).toBe(2);
+    110|   expect(answer.limitations.join()).toContain('SELECTION_EXHAUSTED');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  4 failed | 57 passed (61)
+   Start at  15:35:24
+   Duration  3.78s (transform 49%, import 48%, tests 2%, worker 2%)
+
+  Transform  transforming modules took 5.60s · 49% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

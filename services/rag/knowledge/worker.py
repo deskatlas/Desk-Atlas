@@ -16,10 +16,12 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from knowledge.chunk import chunk_sections
+from knowledge.preparation import verify_preparation
+from knowledge.structure import manifest_hash
 from rag.encoder import Encoder
 
 ROOT = Path(__file__).resolve().parents[1]
-SAFE_ERRORS = {"TYPE_MISMATCH", "UNSAFE_FILE", "ENCRYPTED_FILE", "MALFORMED_FILE", "EMPTY_TEXT", "PARSER_FAILED", "STORAGE_FAILED", "EMBEDDING_FAILED", "RESOURCE_LIMIT", "MANIFEST_INVALID"}
+SAFE_ERRORS = {"TYPE_MISMATCH", "UNSAFE_FILE", "ENCRYPTED_FILE", "MALFORMED_FILE", "EMPTY_TEXT", "PARSER_FAILED", "PARSER_REVISION_MISMATCH", "STORAGE_FAILED", "EMBEDDING_FAILED", "RESOURCE_LIMIT", "MANIFEST_INVALID", "CONTENT_LIMIT", "UNREADABLE_PAGE"}
 
 
 class LazyEncoder:
@@ -133,11 +135,19 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
             if "error" in result:
                 raise ValueError(result["error"]["code"])
             extraction = result["data"]
+            # MS48-TC13: stale Docker images must not create another generation
+            # that appears ready but lacks the deployed structural contract.
+            if not extraction.get('parser_fingerprint', '').startswith('kb-parser-v5:'):
+                raise ValueError('PARSER_REVISION_MISMATCH')
             if extraction["source_sha256"] != version["source_sha256"]:
                 raise ValueError("MANIFEST_INVALID")
             checkpoint("NORMALIZING")
             checkpoint("CHUNKING")
             chunks = chunk_sections(extraction["sections"], encoder._model.tokenizer)
+            extraction['warning_codes'].append('SECTION_SCOPE_REVIEW')
+            if any(chunk['section_context']['unresolved'] for chunk in chunks):
+                extraction['warning_codes'].append('SECTION_CONTEXT_UNRESOLVED')
+            preparation = {'preparation_policy': verify_preparation(extraction, chunks)} if version.get('upload_intent') else {}
             for offset in range(0, len(chunks), 4):
                 batch = chunks[offset:offset + 4]
                 vectors = encoder.encode([chunk["content"] for chunk in batch])
@@ -147,7 +157,7 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
             checkpoint("VERIFYING")
             if lost.is_set():
                 raise GatewayError("LEASE_LOST")
-            gateway.call(path + "/complete", {**lease, "expected_chunk_count": len(chunks), "content_sha256": extraction["content_sha256"], "manifest_sha256": hashlib.sha256("".join(chunk["content_sha256"] for chunk in chunks).encode()).hexdigest(), "parser_fingerprint": extraction["parser_fingerprint"], "embedding_fingerprint": fingerprint, "warning_codes": extraction["warning_codes"], "extraction_manifest": [{"heading": section["heading"], "page": section["page"], "method": section["method"]} for section in extraction["sections"]]})
+            gateway.call(path + "/complete", {**lease, **preparation, "expected_chunk_count": len(chunks), "structure_manifest_sha256": manifest_hash(chunks), "content_sha256": extraction["content_sha256"], "manifest_sha256": hashlib.sha256("".join(chunk["content_sha256"] for chunk in chunks).encode()).hexdigest(), "parser_fingerprint": extraction["parser_fingerprint"], "embedding_fingerprint": fingerprint, "warning_codes": extraction["warning_codes"], "extraction_manifest": [{"heading": section["heading"], "page": section["page"], "method": section["method"], "outcome": section.get("outcome", "EXTRACTED"), **{key: section[key] for key in ("normalized_start", "normalized_end", "section_id") if key in section}} for section in extraction["sections"]]})
     except GatewayError:
         # Retry/reclaim is durable; a lost lease cannot emit completion or notices.
         pass
@@ -162,23 +172,52 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
         thread.join(timeout=50)
 
 
+def run_lane(gateway, kind, encoder=None, fingerprint='', stop=None):
+    """MS52-TC02: a blocked ingestion lane cannot block eligible cleanup."""
+    stop = stop or threading.Event()
+    while not stop.is_set():
+        try:
+            claim = gateway.call("claim", {"kind": kind})
+            if claim:
+                started = time.monotonic()
+                process_claim(gateway, claim, encoder, fingerprint)
+                # Content-free service time; job timestamps carry queue/eligibility.
+                print(json.dumps({"event": "kb_worker_service", "kind": kind,
+                                  "duration_ms": round((time.monotonic() - started) * 1000)}), flush=True)
+            else:
+                stop.wait(1)
+        except GatewayError:
+            stop.wait(5)
+
+
+def run_lanes(gateway, encoder, fingerprint, stop=None):
+    stop = stop or threading.Event()
+    cleanup = threading.Thread(target=run_lane, args=(gateway, 'PURGE', None, '', stop), daemon=True)
+    cleanup.start()
+    try:
+        run_lane(gateway, 'INGEST', encoder, fingerprint, stop)
+    finally:
+        stop.set()
+        cleanup.join(timeout=50)
+
+
 def main():
     if os.environ.get("KB_ENABLED") != "true":
         raise SystemExit("KB_DISABLED")
+    gateway = Gateway(os.environ.get("KB_GATEWAY_URL", "http://127.0.0.1:3000"), os.environ.get("KB_WORKER_TOKEN", ""))
+    # A standalone purge process requires neither manifests nor model weights.
+    if os.environ.get('KB_WORKER_MODE', 'all') == 'purge':
+        run_lane(gateway, 'PURGE')
+        return
+    if os.environ.get('KB_WORKER_MODE', 'all') not in {'all', 'ingest'}:
+        raise SystemExit('INVALID_WORKER_MODE')
     manifest = json.loads((ROOT / "models.json").read_text())
     fingerprint = hashlib.sha256(json.dumps(manifest["embedding"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    # Download models only with the explicit provisioning command, never at startup.
     encoder = LazyEncoder(manifest, ROOT / ".cache" / 'models')
-    gateway = Gateway(os.environ.get("KB_GATEWAY_URL", "http://127.0.0.1:3000"), os.environ.get("KB_WORKER_TOKEN", ""))
-    while True:
-        try:
-            claim = gateway.call("claim", {})
-            if claim:
-                process_claim(gateway, claim, encoder, fingerprint)
-            else:
-                time.sleep(5)
-        except GatewayError:
-            time.sleep(10)
+    if os.environ.get('KB_WORKER_MODE') == 'ingest':
+        run_lane(gateway, 'INGEST', encoder, fingerprint)
+    else:
+        run_lanes(gateway, encoder, fingerprint)
 
 
 if __name__ == "__main__":

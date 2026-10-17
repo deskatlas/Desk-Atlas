@@ -1,0 +1,59 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-followup
+{"case":"noise-followup","component_probe":true,"status":200,"valid":true,"kind":"MIXED","mode":"SYNTHESIZED","scope":"COMPLETE_PROCEDURE","useful":false,"no_tools":false,"main_block_count":4,"elapsed_ms":13253,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":4320,"system_bytes":1485,"serialized_model_bytes":3939,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":90,"candidate_count":1,"selected_count":1,"selection_attempts":1,"selection_bytes":785,"requested_count":1,"supported_count":1,"expansion_attempts":1,"packed_quote_count":3,"max_quote_utf16":420,"context_source_count":0,"closure_count":3,"group_count":3,"evidence_bytes":2671,"evidence_packed":1,"evidence_supported":1,"support_claims":4,"support_accepted":4,"support_complete":1,"support_consistent":1,"support_evidence_safe":1},"ranked_units":["a44df46b5ecc2ac5b07463bf8751bba739e876b99ea381ce15442bddf8dff536"],"closure_units":["34f6bf0892a0ee7756f37f66d8595a3476f6df826c7a6c2254972a4057d19f2a","ba1c428eecfe91fe96db4448945ad63239f8ab277a903ecb044fc226c5e4cb47","a44df46b5ecc2ac5b07463bf8751bba739e876b99ea381ce15442bddf8dff536"]},"timing":"auth;dur=190.394, catalog;dur=436.577, validate;dur=4.798, settings;dur=91.778, python_plan_queue;dur=0.005, python_plan_verify;dur=88.801, python_plan_inference;dur=4277.286, python_plan_load;dur=11.631, python_plan_prompt;dur=35.302, python_plan_generation;dur=4204.017, python_plan_schema;dur=0.066, python_plan_residual;dur=0.745, python_plan_total;dur=4366.903, plan;dur=4386.264, tools;dur=294.675, python_embed_queue;dur=0.011, python_embed_inference;dur=735.439, python_embed_residual;dur=5.941, python_embed_total;dur=741.391, embed;dur=748.311, retrieve;dur=392.591, python_answer_queue;dur=0.014, python_answer_verify;dur=178.620, python_answer_inference;dur=3223.923, python_answer_load;dur=24.056, python_answer_prompt;dur=1035.518, python_answer_generation;dur=1922.524, python_answer_schema;dur=0.069, python_answer_residual;dur=1.626, python_answer_total;dur=3404.253, context;dur=2437.672, expand;dur=161.170, answer;dur=972.636, python_synthesis_queue;dur=0.004, python_synthesis_verify;dur=92.134, python_synthesis_inference;dur=1382.749, python_synthesis_load;dur=10.649, python_synthesis_prompt;dur=908.708, python_synthesis_generation;dur=415.093, python_synthesis_schema;dur=0.029, python_synthesis_residual;dur=0.921, python_synthesis_total;dur=1475.838, synthesis;dur=1477.980, python_support_queue;dur=0.006, python_support_verify;dur=91.245, python_support_inference;dur=1554.216, python_support_load;dur=12.373, python_support_prompt;dur=756.167, python_support_generation;dur=701.098, python_support_schema;dur=0.036, python_support_residual;dur=2.606, python_support_total;dur=1648.108, support;dur=1650.099, evidence;dur=294.934, serialize;dur=0.455, residual;dur=0.000, total;dur=13248.989"}
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-minimal
+{"case":"noise-minimal","component_probe":true,"status":503,"valid":false,"useful":false,"no_tools":true,"elapsed_ms":4854,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"plan","failures":[{"stage":"plan","reason":"INVALID_PLAN","category":"invalid_model_output"},{"stage":"plan","reason":"MODEL_UNAVAILABLE","category":"service_failure"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":198,"system_bytes":5006,"serialized_model_bytes":9787,"context_tokens":16384,"output_budget":1200,"template_headroom":512,"model_response_bytes":374},"ranked_units":[],"closure_units":[]},"timing":"auth;dur=69.043, catalog;dur=153.932, validate;dur=0.143, settings;dur=76.148, python_plan_queue;dur=0.006, python_plan_verify;dur=84.089, python_plan_inference;dur=4463.024, python_plan_load;dur=10.094, python_plan_prompt;dur=261.324, python_plan_generation;dur=4058.082, python_plan_schema;dur=0.071, python_plan_residual;dur=0.793, python_plan_total;dur=4547.983, plan;dur=4550.286, residual;dur=4.018, total;dur=4853.571"}
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts (8 tests | 2 failed | 6 skipped) 18335ms
+   × current browser audit: noise-followup 13262ms
+   × current browser audit: noise-minimal 4856ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-followup
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:77:18
+     75|   expect(response.status).toBe(200);
+     76|   expect(parsed.success).toBe(true);
+     77|   expect(useful).toBe(true);
+       |                  ^
+     78| }, 60000);
+     79|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-minimal
+AssertionError: expected 503 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 503
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:75:27
+     73|   writeFileSync(`${directory}/${item.id}-${randomUUID()}.json`, JSON.s…
+     74|   console.log(JSON.stringify(record));
+     75|   expect(response.status).toBe(200);
+       |                           ^
+     76|   expect(parsed.success).toBe(true);
+     77|   expect(useful).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 skipped (8)
+   Start at  15:09:07
+   Duration  21.49s (tests 86%, transform 8%, import 6%)
+

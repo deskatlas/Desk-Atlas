@@ -9,10 +9,6 @@
   },
   "scripts": {
     "build": "echo 'Building ui package'",
-    "lint": "echo 'Linting ui package'",
-    "typecheck": "echo 'Typechecking ui package'"
-  },
-  "dependencies": {
-    "@deskatlas/domain": "workspace:*"
+    "typecheck": "tsc --noEmit"
   }
 }

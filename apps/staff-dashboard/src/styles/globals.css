@@ -1,5 +1,23 @@
 /* globals.css */
 
+/* MS-49 / DSD-UI16: match the admin base typography inside the shared panel.
+   Keep these in base so button utilities and canonical variants still win. */
+[data-assistant-panel] {
+  --radius-lg: 10px;
+}
+
+@layer base {
+  [data-assistant-panel] button {
+    font-weight: 500;
+  }
+
+  [data-assistant-panel] h3 {
+    font-size: var(--text-lg);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+}
+
 html,
 body {
   margin: 0;

@@ -1,0 +1,104 @@
+{
+  "items": [
+    {
+      "review_id": "R01",
+      "case_id": "conditional-taglish",
+      "candidate_digest": "efc22569b41d9cdb007124b101c52815b703e69a2b74a4c6a016dc330dedd273",
+      "origin": "adversarial",
+      "draft_failure": "condition",
+      "negative_index": 0
+    },
+    {
+      "review_id": "R02",
+      "case_id": "permission-taglish",
+      "candidate_digest": "8f5efae9885338cabcf322eddd4714beac8eb4224b9540ba6fb3eb20c986b4df",
+      "origin": "adversarial",
+      "draft_failure": "role",
+      "negative_index": 0
+    },
+    {
+      "review_id": "R03",
+      "case_id": "property-fresh-tl",
+      "candidate_digest": "3716f66035dab7d47196fa4a128a450b3a3dfa25ff5ce8e76274436d20c304ae",
+      "origin": "adversarial",
+      "draft_failure": "ownership",
+      "negative_index": 1
+    },
+    {
+      "review_id": "R04",
+      "case_id": "property-mixed-tl",
+      "candidate_digest": "2993d9152f6ee2a4c4705eaa808cea1f1832dcc4c8bf85b8600e37cbf44d7cd1",
+      "origin": "generated-compact"
+    },
+    {
+      "review_id": "R05",
+      "case_id": "permission-taglish",
+      "candidate_digest": "ead37e8808561ee424abe6c6d09a8065da9b6f2f584122f5f0d235d7e4c2059a",
+      "origin": "generated"
+    },
+    {
+      "review_id": "R06",
+      "case_id": "conditional-taglish",
+      "candidate_digest": "7ce3dfe3d2cd99efea5082b56d06d61e7624695fd40ab158c1f63b1f6bf1df59",
+      "origin": "generated"
+    },
+    {
+      "review_id": "R07",
+      "case_id": "conditional-taglish",
+      "candidate_digest": "562069361e65982d42e7b810c6ced7ba92583e92e48e49cfb25e30e84dcd4db7",
+      "origin": "generated-compact"
+    },
+    {
+      "review_id": "R08",
+      "case_id": "property-fresh-tl",
+      "candidate_digest": "c137143ec618474f5df30fbc542d5139a958677aa35c88c4dfd57457fad18f5b",
+      "origin": "adversarial",
+      "draft_failure": "release",
+      "negative_index": 2
+    },
+    {
+      "review_id": "R09",
+      "case_id": "permission-taglish",
+      "candidate_digest": "f53a469e7ceba515533176c0540f1f543bad50143e34d7ce6abc455bffde2e1a",
+      "origin": "generated-compact"
+    },
+    {
+      "review_id": "R10",
+      "case_id": "property-fresh-tl",
+      "candidate_digest": "1beb0661e3ef5183cb48a17a29e728f713192f6e11e0f3cbb500cb8d171221d6",
+      "origin": "adversarial",
+      "draft_failure": "storage",
+      "negative_index": 0
+    },
+    {
+      "review_id": "R11",
+      "case_id": "property-mixed-tl",
+      "candidate_digest": "ad79c1046cb0ee451ec71fa5151a18e9fa0987674f9f28ffeb28cbbdc384bfa9",
+      "origin": "adversarial",
+      "draft_failure": "wrong_task",
+      "negative_index": 0
+    },
+    {
+      "review_id": "R12",
+      "case_id": "property-fresh-tl",
+      "candidate_digest": "21422dc7104e67a40bd240869f8e5534dd63c4e558a3caca011ceee36e19cb89",
+      "origin": "generated-compact"
+    },
+    {
+      "review_id": "R13",
+      "case_id": "property-mixed-tl",
+      "candidate_digest": "0ad9445c0839fd71e475eb0604eb4611ddcf6ba4ceadb4db994676e1c6e82197",
+      "origin": "adversarial",
+      "draft_failure": "order",
+      "negative_index": 1
+    },
+    {
+      "review_id": "R14",
+      "case_id": "permission-taglish",
+      "candidate_digest": "3e8c3f73f986602b613f278025fd8b12f798562a281c2010755e4add697366f9",
+      "origin": "adversarial",
+      "draft_failure": "negation",
+      "negative_index": 1
+    }
+  ]
+}

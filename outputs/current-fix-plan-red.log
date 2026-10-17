@@ -1,0 +1,36 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > private plan boundary diagnosis
+{"private_plan_probe":true,"status":200,"valid":false,"issues":[{"code":"invalid_string","path":["tools",0,"args","floor_id"]}]}
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts (9 tests | 1 failed | 8 skipped) 4745ms
+   × private plan boundary diagnosis 4431ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > private plan boundary diagnosis
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:39:26
+     37|   console.log(JSON.stringify({ private_plan_probe: true, status: respo…
+     38|   expect(response.status).toBe(200);
+     39|   expect(parsed.success).toBe(true);
+       |                          ^
+     40| }, 60000);
+     41| const history = [
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  15:19:23
+   Duration  8.33s (tests 59%, transform 21%, import 20%)
+

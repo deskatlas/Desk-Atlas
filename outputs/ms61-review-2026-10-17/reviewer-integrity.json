@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "identity_digest": "04dea203c7a57b275e53653850a39b35e79ca7614dba3d33b89438c6aa8ae8ed",
+  "files": {
+    "REVIEW-INSTRUCTIONS.md": "a5c9cd40655b83beeda95e7b4ee1a59106a7e0504bf883ca5975a2c5a04f85a5",
+    "SOURCE-AUDIT.md": "53a8f0049ed95a37398798b7a95bd2aa993d86a9a614c397b247907396f2e7cb",
+    "REVIEWER-PACKET.md": "034eda37e740c8c8f1d4bbf6fec4d073b4b2061d4cc8ae9432b8c00183fe6e5c",
+    "reviewer-response.json": "b8ef83ef415d577894f149c6d0b1f641fb2d44496df79603a139259195d4ee87",
+    "review-candidates.json": "b6ccb823e8044a42ab6da605cc1dc3de0fa1bb89030927740b8fdc388c665e90"
+  }
+}

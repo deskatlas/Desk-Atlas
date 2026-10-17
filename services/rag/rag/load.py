@@ -12,7 +12,7 @@ class Outcome:
     queue_ms: float | None
 
 
-async def measure_load(execute: Callable[[int], Awaitable[Outcome]], *, requests: int = 25,
+async def measure_load(execute: Callable[[int], Awaitable[Outcome]], *, requests: int = 100,
                        concurrency: int = 5, timeout_seconds: float = 30) -> dict:
     if requests < concurrency or concurrency < 1 or timeout_seconds <= 0:
         raise ValueError("INVALID_LOAD_CONFIGURATION")
@@ -25,16 +25,17 @@ async def measure_load(execute: Callable[[int], Awaitable[Outcome]], *, requests
             # Exception messages may contain URLs, tokens, or response bodies.
             return (perf_counter() - start) * 1000, False, None
 
-    async def worker(worker_id):
-        # Stable worker assignment supports one verified actor per concurrent user.
-        return [await measure(index) for index in range(worker_id, requests, concurrency)]
-
-    batches = await asyncio.gather(*(worker(worker_id) for worker_id in range(concurrency)))
-    results = [result for batch in batches for result in batch]
+    results = []
+    # Synchronized batches prevent a fast actor from running ahead of the
+    # remaining actors and falsely representing five-user concurrency.
+    for first in range(0, requests, concurrency):
+        results.extend(await asyncio.gather(*(measure(index) for index in range(first, min(first + concurrency, requests)))))
     timings = [row[0] for row in results]
+    valid_timings = [row[0] for row in results if row[1]]
     queue = [row[2] for row in results if row[2] is not None]
     return {"profile": "warm_end_to_end", "concurrency": concurrency, "requests": requests,
             "failures": sum(not row[1] for row in results), "latencies_ms": timings,
-            "p50_ms": percentile(timings, .5), "p95_ms": percentile(timings, .95),
+            "p50_ms": percentile(valid_timings, .5), "p95_ms": percentile(valid_timings, .95),
+            "valid_answers": len(valid_timings), "all_p95_ms": percentile(timings, .95),
             "queue_ms": queue, "queue_measurements_complete": len(queue) == requests,
             "queue_p95_ms": percentile(queue, .95)}

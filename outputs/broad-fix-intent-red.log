@@ -1,0 +1,249 @@
+...FFFFFFFFFFF.                                                          [100%]
+================================== FAILURES ===================================
+_ test_advice_cannot_become_data_or_execution[Someone arrived without a booking. How do I help?] _
+
+question = 'Someone arrived without a booking. How do I help?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D79D5F98B0>
+
+    @pytest.mark.parametrize('question', [
+        'Someone arrived without a booking. How do I help?',
+        'A guest needs to leave for a bit. What do I do?',
+        'They chose a desk. Is that enough to secure it?',
+        'Do they need an account first?',
+        'How should I handle a complaint?',
+    ])
+    def test_advice_cannot_become_data_or_execution(question, monkeypatch):
+        result = api.Plan(kind='OPERATIONAL', query=question, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['kind'] == 'DOCUMENT' and reply['tools'] == []
+E       AssertionError: assert ('OPERATIONAL' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + OPERATIONAL)
+
+services\rag\tests\test_broad_remediation.py:56: AssertionError
+_ test_advice_cannot_become_data_or_execution[A guest needs to leave for a bit. What do I do?] _
+
+question = 'A guest needs to leave for a bit. What do I do?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D79C5E3CE0>
+
+    @pytest.mark.parametrize('question', [
+        'Someone arrived without a booking. How do I help?',
+        'A guest needs to leave for a bit. What do I do?',
+        'They chose a desk. Is that enough to secure it?',
+        'Do they need an account first?',
+        'How should I handle a complaint?',
+    ])
+    def test_advice_cannot_become_data_or_execution(question, monkeypatch):
+        result = api.Plan(kind='OPERATIONAL', query=question, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['kind'] == 'DOCUMENT' and reply['tools'] == []
+E       AssertionError: assert ('OPERATIONAL' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + OPERATIONAL)
+
+services\rag\tests\test_broad_remediation.py:56: AssertionError
+_ test_advice_cannot_become_data_or_execution[They chose a desk. Is that enough to secure it?] _
+
+question = 'They chose a desk. Is that enough to secure it?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D79D5F87D0>
+
+    @pytest.mark.parametrize('question', [
+        'Someone arrived without a booking. How do I help?',
+        'A guest needs to leave for a bit. What do I do?',
+        'They chose a desk. Is that enough to secure it?',
+        'Do they need an account first?',
+        'How should I handle a complaint?',
+    ])
+    def test_advice_cannot_become_data_or_execution(question, monkeypatch):
+        result = api.Plan(kind='OPERATIONAL', query=question, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['kind'] == 'DOCUMENT' and reply['tools'] == []
+E       AssertionError: assert ('OPERATIONAL' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + OPERATIONAL)
+
+services\rag\tests\test_broad_remediation.py:56: AssertionError
+_ test_advice_cannot_become_data_or_execution[Do they need an account first?] _
+
+question = 'Do they need an account first?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D79D5FBDD0>
+
+    @pytest.mark.parametrize('question', [
+        'Someone arrived without a booking. How do I help?',
+        'A guest needs to leave for a bit. What do I do?',
+        'They chose a desk. Is that enough to secure it?',
+        'Do they need an account first?',
+        'How should I handle a complaint?',
+    ])
+    def test_advice_cannot_become_data_or_execution(question, monkeypatch):
+        result = api.Plan(kind='OPERATIONAL', query=question, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['kind'] == 'DOCUMENT' and reply['tools'] == []
+E       AssertionError: assert ('OPERATIONAL' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + OPERATIONAL)
+
+services\rag\tests\test_broad_remediation.py:56: AssertionError
+_ test_advice_cannot_become_data_or_execution[How should I handle a complaint?] _
+
+question = 'How should I handle a complaint?'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D79D64B4D0>
+
+    @pytest.mark.parametrize('question', [
+        'Someone arrived without a booking. How do I help?',
+        'A guest needs to leave for a bit. What do I do?',
+        'They chose a desk. Is that enough to secure it?',
+        'Do they need an account first?',
+        'How should I handle a complaint?',
+    ])
+    def test_advice_cannot_become_data_or_execution(question, monkeypatch):
+        result = api.Plan(kind='OPERATIONAL', query=question, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['kind'] == 'DOCUMENT' and reply['tools'] == []
+E       AssertionError: assert ('OPERATIONAL' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + OPERATIONAL)
+
+services\rag\tests\test_broad_remediation.py:56: AssertionError
+_ test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[How many bookings are there today?] _
+
+question = 'How many bookings are there today?'
+
+    @pytest.mark.parametrize('question', [
+        'How many bookings are there today?',
+        'How do I check in a guest, and how many are checked in today?',
+        'Can you show current availability from 10 to 11?',
+        'Show this month payment totals.',
+        'Is a desk available right now?',
+        'Cancel this reservation for me.',
+    ])
+    def test_data_mixed_and_execution_requests_are_not_forced_to_knowledge(question):
+>       assert not api.asks_for_guidance(question)
+                   ^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'asks_for_guidance'
+
+services\rag\tests\test_broad_remediation.py:68: AttributeError
+_ test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[How do I check in a guest, and how many are checked in today?] _
+
+question = 'How do I check in a guest, and how many are checked in today?'
+
+    @pytest.mark.parametrize('question', [
+        'How many bookings are there today?',
+        'How do I check in a guest, and how many are checked in today?',
+        'Can you show current availability from 10 to 11?',
+        'Show this month payment totals.',
+        'Is a desk available right now?',
+        'Cancel this reservation for me.',
+    ])
+    def test_data_mixed_and_execution_requests_are_not_forced_to_knowledge(question):
+>       assert not api.asks_for_guidance(question)
+                   ^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'asks_for_guidance'
+
+services\rag\tests\test_broad_remediation.py:68: AttributeError
+_ test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Can you show current availability from 10 to 11?] _
+
+question = 'Can you show current availability from 10 to 11?'
+
+    @pytest.mark.parametrize('question', [
+        'How many bookings are there today?',
+        'How do I check in a guest, and how many are checked in today?',
+        'Can you show current availability from 10 to 11?',
+        'Show this month payment totals.',
+        'Is a desk available right now?',
+        'Cancel this reservation for me.',
+    ])
+    def test_data_mixed_and_execution_requests_are_not_forced_to_knowledge(question):
+>       assert not api.asks_for_guidance(question)
+                   ^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'asks_for_guidance'
+
+services\rag\tests\test_broad_remediation.py:68: AttributeError
+_ test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Show this month payment totals.] _
+
+question = 'Show this month payment totals.'
+
+    @pytest.mark.parametrize('question', [
+        'How many bookings are there today?',
+        'How do I check in a guest, and how many are checked in today?',
+        'Can you show current availability from 10 to 11?',
+        'Show this month payment totals.',
+        'Is a desk available right now?',
+        'Cancel this reservation for me.',
+    ])
+    def test_data_mixed_and_execution_requests_are_not_forced_to_knowledge(question):
+>       assert not api.asks_for_guidance(question)
+                   ^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'asks_for_guidance'
+
+services\rag\tests\test_broad_remediation.py:68: AttributeError
+_ test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Is a desk available right now?] _
+
+question = 'Is a desk available right now?'
+
+    @pytest.mark.parametrize('question', [
+        'How many bookings are there today?',
+        'How do I check in a guest, and how many are checked in today?',
+        'Can you show current availability from 10 to 11?',
+        'Show this month payment totals.',
+        'Is a desk available right now?',
+        'Cancel this reservation for me.',
+    ])
+    def test_data_mixed_and_execution_requests_are_not_forced_to_knowledge(question):
+>       assert not api.asks_for_guidance(question)
+                   ^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'asks_for_guidance'
+
+services\rag\tests\test_broad_remediation.py:68: AttributeError
+_ test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Cancel this reservation for me.] _
+
+question = 'Cancel this reservation for me.'
+
+    @pytest.mark.parametrize('question', [
+        'How many bookings are there today?',
+        'How do I check in a guest, and how many are checked in today?',
+        'Can you show current availability from 10 to 11?',
+        'Show this month payment totals.',
+        'Is a desk available right now?',
+        'Cancel this reservation for me.',
+    ])
+    def test_data_mixed_and_execution_requests_are_not_forced_to_knowledge(question):
+>       assert not api.asks_for_guidance(question)
+                   ^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'assistant_api' has no attribute 'asks_for_guidance'
+
+services\rag\tests\test_broad_remediation.py:68: AttributeError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_broad_remediation.py::test_advice_cannot_become_data_or_execution[Someone arrived without a booking. How do I help?]
+FAILED services/rag/tests/test_broad_remediation.py::test_advice_cannot_become_data_or_execution[A guest needs to leave for a bit. What do I do?]
+FAILED services/rag/tests/test_broad_remediation.py::test_advice_cannot_become_data_or_execution[They chose a desk. Is that enough to secure it?]
+FAILED services/rag/tests/test_broad_remediation.py::test_advice_cannot_become_data_or_execution[Do they need an account first?]
+FAILED services/rag/tests/test_broad_remediation.py::test_advice_cannot_become_data_or_execution[How should I handle a complaint?]
+FAILED services/rag/tests/test_broad_remediation.py::test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[How many bookings are there today?]
+FAILED services/rag/tests/test_broad_remediation.py::test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[How do I check in a guest, and how many are checked in today?]
+FAILED services/rag/tests/test_broad_remediation.py::test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Can you show current availability from 10 to 11?]
+FAILED services/rag/tests/test_broad_remediation.py::test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Show this month payment totals.]
+FAILED services/rag/tests/test_broad_remediation.py::test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Is a desk available right now?]
+FAILED services/rag/tests/test_broad_remediation.py::test_data_mixed_and_execution_requests_are_not_forced_to_knowledge[Cancel this reservation for me.]
+11 failed, 4 passed, 1 warning in 1.19s

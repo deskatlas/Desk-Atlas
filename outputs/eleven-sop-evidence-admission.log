@@ -1,0 +1,144 @@
+{
+  "read_only": true,
+  "reference_files": 11,
+  "evidence_v3": false,
+  "documents": [
+    {
+      "reference_file": "STAFF - KIOSK QUEUE TAB.md",
+      "exact_reference_match": true,
+      "chunks": 33,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "GENERAL (ADAPTED) SOP DOCUMENT.md",
+      "exact_reference_match": true,
+      "chunks": 118,
+      "parser": "kb-parser-v4",
+      "reviewed": true,
+      "automated": false,
+      "all_to_all_dependencies": false,
+      "single_root_complete": true,
+      "reason": null,
+      "returned_sources": 1
+    },
+    {
+      "reference_file": "STAFF - WORKSPACE MAP TAB.md",
+      "exact_reference_match": true,
+      "chunks": 45,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - RESERVATION MANAGEMENT.md",
+      "exact_reference_match": true,
+      "chunks": 41,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - QR SCANNER TAB.md",
+      "exact_reference_match": true,
+      "chunks": 40,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - RESERVATIONS TAB.md",
+      "exact_reference_match": true,
+      "chunks": 43,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - KIOSK PAYMENT CONFIRMATION.md",
+      "exact_reference_match": true,
+      "chunks": 32,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - DASHBOARD TAB.md",
+      "exact_reference_match": true,
+      "chunks": 31,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - MY ACTIVITY TAB.md",
+      "exact_reference_match": true,
+      "chunks": 37,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - RELOCATE.md",
+      "exact_reference_match": true,
+      "chunks": 31,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    },
+    {
+      "reference_file": "STAFF - EXTEND RESERVATION.md",
+      "exact_reference_match": true,
+      "chunks": 30,
+      "parser": "kb-parser-v5",
+      "reviewed": false,
+      "automated": true,
+      "all_to_all_dependencies": true,
+      "single_root_complete": false,
+      "reason": "CONTEXT_BUDGET",
+      "returned_sources": 0
+    }
+  ],
+  "blocked_single_roots": 10
+}
+Published staff documents must admit one complete support root within the active evidence contract
+
+10 !== 0
+

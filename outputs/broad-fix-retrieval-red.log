@@ -1,0 +1,33 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms55-hybrid-gateway.test.ts (5 tests | 1 failed) 94ms
+   × QAD-TC44: a nonempty weak semantic hit cannot suppress bounded search aids 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms55-hybrid-gateway.test.ts > QAD-TC44: a nonempty weak semantic hit cannot suppress bounded search aids
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ tests/ms55-hybrid-gateway.test.ts:94:20
+     92|       coverage: { scope: 'COMPLETE_PROCEDURE', outcome: 'COMPLETE', ga…
+     93|   const answer = (await (await assistantQuery(request())).json()).data;
+     94|   expect(searches).toBe(2);
+       |                    ^
+     95|   expect(answer.summary).toBe(source.content);
+     96|   const calls = vi.mocked(fetch).mock.calls;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  11:37:27
+   Duration  3.44s (transform 53%, import 44%, tests 3%, worker 1%)
+

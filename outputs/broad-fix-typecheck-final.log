@@ -1,0 +1,19 @@
+
+> deskatlas-monorepo@ typecheck C:\Users\reyna\Desk-Atlas
+> pnpm -r typecheck
+
+Scope: 8 of 9 workspace projects
+packages/validation typecheck$ tsc --noEmit
+packages/validation typecheck: Done
+packages/domain typecheck$ tsc --noEmit
+packages/domain typecheck: Done
+packages/ui typecheck$ tsc --noEmit
+packages/ui typecheck: Done
+apps/admin-portal typecheck$ tsc --noEmit
+apps/customer-website typecheck$ tsc --noEmit
+apps/kiosk typecheck$ tsc --noEmit
+apps/staff-dashboard typecheck$ tsc --noEmit
+apps/customer-website typecheck: Done
+apps/kiosk typecheck: Done
+apps/staff-dashboard typecheck: Done
+apps/admin-portal typecheck: Done

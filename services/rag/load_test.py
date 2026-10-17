@@ -42,7 +42,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:3000/api/assistant/query")
     parser.add_argument("--cases", type=Path, required=True)
-    parser.add_argument("--requests", type=int, default=25)
+    parser.add_argument("--requests", type=int, default=100)
     args = parser.parse_args()
     parsed = urlsplit(args.url)
     if (parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
@@ -56,7 +56,7 @@ def main():
     except Exception:
         print(json.dumps({"status": "FAILED", "error_code": "LOAD_TEST_FAILED"}))
         return 1
-    print(json.dumps(result, allow_nan=False))
+    print(json.dumps({**result, "release_evidence": False, "identity_verified": False}, allow_nan=False))
     return 0 if result["failures"] == 0 and result["queue_measurements_complete"] else 1
 
 

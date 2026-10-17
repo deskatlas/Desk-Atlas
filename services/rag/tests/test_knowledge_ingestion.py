@@ -66,7 +66,8 @@ def test_spec5_tc02_docx_order_headings_tables_and_footer(tmp_path):
     joined = '\n'.join(section['text'] for section in sections)
     assert joined.index('Verify payment') < joined.index('| State | Action |') < joined.index('Finish')
     assert joined.count('Internal guide') == 1
-    assert all(section['heading'] == 'Counter SOP' for section in sections)
+    assert all(section['heading'] == 'Counter SOP' for section in sections[:-1])
+    assert sections[-1]['heading'] == '' and sections[-1]['section_id'] == 's0'
     assert 'TABLE_REVIEW' in warnings
 
 
@@ -143,7 +144,11 @@ def test_spec5_tc03_mixed_pdf_ocr_only_for_unreadable_page(tmp_path, monkeypatch
     text_pdf(source)
     writer = PdfWriter()
     writer.add_page(PdfReader(source).pages[0])
-    writer.add_blank_page(600, 800)
+    page = writer.add_blank_page(600, 800)
+    from pypdf.generic import NameObject, DecodedStreamObject
+    ink = DecodedStreamObject()
+    ink.set_data(b'0 g 40 40 100 100 re f')
+    page[NameObject('/Contents')] = writer._add_object(ink)
     mixed = tmp_path / 'mixed.pdf'
     writer.write(mixed)
     calls = []

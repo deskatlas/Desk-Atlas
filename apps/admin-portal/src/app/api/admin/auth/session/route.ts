@@ -1,81 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getStaffManagementService } from '../../staff/_lib/staffService';
+import { NextResponse } from 'next/server';
+import { AdminAccessError, verifyAdministrator } from '../_lib/verifiedAdmin';
 
 export const runtime = 'nodejs';
+const headers = { 'Cache-Control': 'private, no-store', Vary: 'Authorization' };
 
-export async function GET(request: NextRequest) {
+// MS-47 / PRD-F13: account lookup never establishes or renews a session.
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId =
-      request.headers.get('x-user-id') ||
-      searchParams.get('userId') ||
-      searchParams.get('id');
-    const email =
-      request.headers.get('x-user-email') ||
-      searchParams.get('email');
-
-    if (!userId && !email) {
-      return NextResponse.json({
-        active: false,
-        deactivated: false,
-      });
-    }
-
-    const service = getStaffManagementService();
-    let staff = null;
-
-    if (userId) {
-      staff = await service.getStaffById(userId);
-    }
-
-    if (!staff && email) {
-      const allStaff = await service.listStaff();
-      staff = allStaff.find(
-        (s) => s.email.toLowerCase() === email.trim().toLowerCase()
-      ) || null;
-    }
-
-    if (!staff) {
-      return NextResponse.json(
-        {
-          active: false,
-          deactivated: true,
-          error: 'Account deactivated or not authorized',
-        },
-        { status: 403 }
-      );
-    }
-
-    if (!staff.isActive) {
-      return NextResponse.json(
-        {
-          active: false,
-          deactivated: true,
-          error: 'Account deactivated or not authorized',
-        },
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.json({
-      active: true,
-      deactivated: false,
-      user: {
-        id: staff.id,
-        email: staff.email,
-        name: staff.name,
-        role: staff.role.toLowerCase(),
-        isSuperAdmin: staff.isSuperAdmin,
-      },
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        active: false,
-        deactivated: false,
-        error: error?.message || 'Failed to verify session',
-      },
-      { status: 500 }
-    );
+    const { user, expiresAt } = await verifyAdministrator(request);
+    return NextResponse.json({ active: true, deactivated: false, user, expiresAt }, { headers });
+  } catch (error) {
+    const failure = error instanceof AdminAccessError ? error : new AdminAccessError('AUTH_UNAVAILABLE', 503);
+    return NextResponse.json({ active: false, deactivated: failure.code === 'ACCOUNT_INACTIVE',
+      error: { code: failure.code, message: failure.code === 'AUTH_REQUIRED' ? 'Your session ended. Sign in again.'
+        : failure.code === 'AUTH_UNAVAILABLE' ? 'Unable to verify your session. Please retry.' : 'Administrator access denied.' },
+    }, { status: failure.status, headers });
   }
 }

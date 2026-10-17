@@ -1,0 +1,36 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-minimal
+{"case":"noise-minimal","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"no_tools":true,"elapsed_ms":11735,"proof_has_full_opening":false,"main_has_full_opening":false,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"expand","reason":"CONTEXT_BUDGET","category":"overflow"},{"stage":"expand","reason":"SELECTION_OVERFLOW","category":"overflow"},{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":32,"shortcut":0,"model_request_bytes":2723,"system_bytes":1718,"serialized_model_bytes":3072,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":41,"candidate_count":3,"selected_count":3,"selection_attempts":2,"selection_bytes":2307,"requested_count":1,"supported_count":1,"expansion_attempts":2,"packed_quote_count":3,"max_quote_utf16":420,"context_source_count":0,"closure_count":3,"group_count":3,"evidence_bytes":2723,"evidence_packed":1,"evidence_supported":0},"ranked_units":["a44df46b5ecc2ac5b07463bf8751bba739e876b99ea381ce15442bddf8dff536","05ffe637e5e7c16f7aa141ab3a3c5233505aa6e7e48858b1d35f1902fbf09183","a2f51a31e4b82a8502cbfad1e72d4115a4f161915259cf8d393c95a0b0d58b26"],"closure_units":["34f6bf0892a0ee7756f37f66d8595a3476f6df826c7a6c2254972a4057d19f2a","ba1c428eecfe91fe96db4448945ad63239f8ab277a903ecb044fc226c5e4cb47","a44df46b5ecc2ac5b07463bf8751bba739e876b99ea381ce15442bddf8dff536"]},"timing":"auth;dur=154.086, catalog;dur=353.439, validate;dur=0.138, settings;dur=85.549, python_plan_queue;dur=0.005, python_plan_verify;dur=84.262, python_plan_inference;dur=3305.041, python_plan_load;dur=10.558, python_plan_prompt;dur=126.956, python_plan_generation;dur=3039.515, python_plan_schema;dur=0.063, python_plan_residual;dur=0.766, python_plan_total;dur=3390.137, plan;dur=3392.182, python_embed_queue;dur=0.011, python_embed_inference;dur=812.282, python_embed_residual;dur=5.646, python_embed_total;dur=817.939, embed;dur=823.256, retrieve;dur=320.872, python_answer_queue;dur=0.017, python_answer_verify;dur=277.616, python_answer_inference;dur=6182.277, python_answer_load;dur=35.408, python_answer_prompt;dur=3420.854, python_answer_generation;dur=2470.361, python_answer_schema;dur=0.113, python_answer_residual;dur=2.365, python_answer_total;dur=6462.388, context;dur=5523.864, expand;dur=230.466, answer;dur=944.615, serialize;dur=0.087, residual;dur=0.000, total;dur=11734.750"}
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts (9 tests | 1 failed | 6 skipped) 46488ms
+   × current browser audit: noise-minimal 11742ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-current-browser-audit-live.test.ts > current browser audit: noise-minimal
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-current-browser-audit-live.test.ts:102:18
+    100|   expect(response.status).toBe(200);
+    101|   expect(parsed.success).toBe(true);
+    102|   expect(useful).toBe(true);
+       |                  ^
+    103| }, 60000);
+    104|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed | 6 skipped (9)
+   Start at  15:31:43
+   Duration  49.88s (tests 94%, transform 3%, import 3%)
+

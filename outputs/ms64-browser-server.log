@@ -1,0 +1,16 @@
+▲ Next.js 16.3.2 (Turbopack)
+- Local:         http://127.0.0.1:3064
+- Network:       http://127.0.0.1:3064
+- Environments: .env.local
+✓ Ready in 1263ms
+✓ Running next.config.mjs took 57ms
+
+ GET /ms64-fixture?state=empty 200 in 2.3s (next.js: 1642ms, application-code: 618ms)
+ GET /ms64-fixture?state=empty 200 in 109ms (next.js: 41ms, application-code: 68ms)
+ GET /ms64-fixture?state=processing 200 in 45ms (next.js: 8ms, application-code: 37ms)
+ GET /ms64-fixture?state=failed 200 in 39ms (next.js: 8ms, application-code: 31ms)
+ GET /ms64-fixture?state=replacement 200 in 39ms (next.js: 8ms, application-code: 32ms)
+ GET /ms64-fixture?state=empty 200 in 38ms (next.js: 8ms, application-code: 30ms)
+ GET /ms64-fixture?state=processing 200 in 37ms (next.js: 8ms, application-code: 29ms)
+ GET /ms64-fixture?state=failed 200 in 37ms (next.js: 8ms, application-code: 29ms)
+ GET /ms64-fixture?state=replacement 200 in 50ms (next.js: 10ms, application-code: 41ms)

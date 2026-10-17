@@ -5,12 +5,19 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AssistantPanel, Button, type AssistantMessage } from '@deskatlas/ui';
 import { assistantAnswerSchema, assistantSourceSchema, type AssistantAnswer, type AssistantSource } from '@deskatlas/domain';
 
+// MS60-TC21/30: development-only fixed lifecycle reasons, never chat content.
+function lifecycle(reason: 'close' | 'identity' | 'auth' | 'availability-transient' | 'query-complete' | 'query-gap') {
+  if (process.env.NODE_ENV === 'development') window.dispatchEvent(new CustomEvent('deskatlas:assistant-lifecycle', { detail: { reason } }));
+}
+
 // SPEC-4 SDD-C20/DSD-UI16: this component is keyed by identity, token and route.
-export function AssistantLauncher({ token }: { token?: string }) {
+export function AssistantLauncher({ token, onReauthenticate }: { token?: string; onReauthenticate?: () => void }) {
   const [enabled, setEnabled] = useState(false), [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<AssistantMessage[]>([]), [value, setValue] = useState('');
   const [busy, setBusy] = useState(false), [status, setStatus] = useState(''), [error, setError] = useState('');
+  const [authRequired, setAuthRequired] = useState(false);
   const [source, setSource] = useState<AssistantSource>(), [epoch, setEpoch] = useState<number>();
+  const [sourceError, setSourceError] = useState('');
   const session = useRef(''), generation = useRef(0), pending = useRef<{ controller: AbortController; id: string } | null>(null);
   const identity = useRef(''), catalogEpoch = useRef<number>(undefined), mounted = useRef(false);
   const availabilityRequest = useRef<{ controller: AbortController; promise: Promise<boolean> } | null>(null);
@@ -38,7 +45,10 @@ export function AssistantLauncher({ token }: { token?: string }) {
     });
     return () => cancelAnimationFrame(frame);
   }, [messages]);
-  const headers = useCallback(() => ({ Authorization: `Bearer ${token ?? ''}`, 'Content-Type': 'application/json' }), [token]);
+  const headers = useCallback(() => ({ Authorization: `Bearer ${token ?? ''}`, 'Content-Type': 'application/json', 'X-DeskAtlas-Answer-Contract': 'ms59-v1',
+    'X-DeskAtlas-Main-Answer-Contract': 'ms60-v1',
+    ...(process.env.NODE_ENV === 'development' ? { 'X-DeskAtlas-Diagnostics': 'ms60-v1' } : {}),
+  }), [token]);
   const cancel = useCallback(() => {
     generation.current++;
     renderTiming.current = null;
@@ -50,8 +60,9 @@ export function AssistantLauncher({ token }: { token?: string }) {
     }
   }, [headers]);
   const close = useCallback(() => {
+    lifecycle('close');
     cancel(); setOpen(false); setMessages([]); setValue(''); setSource(undefined); setEpoch(undefined);
-    setError(''); setBusy(false); setStatus(''); session.current = ''; last.current = ''; selections.current = undefined;
+    setError(''); setSourceError(''); setBusy(false); setStatus(''); session.current = ''; last.current = ''; selections.current = undefined;
   }, [cancel]);
   // MS-45 / QAD-TC44/45: shared refresh for hidden, closed and open states.
   const refresh = useCallback((): Promise<boolean> => {
@@ -64,20 +75,28 @@ export function AssistantLauncher({ token }: { token?: string }) {
         const body: { data?: unknown } = await response.json();
         if (!mounted.current || controller.signal.aborted || current !== generation.current) return false;
         const parsed = assistantAvailabilitySchema.safeParse(body.data);
+        if ([401, 403].includes(response.status)) { lifecycle('auth'); close(); setEnabled(false); setAuthRequired(true); return false; }
         if (!response.ok || !parsed.success) throw new Error('Availability unverified');
         const nextIdentity = JSON.stringify(parsed.data.identity);
         if (!parsed.data.enabled || (identity.current && identity.current !== nextIdentity)) {
+          lifecycle('identity');
           identity.current = nextIdentity; close(); setEnabled(false); return false;
         }
-        identity.current = nextIdentity; setRole(parsed.data.identity.role);
+        identity.current = nextIdentity; setRole(parsed.data.identity.role); setAuthRequired(false);
         if (catalogEpoch.current !== undefined && catalogEpoch.current !== parsed.data.knowledge_epoch) {
-          cancel(); sourceController.current?.abort(); setSource(undefined); selections.current = undefined;
+          cancel(); sourceController.current?.abort(); setSource(undefined); setSourceError(''); selections.current = undefined;
           setBusy(false); setStatus('');
         }
         catalogEpoch.current = parsed.data.knowledge_epoch; setEpoch(parsed.data.knowledge_epoch); setEnabled(true);
         return true;
       } catch {
-        if (mounted.current && !controller.signal.aborted && current === generation.current) { close(); setEnabled(false); }
+        // A transient poll failure is not evidence of identity invalidation.
+        // Every subsequent dispatch still requires a successful fresh read.
+        if (mounted.current && !controller.signal.aborted && current === generation.current) {
+          lifecycle('availability-transient');
+          if (session.current) setError('The assistant is temporarily unavailable. Please retry.');
+          else setEnabled(false);
+        }
         return false;
       } finally { if (availabilityRequest.current?.controller === controller) availabilityRequest.current = null; }
     })();
@@ -123,22 +142,49 @@ export function AssistantLauncher({ token }: { token?: string }) {
     const started = performance.now();
     const controller = new AbortController(), id = crypto.randomUUID(), current = generation.current;
     pending.current = { controller, id }; last.current = question;
-    setBusy(true); setError(''); setStatus('Waiting for capacity and preparing your request…');
+    setBusy(true); setError(''); setStatus('Checking your request…');
     const users = messages.filter(m => m.role === 'user').slice(-4).map(m => m.text);
     if (!retry) setMessages(previous => [...previous, { id, role: 'user', text: question }]);
     setValue('');
+    let polling = false, timedOut = false;
+    // MS53 / SDD-C20: gateway permits at most 55 seconds. Allow transport cleanup
+    // without leaving a lost request indefinitely busy in the browser.
+    const deadline = setTimeout(() => {
+      if (pending.current?.id !== id || current !== generation.current) return;
+      timedOut = true; controller.abort();
+      void fetch('/api/assistant/cancel', { method: 'POST', headers: headers(), body: JSON.stringify({ session_id: session.current, request_id: id }), keepalive: true }).catch(() => undefined);
+    }, 65000);
     const progress = setInterval(() => {
-      void fetch('/api/assistant/progress', { method: 'POST', headers: headers(), body: JSON.stringify({ session_id: session.current, request_id: id }), cache: 'no-store', signal: controller.signal })
-        .then(async response => { if (response.ok) { const payload: { data?: { stage?: string } } = await response.json(); if (current === generation.current) setStatus(payload.data?.stage === 'retrieving' ? 'Retrieving current evidence…' : payload.data?.stage === 'preparing' ? 'Preparing a grounded answer…' : 'Waiting for capacity…'); } })
-        .catch(() => undefined);
+      if (polling || controller.signal.aborted || pending.current?.id !== id) return;
+      polling = true;
+      void fetch('/api/assistant/progress', { method: 'POST', headers: headers(), body: JSON.stringify({ session_id: session.current, request_id: id }), cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) })
+        .then(async response => { if (response.ok) {
+          const payload: { data?: { stage?: string } } = await response.json();
+          if (current === generation.current && pending.current?.id === id && !controller.signal.aborted) setStatus(payload.data?.stage === 'retrieving' ? 'Retrieving current evidence…' : payload.data?.stage === 'preparing' ? 'Preparing a grounded answer…' : payload.data?.stage === 'waiting' ? 'Waiting for capacity…' : 'Checking your request…');
+        } })
+        .catch(() => undefined).finally(() => { polling = false; });
     }, 1500);
     try {
       const dispatch = performance.now();
       const response = await fetch('/api/assistant/query', { method: 'POST', headers: headers(), body: JSON.stringify({ session_id: session.current, request_id: id, message: question, recent_context: { user_turns: users, selections: selections.current, knowledge_epoch: epoch } }), signal: controller.signal, cache: 'no-store' });
+      if (process.env.NODE_ENV === 'development') {
+        // Only the gateway's allowlisted numeric metrics and enum reason codes.
+        const raw = response.headers.get('X-RAG-Diagnostics');
+        if (raw) {
+          try {
+            const metadata = JSON.parse(raw) as { counts?: Record<string, unknown> };
+            const counts = Object.fromEntries(['candidate_count', 'selected_count', 'closure_count', 'packed_quote_count', 'selection_attempts', 'expansion_attempts'].flatMap(key => {
+              const value = metadata.counts?.[key]; return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? [[key, value]] : [];
+            }));
+            window.dispatchEvent(new CustomEvent('deskatlas:assistant-diagnostics', { detail: counts }));
+          } catch { /* Diagnostics cannot affect answer delivery. */ }
+        }
+      }
       const received = performance.now();
       const body: { data?: unknown; error?: { code?: string; message?: string } } = await response.json();
       if (current !== generation.current) return;
-      if ([401,403].includes(response.status) || body.error?.code === 'NO_RELEVANT_SOURCE') { close(); setEnabled(false); return; }
+      if ([401,403].includes(response.status)) { lifecycle('auth'); close(); setEnabled(false); setAuthRequired(true); return; }
+      if (body.error?.code === 'NO_RELEVANT_SOURCE') { lifecycle('query-gap'); throw new Error('The requested evidence is unavailable. Please retry or ask an administrator.'); }
       if (!response.ok) throw new Error(body.error?.message || 'Assistant unavailable. Retry shortly.');
       const answer = assistantAnswerSchema.safeParse(body.data);
       if (!answer.success || answer.data.request_id !== id) throw new Error('Invalid assistant response. Retry shortly.');
@@ -146,29 +192,34 @@ export function AssistantLauncher({ token }: { token?: string }) {
       renderTiming.current = { request_id: id, generation: current, start: started, dispatch, received, parsed: performance.now(), gateway_ms: gateway ? Number(gateway[1]) : undefined };
       selections.current = answer.data.selections; setEpoch(answer.data.knowledge_epoch);
       setMessages(previous => [...previous, { id: crypto.randomUUID(), role: 'assistant', text: answer.data.summary, answer: answer.data }]);
-    } catch (e) { if (current === generation.current && !controller.signal.aborted) setError(e instanceof Error ? e.message : 'Assistant unavailable.'); }
-    finally { clearInterval(progress); if (current === generation.current) { pending.current = null; setBusy(false); setStatus(''); } }
+      lifecycle('query-complete');
+    } catch (e) { if (current === generation.current && (timedOut || !controller.signal.aborted)) setError(timedOut ? 'The assistant request timed out. Please retry.' : e instanceof Error ? e.message : 'Assistant unavailable.'); }
+    finally {
+      clearInterval(progress); clearTimeout(deadline); controller.abort();
+      if (current === generation.current && pending.current?.id === id) { pending.current = null; setBusy(false); setStatus(''); }
+    }
   };
   const readSource = async (version: string, chunk: string) => {
     sourceController.current?.abort(); const controller = new AbortController(); sourceController.current = controller;
-    const current = generation.current; setSource(undefined);
+    const current = generation.current; setSource(undefined); setSourceError('');
     try {
       const response = await fetch(`/api/assistant/sources/${encodeURIComponent(version)}/${encodeURIComponent(chunk)}`, { headers: headers(), cache: 'no-store', signal: controller.signal });
       if (current !== generation.current || controller.signal.aborted) return;
-      if ([401,403].includes(response.status)) { close(); setEnabled(false); return; }
+      if ([401,403].includes(response.status)) { close(); setEnabled(false); setAuthRequired(true); return; }
       const body: { data?: unknown } = await response.json(); const parsed = assistantSourceSchema.safeParse(body.data);
       if (!response.ok || !parsed.success) throw new Error('This published source is no longer available.');
       if (current === generation.current && !controller.signal.aborted) setSource(parsed.data);
-    } catch (e) { if (current === generation.current && !controller.signal.aborted) setError(e instanceof Error ? e.message : 'Source unavailable.'); }
+    } catch (e) { if (current === generation.current && !controller.signal.aborted) setSourceError(e instanceof Error ? e.message : 'Source unavailable.'); }
   };
-  if (!enabled || blocked) return null;
+  if ((!enabled && !authRequired) || blocked) return null;
   return <>
-    <Button ref={launcher} variant="primary" aria-label="Open DeskAtlas Assistant" aria-haspopup="dialog" aria-expanded={open}
-      onClick={() => void show()} style={{ position: 'fixed', right: 'max(20px, env(safe-area-inset-right))', bottom: 'max(20px, env(safe-area-inset-bottom))', zIndex: 45, width: '56px', height: '56px', borderRadius: '50%', padding: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+    <Button ref={launcher} variant="primary" aria-label={authRequired ? 'Sign in again to use DeskAtlas Assistant' : 'Open DeskAtlas Assistant'} aria-haspopup={authRequired ? undefined : 'dialog'} aria-expanded={open}
+      onClick={() => authRequired ? (onReauthenticate ? onReauthenticate() : window.location.assign('/manage/login')) : void show()} style={{ position: 'fixed', right: 'max(20px, env(safe-area-inset-right))', bottom: 'max(20px, env(safe-area-inset-bottom))', zIndex: 45, width: authRequired ? 'auto' : '56px', height: '56px', borderRadius: authRequired ? 'var(--da-radius-md, 8px)' : '50%', padding: authRequired ? '0 16px' : 0, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
       <MessageCircle size={24} aria-hidden="true" />
+      {authRequired && 'Sign in again'}
     </Button>
-    {open && <AssistantPanel role={role} messages={messages} value={value} busy={busy} status={status} error={error} epoch={epoch} source={source}
+    {open && <AssistantPanel role={role} messages={messages} value={value} busy={busy} status={status} error={error} epoch={epoch} source={source} sourceError={sourceError}
       onValue={setValue} onSubmit={() => void send(value)} onRetry={() => void send(last.current, true)} onClose={close}
-      onSource={(version, chunk) => void readSource(version, chunk)} onDismissSource={() => setSource(undefined)} />}
+      onSource={(version, chunk) => void readSource(version, chunk)} onDismissSource={() => { sourceController.current?.abort(); sourceController.current = null; setSource(undefined); setSourceError(''); }} />}
   </>;
 }

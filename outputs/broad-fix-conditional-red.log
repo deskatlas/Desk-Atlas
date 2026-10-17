@@ -1,0 +1,36 @@
+........F........                                                        [100%]
+================================== FAILURES ===================================
+_ test_advice_cannot_become_data_or_execution[What if I can't sort it out myself?] _
+
+question = "What if I can't sort it out myself?"
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5C35CC0E0>
+
+    @pytest.mark.parametrize('question', [
+        'Someone arrived without a booking. How do I help?',
+        'A guest needs to leave for a bit. What do I do?',
+        'They chose a desk. Is that enough to secure it?',
+        'Do they need an account first?',
+        'How should I handle a complaint?',
+        "What if I can't sort it out myself?",
+    ])
+    def test_advice_cannot_become_data_or_execution(question, monkeypatch):
+        result = api.Plan(kind='OPERATIONAL', query=question, tools=[api.Tool(name='operational_snapshot', args=api.Filters())])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=result))
+        reply = asyncio.run(api.plan(api.PlanInput(message=question, recent_context=api.Context(),
+            business_date='2026-10-17', timezone='Asia/Manila', search_enabled=True), SimpleNamespace(ops=['answer'], role='STAFF')))
+>       assert reply['kind'] == 'DOCUMENT' and reply['tools'] == []
+E       AssertionError: assert ('OPERATIONAL' == 'DOCUMENT'
+E         
+E         - DOCUMENT
+E         + OPERATIONAL)
+
+services\rag\tests\test_broad_remediation.py:57: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_broad_remediation.py::test_advice_cannot_become_data_or_execution[What if I can't sort it out myself?]
+1 failed, 16 passed, 1 warning in 1.11s

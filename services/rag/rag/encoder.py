@@ -5,6 +5,14 @@ from pathlib import Path
 from .artifacts import verify_weights
 
 
+def preload_runtime():
+    # Windows native imports must complete before the serving event loop starts.
+    # Module caching reuses these approved dependencies inside Encoder.
+    import torch
+    from sentence_transformers import SentenceTransformer
+    return torch, SentenceTransformer
+
+
 def validate_vectors(vectors: list[list[float]]) -> None:
     if not vectors:
         raise ValueError("EMPTY_EMBEDDING_RESULT")
@@ -24,9 +32,8 @@ class Encoder:
         if (model["tokenizer_revision"] != model["revision"] or model["dimensions"] != 1024
                 or model["normalization"] != "l2" or model["representation"] != "float32-cpu"):
             raise ValueError("ENCODER_CONFIGURATION_MISMATCH")
-        import torch
+        torch, SentenceTransformer = preload_runtime()
         from huggingface_hub import snapshot_download
-        from sentence_transformers import SentenceTransformer
         local = snapshot_download(model["id"], revision=model["revision"],
                                   cache_dir=str(cache), local_files_only=True)
         verify_weights(Path(local), model["weights_sha256"])

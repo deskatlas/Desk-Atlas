@@ -1,0 +1,15 @@
+{
+  "generated_attempts": 8,
+  "generated_candidates": 6,
+  "generation_timeouts": 2,
+  "adversarial_controls": 8,
+  "reviewable_items": 14,
+  "source_audits": 4,
+  "draft_negative_controls_with_positive_model_flags": 8,
+  "held_out_generation_count": 0,
+  "retrieval_exercised": false,
+  "live_endpoints_used": false,
+  "translation_admitted": false,
+  "human_reviews_completed": 0,
+  "release_ready": false
+}

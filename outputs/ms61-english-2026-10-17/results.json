@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "requirement": "ms61-v2-English-output",
+  "model_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+  "source_snapshot": "865364d8ca76daa4342e5da8bc37c5a327e9ee85f4fa5b7c0f683ba6850e8336",
+  "probe_digest": "c3f9e80eaba95ee38352587058c797202bf7b9f87a3cfbcafa7f8f70ac1b7194",
+  "cases": [
+    {
+      "case": "property-fresh-tl",
+      "input_language": "tl",
+      "output_language": "en",
+      "plan_kind": null,
+      "main": null,
+      "verdict": null,
+      "status": "MODEL_REJECTED",
+      "elapsed_ms": 8233
+    },
+    {
+      "case": "property-mixed-tl",
+      "input_language": "tl",
+      "output_language": "en",
+      "plan_kind": "DOCUMENT",
+      "main": [
+        "Staff only. 1. Record the found item. 2. Store it securely. 3. Verify ownership before releasing the item to its owner."
+      ],
+      "verdict": {
+        "supported": [
+          true
+        ],
+        "complete": true,
+        "consistent": true,
+        "evidence_safe": true
+      },
+      "status": "COMPONENT_COMPLETE",
+      "original_question_preserved": true,
+      "canonical_english_main": true,
+      "proof_unchanged": true,
+      "elapsed_ms": 9214
+    },
+    {
+      "case": "permission-taglish",
+      "input_language": "taglish",
+      "output_language": "en",
+      "plan_kind": "DOCUMENT",
+      "main": [
+        "Only administrators may approve online payment proofs. Staff may verify counter payments but cannot approve online payment proofs."
+      ],
+      "verdict": {
+        "supported": [
+          true
+        ],
+        "complete": true,
+        "consistent": true,
+        "evidence_safe": true
+      },
+      "status": "COMPONENT_COMPLETE",
+      "original_question_preserved": true,
+      "canonical_english_main": true,
+      "proof_unchanged": true,
+      "elapsed_ms": 6844
+    },
+    {
+      "case": "conditional-taglish",
+      "input_language": "taglish",
+      "output_language": "en",
+      "plan_kind": "DOCUMENT",
+      "main": [
+        "Release a stored item only after ownership verification. If ownership is uncertain, keep it securely stored and ask the supervisor."
+      ],
+      "verdict": {
+        "supported": [
+          true
+        ],
+        "complete": true,
+        "consistent": true,
+        "evidence_safe": true
+      },
+      "status": "COMPONENT_COMPLETE",
+      "original_question_preserved": true,
+      "canonical_english_main": true,
+      "proof_unchanged": true,
+      "elapsed_ms": 7606
+    }
+  ],
+  "retrieval_exercised": false,
+  "gateway_browser_exercised": false,
+  "full_render_performance_measured": false,
+  "release_ready": false
+}

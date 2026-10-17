@@ -1,0 +1,41 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+stdout | tests/ms63-eleven-sop-audit-live.test.ts > eleven-SOP audit: payment-broad-context
+{"id":"payment-broad-context","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"FAILURE","useful":false,"handover_only":false,"table_count":0,"elapsed_ms":11130,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"expand","reason":"CONTEXT_BUDGET","category":"overflow"},{"stage":"expand","reason":"SELECTION_OVERFLOW","category":"overflow"},{"stage":"expand","reason":"INCOMPLETE_EVIDENCE","category":"overflow"}],"counts":{"epoch":70,"shortcut":0,"model_request_bytes":8394,"system_bytes":1021,"serialized_model_bytes":9145,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":322,"candidate_count":12,"selected_count":6,"selection_attempts":2,"selection_bytes":8394,"requested_count":1,"supported_count":1,"expansion_attempts":2},"ranked_units":["9710c99e5237e8ecccbdbf0a2e72442e81976ab705736bf74ed92b7d48622434","4488639a23f35fc8f8e75266051ca80caead600f2843237214230e8e5507f027","c9a13e0c8d2a546c61caffd22d3b38c6576a6cbfc344d91c2446b238c1327899","bd928c51883f9f6973345d0c37b5c147745a3704bcfd7a50b4e8c69742dc6d12","29f87f8869aa441e02faff1d9779e2e5d663809cecffc4330e45688230be4dfd","32837e11329e866ce1431272ce237556294f3464c05676b67513b6309b0d5f6d"],"closure_units":[]},"timing":"auth;dur=159.222, catalog;dur=394.637, validate;dur=4.747, settings;dur=82.724, python_plan_queue;dur=0.005, python_plan_verify;dur=87.266, python_plan_inference;dur=4831.957, python_plan_load;dur=14.561, python_plan_prompt;dur=275.565, python_plan_generation;dur=3675.789, python_plan_schema;dur=0.058, python_plan_residual;dur=0.796, python_plan_total;dur=4920.083, plan;dur=4938.458, python_embed_queue;dur=0.010, python_embed_inference;dur=1040.693, python_embed_residual;dur=9.440, python_embed_total;dur=1050.142, embed;dur=1058.566, retrieve;dur=503.501, python_answer_queue;dur=0.013, python_answer_verify;dur=187.673, python_answer_inference;dur=3670.089, python_answer_load;dur=25.129, python_answer_prompt;dur=80.276, python_answer_generation;dur=3132.129, python_answer_schema;dur=0.108, python_answer_residual;dur=2.956, python_answer_total;dur=3860.838, context;dur=3865.819, expand;dur=336.936, serialize;dur=0.541, residual;dur=0.000, total;dur=11125.995"}
+
+stdout | tests/ms63-eleven-sop-audit-live.test.ts > eleven-SOP audit: missing-code-context
+{"id":"missing-code-context","component_probe":true,"status":200,"valid":true,"kind":"DOCUMENT","mode":"EVIDENCE_GAP","useful":false,"handover_only":false,"table_count":0,"elapsed_ms":24965,"diagnostics":{"schema_version":1,"stage":"serialize","failures":[{"stage":"expand","reason":"CONTEXT_BUDGET","category":"overflow"},{"stage":"expand","reason":"SELECTION_OVERFLOW","category":"overflow"},{"stage":"grounding","reason":"NO_RELEVANT_SOURCE","category":"evidence_gap"}],"counts":{"epoch":70,"shortcut":0,"model_request_bytes":7272,"system_bytes":1021,"serialized_model_bytes":8137,"context_tokens":16384,"output_budget":128,"template_headroom":512,"model_response_bytes":291,"candidate_count":12,"selected_count":3,"selection_attempts":2,"selection_bytes":7272,"requested_count":1,"supported_count":0,"expansion_attempts":1,"context_source_count":0,"closure_count":0,"group_count":0,"evidence_bytes":249},"ranked_units":["378462b0de9ed9b1cf8f69e39d3ae6b50ef5e7c6469d11a3ba83977b06b2a48f","4f43ec9cbfe6a712f65d5dfcb1427c86db988845ac488bf0b9359121c432938c","229ac2e11364aa1e8b35aca809a95698c153e82b72436907e095a1bdf7fc3023","dda86f2b0f3d4d36aab47951b84222d0e3f47265dc3e798328a92a5a916b7135","050715934ff6fec561473bdc82d58fe4045fdd58801ffa54bd07de56a58b53f9","ea86de94eb97940e76f359cb684a858485b2ce521dd1b1b2128025adcae30052"],"closure_units":[]},"timing":"auth;dur=138.235, catalog;dur=344.653, validate;dur=0.206, settings;dur=78.918, python_plan_queue;dur=0.008, python_plan_verify;dur=163.205, python_plan_inference;dur=4344.982, python_plan_load;dur=17.812, python_plan_prompt;dur=219.527, python_plan_generation;dur=3888.428, python_plan_schema;dur=0.072, python_plan_residual;dur=1.278, python_plan_total;dur=4509.545, plan;dur=4513.125, python_embed_queue;dur=0.011, python_embed_inference;dur=1025.531, python_embed_residual;dur=6.809, python_embed_total;dur=1032.351, embed;dur=1039.055, retrieve;dur=387.819, python_answer_queue;dur=0.017, python_answer_verify;dur=226.832, python_answer_inference;dur=18105.063, python_answer_load;dur=29.063, python_answer_prompt;dur=102.604, python_answer_generation;dur=2866.130, python_answer_schema;dur=0.091, python_answer_residual;dur=2.327, python_answer_total;dur=18334.330, context;dur=18339.358, expand;dur=234.780, serialize;dur=0.194, residual;dur=0.000, total;dur=24964.368"}
+
+ ❯ tests/ms63-eleven-sop-audit-live.test.ts (3 tests | 2 failed | 1 skipped) 36316ms
+   × eleven-SOP audit: payment-broad-context 11139ms
+   × eleven-SOP audit: missing-code-context 24968ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-eleven-sop-audit-live.test.ts > eleven-SOP audit: payment-broad-context
+ FAIL  tests/ms63-eleven-sop-audit-live.test.ts > eleven-SOP audit: missing-code-context
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-eleven-sop-audit-live.test.ts:68:18
+     66|   expect(response.status).toBe(200);
+     67|   expect(parsed.success).toBe(true);
+     68|   expect(useful).toBe(true);
+       |                  ^
+     69| }, 60000);
+     70|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 skipped (3)
+   Start at  17:34:37
+   Duration  39.50s (tests 92%, transform 4%, import 3%)
+

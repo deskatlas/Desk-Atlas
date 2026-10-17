@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "candidates": 12,
+  "sources": 6,
+  "quotes": 6,
+  "quote_utf16": 1500,
+  "request_bytes": 12000,
+  "model_request_bytes": 15000,
+  "context_tokens": 16384,
+  "template_headroom": 512,
+  "passages": 128,
+  "graph_units": 1000
+}

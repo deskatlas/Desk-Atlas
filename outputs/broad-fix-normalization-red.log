@@ -1,0 +1,60 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms63-booking-guarantee-search.test.ts (9 tests | 5 failed) 19ms
+   × preserves casual inventory-guarantee intent: They've chosen a desk. Is that enough to secure it? 9ms
+   × preserves casual inventory-guarantee intent: If I pick a seat, is it already reserved for me? 1ms
+   × preserves casual inventory-guarantee intent: Does selecting a spot guarantee the booking? 1ms
+   × preserves casual inventory-guarantee intent: I chose a workspace. Does that make it mine? 1ms
+   × keeps the original and bounded normalization when generated search aids follow another topic 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > preserves casual inventory-guarantee intent: They've chosen a desk. Is that enough to secure it?
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > preserves casual inventory-guarantee intent: If I pick a seat, is it already reserved for me?
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > preserves casual inventory-guarantee intent: Does selecting a spot guarantee the booking?
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > preserves casual inventory-guarantee intent: I chose a workspace. Does that make it mine?
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/ms63-booking-guarantee-search.test.ts:13:99
+     11|   const queries = assistantSearchQueries(message, undefined);
+     12|   expect(queries[0]).toBe(message);
+     13|   expect(queries.some(query => /reservation confirmation and inventory…
+       |                                                                                                   ^
+     14|   expect(queries.every(query => query.startsWith(message))).toBe(true);
+     15|   expect(queries).toHaveLength(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/ms63-booking-guarantee-search.test.ts > keeps the original and bounded normalization when generated search aids follow another topic
+AssertionError: expected 'They\'ve chosen a desk. Is that enoug…' to contain 'reservation confirmation and inventor…'
+
+- Expected
++ Received
+
+- reservation confirmation and inventory allocation
++ They've chosen a desk. Is that enough to secure it?
++ Search interpretation: Reservation verification
+
+ ❯ tests/ms63-booking-guarantee-search.test.ts:34:22
+     32|     alternatives: ['Booking checks', 'Workspace booking'] });
+     33|   expect(queries).toHaveLength(4);
+     34|   expect(queries[1]).toContain('reservation confirmation and inventory…
+       |                      ^
+     35|   expect(queries.every(query => query.startsWith(message))).toBe(true);
+     36| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 4 passed (9)
+   Start at  14:27:04
+   Duration  589ms (transform 56%, import 29%, worker 8%, tests 6%)
+

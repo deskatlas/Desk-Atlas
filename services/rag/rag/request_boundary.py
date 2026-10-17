@@ -23,6 +23,8 @@ class RequestBoundary:
         token = request_timing.current.set(spans)
         counts = {}
         counts_token = request_timing.tokens.set(counts)
+        model_metrics = {}
+        metrics_token = request_timing.metrics.set(model_metrics)
         task = watcher = None
         admitted = False
         started = False
@@ -36,6 +38,8 @@ class RequestBoundary:
                     (b'server-timing', request_timing.header(spans, start).encode('ascii'))]
                 for key, value in counts.items():
                     message['headers'].append((f'x-rag-{key}-tokens'.encode('ascii'), str(value).encode('ascii')))
+                for key, value in model_metrics.items():
+                    message['headers'].append((f'x-rag-model-{key}'.encode('ascii'), str(value).encode('ascii')))
                 message['headers'].append((b'x-rag-active', str(self.active).encode('ascii')))
                 try:
                     identifier = str(UUID(scope.get('state', {}).get('request_id', '')))
@@ -51,7 +55,18 @@ class RequestBoundary:
 
         try:
             # Bound body reading too. Never retain it after this request.
-            async with asyncio.timeout(self.deadline):
+            headers = dict(scope.get('headers', []))
+            supplied = headers.get(b'x-request-timeout-ms')
+            deadline = self.deadline
+            if supplied is not None:
+                try:
+                    remaining = int(supplied)
+                    if remaining <= 0:
+                        raise ValueError()
+                    deadline = min(deadline, remaining / 1000)
+                except (ValueError, TypeError):
+                    return await JSONResponse({'error': 'REQUEST_TIMEOUT'}, 504)(scope, receive, timed_send)
+            async with asyncio.timeout(deadline):
                 body = bytearray()
                 while True:
                     message = await receive()
@@ -104,3 +119,4 @@ class RequestBoundary:
                 self.active -= 1
             request_timing.current.reset(token)
             request_timing.tokens.reset(counts_token)
+            request_timing.metrics.reset(metrics_token)

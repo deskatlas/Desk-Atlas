@@ -1,5 +1,9 @@
 # DeskAtlas private assistant service
 
+MS-53 serving-code check: run `pnpm rag:status` after editing Python retrieval or answer code. Next.js development refresh does not reload the Python API. The authenticated health response identifies the implementation loaded at process startup; a stale or unidentified process requires a local API restart. This check reads no document content and prints no credentials. Use `pnpm rag:api` after stopping the previous owned API instance. Do not start a second listener on port 8000.
+
+The normal launcher preloads approved native encoder imports before starting the serving event loop. Source fingerprints and pinned weights are still checked during model initialization. Fixed startup stages identify configuration, transport, encoder, model verification/preload and GPU residency; they contain no document text or credentials. Strictly proven standalone numbered procedures can use exact extraction of the complete authorized dependency closure. Other requests retain the normal model verification path and existing deadlines.
+
 SPEC-4 / PRD-F26 / SDD-C20-C22 / QAD-TC44. Python performs bounded planning, query embedding and extractive document answer selection. TypeScript owns authorization, tools, arithmetic, citations and final evidence checks. No chat history is persisted. Do not enable HTTP payload/access logging, Ollama debug logging, tracing bodies, or external inference fallback.
 
 Local answer candidate: Ollama `qwen3:4b`, CPU (`num_gpu: 0`), with a full pinned digest from `/api/tags`. Query and ingestion embeddings share the offline HF Qwen3-Embedding-0.6B encoder, immutable revision and complete fingerprint in `models.json`. Quantized Ollama embeddings are not interchangeable with this generation. Candidates have not passed the five-user or multilingual acceptance gates. Preserve model license notices. See [SPEC-6 operations](OPERATIONS.md) and [measured evidence](EVIDENCE.md) for setup, evaluation and release gates.
@@ -26,3 +30,52 @@ services/rag/.venv-service/Scripts/python.exe services/rag/serve_local.py --gate
 ```
 
 Stop the previous RAG service on 8000 first. The launcher uses the existing installed Ollama/model, starts or reuses a private Vulkan instance on 11435, verifies/preloads the pinned GPU model and retains it. It leaves the normal Ollama server on 11434 unchanged. CPU remains the default without `--gpu`. Compact passage selection expands indexes into exact source text and performs an independent support check before the gateway revalidates citations. Use `selection_smoke.py --gpu` in the service environment for the synthetic real-model component checks. The measured exact FAQ achieved 2.271-second warm p95 over 30 complete cited answers; broader acceptance gates remain separate.
+
+`pnpm rag:api` now retains this existing GPU startup path when saved local settings
+select `RAG_MODEL_GPU_LAYERS=-1` and `OLLAMA_URL=http://127.0.0.1:11435`.
+Put these overrides in `services/rag/.env.local`; the parent launcher forwards
+only service settings. It invokes `serve_local.py --gpu` with the already loaded
+environment, so the isolated Vulkan server is started again after a workstation
+restart. Explicit CPU overrides retain the normal single-process Uvicorn path.
+The GPU launcher verifies residency before accepting API requests. Startup/model
+loading and first-time prompt processing remain separate from warm latency.
+
+The section candidate selector uses bounded numeric indexes internally and maps
+them back to original chunk IDs on the server. It preserves the external evidence
+contract, required dependency expansion and the independent support check.
+`node scripts/rag-context-smoke.cjs` tests the real four-candidate selector with
+synthetic sources and prints counts/timing only. Timeout and incomplete-output
+messages are distinct from a stopped or unreachable model service.
+
+### MS-50 local API startup diagnostics
+
+`pnpm rag:api` reports the selected direct/GPU branch and safe startup stages.
+`Ready` appears only after application lifespan initialization completes,
+including the existing configured encoder/model checks. `--check` validates
+only saved settings and executable presence, not application readiness.
+
+`API_PORT_IN_USE` means another process owns loopback port 8000. Use the existing
+API, or identify and intentionally stop its owning process before restarting.
+The launcher never evicts a listener. On Windows, inspect ownership with
+`Get-NetTCPConnection -State Listen -LocalPort 8000` and `Get-Process -Id <PID>`.
+Do not paste process command lines or environment contents into diagnostic reports.
+
+Other fixed diagnostics distinguish API binding, import/dependency rejection,
+application initialization, startup timeout, GPU runtime availability, model
+revision mismatch, model preload timeout, child spawn, unexpected exit, and
+shutdown timeout. Guidance contains no exception bodies, credentials, source
+content or model responses. Restore the approved artifacts/settings rather than
+disabling integrity checks or selecting a fallback profile.
+
+Ctrl+C and SIGTERM request graceful API shutdown through a private parent pipe
+on Windows and other platforms. Parent EOF also requests shutdown. The wrapper
+stops Ollama only if this invocation started it; a pre-existing runtime stays
+running. The Node parent bounds shutdown to 10 seconds and reports forced exits.
+The worker retains its own environment allowlist and signal forwarding.
+
+Verification: `pnpm test:ms50`, `pnpm test:ms50:python`, and
+`pnpm rag:startup-canary`. The canary uses saved configuration and the real API
+lifespan on an ephemeral loopback port, makes five authorized synthetic health
+requests over at least 60 seconds, checks unauthorized denial, then shuts down.
+It is separate from normal-command acceptance on port 8000 and does
+not alter saved configuration. Results: `services/rag/MS50-IMPLEMENTATION.md`.

@@ -9,6 +9,7 @@ import pytest
 from rag.capacity import Admission, CapacityBusy
 from rag.config import ConfigurationError, load_configuration
 from rag.encoder import validate_vectors
+from rag.identity import canonical_digest
 from rag.evaluation import DOCUMENT_TYPES, LANGUAGES, OPERATIONAL_CASES, evaluate_release, percentile, retrieval_scores
 from rag.load import Outcome, measure_load
 from rag.telemetry import metadata
@@ -123,6 +124,33 @@ def complete_evidence(cases):
                      "unsupported_claim": False, "behavior": case["expected_behavior"],
                      "tool": case.get("expected_tool"), "filters": case.get("filters"), "role": case.get("role"),
                      **({"table": case["expected_table"]} if "expected_table" in case else {})} for case in cases]
+    identity = {"schema_version": 1, "candidate_revision": revision, "source_snapshot": "b" * 64,
+                "answer_model_digest": "c" * 64, "embedding_fingerprint": "d" * 64,
+                "parser_fingerprint": "e" * 64, "config_digest": "f" * 64,
+                "corpus_digest": "0" * 64, "case_set_digest": canonical_digest(cases),
+                "run_id": "00000000-0000-4000-8000-000000000001"}
+    evidence["identity"] = identity
+    evidence["gate_records"] = []
+    for gate, key in [(record, record["id"]) for record in evidence["operational_cases"]] + [(evidence[key], key) for key in ("security", "reporting", "source_lifecycle", "session_only", "unsupported", "load")]:
+        gate.update(identity=identity, record_ids=[key])
+        evidence["gate_records"].append({"id": key, "gate": key, "identity": identity, "status": "PASS"})
+    for key in ("semantic_review", "runtime_identity", "real_pgvector", "private_storage", "parser_container", "topology", "cancellation_recovery", "privacy", "rollback", "substantive_lint"):
+        evidence[key] = {"complete": True, "identity": identity, "record_ids": [key]}
+        evidence["gate_records"].append({"id": key, "gate": key, "identity": identity, "status": "PASS"})
+    evidence["load"]["latencies_ms"] = [1000] * 100
+    evidence["load"]["queue_ms"] = [1] * 100
+    evidence["profiles"] = {}
+    for profile, count in (("repeat", 30), ("representative", 90), ("cold", 5), ("five", 100), ("ingestion", 100)):
+        evidence["profiles"][profile] = []
+        for index in range(count):
+            language = "en" if profile == "repeat" else ("en", "tl", "taglish")[index % 3]
+            case = next(case for case in cases if case['language'] == language and case['expected_sources'])
+            evidence["profiles"][profile].append({"identity": identity, "attempt_id": str(index), "case_id": case['id'],
+                "profile": profile, "role": case['role'], "language": language,
+                "outcome": "valid_answer", "duration_ms": 1000, "queue_ms": 1, "batch_id": index // 5,
+                "actor_slot": index % 5, "reset_id": str(index), "ingestion_active": True})
+    for case, observed in zip(cases, observations):
+        observed.update(identity=identity, procedure_complete=True, language_reviewed=True, language=case["language"], profile="held_out", attempt_id=case["id"])
     return evidence, observations
 
 
@@ -145,7 +173,7 @@ def test_spec6_tc11_no_silent_release_gate_relaxation(fault):
     if fault == "unratified": evidence["thresholds"]["ratified"] = False
     if fault == "missing_case": evidence["operational_cases"].pop()
     if fault == "model_only": evidence["load"]["profile"] = "answer_model_microbenchmark"
-    if fault == "slow": evidence["load"]["latencies_ms"][-1] = 15001
+    if fault == "slow": evidence["load"]["latencies_ms"] = [15001] * 100
     if fault == "unmeasured_queue": evidence["load"]["queue_ms"] = []
     if fault == "unsafe": observations[0]["dangerous_instruction"] = True
     if fault == "incorrect_cell":

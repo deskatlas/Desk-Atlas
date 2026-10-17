@@ -5,8 +5,7 @@
   "types": "src/index.ts",
   "scripts": {
     "build": "echo 'Building validation package'",
-    "lint": "echo 'Linting validation package'",
-    "typecheck": "echo 'Typechecking validation package'"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "^3.24.2"

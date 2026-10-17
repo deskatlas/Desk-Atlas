@@ -1,0 +1,27 @@
+..........F.......................                                       [100%]
+================================== FAILURES ===================================
+_________ test_workflow_scope_cannot_hide_numbered_duties_as_factual __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002495E8C4920>
+
+    def test_workflow_scope_cannot_hide_numbered_duties_as_factual(monkeypatch):
+        request = request_for('1. Prepare reception.\n2. Check reservations.\n3. Check supplies.')
+        request.query = 'What should I do before people start arriving?'
+        request.presentation_contract = 'ms60-concise-v1'
+        request.coverage = api.Coverage(scope='FACTUAL', outcome='COMPLETE', gaps=[])
+        projection = api.MainProjection(p=[0])
+        monkeypatch.setattr(api, 'generate', AsyncMock(return_value=projection))
+>       with pytest.raises(api.HTTPException):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'fastapi.exceptions.HTTPException'>
+
+services\rag\tests\test_current_browser_repair.py:72: Failed
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_current_browser_repair.py::test_workflow_scope_cannot_hide_numbered_duties_as_factual
+1 failed, 33 passed, 1 warning in 1.11s
