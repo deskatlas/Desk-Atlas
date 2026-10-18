@@ -249,6 +249,16 @@ export interface PaymentReviewQueueItem {
   submittedCandidates: ReservationCandidate[];
 }
 
+export type PaymentQueueSortMode =
+  | "RANK_DESC"
+  | "RANK_ASC"
+  | "AMOUNT_DESC"
+  | "AMOUNT_ASC";
+
+export interface RankedPaymentReviewQueueItem extends PaymentReviewQueueItem {
+  queueRank: number;
+}
+
 export interface PaymentReviewDetail extends PaymentReviewQueueItem {
   proofStoragePath: string | null;
   rejectionReason: string | null;

@@ -1,8 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { PaymentReviewQueueItem, PaymentReviewDetail } from '@deskatlas/domain';
+import type {
+  PaymentReviewQueueItem,
+  PaymentReviewDetail,
+  PaymentQueueSortMode,
+  RankedPaymentReviewQueueItem,
+} from '@deskatlas/domain';
+import { sortPaymentReviewQueue } from '@deskatlas/domain';
 
 function formatTimeAgo(dateStr: string | null): string {
   if (!dateStr) return 'just now';
@@ -23,8 +29,9 @@ function formatTimeAgo(dateStr: string | null): string {
 export function PaymentQueue() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'REVIEW' | 'REJECTED'>('REVIEW');
-  const [reviewQueue, setReviewQueue] = useState<PaymentReviewQueueItem[]>([]);
+  const [reviewQueue, setReviewQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
   const [rejectedQueue, setRejectedQueue] = useState<PaymentReviewDetail[]>([]);
+  const [sortMode, setSortMode] = useState<PaymentQueueSortMode>('RANK_DESC');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,15 +57,19 @@ export function PaymentQueue() {
         }
         return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
       });
-      setReviewQueue(sortedReview);
+      const canonicalQueue: RankedPaymentReviewQueueItem[] = sortedReview.map((item, index) => ({
+        ...item,
+        queueRank: index + 1,
+      }));
+      setReviewQueue(canonicalQueue);
 
       if (rejectedRes.ok) {
         const rejectedData = await rejectedRes.json();
         const rawRejected: PaymentReviewDetail[] = rejectedData.rejected || rejectedData.queue || [];
         setRejectedQueue(rawRejected);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load payments.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load payments.');
     } finally {
       setLoading(false);
     }
@@ -67,6 +78,10 @@ export function PaymentQueue() {
   useEffect(() => {
     fetchQueues();
   }, []);
+
+  const displayedQueue = useMemo(() => {
+    return sortPaymentReviewQueue(reviewQueue, sortMode);
+  }, [reviewQueue, sortMode]);
 
   return (
     <main data-screen-label="Payments" style={{ padding: '26px 28px 40px' }}>
@@ -162,14 +177,71 @@ export function PaymentQueue() {
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
             </svg>
             <span>
-              <strong>Notice:</strong> Payments are sorted by proof upload time (earliest first) so you can review who uploaded their payment proof first.
+              <strong>Notice:</strong>{' '}
+              {sortMode === 'RANK_DESC'
+                ? "Payments are sorted by proof upload time (earliest first). The rank badge indicates original queue arrival order."
+                : "Active sorting applied. The rank badge (#) permanently identifies each customer's original submission order."}
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '12px' }}>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>AWAITING REVIEW</span>
-            <span style={{ fontSize: '10px', fontWeight: 800, background: '#FFF8E8', color: 'var(--da-brand-dark)', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 8px', fontFamily: 'var(--da-font-family)' }}>{reviewQueue.length}</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--da-border)' }}></div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Left: Queue Section Title & Count Badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>
+                AWAITING REVIEW
+              </span>
+              <span style={{ fontSize: '10px', fontWeight: 800, background: '#FFF8E8', color: 'var(--da-brand-dark)', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 8px', fontFamily: 'var(--da-font-family)' }}>
+                {reviewQueue.length}
+              </span>
+            </div>
+
+            {/* Right: Sort Control */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label
+                htmlFor="admin-payments-sort-select"
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--da-text-secondary)',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Sort by:
+              </label>
+              <select
+                id="admin-payments-sort-select"
+                data-testid="admin-payments-sort-select"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as PaymentQueueSortMode)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border, #CBD5E1)',
+                  background: '#fff',
+                  color: 'var(--da-text-primary, #0F172A)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  fontFamily: 'var(--da-font-family)',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: 'var(--da-shadow-sm)',
+                }}
+              >
+                <option value="RANK_DESC">Ranking: Descending</option>
+                <option value="RANK_ASC">Ranking: Ascending</option>
+                <option value="AMOUNT_DESC">Amount: Descending</option>
+                <option value="AMOUNT_ASC">Amount: Ascending</option>
+              </select>
+            </div>
           </div>
 
           {loading && (
@@ -185,18 +257,18 @@ export function PaymentQueue() {
             </div>
           )}
 
-          {!loading && !error && reviewQueue.length === 0 && (
+          {!loading && !error && displayedQueue.length === 0 && (
             <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '14px', fontFamily: 'var(--da-font-family)' }}>
               No online payments awaiting review.
             </div>
           )}
 
-          {!loading && !error && reviewQueue.map((p, index) => {
+          {!loading && !error && displayedQueue.map((p) => {
             const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
             const formattedTime = formatTimeAgo(p.proofSubmittedAt);
             const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
             const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();
-            const queueNumber = index + 1;
+            const queueNumber = p.queueRank;
 
             return (
               <div key={p.paymentAttemptId} style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', boxShadow: 'var(--da-shadow-sm)', gap: '16px', flexWrap: 'wrap' }}>
