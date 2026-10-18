@@ -27,6 +27,7 @@ import {
   type AdminExpiredSubFilter,
 } from '@deskatlas/domain';
 import { ReservationFilterModal } from './ReservationFilterModal';
+import { ProcessCancellationRefundModal } from './ProcessCancellationRefundModal';
 
 export function ReservationList() {
   const router = useRouter();
@@ -42,12 +43,17 @@ export function ReservationList() {
       ? 'completed'
       : tabParam === 'expired'
       ? 'expired'
+      : tabParam === 'cancelled_refund_eligible'
+      ? 'cancelled_refund_eligible'
+      : tabParam === 'refunded'
+      ? 'refunded'
       : 'reservations';
 
   const [activeTab, setActiveTab] = useState<ReservationTabType>(initialTab);
   const [reservationsSubFilter, setReservationsSubFilter] = useState<AdminReservationsSubFilter>('all');
   const [operationsSubFilter, setOperationsSubFilter] = useState<AdminOperationsSubFilter>('all');
   const [expiredSubFilter, setExpiredSubFilter] = useState<AdminExpiredSubFilter>('all');
+  const [selectedRefundReservation, setSelectedRefundReservation] = useState<AdminReservationSummary | null>(null);
   const [scheduleSort, setScheduleSort] = useState<ReservationSortDirection | 'none'>('none');
   const [reservations, setReservations] = useState<AdminReservationSummary[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
@@ -67,6 +73,10 @@ export function ReservationList() {
       setActiveTab('completed');
     } else if (tabParam === 'expired' && activeTab !== 'expired') {
       setActiveTab('expired');
+    } else if (tabParam === 'cancelled_refund_eligible' && activeTab !== 'cancelled_refund_eligible') {
+      setActiveTab('cancelled_refund_eligible');
+    } else if (tabParam === 'refunded' && activeTab !== 'refunded') {
+      setActiveTab('refunded');
     } else if ((!tabParam || tabParam === 'reservations') && activeTab !== 'reservations') {
       setActiveTab('reservations');
     }
@@ -83,6 +93,10 @@ export function ReservationList() {
           ? '/manage/reservations?tab=completed'
           : newTab === 'expired'
           ? '/manage/reservations?tab=expired'
+          : newTab === 'cancelled_refund_eligible'
+          ? '/manage/reservations?tab=cancelled_refund_eligible'
+          : newTab === 'refunded'
+          ? '/manage/reservations?tab=refunded'
           : '/manage/reservations?tab=reservations';
       router.replace(url);
     });
@@ -93,6 +107,15 @@ export function ReservationList() {
   // Calculate tab badge counts
   const tabCounts = getAdminReservationTabCounts(reservations, currentTick);
 
+  // Sub-filter counts for reservations tab
+  const reservationSubFilterCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const f of ADMIN_RESERVATIONS_TAB_FILTERS) {
+      counts[f.filter] = filterAdminReservationsByTab(reservations, 'reservations', f.filter, currentTick).length;
+    }
+    return counts;
+  }, [reservations, currentTick]);
+
   // Tab and sub-filter logic
   const currentSubFilter =
     activeTab === 'reservations'
@@ -100,6 +123,10 @@ export function ReservationList() {
       : activeTab === 'operations'
       ? operationsSubFilter
       : activeTab === 'completed'
+      ? 'all'
+      : activeTab === 'cancelled_refund_eligible'
+      ? 'all'
+      : activeTab === 'refunded'
       ? 'all'
       : expiredSubFilter;
 
@@ -227,7 +254,7 @@ export function ReservationList() {
         </div>
       </div>
 
-      {/* Tabs Selector: 4 Tabs (Reservations, Active Operations, Completed, Expired) */}
+      {/* Tabs Selector: 6 Tabs (Reservations, Active Operations, Cancelled (Refund Eligible), Refunded, Completed, Expired) */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           type="button"
@@ -315,6 +342,109 @@ export function ReservationList() {
             }}
           >
             {tabCounts.operationsBadgeCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="tab-cancelled-refund-eligible"
+          onClick={() => handleTabChange('cancelled_refund_eligible')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '9px 18px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: activeTab === 'cancelled_refund_eligible' ? 800 : 600,
+            background: activeTab === 'cancelled_refund_eligible' ? '#B45309' : '#fff',
+            color: activeTab === 'cancelled_refund_eligible' ? '#fff' : 'var(--da-text-secondary)',
+            border: activeTab === 'cancelled_refund_eligible' ? '1px solid #B45309' : '1px solid var(--da-border)',
+            cursor: 'pointer',
+            fontFamily: 'var(--da-font-family)',
+            boxShadow: activeTab === 'cancelled_refund_eligible' ? '0 2px 6px rgba(180,83,9,.2)' : 'none',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          <span>Cancelled (Refund Eligible)</span>
+          <span
+            data-testid="badge-cancelled-refund-eligible-count"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2px 7px',
+              borderRadius: '9999px',
+              fontSize: '11px',
+              fontWeight: 800,
+              background: activeTab === 'cancelled_refund_eligible'
+                ? 'rgba(255,255,255,0.25)'
+                : tabCounts.cancelledRefundEligibleBadgeCount > 0
+                ? '#FEF3C7'
+                : 'var(--da-canvas, #F1F8F3)',
+              color: activeTab === 'cancelled_refund_eligible'
+                ? '#fff'
+                : tabCounts.cancelledRefundEligibleBadgeCount > 0
+                ? '#B45309'
+                : 'var(--da-text-primary)',
+            }}
+          >
+            {tabCounts.cancelledRefundEligibleBadgeCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="tab-refunded"
+          onClick={() => handleTabChange('refunded')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '9px 18px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: activeTab === 'refunded' ? 800 : 600,
+            background: activeTab === 'refunded' ? '#047857' : '#fff',
+            color: activeTab === 'refunded' ? '#fff' : 'var(--da-text-secondary)',
+            border: activeTab === 'refunded' ? '1px solid #047857' : '1px solid var(--da-border)',
+            cursor: 'pointer',
+            fontFamily: 'var(--da-font-family)',
+            boxShadow: activeTab === 'refunded' ? '0 2px 6px rgba(4,120,87,.2)' : 'none',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Refunded</span>
+          <span
+            data-testid="badge-refunded-count"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2px 7px',
+              borderRadius: '9999px',
+              fontSize: '11px',
+              fontWeight: 800,
+              background: activeTab === 'refunded'
+                ? 'rgba(255,255,255,0.25)'
+                : tabCounts.refundedBadgeCount > 0
+                ? '#ECFDF5'
+                : 'var(--da-canvas, #F1F8F3)',
+              color: activeTab === 'refunded'
+                ? '#fff'
+                : tabCounts.refundedBadgeCount > 0
+                ? '#047857'
+                : 'var(--da-text-primary)',
+            }}
+          >
+            {tabCounts.refundedBadgeCount}
           </span>
         </button>
 
@@ -412,24 +542,92 @@ export function ReservationList() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
             <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{displayedReservations.length}</span>
             <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-              {activeTab === 'reservations' ? 'reservation records' : activeTab === 'operations' ? 'active operational records' : activeTab === 'completed' ? 'completed records' : 'expired records'} {activeFilterCount > 0 || searchQuery.trim() || currentSubFilter !== 'all' ? `(filtered from ${totalCount})` : ''}
+              {activeTab === 'reservations'
+                ? 'reservation records'
+                : activeTab === 'operations'
+                ? 'active operational records'
+                : activeTab === 'completed'
+                ? 'completed records'
+                : activeTab === 'cancelled_refund_eligible'
+                ? 'cancellation refund eligible records'
+                : activeTab === 'refunded'
+                ? 'refunded records'
+                : 'expired records'} {activeFilterCount > 0 || searchQuery.trim() || currentSubFilter !== 'all' ? `(filtered from ${totalCount})` : ''}
             </span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {activeTab === 'reservations'
               ? ADMIN_RESERVATIONS_TAB_FILTERS.map((f, i) => {
                   const isActive = reservationsSubFilter === f.filter;
-                  const filterStyle = isActive
-                    ? { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' }
-                    : { background: 'transparent', color: 'var(--da-text-secondary)', border: '1px solid var(--da-border)' };
+                  const isRefundEligible = f.filter === 'cancelled_refund_eligible';
+                  const isRefunded = f.filter === 'refunded';
+
+                  let filterStyle: React.CSSProperties = {
+                    background: 'transparent',
+                    color: 'var(--da-text-secondary)',
+                    border: '1px solid var(--da-border)',
+                  };
+
+                  if (isActive) {
+                    if (isRefundEligible) {
+                      filterStyle = { background: '#B45309', color: '#fff', border: 'none' };
+                    } else if (isRefunded) {
+                      filterStyle = { background: '#047857', color: '#fff', border: 'none' };
+                    } else {
+                      filterStyle = { background: 'var(--da-brand-dark)', color: '#fff', border: 'none' };
+                    }
+                  }
+
+                  const count = reservationSubFilterCounts[f.filter] ?? 0;
+
                   return (
                     <button
                       key={i}
                       type="button"
+                      data-testid={`filter-pill-${f.filter}`}
                       onClick={() => setReservationsSubFilter(f.filter)}
-                      style={{ padding: '7px 14px', borderRadius: '9999px', whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--da-font-family)', ...filterStyle }}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '9999px',
+                        whiteSpace: 'nowrap',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'var(--da-font-family)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        ...filterStyle,
+                      }}
                     >
-                      {f.label}
+                      <span>{f.label}</span>
+                      {count > 0 && (
+                        <span
+                          data-testid={`badge-count-${f.filter}`}
+                          style={{
+                            fontSize: '10px',
+                            padding: '1px 6px',
+                            borderRadius: '9999px',
+                            background: isActive
+                              ? 'rgba(255,255,255,0.25)'
+                              : isRefundEligible
+                              ? '#FEF3C7'
+                              : isRefunded
+                              ? '#ECFDF5'
+                              : '#F1F5F9',
+                            color: isActive
+                              ? '#fff'
+                              : isRefundEligible
+                              ? '#B45309'
+                              : isRefunded
+                              ? '#047857'
+                              : 'var(--da-text-secondary)',
+                            fontWeight: 800,
+                          }}
+                        >
+                          {count}
+                        </span>
+                      )}
                     </button>
                   );
                 })
@@ -452,6 +650,10 @@ export function ReservationList() {
                 })
               : activeTab === 'completed'
               ? null
+              : activeTab === 'cancelled_refund_eligible'
+              ? null
+              : activeTab === 'refunded'
+              ? null
               : ADMIN_EXPIRED_TAB_FILTERS.map((f, i) => {
                   const isActive = expiredSubFilter === f.filter;
                   const filterStyle = isActive
@@ -470,6 +672,32 @@ export function ReservationList() {
                 })}
           </div>
         </div>
+
+        {(activeTab === 'cancelled_refund_eligible' || (activeTab === 'reservations' && reservationsSubFilter === 'cancelled_refund_eligible')) && (
+          <div
+            data-testid="admin-reservations-refund-eligible-notice"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: '#FFFBEB',
+              border: '1px solid #FCD34D',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              margin: '16px 20px',
+              fontSize: '12px',
+              color: '#92400E',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#D97706', flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <strong>Customer Cancellation Refund Queue:</strong> These reservations were cancelled by customers within the allowable cancellation notice window and are entitled to a full refund. Please verify the original payment proof, disburse the refund via your payment provider, and click <strong>Process Refund</strong> to record the transaction.
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '11px 20px', background: '#F1F8F3', fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.06em', alignItems: 'center' }}>
           <span>REFERENCE ⇅</span>
@@ -509,7 +737,7 @@ export function ReservationList() {
           </div>
         ) : displayedReservations.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
-            No {activeTab === 'reservations' ? 'reservation' : activeTab === 'operations' ? 'active operational' : activeTab === 'completed' ? 'completed' : 'expired'} records match your filters.
+            No {activeTab === 'reservations' ? 'reservation' : activeTab === 'operations' ? 'active operational' : activeTab === 'completed' ? 'completed' : activeTab === 'cancelled_refund_eligible' ? 'cancellation refund eligible' : activeTab === 'refunded' ? 'refunded' : 'expired'} records match your filters.
           </div>
         ) : (
           paginatedReservations.map((r, i) => {
@@ -541,11 +769,86 @@ export function ReservationList() {
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: r.paymentColor }}>{r.paymentStatus}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '9999px', whiteSpace: 'nowrap', width: 'fit-content', ...r.statusStyle }}>
-                  <span aria-hidden="true" style={{ fontSize: '10px', lineHeight: 1 }}>{r.mark}</span>{r.status}
+                <span style={{ fontSize: '11px', fontWeight: 700, color: r.refundStatus === 'REQUIRED' ? '#B45309' : r.paymentColor }}>
+                  {r.refundStatus === 'REQUIRED' ? `₱${r.amountDue} (Refund Pending)` : r.paymentStatus}
                 </span>
-                <span style={{ textAlign: 'right', color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
+                {r.refundStatus === 'REQUIRED' ? (
+                  <span
+                    data-testid={`status-badge-${r.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      padding: '4px 9px',
+                      borderRadius: '9999px',
+                      whiteSpace: 'nowrap',
+                      width: 'fit-content',
+                      background: '#FEF3C7',
+                      color: '#B45309',
+                      border: '1px solid #FCD34D',
+                    }}
+                  >
+                    CANCELLED (REFUND ELIGIBLE)
+                  </span>
+                ) : r.refundStatus === 'REFUNDED' ? (
+                  <span
+                    data-testid={`status-badge-${r.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      padding: '4px 9px',
+                      borderRadius: '9999px',
+                      whiteSpace: 'nowrap',
+                      width: 'fit-content',
+                      background: '#ECFDF5',
+                      color: '#047857',
+                      border: '1px solid #A7F3D0',
+                    }}
+                  >
+                    REFUNDED
+                  </span>
+                ) : (
+                  <span
+                    data-testid={`status-badge-${r.id}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, padding: '4px 9px', borderRadius: '9999px', whiteSpace: 'nowrap', width: 'fit-content', ...r.statusStyle }}
+                  >
+                    <span aria-hidden="true" style={{ fontSize: '10px', lineHeight: 1 }}>{r.mark}</span>{r.status}
+                  </span>
+                )}
+                {r.refundStatus === 'REQUIRED' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      data-testid="process-refund-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRefundReservation(r);
+                      }}
+                      style={{
+                        background: '#B45309',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'var(--da-font-family)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Process Refund
+                    </button>
+                    <span style={{ color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
+                  </div>
+                ) : (
+                  <span style={{ textAlign: 'right', color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
+                )}
               </div>
             );
           })
@@ -654,6 +957,23 @@ export function ReservationList() {
         onReset={() => setAdvancedFilters({})}
         availableTemplates={availableTemplates.length > 0 ? availableTemplates : undefined}
       />
+
+      {selectedRefundReservation && (
+        <ProcessCancellationRefundModal
+          isOpen={Boolean(selectedRefundReservation)}
+          onClose={() => setSelectedRefundReservation(null)}
+          onSuccess={() => {
+            setSelectedRefundReservation(null);
+            loadReservations();
+          }}
+          reservationId={selectedRefundReservation.id}
+          referenceCode={selectedRefundReservation.referenceCode}
+          customerName={selectedRefundReservation.customerName}
+          customerEmail={selectedRefundReservation.customerEmail}
+          formattedSchedule={selectedRefundReservation.schedule}
+          amountDue={selectedRefundReservation.amountDue}
+        />
+      )}
     </main>
   );
 }

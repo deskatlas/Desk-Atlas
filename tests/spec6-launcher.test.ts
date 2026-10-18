@@ -11,6 +11,23 @@ const saved = {
 const answer = { model: 'synthetic-model', manifest_digest: 'b'.repeat(64) };
 
 describe('SPEC6-TC01: saved local launcher configuration', () => {
+  it('selects DeepInfra without starting the saved local GPU profile', () => {
+    const env = launcher.runtimeEnvironment('api', { ...saved, RAG_MODEL_PROVIDER: 'deepinfra',
+      DEEPINFRA_API_KEY: secret, OLLAMA_URL: 'http://127.0.0.1:11435', RAG_MODEL_GPU_LAYERS: '-1' }, {}, answer);
+    expect(env.RAG_ANSWER_MODEL).toBe('Qwen/Qwen3-32B');
+    expect(env.DEEPINFRA_API_KEY).toBe(secret);
+    expect(launcher.runtimeCommand('api', env, 'synthetic-service')).toEqual([expect.stringContaining('serve_local.py')]);
+  });
+  it('does not forward inherited provider credentials to either worker lane', () => {
+    for (const mode of ['worker', 'purge']) {
+      const env = launcher.runtimeEnvironment(mode, saved, { DEEPINFRA_API_KEY: secret }, answer);
+      expect(env.DEEPINFRA_API_KEY).toBeUndefined();
+    }
+  });
+  it('rejects missing DeepInfra credentials and unknown provider selection', () => {
+    expect(() => launcher.runtimeEnvironment('api', { ...saved, RAG_MODEL_PROVIDER: 'deepinfra' }, {}, answer)).toThrow('DEEPINFRA_API_KEY');
+    expect(() => launcher.runtimeEnvironment('api', { ...saved, RAG_MODEL_PROVIDER: 'unknown' }, {}, answer)).toThrow('RAG_MODEL_PROVIDER');
+  });
   it('preserves the saved prompt batch and explicit runtime override', () => {
     const env = launcher.runtimeEnvironment('api', { ...saved, RAG_MODEL_BATCH_SIZE: '64' }, {}, answer);
     expect(env.RAG_MODEL_BATCH_SIZE).toBe('64');

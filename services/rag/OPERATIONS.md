@@ -1,5 +1,10 @@
 # SPEC-6 operations
 
+October 18 amendment: [DeepInfra migration](DEEPINFRA-MIGRATION.md)
+supersedes local-only answering restrictions below for the explicitly selected
+DeepInfra provider. There is no automatic hosted fallback. Deployment and
+rollback instructions are in [the DeepInfra runbook](cloudrun/DEEPINFRA.md).
+
 Traceability: PRD-F26/F27, SDD-C20-C24, QAD-TC46 / SPEC6-TC01-TC12.
 
 This delivery owns local setup, CPU evaluation, admission and diagnostic primitives, release evaluation, and operational handoff. SPEC-4 and SPEC-5 are being implemented separately in the shared checkout. Passing these tooling tests does not enable either feature or certify their integrations.

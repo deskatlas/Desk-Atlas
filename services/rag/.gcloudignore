@@ -15,5 +15,6 @@
 !cloudrun/provision_embedding.py
 !cloudrun/verify_answer.py
 !cloudrun/build.yaml
+!cloudrun/build-deepinfra.yaml
 !.gcloudignore
 !.dockerignore

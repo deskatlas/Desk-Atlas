@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useReservationTracking } from "../hooks/useReservationTracking";
 import { CustomerRescheduleModal } from "./CustomerRescheduleModal";
 import { CustomerRelocateModal } from "./CustomerRelocateModal";
+import { CustomerCancelModal } from "./CustomerCancelModal";
 import { CancellationTermsModal } from "./CancellationTermsModal";
 import { mapReservationStatusDisplay } from "../utils/reservationStatusMap";
 
@@ -23,6 +24,7 @@ export function TrackingPage({
   const [customerEmail, setCustomerEmail] = useState(initialEmail);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showRelocateModal, setShowRelocateModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { data, loading, error, trackReservation } = useReservationTracking();
@@ -362,42 +364,59 @@ export function TrackingPage({
                 )
               )}
 
-              {/* Reschedule Action Section */}
+              {/* Schedule & Cancellation Management Section */}
               {!isRejected && !isExpired && data.status === "CONFIRMED" && (
                 <div className="mt-4 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
-                        Schedule Management
+                        Schedule & Cancellation Management
                       </p>
                       <p className="mt-0.5 text-xs text-[var(--da-text-primary)]">
-                        {data.canReschedule
-                          ? "Need to adjust your visit? You can reschedule your booking date/time."
-                          : data.rescheduleCount && data.rescheduleCount >= 1
-                          ? "This reservation has already been rescheduled (limit 1x)."
-                          : `Self-service rescheduling closes ${data.rescheduleCutoffHours ?? 12} hours prior to booking start time.`}
+                        {data.canCancel
+                          ? "Need to cancel your booking? You can cancel your reservation and receive a full refund."
+                          : `Self-service cancellation closed ${data.cancellationCutoffDisplay || "12 hours"} prior to booking start time.`}
                       </p>
                     </div>
 
-                    {data.canReschedule ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowRescheduleModal(true)}
-                        className="da-primary-button text-xs font-bold"
-                        data-testid="customer-reschedule-button"
-                      >
-                        Reschedule Reservation
-                      </button>
-                    ) : (
-                      <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
-                        {data.rescheduleCount && data.rescheduleCount >= 1
-                          ? "Rescheduled (1/1)"
-                          : "Reschedule Unavailable"}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {data.canReschedule && (
+                        <button
+                          type="button"
+                          onClick={() => setShowRescheduleModal(true)}
+                          className="da-secondary-button text-xs font-bold"
+                          data-testid="customer-reschedule-button"
+                        >
+                          Reschedule Reservation
+                        </button>
+                      )}
+
+                      {data.canCancel ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowCancelModal(true)}
+                          className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors"
+                          data-testid="customer-cancel-button"
+                        >
+                          Cancel Reservation
+                        </button>
+                      ) : (
+                        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                          Cancellation Unavailable
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
+
+              {/* Required Footer Policy Notice */}
+              <div className="mt-4 rounded-[14px] bg-[#F8FAF9] p-3 text-xs text-[var(--da-text-secondary)] border border-[var(--da-border-light)]">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#047857] font-bold">ℹ️ Policy Notice:</span>
+                  <span>Rescheduling and cancellation are only available within the allowed time period set by the business.</span>
+                </div>
+              </div>
 
               {/* View Terms & Policy Footer Link */}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--da-border-light)] pt-3 text-xs text-[var(--da-text-secondary)]">
@@ -438,6 +457,27 @@ export function TrackingPage({
               setSuccessMessage(msg);
               trackReservation({ referenceCode, customerEmail });
             }}
+          />
+        )}
+
+        {showCancelModal && data && (
+          <CustomerCancelModal
+            isOpen={showCancelModal}
+            onClose={() => setShowCancelModal(false)}
+            onSuccess={() => {
+              setShowCancelModal(false);
+              setSuccessMessage("Your reservation has been cancelled successfully. If eligible, your refund has been queued for disbursement.");
+              trackReservation({ referenceCode, customerEmail });
+            }}
+            referenceCode={data.referenceCode}
+            customerEmail={customerEmail}
+            amountDue={data.amountDue}
+            formattedSchedule={
+              data.finalAssignment?.bookingStartAt && data.finalAssignment?.bookingEndAt
+                ? `${data.finalAssignment.bookingStartAt} - ${data.finalAssignment.bookingEndAt}`
+                : undefined
+            }
+            workspaceName={data.finalAssignment?.workspaceDisplayName}
           />
         )}
 

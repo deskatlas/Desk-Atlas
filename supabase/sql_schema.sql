@@ -516,6 +516,7 @@ CREATE TABLE payment_attempts (
   refund_notes text,
   refund_recorded_by_user_id uuid,
   refunded_at timestamptz,
+  overdue_notified_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT payment_attempts_attempt_positive CHECK (attempt_number > 0),
@@ -876,6 +877,10 @@ CREATE UNIQUE INDEX uq_payment_attempts_one_active_web
 CREATE UNIQUE INDEX uq_payment_attempts_one_approved
   ON payment_attempts(reservation_id)
   WHERE status = 'APPROVED';
+
+CREATE INDEX idx_payment_attempts_overdue_notified
+  ON payment_attempts(overdue_notified_at);
+
 
 CREATE INDEX idx_audit_logs_entity_created
   ON audit_logs(entity_type, entity_id, created_at DESC);

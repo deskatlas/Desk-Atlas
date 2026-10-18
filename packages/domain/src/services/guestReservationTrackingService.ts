@@ -52,14 +52,27 @@ export class GuestReservationTrackingService {
     }
 
     let cutoffHours = 12;
+    let cancellationCutoffHours = 12;
+    let cancellationCutoffDisplay = "12 hours";
     if (this.settingsRepository) {
       try {
         const settings = await this.settingsRepository.getBusinessSettings();
         if (settings.customerRescheduleCutoffHours !== undefined && settings.customerRescheduleCutoffHours !== null) {
           cutoffHours = settings.customerRescheduleCutoffHours;
         }
+        const cancelVal = settings.customerCancellationCutoffValue ?? 12;
+        const cancelUnit = settings.customerCancellationCutoffUnit ?? "HOURS";
+        if (cancelUnit === "DAYS") {
+          cancellationCutoffHours = cancelVal * 24;
+          cancellationCutoffDisplay = `${cancelVal} day${cancelVal === 1 ? "" : "s"}`;
+        } else {
+          cancellationCutoffHours = cancelVal;
+          cancellationCutoffDisplay = `${cancelVal} hour${cancelVal === 1 ? "" : "s"}`;
+        }
       } catch {
         cutoffHours = 12;
+        cancellationCutoffHours = 12;
+        cancellationCutoffDisplay = "12 hours";
       }
     }
 
@@ -96,6 +109,18 @@ export class GuestReservationTrackingService {
       ? new Date(record.finalAssignment.bookingEndAt).getTime()
       : 0;
 
+    let canCancel = false;
+    if (
+      status === "CONFIRMED" &&
+      !record.checkedInAt &&
+      !record.checkedOutAt &&
+      bookingStartMs > 0 &&
+      bookingStartMs > nowMs &&
+      nowMs <= bookingStartMs - cancellationCutoffHours * 3600 * 1000
+    ) {
+      canCancel = true;
+    }
+
     const isInSession =
       status === "CONFIRMED" &&
       bookingStartMs > 0 &&
@@ -123,6 +148,8 @@ export class GuestReservationTrackingService {
       rescheduleCount,
       canReschedule,
       rescheduleCutoffHours: cutoffHours,
+      canCancel,
+      cancellationCutoffDisplay,
       isInSession,
       canRelocate,
       remainingMinutes,

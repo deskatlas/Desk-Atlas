@@ -247,17 +247,36 @@ export interface PaymentReviewQueueItem {
   paymentMethodId: string | null;
   proofSubmittedAt: string | null;
   submittedCandidates: ReservationCandidate[];
+  refundStatus?: RefundStatus;
+  refundNotes?: string | null;
+  refundedAt?: string | null;
+  overdueNotifiedAt?: string | null;
+  isOverdue?: boolean;
+}
+
+export type PaymentQueueSortMode =
+  | "RANK_DESC"
+  | "RANK_ASC"
+  | "AMOUNT_DESC"
+  | "AMOUNT_ASC";
+
+export interface RankedPaymentReviewQueueItem extends PaymentReviewQueueItem {
+  queueRank: number;
 }
 
 export interface PaymentReviewDetail extends PaymentReviewQueueItem {
   proofStoragePath: string | null;
   rejectionReason: string | null;
   refundStatus: RefundStatus;
+  refundNotes?: string | null;
+  refundedAt?: string | null;
   processedAt: string | null;
   processedByUserId: string | null;
   grossAmountDue?: number | null;
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
+  overdueNotifiedAt?: string | null;
+  isOverdue?: boolean;
 }
 
 export type PaymentReviewDecision = "APPROVE" | "REJECT" | "RECONSIDER_APPROVE";
@@ -466,6 +485,8 @@ export interface GuestReservationTrackingResult {
   rescheduleCount?: number;
   canReschedule?: boolean;
   rescheduleCutoffHours?: number;
+  canCancel?: boolean;
+  cancellationCutoffDisplay?: string;
   isInSession?: boolean;
   canRelocate?: boolean;
   remainingMinutes?: number;
@@ -530,6 +551,10 @@ export interface AdminReservationSummary {
   manualResolutionNotes?: string | null;
   closureReason?: string | null;
   closureDate?: string | null;
+  refundStatus?: string | null;
+  refundedAt?: string | null;
+  refundNotes?: string | null;
+  cancellationRefundNotifiedAt?: string | null;
 }
 
 export interface AdminReservationCandidateSummary {

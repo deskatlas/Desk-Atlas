@@ -63,3 +63,4 @@ services/rag/benchmark-results/
 __pycache__/
 .pytest_cache/
 *.pyc
+services/rag/.deepinfra-deploy*.json

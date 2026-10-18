@@ -4,6 +4,7 @@ import type { ClosureImpactPreviewResult } from '../models/reservation';
 import type { AdminReservationRepository } from './adminReservationRepository';
 import type { TransactionalEmailService } from './transactionalEmailService';
 import {
+  calculateCancellationCutoffHours,
   calculateRescheduleMaxAdvanceHours,
   type AdminPaymentMethod,
   type BusinessClosureException,
@@ -11,6 +12,7 @@ import {
   type BusinessSettings,
   type CreateBusinessClosureInput,
   type CreatePaymentMethodInput,
+  type CustomerCancellationCutoffUnit,
   type LandingPreviewPhoto,
   type OperatingHoursConfig,
   type OperatingHoursDaySchedule,
@@ -74,6 +76,9 @@ export function createAdminSettingsService(
       rescheduleMaxAdvanceValue: number;
       rescheduleMaxAdvanceUnit: RescheduleMaxAdvanceUnit;
       rescheduleMaxAdvanceHours: number;
+      customerCancellationCutoffValue: number;
+      customerCancellationCutoffUnit: CustomerCancellationCutoffUnit;
+      customerCancellationCutoffHours: number;
       maxAdvanceBookingDays: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
@@ -97,6 +102,10 @@ export function createAdminSettingsService(
       const maxAdvanceUnit = (businessSettings.rescheduleMaxAdvanceUnit as RescheduleMaxAdvanceUnit) ?? 'DAYS';
       const maxAdvanceHours = calculateRescheduleMaxAdvanceHours(maxAdvanceValue, maxAdvanceUnit);
 
+      const cancellationValue = businessSettings.customerCancellationCutoffValue ?? 12;
+      const cancellationUnit = (businessSettings.customerCancellationCutoffUnit as CustomerCancellationCutoffUnit) ?? 'HOURS';
+      const cancellationHours = calculateCancellationCutoffHours(cancellationValue, cancellationUnit);
+
       return {
         businessName: businessSettings.businessName,
         timezone: businessSettings.timezone,
@@ -111,6 +120,9 @@ export function createAdminSettingsService(
         rescheduleMaxAdvanceValue: maxAdvanceValue,
         rescheduleMaxAdvanceUnit: maxAdvanceUnit,
         rescheduleMaxAdvanceHours: maxAdvanceHours,
+        customerCancellationCutoffValue: cancellationValue,
+        customerCancellationCutoffUnit: cancellationUnit,
+        customerCancellationCutoffHours: cancellationHours,
         maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays ?? 90,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
@@ -169,6 +181,8 @@ export function createAdminSettingsService(
         customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? current.customerRescheduleCutoffHours,
         rescheduleMaxAdvanceValue: input.rescheduleMaxAdvanceValue ?? current.rescheduleMaxAdvanceValue,
         rescheduleMaxAdvanceUnit: input.rescheduleMaxAdvanceUnit ?? current.rescheduleMaxAdvanceUnit,
+        customerCancellationCutoffValue: input.customerCancellationCutoffValue !== undefined ? input.customerCancellationCutoffValue : current.customerCancellationCutoffValue,
+        customerCancellationCutoffUnit: input.customerCancellationCutoffUnit !== undefined ? input.customerCancellationCutoffUnit : current.customerCancellationCutoffUnit,
         maxAdvanceBookingDays: input.maxAdvanceBookingDays ?? current.maxAdvanceBookingDays,
         bookingIntervalMinutes: input.bookingIntervalMinutes ?? current.bookingIntervalMinutes,
         paymentExpiryMinutes: input.paymentExpiryMinutes ?? current.paymentExpiryMinutes,
@@ -810,6 +824,32 @@ function normalizeBusinessSettingsInput(
   }
 
   if (
+    input.customerCancellationCutoffUnit !== undefined &&
+    input.customerCancellationCutoffUnit !== null &&
+    input.customerCancellationCutoffUnit !== 'DAYS' &&
+    input.customerCancellationCutoffUnit !== 'HOURS'
+  ) {
+    throw new SettingsValidationError('Customer cancellation cutoff unit must be DAYS or HOURS');
+  }
+
+  if (
+    input.customerCancellationCutoffValue !== undefined &&
+    input.customerCancellationCutoffValue !== null
+  ) {
+    const isDays = (input.customerCancellationCutoffUnit || 'HOURS') === 'DAYS';
+    const maxBound = isDays ? 30 : 720;
+    if (
+      !Number.isInteger(input.customerCancellationCutoffValue) ||
+      input.customerCancellationCutoffValue < 1 ||
+      input.customerCancellationCutoffValue > maxBound
+    ) {
+      throw new SettingsValidationError(
+        `Customer cancellation cutoff must be an integer between 1 and ${maxBound} ${isDays ? 'days' : 'hours'}`
+      );
+    }
+  }
+
+  if (
     input.maxAdvanceBookingDays !== undefined &&
     input.maxAdvanceBookingDays !== null
   ) {
@@ -921,6 +961,14 @@ function normalizeBusinessSettingsInput(
       input.rescheduleMaxAdvanceUnit !== undefined && input.rescheduleMaxAdvanceUnit !== null
         ? input.rescheduleMaxAdvanceUnit
         : 'DAYS',
+    customerCancellationCutoffValue:
+      input.customerCancellationCutoffValue !== undefined && input.customerCancellationCutoffValue !== null
+        ? input.customerCancellationCutoffValue
+        : 12,
+    customerCancellationCutoffUnit:
+      input.customerCancellationCutoffUnit !== undefined && input.customerCancellationCutoffUnit !== null
+        ? input.customerCancellationCutoffUnit
+        : 'HOURS',
     maxAdvanceBookingDays:
       input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null
         ? input.maxAdvanceBookingDays

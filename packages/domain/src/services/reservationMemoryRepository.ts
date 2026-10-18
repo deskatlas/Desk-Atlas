@@ -94,6 +94,9 @@ interface StoredPaymentAttempt {
   processedAt: string | null;
   rejectionReason: string | null;
   refundStatus: RefundStatus;
+  refundNotes?: string | null;
+  refundedAt?: string | null;
+  overdueNotifiedAt?: string | null;
 }
 
 export class ReservationMemoryRepository
@@ -572,7 +575,7 @@ export class ReservationMemoryRepository
       .filter((attempt) => attempt.channel === "WEB" && attempt.status === "UNDER_REVIEW")
       .map((attempt) => this.buildPaymentReviewDetail(attempt))
       .filter((detail): detail is PaymentReviewDetail => detail !== null)
-      .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, refundStatus: _refundStatus, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem)
+      .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem)
       .sort((a, b) => {
         const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
         const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
@@ -591,6 +594,21 @@ export class ReservationMemoryRepository
       .sort((a, b) => {
         const aTime = a.processedAt ? new Date(a.processedAt).getTime() : 0;
         const bTime = b.processedAt ? new Date(b.processedAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
+  }
+
+  async listRefundedPayments(): Promise<PaymentReviewDetail[]> {
+    return Array.from(this.paymentAttempts.values())
+      .filter((attempt) => attempt.channel === "WEB" && attempt.refundStatus === "REFUNDED")
+      .map((attempt) => this.buildPaymentReviewDetail(attempt))
+      .filter((detail): detail is PaymentReviewDetail => detail !== null)
+      .sort((a, b) => {
+        const aTime = a.refundedAt || a.processedAt ? new Date(a.refundedAt || a.processedAt!).getTime() : 0;
+        const bTime = b.refundedAt || b.processedAt ? new Date(b.refundedAt || b.processedAt!).getTime() : 0;
         if (aTime !== bTime) {
           return bTime - aTime;
         }
@@ -1139,6 +1157,8 @@ export class ReservationMemoryRepository
     return {
       reservationId: reservation.id,
       referenceCode: reservation.referenceCode,
+      customerFirstName: reservation.customerFirstName,
+      customerLastName: reservation.customerLastName,
       customerEmail: reservation.customerEmail,
       reservationStatus: reservation.status,
       amountDue: reservation.amountDue,
@@ -1147,6 +1167,7 @@ export class ReservationMemoryRepository
       promoCodeUsed: reservation.promoCodeUsed ?? null,
       currency: reservation.currency,
       confirmedAt: reservation.confirmedAt ?? null,
+      checkedInAt: reservation.checkedInAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
       finalAssignment: assignedCandidate
         ? {
@@ -1398,11 +1419,14 @@ export class ReservationMemoryRepository
       proofStoragePath: attempt.proofStoragePath,
       rejectionReason: attempt.rejectionReason,
       refundStatus: attempt.refundStatus,
+      refundNotes: attempt.refundNotes ?? null,
+      refundedAt: attempt.refundedAt ?? null,
       processedAt: attempt.processedAt,
       processedByUserId: attempt.processedByUserId,
       grossAmountDue: reservation.grossAmountDue,
       discountAmount: reservation.discountAmount,
       promoCodeUsed: reservation.promoCodeUsed,
+      overdueNotifiedAt: attempt.overdueNotifiedAt ?? null,
     };
   }
 
@@ -1589,6 +1613,10 @@ export class ReservationMemoryRepository
         manualResolutionNotes: sanitizeManualResolutionNotes(r.manualResolutionNotes),
         closureReason: (r as any).closureReason ?? null,
         closureDate: (r as any).closureDate ?? null,
+        refundStatus: (latestAttempt as any)?.refundStatus ?? (latestAttempt as any)?.refund_status ?? null,
+        refundedAt: (latestAttempt as any)?.refundedAt ?? (latestAttempt as any)?.refunded_at ?? null,
+        refundNotes: (latestAttempt as any)?.refundNotes ?? (latestAttempt as any)?.refund_notes ?? null,
+        cancellationRefundNotifiedAt: (latestAttempt as any)?.cancellationRefundNotifiedAt ?? (latestAttempt as any)?.cancellation_refund_notified_at ?? null,
       };
     });
   }
@@ -1913,6 +1941,11 @@ export class ReservationMemoryRepository
       for (const c of r.candidates) {
         c.isAssigned = false;
       }
+    }
+
+    const attempt = Array.from(this.paymentAttempts.values()).find((a) => a.reservationId === r.id);
+    if (attempt) {
+      attempt.refundStatus = "REQUIRED";
     }
 
     const detail = await this.getAdminReservationDetail(r.id);

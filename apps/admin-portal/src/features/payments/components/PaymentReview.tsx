@@ -7,6 +7,7 @@ import type {
   PaymentReviewDetail,
   PaymentReviewDecisionResult,
 } from '@deskatlas/domain';
+import { isPaymentReviewOverdue } from '@deskatlas/domain';
 
 import { ProofImageViewer } from './ProofImageViewer';
 
@@ -89,6 +90,41 @@ export function PaymentReview({ id }: { id: string }) {
 
   const [showReconsiderModal, setShowReconsiderModal] = useState(false);
   const [isReconsidering, setIsReconsidering] = useState(false);
+
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [isRefunding, setIsRefunding] = useState(false);
+  const [refundNotes, setRefundNotes] = useState('');
+  const [showCustomerContact, setShowCustomerContact] = useState(false);
+
+  const confirmRefund = async () => {
+    if (!detail) return;
+    setIsRefunding(true);
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/admin/payments/reviews/${encodeURIComponent(detail.paymentAttemptId)}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actorUserId: user?.id,
+          refundNotes: refundNotes.trim() || 'Administrative overdue review refund disbursed.',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to process refund.');
+      }
+
+      setShowRefundModal(false);
+      setRefundNotes('');
+      fetchDetail();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Error processing refund.');
+    } finally {
+      setIsRefunding(false);
+    }
+  };
 
   const confirmReconsider = async () => {
     if (!detail) return;
@@ -316,12 +352,68 @@ export function PaymentReview({ id }: { id: string }) {
     || assignedCandidateFromDetail?.workspaceInstanceCode
     || 'Workspace';
 
+  const isOverdue = detail.refundStatus !== 'REFUNDED' && Boolean(detail.isOverdue || isPaymentReviewOverdue(detail));
+
   return (
     <main data-screen-label="Payment Review" style={{ padding: '26px 28px 40px' }}>
       <a href="#" onClick={(e) => { e.preventDefault(); router.push('/manage/payments'); }} style={{ fontSize: '12px', color: 'var(--da-brand-dark)', fontFamily: 'var(--da-font-family)', fontWeight: 700 }}>&larr; Back to Payments</a>
       <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '14px 0 3px', letterSpacing: '-0.02em' }}>Payment Proof</h1>
       <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '20px' }}>Approving allocates Main &rarr; Alt 1 &rarr; Alt 2 by live availability</div>
       
+      {isOverdue && (
+        <div
+          data-testid="admin-payment-overdue-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
+            background: '#FFFBEB',
+            border: '1px solid #FCD34D',
+            borderRadius: '8px',
+            padding: '14px 18px',
+            marginBottom: '20px',
+            color: '#92400E',
+            fontSize: '13px',
+            lineHeight: 1.5,
+            fontFamily: 'var(--da-font-family)',
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#D97706', flexShrink: 0, marginTop: '2px' }}>
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <div>
+            <strong>Warning:</strong> This reservation was scheduled for {scheduleDisplay} and is now overdue. The customer has received an email confirming refund eligibility. Allocating original spots directly is blocked under No-Hold rules unless the booking is explicitly rescheduled.
+          </div>
+        </div>
+      )}
+
+      {detail.refundStatus === 'REFUNDED' && (
+        <div
+          data-testid="admin-payment-refunded-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
+            background: '#ECFDF5',
+            border: '1px solid #A7F3D0',
+            borderRadius: '8px',
+            padding: '14px 18px',
+            marginBottom: '20px',
+            color: '#065F46',
+            fontSize: '13px',
+            lineHeight: 1.5,
+            fontFamily: 'var(--da-font-family)',
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#047857', flexShrink: 0, marginTop: '2px' }}>
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <div>
+            <strong>Refund Disbursed:</strong> This payment has been refunded to the customer. A confirmation email has been sent.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1.2, minWidth: '300px', background: '#fff', border: '1px solid var(--da-border)', borderRadius: '12px', padding: '20px' }}>
           {detail.paymentStatus === 'REJECTED' && (
@@ -390,7 +482,106 @@ export function PaymentReview({ id }: { id: string }) {
             <div style={{ color: 'var(--da-text-secondary)', fontSize: '12px', fontFamily: 'var(--da-font-family)' }}>No candidate workspaces recorded.</div>
           )}
 
-          {detail.paymentStatus === 'UNDER_REVIEW' ? (
+          {detail.refundStatus === 'REFUNDED' ? (
+            <div
+              data-testid="refund-completed-badge"
+              style={{
+                marginTop: '20px',
+                padding: '14px',
+                background: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                borderRadius: '8px',
+                color: '#047857',
+                fontSize: '13px',
+                fontWeight: 700,
+                textAlign: 'center',
+              }}
+            >
+              ✓ Refund Disbursed and Recorded
+              {detail.refundNotes && (
+                <div style={{ fontSize: '12px', fontWeight: 500, marginTop: '6px', color: '#065F46' }}>
+                  Note: {detail.refundNotes}
+                </div>
+              )}
+            </div>
+          ) : isOverdue ? (
+            <div
+              data-testid="overdue-triage-container"
+              style={{
+                marginTop: '20px',
+                padding: '14px',
+                background: '#FFFBEB',
+                border: '1px solid #FCD34D',
+                borderRadius: '10px',
+              }}
+            >
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#92400E', marginBottom: '4px' }}>
+                OVERDUE REVIEW TRIAGE
+              </div>
+              <div style={{ fontSize: '11px', color: '#B45309', marginBottom: '12px', lineHeight: 1.4 }}>
+                Customer has been notified of 100% refund eligibility. Allocating original spots directly is blocked under No-Hold rules unless consensually rescheduled.
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  data-testid="process-refund-button"
+                  onClick={() => { setActionError(null); setShowRefundModal(true); }}
+                  style={{
+                    flex: 1,
+                    background: 'linear-gradient(0deg, #B45309 70%, #92400E)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '10px',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(180,83,9,.2)',
+                  }}
+                >
+                  Process Refund
+                </button>
+                <button
+                  data-testid="contact-customer-button"
+                  onClick={() => setShowCustomerContact(!showCustomerContact)}
+                  style={{
+                    flex: 1,
+                    background: '#fff',
+                    border: '1px solid #B45309',
+                    color: '#B45309',
+                    padding: '10px',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {showCustomerContact ? 'Hide Contact' : 'Contact Customer'}
+                </button>
+              </div>
+
+              {showCustomerContact && (
+                <div
+                  data-testid="customer-contact-card"
+                  style={{
+                    marginTop: '12px',
+                    padding: '10px 12px',
+                    background: '#fff',
+                    border: '1px solid #FCD34D',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#92400E', marginBottom: '4px' }}>Customer Contact:</div>
+                  <div style={{ marginBottom: '4px' }}>
+                    Email: <a href={`mailto:${detail.customerEmail}`} style={{ color: '#0284C7', textDecoration: 'underline' }}>{detail.customerEmail}</a>
+                  </div>
+                  <div>
+                    Phone: <a href={`tel:${detail.customerContactNumber || ''}`} style={{ color: '#0F172A', fontWeight: 600 }}>{detail.customerContactNumber || 'Not provided'}</a>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : detail.paymentStatus === 'UNDER_REVIEW' ? (
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button
                 data-testid="open-reject-modal-button"
@@ -575,6 +766,54 @@ export function PaymentReview({ id }: { id: string }) {
                 }}
               >
                 {isReconsidering ? 'Reconsidering...' : 'Confirm Reconsider & Approve'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRefundModal && (
+        <div
+          data-testid="confirm-refund-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(12,59,39,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        >
+          <div style={{ background: '#fff', borderRadius: '14px', padding: '26px', maxWidth: '440px', width: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#B45309', margin: '0 0 10px' }}>Process Overdue Booking Refund</h3>
+            <p style={{ fontSize: '13px', color: 'var(--da-text-primary)', lineHeight: 1.5, margin: '0 0 14px' }}>
+              Confirm refund disbursement of <strong>{formattedAmount}</strong> for reservation <strong>#{detail.reservationReferenceCode || detail.paymentAttemptId.slice(0, 8)}</strong>. This will transition the payment status to REFUNDED and mark the reservation as resolved.
+            </p>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>Disbursement Notes / Reference (Optional)</label>
+            <textarea
+              data-testid="refund-notes-textarea"
+              value={refundNotes}
+              onChange={(e) => setRefundNotes(e.target.value)}
+              style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px', fontSize: '13px', margin: '6px 0 16px', minHeight: '75px', fontFamily: 'var(--da-font-family)', boxSizing: 'border-box' }}
+              placeholder="e.g. GCash reference 20261018991823 disbursed to customer source account"
+            />
+            {actionError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '8px', padding: '8px 12px', color: '#991B1B', fontSize: '12px', marginBottom: '12px' }}>
+                {actionError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowRefundModal(false)} disabled={isRefunding} style={{ background: 'transparent', border: '1px solid var(--da-border)', padding: '9px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button
+                data-testid="confirm-refund-button"
+                onClick={confirmRefund}
+                disabled={isRefunding}
+                style={{
+                  background: 'linear-gradient(0deg, #B45309 70%, #92400E)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: isRefunding ? 'not-allowed' : 'pointer',
+                  opacity: isRefunding ? 0.7 : 1,
+                }}
+              >
+                {isRefunding ? 'Processing...' : 'Confirm & Record Refund'}
               </button>
             </div>
           </div>

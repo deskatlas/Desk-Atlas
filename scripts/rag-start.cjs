@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const root = resolve(__dirname, '..');
 const service = join(root, 'services', 'rag');
 const apiKeys = [
+  'RAG_MODEL_PROVIDER', 'DEEPINFRA_API_KEY',
   'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID',
   'RAG_ANSWER_MODEL', 'RAG_ANSWER_DIGEST', 'RAG_EMBEDDING_FINGERPRINT',
   'RAG_PRELOAD_MODEL', 'RAG_MODEL_GPU_LAYERS', 'RAG_MODEL_KEEP_ALIVE', 'RAG_MODEL_BATCH_SIZE',
@@ -23,7 +24,7 @@ const workerKeys = [
 function runtimeCommand(mode, env, serviceDirectory) {
   if (mode === 'worker' || mode === 'purge') return ['-m', 'knowledge.worker'];
   if (mode !== 'api') throw new Error('Use api, worker or purge.');
-  if (env.RAG_MODEL_GPU_LAYERS === '-1' && env.OLLAMA_URL === 'http://127.0.0.1:11435')
+  if (env.RAG_MODEL_PROVIDER !== 'deepinfra' && env.RAG_MODEL_GPU_LAYERS === '-1' && env.OLLAMA_URL === 'http://127.0.0.1:11435')
     return [join(serviceDirectory, 'serve_local.py'), '--gpu'];
   return [join(serviceDirectory, 'serve_local.py')];
 }
@@ -31,16 +32,18 @@ function runtimeCommand(mode, env, serviceDirectory) {
 function runtimeEnvironment(mode, saved, inherited, answer) {
   if (!['api', 'worker', 'purge'].includes(mode)) throw new Error('Use api, worker or purge.');
   const keys = mode === 'api' ? apiKeys : mode === 'purge' ? purgeKeys : workerKeys;
-  const defaults = { KB_ENABLED: 'false', KB_GATEWAY_URL: 'http://127.0.0.1:3000',
-    OLLAMA_URL: 'http://127.0.0.1:11434', RAG_ANSWER_MODEL: answer.model,
+  const provider = inherited.RAG_MODEL_PROVIDER ?? saved.RAG_MODEL_PROVIDER ?? 'ollama';
+  if (!['ollama', 'deepinfra'].includes(provider)) throw new Error('Invalid RAG_MODEL_PROVIDER.');
+  const defaults = { KB_ENABLED: 'false', KB_GATEWAY_URL: 'http://127.0.0.1:3000', RAG_MODEL_PROVIDER: provider,
+    OLLAMA_URL: 'http://127.0.0.1:11434', RAG_ANSWER_MODEL: provider === 'deepinfra' ? 'Qwen/Qwen3-32B' : answer.model,
     RAG_ANSWER_DIGEST: answer.manifest_digest };
   const config = { ...defaults, ...saved, ...inherited };
   // Do not forward app credentials or unrelated assistant/worker secrets.
   const env = Object.fromEntries(Object.entries(inherited).filter(([key]) =>
-    !/^(SUPABASE_|NEXT_PUBLIC_|RAG_|KB_|OLLAMA_)/i.test(key)));
+    !/^(SUPABASE_|NEXT_PUBLIC_|RAG_|KB_|OLLAMA_|DEEPINFRA_)/i.test(key)));
   for (const key of keys) if (config[key] !== undefined) env[key] = config[key];
   const required = mode === 'api'
-    ? ['RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', 'RAG_ANSWER_DIGEST']
+    ? ['RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', provider === 'deepinfra' ? 'DEEPINFRA_API_KEY' : 'RAG_ANSWER_DIGEST']
     : ['KB_WORKER_TOKEN'];
   if (mode !== 'api' && env.KB_ENABLED !== 'true') {
     throw new Error('Set KB_ENABLED=true in apps/admin-portal/.env.local before starting the worker.');
