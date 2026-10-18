@@ -3,6 +3,8 @@ import { GuestReservationAssignmentSummary, CustomerRelocationRequest } from "..
 export interface GuestReservationTrackingRecord {
   reservationId: string;
   referenceCode: string;
+  customerFirstName?: string;
+  customerLastName?: string;
   customerEmail: string;
   reservationStatus: string;
   amountDue: number;
@@ -11,6 +13,7 @@ export interface GuestReservationTrackingRecord {
   promoCodeUsed?: string | null;
   currency: string;
   confirmedAt: string | null;
+  checkedInAt?: string | null;
   checkedOutAt: string | null;
   finalAssignment: GuestReservationAssignmentSummary | null;
   paymentStatus?: string | null;

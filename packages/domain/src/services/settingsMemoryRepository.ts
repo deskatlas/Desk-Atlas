@@ -31,6 +31,8 @@ export class InMemorySettingsRepository implements SettingsRepository {
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
     rescheduleMaxAdvanceUnit: 'DAYS',
+    customerCancellationCutoffValue: 12,
+    customerCancellationCutoffUnit: 'HOURS',
     maxAdvanceBookingDays: 90,
     dayPassStartTime: '07:00',
     dayPassEndTime: '23:30',
@@ -153,6 +155,12 @@ export class InMemorySettingsRepository implements SettingsRepository {
       rescheduleMaxAdvanceUnit: input.rescheduleMaxAdvanceUnit !== undefined && input.rescheduleMaxAdvanceUnit !== null
         ? input.rescheduleMaxAdvanceUnit
         : (this.businessSettings.rescheduleMaxAdvanceUnit ?? 'DAYS'),
+      customerCancellationCutoffValue: input.customerCancellationCutoffValue !== undefined && input.customerCancellationCutoffValue !== null
+        ? input.customerCancellationCutoffValue
+        : (this.businessSettings.customerCancellationCutoffValue ?? 12),
+      customerCancellationCutoffUnit: input.customerCancellationCutoffUnit !== undefined && input.customerCancellationCutoffUnit !== null
+        ? input.customerCancellationCutoffUnit
+        : (this.businessSettings.customerCancellationCutoffUnit ?? 'HOURS'),
       maxAdvanceBookingDays: input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null
         ? input.maxAdvanceBookingDays
         : (this.businessSettings.maxAdvanceBookingDays ?? 90),

@@ -485,6 +485,8 @@ export interface GuestReservationTrackingResult {
   rescheduleCount?: number;
   canReschedule?: boolean;
   rescheduleCutoffHours?: number;
+  canCancel?: boolean;
+  cancellationCutoffDisplay?: string;
   isInSession?: boolean;
   canRelocate?: boolean;
   remainingMinutes?: number;
@@ -549,6 +551,10 @@ export interface AdminReservationSummary {
   manualResolutionNotes?: string | null;
   closureReason?: string | null;
   closureDate?: string | null;
+  refundStatus?: string | null;
+  refundedAt?: string | null;
+  refundNotes?: string | null;
+  cancellationRefundNotifiedAt?: string | null;
 }
 
 export interface AdminReservationCandidateSummary {

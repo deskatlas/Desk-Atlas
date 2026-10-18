@@ -262,3 +262,4 @@ export * from './services/assistantHybridRetrieval';
 export * from './services/assistantOutcome';
 export * from './services/assistantSynthesis';
 export * from './services/assistantPresentation';
+export * from './services/customerCancellationService';

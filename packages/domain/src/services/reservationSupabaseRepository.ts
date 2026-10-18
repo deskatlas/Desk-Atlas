@@ -1984,6 +1984,8 @@ export class ReservationSupabaseRepository
     return {
       reservationId: reservation.id,
       referenceCode: reservation.reference_code,
+      customerFirstName: reservation.customer_first_name,
+      customerLastName: reservation.customer_last_name,
       customerEmail: reservation.customer_email,
       reservationStatus: reservation.status,
       amountDue: Number(reservation.amount_due),
@@ -1992,6 +1994,7 @@ export class ReservationSupabaseRepository
       promoCodeUsed: reservation.promo_code_used ?? null,
       currency: reservation.currency,
       confirmedAt: reservation.confirmed_at,
+      checkedInAt: reservation.checked_in_at ?? null,
       checkedOutAt: reservation.checked_out_at,
       finalAssignment: candidate
         ? {
@@ -2674,6 +2677,10 @@ export class ReservationSupabaseRepository
         manualResolutionNotes: sanitizeManualResolutionNotes(r.manual_resolution_notes),
         closureReason,
         closureDate,
+        refundStatus: latestAttempt?.refund_status ?? null,
+        refundedAt: latestAttempt?.refunded_at ?? null,
+        refundNotes: latestAttempt?.refund_notes ?? null,
+        cancellationRefundNotifiedAt: latestAttempt?.cancellation_refund_notified_at ?? null,
       };
     });
   }
@@ -3096,6 +3103,17 @@ export class ReservationSupabaseRepository
       }
       throw rpcErr;
     }
+
+    await this.request(
+      `/payment_attempts?reservation_id=eq.${encodeURIComponent(r.id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          refund_status: "REQUIRED",
+          updated_at: nowIso,
+        }),
+      }
+    ).catch(() => {});
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {

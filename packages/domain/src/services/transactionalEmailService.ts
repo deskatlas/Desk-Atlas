@@ -3455,6 +3455,47 @@ export class TransactionalEmailService {
       text: rendered.text,
     });
   }
+
+  async sendCustomerCancellationRefundEligibleEmail(
+    input: CustomerCancellationRefundEligibleEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: CustomerCancellationRefundEligibleEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderCustomerCancellationRefundEligibleEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'customer-cancellation-refund-eligible',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-customer-cancellation-refund-eligible' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Cancellation refund webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendCustomerRefundDisbursedEmail(
+    input: PaymentRefundSuccessEmailInput
+  ): Promise<EmailSendResult> {
+    return this.sendPaymentRefundSuccessEmail(input);
+  }
 }
 
 export interface ClosureImpactNoticeEmailInput extends BaseEmailBusinessFields {
@@ -4390,6 +4431,128 @@ ${renderBusinessFooterText(profile)}
 
   return { subject, html, text };
 }
+
+export interface CustomerCancellationRefundEligibleEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName: string;
+  customerLastName?: string;
+  referenceCode: string;
+  workspaceName?: string;
+  scheduledVisit?: string;
+  amountDue: number;
+  cutoffNotice?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+}
+
+export function renderCustomerCancellationRefundEligibleEmail(
+  input: CustomerCancellationRefundEligibleEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const firstName = input.customerFirstName?.trim() || 'Valued Guest';
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || firstName;
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = `Reservation Cancelled: Refund Eligibility Confirmation for ${input.referenceCode} - ${businessName}`;
+  const cutoff = input.cutoffNotice || 'the required notice window';
+  const formattedAmount = Number(input.amountDue || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const phone = input.contactPhone || profile.contactPhone || '+63 917 123 4567';
+  const website = input.websiteUrl || profile.websiteUrl || 'https://www.thedeskatlas.com';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #b45309; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .notice-box { background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 18px 0; color: #92400e; font-size: 14px; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0; font-size: 14px; }
+    .summary-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Reservation Cancelled: Refund Eligibility Confirmed</div>
+    </div>
+    <div class="content">
+      <p>Dear ${escapeHtml(firstName)},</p>
+      <p>Your reservation <strong>#${escapeHtml(input.referenceCode)}</strong> at ${escapeHtml(businessName)} has been successfully cancelled per your request.</p>
+      
+      <div class="notice-box">
+        <strong>100% Refund Eligibility Confirmed</strong><br>
+        Because your cancellation was submitted at least ${escapeHtml(cutoff)} prior to your scheduled start time, you are eligible for a 100% refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
+      </div>
+
+      <div class="summary-box">
+        <strong style="color: #0f172a; display: block; margin-bottom: 8px;">Cancellation & Refund Summary:</strong>
+        <div class="summary-row"><span>Reservation Reference:</span> <strong>${escapeHtml(input.referenceCode)}</strong></div>
+        ${input.workspaceName ? `<div class="summary-row"><span>Workspace:</span> <span>${escapeHtml(input.workspaceName)}</span></div>` : ''}
+        ${input.scheduledVisit ? `<div class="summary-row"><span>Scheduled Visit:</span> <span>${escapeHtml(input.scheduledVisit)}</span></div>` : ''}
+        <div class="summary-row"><span>Amount Eligible for Refund:</span> <strong>₱${escapeHtml(formattedAmount)}</strong></div>
+        <div class="summary-row"><span>Refund Status:</span> <span style="color: #b45309; font-weight: 700;">Eligible for Disbursement</span></div>
+      </div>
+
+      <div style="margin: 18px 0;">
+        <strong style="color: #0f172a;">What Happens Next:</strong>
+        <ol style="margin: 8px 0 0 20px; padding: 0; color: #334155;">
+          <li style="margin-bottom: 6px;"><strong>Priority Disbursement Review:</strong> Our administrative team has received your cancellation and queued your payment for refund verification.</li>
+          <li style="margin-bottom: 6px;"><strong>Payment Disbursement:</strong> If you paid via GCash or Bank Transfer, staff will disburse your refund to your source account or contact you to confirm disbursement details.</li>
+          <li style="margin-bottom: 6px;"><strong>Confirmation Notification:</strong> You will receive another email confirmation once the refund has been disbursed and recorded.</li>
+        </ol>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b;">
+        If you have questions or need assistance with future bookings, please contact our team at ${escapeHtml(phone)} or reply directly to this email.
+      </p>
+
+      <p style="margin-top: 24px;">Warm regards,<br><strong>The DeskAtlas Team</strong><br>${escapeHtml(website)} | ${escapeHtml(phone)}</p>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Dear ${firstName},
+
+Your reservation #${input.referenceCode} at ${businessName} has been successfully cancelled per your request.
+
+Because your cancellation was submitted at least ${cutoff} prior to your scheduled start time, you are eligible for a 100% refund of your payment.
+
+Cancellation & Refund Summary:
+- Reservation Reference: ${input.referenceCode}
+${input.workspaceName ? `- Workspace: ${input.workspaceName}\n` : ''}${input.scheduledVisit ? `- Scheduled Visit: ${input.scheduledVisit}\n` : ''}- Amount Eligible for Refund: ₱${formattedAmount}
+- Refund Status: Eligible for Disbursement
+
+What Happens Next:
+1. Priority Disbursement Review: Our administrative team has received your cancellation and queued your payment for refund verification.
+2. Payment Disbursement: If you paid via GCash or Bank Transfer, staff will disburse your refund to your source account or contact you to confirm disbursement details.
+3. Confirmation Notification: You will receive another email confirmation once the refund has been disbursed and recorded.
+
+If you have questions or need assistance with future bookings, please contact our team at ${phone} or reply directly to this email.
+
+Warm regards,
+The DeskAtlas Team
+${website} | ${phone}
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export type CustomerRefundDisbursedEmailInput = PaymentRefundSuccessEmailInput;
+export const renderCustomerRefundDisbursedEmail = renderPaymentRefundSuccessEmail;
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {
   return new TransactionalEmailService(config);

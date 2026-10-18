@@ -1,5 +1,6 @@
 import {
   DEFAULT_WORKSPACE_STATUS_COLORS,
+  calculateCancellationCutoffHours,
   type AdminPaymentMethod,
   type BusinessSettings,
   type CreatePaymentMethodInput,
@@ -41,6 +42,8 @@ type BusinessSettingsRow = {
   customer_reschedule_cutoff_hours?: number | null;
   reschedule_max_advance_value?: number | null;
   reschedule_max_advance_unit?: 'DAYS' | 'HOURS' | null;
+  customer_cancellation_cutoff_value?: number | null;
+  customer_cancellation_cutoff_unit?: 'HOURS' | 'DAYS' | null;
   max_advance_booking_days?: number | null;
   day_pass_start_time?: string | null;
   day_pass_end_time?: string | null;
@@ -132,7 +135,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   private async loadBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,near_checkout_threshold_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,max_advance_booking_days,day_pass_start_time,day_pass_end_time,night_pass_start_time,night_pass_end_time,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,near_checkout_threshold_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,customer_cancellation_cutoff_value,customer_cancellation_cutoff_unit,max_advance_booking_days,day_pass_start_time,day_pass_end_time,night_pass_start_time,night_pass_end_time,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
       // Fallback if pass windows or max_advance_booking_days are not yet present on remote
       return this.request<BusinessSettingsRow[]>(
@@ -191,6 +194,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         customerRescheduleCutoffHours: 12,
         rescheduleMaxAdvanceValue: 30,
         rescheduleMaxAdvanceUnit: 'DAYS',
+        customerCancellationCutoffValue: 12,
+        customerCancellationCutoffUnit: 'HOURS',
+        customerCancellationCutoffHours: 12,
         maxAdvanceBookingDays: 90,
         dayPassStartTime: '07:00',
         dayPassEndTime: '23:30',
@@ -203,6 +209,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         cancellationPolicyUpdatedAt: null,
       };
     }
+
+    const cancelVal = row.customer_cancellation_cutoff_value ?? 12;
+    const cancelUnit = (row.customer_cancellation_cutoff_unit as 'HOURS' | 'DAYS') ?? 'HOURS';
 
     const result = {
       id: row.id,
@@ -224,6 +233,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? 30,
       rescheduleMaxAdvanceUnit: (row.reschedule_max_advance_unit as 'DAYS' | 'HOURS') ?? 'DAYS',
+      customerCancellationCutoffValue: cancelVal,
+      customerCancellationCutoffUnit: cancelUnit,
+      customerCancellationCutoffHours: calculateCancellationCutoffHours(cancelVal, cancelUnit),
       maxAdvanceBookingDays: row.max_advance_booking_days ?? 90,
       dayPassStartTime: row.day_pass_start_time ?? '07:00',
       dayPassEndTime: row.day_pass_end_time ?? '23:30',
@@ -264,6 +276,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customer_reschedule_cutoff_hours: input.customerRescheduleCutoffHours ?? 12,
       reschedule_max_advance_value: input.rescheduleMaxAdvanceValue ?? 30,
       reschedule_max_advance_unit: input.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      customer_cancellation_cutoff_value: input.customerCancellationCutoffValue ?? 12,
+      customer_cancellation_cutoff_unit: input.customerCancellationCutoffUnit ?? 'HOURS',
       max_advance_booking_days: input.maxAdvanceBookingDays ?? 90,
       day_pass_start_time: input.dayPassStartTime ?? '07:00',
       day_pass_end_time: input.dayPassEndTime ?? '23:30',
@@ -315,6 +329,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       delete fallbackPayload.max_advance_booking_days;
       delete fallbackPayload.reschedule_max_advance_value;
       delete fallbackPayload.reschedule_max_advance_unit;
+      delete fallbackPayload.customer_cancellation_cutoff_value;
+      delete fallbackPayload.customer_cancellation_cutoff_unit;
       delete fallbackPayload.status_colors;
       delete fallbackPayload.customer_session_timeout_minutes;
       delete fallbackPayload.customer_reschedule_cutoff_hours;
@@ -358,6 +374,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         delete (fallbackInsert as any).max_advance_booking_days;
         delete (fallbackInsert as any).reschedule_max_advance_value;
         delete (fallbackInsert as any).reschedule_max_advance_unit;
+        delete (fallbackInsert as any).customer_cancellation_cutoff_value;
+        delete (fallbackInsert as any).customer_cancellation_cutoff_unit;
         delete (fallbackInsert as any).status_colors;
         delete (fallbackInsert as any).customer_session_timeout_minutes;
         delete (fallbackInsert as any).customer_reschedule_cutoff_hours;
@@ -406,6 +424,12 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? input.customerRescheduleCutoffHours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? input.rescheduleMaxAdvanceValue ?? 30,
       rescheduleMaxAdvanceUnit: (row.reschedule_max_advance_unit as 'DAYS' | 'HOURS') ?? input.rescheduleMaxAdvanceUnit ?? 'DAYS',
+      customerCancellationCutoffValue: row.customer_cancellation_cutoff_value ?? input.customerCancellationCutoffValue ?? 12,
+      customerCancellationCutoffUnit: (row.customer_cancellation_cutoff_unit as 'HOURS' | 'DAYS') ?? input.customerCancellationCutoffUnit ?? 'HOURS',
+      customerCancellationCutoffHours: calculateCancellationCutoffHours(
+        row.customer_cancellation_cutoff_value ?? input.customerCancellationCutoffValue ?? 12,
+        (row.customer_cancellation_cutoff_unit as 'HOURS' | 'DAYS') ?? input.customerCancellationCutoffUnit ?? 'HOURS'
+      ),
       maxAdvanceBookingDays: row.max_advance_booking_days ?? input.maxAdvanceBookingDays ?? 90,
       dayPassStartTime: row.day_pass_start_time ?? input.dayPassStartTime ?? '07:00',
       dayPassEndTime: row.day_pass_end_time ?? input.dayPassEndTime ?? '23:30',

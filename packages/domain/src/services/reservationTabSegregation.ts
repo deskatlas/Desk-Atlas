@@ -4,7 +4,13 @@ import {
   ReservationStatus,
 } from "../models/reservation";
 
-export type ReservationTabType = "reservations" | "operations" | "completed" | "expired";
+export type ReservationTabType =
+  | "reservations"
+  | "operations"
+  | "completed"
+  | "expired"
+  | "cancelled_refund_eligible"
+  | "refunded";
 
 export type AdminReservationsSubFilter =
   | "all"
@@ -12,6 +18,8 @@ export type AdminReservationsSubFilter =
   | "awaiting_proof"
   | "counter_queue"
   | "closure_impacted"
+  | "cancelled_refund_eligible"
+  | "refunded"
   | "cancelled";
 
 export type AdminOperationsSubFilter =
@@ -354,8 +362,20 @@ export function filterAdminReservationsByTab(
             (Boolean(r.closureImpactStatus) && r.closureImpactStatus !== "CUSTOMER_RESOLVED" && r.closureImpactStatus !== "STAFF_RESOLVED")
         );
 
+      case "cancelled_refund_eligible":
+        return reservations.filter(
+          (r) => isReservationCancelled(r) && r.refundStatus === "REQUIRED"
+        );
+
+      case "refunded":
+        return reservations.filter(
+          (r) => r.refundStatus === "REFUNDED"
+        );
+
       case "cancelled":
-        return reservations.filter((r) => isReservationCancelled(r));
+        return reservations.filter(
+          (r) => isReservationCancelled(r) && r.refundStatus !== "REQUIRED" && r.refundStatus !== "REFUNDED"
+        );
 
       default:
         return base;
@@ -394,6 +414,16 @@ export function filterAdminReservationsByTab(
     // Completed Tab - attended & completed bookings
     const base = reservations.filter((r) => isAdminCompletedReservation(r, nowMs));
     return base;
+  } else if (tab === "cancelled_refund_eligible") {
+    // Dedicated Top-Level Tab for Cancelled (Refund Eligible)
+    return reservations.filter(
+      (r) => isReservationCancelled(r) && r.refundStatus === "REQUIRED"
+    );
+  } else if (tab === "refunded") {
+    // Dedicated Top-Level Tab for Refunded
+    return reservations.filter(
+      (r) => r.refundStatus === "REFUNDED"
+    );
   } else {
     // Expired Tab
     const base = reservations.filter((r) => isAdminExpiredReservation(r, nowMs));
@@ -689,15 +719,32 @@ export function filterStaffReservationsByTab(
 export function getAdminReservationTabCounts(
   reservations: AdminReservationSummary[],
   now: Date | number = new Date()
-): { reservationsBadgeCount: number; operationsBadgeCount: number; completedBadgeCount: number; expiredBadgeCount: number } {
+): {
+  reservationsBadgeCount: number;
+  operationsBadgeCount: number;
+  completedBadgeCount: number;
+  expiredBadgeCount: number;
+  cancelledRefundEligibleBadgeCount: number;
+  refundedBadgeCount: number;
+} {
   const nowMs = typeof now === "number" ? now : (now instanceof Date ? now.getTime() : new Date(now).getTime());
 
   let reservationsBadgeCount = 0;
   let operationsBadgeCount = 0;
   let completedBadgeCount = 0;
   let expiredBadgeCount = 0;
+  let cancelledRefundEligibleBadgeCount = 0;
+  let refundedBadgeCount = 0;
 
   for (const r of reservations) {
+    if (isReservationCancelled(r) && r.refundStatus === "REQUIRED") {
+      cancelledRefundEligibleBadgeCount++;
+    }
+
+    if (r.refundStatus === "REFUNDED") {
+      refundedBadgeCount++;
+    }
+
     if (isAdminCompletedReservation(r, nowMs)) {
       completedBadgeCount++;
       continue;
@@ -741,7 +788,14 @@ export function getAdminReservationTabCounts(
     }
   }
 
-  return { reservationsBadgeCount, operationsBadgeCount, completedBadgeCount, expiredBadgeCount };
+  return {
+    reservationsBadgeCount,
+    operationsBadgeCount,
+    completedBadgeCount,
+    expiredBadgeCount,
+    cancelledRefundEligibleBadgeCount,
+    refundedBadgeCount,
+  };
 }
 
 export function getStaffReservationTabCounts(

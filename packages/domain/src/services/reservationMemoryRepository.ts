@@ -1157,6 +1157,8 @@ export class ReservationMemoryRepository
     return {
       reservationId: reservation.id,
       referenceCode: reservation.referenceCode,
+      customerFirstName: reservation.customerFirstName,
+      customerLastName: reservation.customerLastName,
       customerEmail: reservation.customerEmail,
       reservationStatus: reservation.status,
       amountDue: reservation.amountDue,
@@ -1165,6 +1167,7 @@ export class ReservationMemoryRepository
       promoCodeUsed: reservation.promoCodeUsed ?? null,
       currency: reservation.currency,
       confirmedAt: reservation.confirmedAt ?? null,
+      checkedInAt: reservation.checkedInAt ?? null,
       checkedOutAt: reservation.checkedOutAt ?? null,
       finalAssignment: assignedCandidate
         ? {
@@ -1610,6 +1613,10 @@ export class ReservationMemoryRepository
         manualResolutionNotes: sanitizeManualResolutionNotes(r.manualResolutionNotes),
         closureReason: (r as any).closureReason ?? null,
         closureDate: (r as any).closureDate ?? null,
+        refundStatus: (latestAttempt as any)?.refundStatus ?? (latestAttempt as any)?.refund_status ?? null,
+        refundedAt: (latestAttempt as any)?.refundedAt ?? (latestAttempt as any)?.refunded_at ?? null,
+        refundNotes: (latestAttempt as any)?.refundNotes ?? (latestAttempt as any)?.refund_notes ?? null,
+        cancellationRefundNotifiedAt: (latestAttempt as any)?.cancellationRefundNotifiedAt ?? (latestAttempt as any)?.cancellation_refund_notified_at ?? null,
       };
     });
   }
@@ -1934,6 +1941,11 @@ export class ReservationMemoryRepository
       for (const c of r.candidates) {
         c.isAssigned = false;
       }
+    }
+
+    const attempt = Array.from(this.paymentAttempts.values()).find((a) => a.reservationId === r.id);
+    if (attempt) {
+      attempt.refundStatus = "REQUIRED";
     }
 
     const detail = await this.getAdminReservationDetail(r.id);

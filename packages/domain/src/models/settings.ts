@@ -30,6 +30,26 @@ export const DEFAULT_WORKSPACE_STATUS_COLORS: WorkspaceStatusColors = {
 };
 
 export type RescheduleMaxAdvanceUnit = 'DAYS' | 'HOURS';
+export type CustomerCancellationCutoffUnit = 'DAYS' | 'HOURS';
+
+export function calculateCancellationCutoffHours(
+  valueOrSettings?: number | BusinessSettings | { customerCancellationCutoffValue?: number | null; customerCancellationCutoffUnit?: CustomerCancellationCutoffUnit | null } | null,
+  unit?: CustomerCancellationCutoffUnit | null
+): number {
+  if (valueOrSettings && typeof valueOrSettings === 'object') {
+    const val = valueOrSettings.customerCancellationCutoffValue;
+    const u = valueOrSettings.customerCancellationCutoffUnit;
+    return calculateCancellationCutoffHours(val, u);
+  }
+  const numValue = valueOrSettings !== undefined && valueOrSettings !== null && !isNaN(Number(valueOrSettings)) && Number(valueOrSettings) > 0
+    ? Number(valueOrSettings)
+    : 12;
+  const unitNormalized = (unit || 'HOURS').toUpperCase();
+  if (unitNormalized === 'DAYS') {
+    return numValue * 24;
+  }
+  return numValue;
+}
 
 export function calculateRescheduleMaxAdvanceHours(
   value?: number | null,
@@ -65,6 +85,9 @@ export interface BusinessSettings {
   customerRescheduleCutoffHours?: number | null;
   rescheduleMaxAdvanceValue?: number;
   rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit;
+  customerCancellationCutoffValue?: number;
+  customerCancellationCutoffUnit?: CustomerCancellationCutoffUnit;
+  customerCancellationCutoffHours?: number;
   maxAdvanceBookingDays?: number;
   dayPassStartTime?: string;
   dayPassEndTime?: string;
@@ -129,6 +152,8 @@ export interface UpdateBusinessSettingsInput {
   customerRescheduleCutoffHours?: number | null;
   rescheduleMaxAdvanceValue?: number | null;
   rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit | null;
+  customerCancellationCutoffValue?: number | null;
+  customerCancellationCutoffUnit?: CustomerCancellationCutoffUnit | null;
   maxAdvanceBookingDays?: number | null;
   dayPassStartTime?: string;
   dayPassEndTime?: string;

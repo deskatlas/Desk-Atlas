@@ -343,6 +343,8 @@ export function Settings() {
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
     rescheduleMaxAdvanceUnit: 'DAYS',
+    customerCancellationCutoffValue: 12,
+    customerCancellationCutoffUnit: 'HOURS',
     maxAdvanceBookingDays: 90,
     dayPassStartTime: '07:00',
     dayPassEndTime: '23:30',
@@ -930,6 +932,11 @@ export function Settings() {
       const normalizedMaxAdvanceBookingDays = businessSettings.maxAdvanceBookingDays === undefined || businessSettings.maxAdvanceBookingDays === null || Number(businessSettings.maxAdvanceBookingDays) < 1
         ? 90
         : Math.min(365, Math.max(1, Number(businessSettings.maxAdvanceBookingDays)));
+      const normalizedCancellationCutoffUnit = businessSettings.customerCancellationCutoffUnit === 'DAYS' ? 'DAYS' : 'HOURS';
+      const maxCancellationBound = normalizedCancellationCutoffUnit === 'DAYS' ? 30 : 720;
+      const normalizedCancellationCutoffValue = !businessSettings.customerCancellationCutoffValue || Number(businessSettings.customerCancellationCutoffValue) < 1
+        ? 12
+        : Math.min(maxCancellationBound, Math.max(1, Number(businessSettings.customerCancellationCutoffValue)));
 
       const payload = {
         ...businessSettings,
@@ -948,6 +955,8 @@ export function Settings() {
         customerRescheduleCutoffHours: normalizedRescheduleCutoff,
         rescheduleMaxAdvanceValue: normalizedMaxAdvanceVal,
         rescheduleMaxAdvanceUnit: normalizedMaxAdvanceUnit,
+        customerCancellationCutoffValue: normalizedCancellationCutoffValue,
+        customerCancellationCutoffUnit: normalizedCancellationCutoffUnit,
         maxAdvanceBookingDays: normalizedMaxAdvanceBookingDays,
         dayPassStartTime: businessSettings.dayPassStartTime || '07:00',
         dayPassEndTime: businessSettings.dayPassEndTime || '23:30',
@@ -2072,6 +2081,56 @@ export function Settings() {
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                         Maximum distance into the future a customer or staff may reschedule a booking.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                        Customer Self-Service Cancellation Notice Cutoff
+                      </label>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input 
+                          type="number" 
+                          min={1} 
+                          max={businessSettings.customerCancellationCutoffUnit === 'HOURS' ? 720 : 30} 
+                          value={(businessSettings.customerCancellationCutoffValue as unknown) === '' ? '' : (businessSettings.customerCancellationCutoffValue ?? 12)}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setBusinessSettings({
+                              ...businessSettings,
+                              customerCancellationCutoffValue: raw === '' ? ('' as unknown as number) : Number(raw),
+                            });
+                          }}
+                          onBlur={() => {
+                            const maxLimit = businessSettings.customerCancellationCutoffUnit === 'HOURS' ? 720 : 30;
+                            if (!businessSettings.customerCancellationCutoffValue || Number(businessSettings.customerCancellationCutoffValue) < 1) {
+                              setBusinessSettings({ ...businessSettings, customerCancellationCutoffValue: 12 });
+                            } else if (Number(businessSettings.customerCancellationCutoffValue) > maxLimit) {
+                              setBusinessSettings({ ...businessSettings, customerCancellationCutoffValue: maxLimit });
+                            }
+                          }}
+                          onKeyDown={(e) => handleNumericKeyDown(e)}
+                          data-testid="customer-cancellation-cutoff-value-input"
+                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        <select 
+                          value={businessSettings.customerCancellationCutoffUnit || 'HOURS'}
+                          onChange={(e) => {
+                            const newUnit = e.target.value as 'DAYS' | 'HOURS';
+                            setBusinessSettings({
+                              ...businessSettings,
+                              customerCancellationCutoffUnit: newUnit,
+                            });
+                          }}
+                          data-testid="customer-cancellation-cutoff-unit-select"
+                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }} 
+                        >
+                          <option value="HOURS">Hours</option>
+                          <option value="DAYS">Days</option>
+                        </select>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Default is 12 hours. Minimum notice required before scheduled booking start time for customer self-service cancellation on Track Reservation.
                       </div>
                     </div>
 
