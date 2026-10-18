@@ -18,6 +18,7 @@ from rag.evidence_budget import LIMITS
 from rag.procedure import strict_procedure_quotes, strict_faq_quotes
 from rag.governance import strict_governance_quotes
 from rag.runtime_identity import implementation_fingerprint
+from rag.answer_provider import provider, answer_model, deepinfra_headers, deepinfra_payload, normalize_deepinfra, DEEPINFRA_ORIGIN
 
 # Capture once at import, so an old process cannot claim newly edited code.
 LOADED_IMPLEMENTATION = implementation_fingerprint()
@@ -514,46 +515,61 @@ async def lifespan(app: FastAPI):
         if len(required(name)) < 32:
             raise RuntimeError('Service credentials must be at least 32 characters')
     required('RAG_SCOPE_ID')
-    for name in ('RAG_ANSWER_DIGEST',):
-        if not re.fullmatch(r'[a-f0-9]{64}', required(name)):
+    selected_provider = provider()
+    model = answer_model()
+    headers = {}
+    if selected_provider == 'deepinfra':
+        parsed = urlparse(DEEPINFRA_ORIGIN)
+        headers = deepinfra_headers()
+    else:
+        if not re.fullmatch(r'[a-f0-9]{64}', required('RAG_ANSWER_DIGEST')):
             raise RuntimeError('Full pinned model digests are required')
-    parsed = urlparse(os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434'))
+        parsed = urlparse(os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434'))
     if parsed.scheme != 'https' and parsed.hostname not in ('127.0.0.1', 'localhost', '::1'):
         raise RuntimeError('Model transport must be local or private TLS')
     progress('private transport')
-    app.state.client = httpx.AsyncClient(base_url=parsed.geturl(), timeout=httpx.Timeout(45, connect=3), follow_redirects=False, trust_env=False)
-    progress('transport ready')
-    app.state.slots = asyncio.Semaphore(2)
-    app.state.requests = 0
-    app.state.encoder = None
-    if os.environ.get('KB_ENABLED') == 'true':
-        progress('embedding model')
-        # Use exactly the same pinned encoder as SPEC-5 ingestion. Quantized
-        # Ollama query vectors must never be mixed with this float32 generation.
-        from rag.encoder import Encoder
-        root = Path(__file__).resolve().parent
-        manifest = json.loads((root / 'models.json').read_text(encoding='utf-8'))
-        fingerprint = hashlib.sha256(json.dumps(manifest['embedding'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-        if required('RAG_EMBEDDING_FINGERPRINT') != fingerprint:
-            raise RuntimeError('Embedding fingerprint mismatch')
-        app.state.encoder = Encoder(manifest, root / '.cache' / 'models')
-        progress('embedding ready')
-    if os.environ.get('RAG_PRELOAD_MODEL') == 'true':
-        progress('answer model verification')
-        model = os.environ.get('RAG_ANSWER_MODEL', 'qwen3:4b')
-        await verify_model(model, required('RAG_ANSWER_DIGEST'))
-        progress('answer model preload')
-        await model_request('/api/chat', {'model': model, 'stream': False, 'messages': [],
-            'keep_alive': -1, 'options': {'num_gpu': int(os.environ.get('RAG_MODEL_GPU_LAYERS', '0')), 'num_ctx': LIMITS['context_tokens'], 'num_batch': model_batch_size()}})
-        if os.environ.get('RAG_MODEL_GPU_LAYERS') == '-1':
-            progress('GPU residency verification')
-            resident = await app.state.client.get('/api/ps')
-            resident.raise_for_status()
-            if not any(item.get('digest') == required('RAG_ANSWER_DIGEST') and item.get('size_vram', 0) > 0 for item in resident.json().get('models', [])):
-                raise RuntimeError('GPU_MODEL_NOT_RESIDENT')
-    progress('models ready')
-    yield
-    await app.state.client.aclose()
+    app.state.client = httpx.AsyncClient(base_url=parsed.geturl(), headers=headers, timeout=httpx.Timeout(45, connect=3), follow_redirects=False, trust_env=False)
+    try:
+        progress('transport ready')
+        app.state.slots = asyncio.Semaphore(2)
+        app.state.requests = 0
+        app.state.encoder = None
+        if os.environ.get('KB_ENABLED') == 'true':
+            progress('embedding model')
+            # Use exactly the same pinned encoder as SPEC-5 ingestion. Quantized
+            # Ollama query vectors must never be mixed with this float32 generation.
+            from rag.encoder import Encoder
+            root = Path(__file__).resolve().parent
+            manifest = json.loads((root / 'models.json').read_text(encoding='utf-8'))
+            fingerprint = hashlib.sha256(json.dumps(manifest['embedding'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            if required('RAG_EMBEDDING_FINGERPRINT') != fingerprint:
+                raise RuntimeError('Embedding fingerprint mismatch')
+            app.state.encoder = Encoder(manifest, root / '.cache' / 'models')
+            progress('embedding ready')
+        if selected_provider == 'deepinfra':
+            progress('hosted answer model verification')
+            # Synthetic schema canary exercises credentials and constrained output.
+            # No source text is used and readiness fails if the provider is unusable.
+            result = await generate('Return JSON with p=[] and c=false.', {}, PassageSelection)
+            if result.passages or result.conflicting_sources:
+                raise RuntimeError('Hosted answer model canary failed')
+        elif os.environ.get('RAG_PRELOAD_MODEL') == 'true':
+            progress('answer model verification')
+            model = os.environ.get('RAG_ANSWER_MODEL', 'qwen3:4b')
+            await verify_model(model, required('RAG_ANSWER_DIGEST'))
+            progress('answer model preload')
+            await model_request('/api/chat', {'model': model, 'stream': False, 'messages': [],
+                'keep_alive': -1, 'options': {'num_gpu': int(os.environ.get('RAG_MODEL_GPU_LAYERS', '0')), 'num_ctx': LIMITS['context_tokens'], 'num_batch': model_batch_size()}})
+            if os.environ.get('RAG_MODEL_GPU_LAYERS') == '-1':
+                progress('GPU residency verification')
+                resident = await app.state.client.get('/api/ps')
+                resident.raise_for_status()
+                if not any(item.get('digest') == required('RAG_ANSWER_DIGEST') and item.get('size_vram', 0) > 0 for item in resident.json().get('models', [])):
+                    raise RuntimeError('GPU_MODEL_NOT_RESIDENT')
+        progress('models ready')
+        yield
+    finally:
+        await app.state.client.aclose()
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -624,6 +640,12 @@ async def model_request(path: str, payload: dict) -> dict:
 
 
 async def verify_model(model: str, digest: str):
+    if provider() == 'deepinfra':
+        # Provider-managed weights have no Ollama digest. The explicit model
+        # allowlist and real startup canary replace local artifact verification.
+        if model != answer_model():
+            raise HTTPException(503, detail='MODEL_REVISION_MISMATCH')
+        return
     try:
         response = await app.state.client.get('/api/tags')
         response.raise_for_status()
@@ -639,7 +661,8 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
     request_timing.model_metric('template_headroom', LIMITS['template_headroom'])
     if len(model_wire(content)) + len(system.encode()) > LIMITS['model_request_bytes']:
         raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
-    model = os.environ.get('RAG_ANSWER_MODEL', 'qwen3:4b')
+    model = answer_model()
+    hosted = provider() == 'deepinfra'
     # MS-44: independent experiment controls, unchanged baseline until measured.
     compact = schema in (PassageSelection, EvidenceCheck, ContextSelection, ContextIndexSelection, ScopedContextSelection, ScopeDecision, ApplicabilityDecision, MainProjection) or issubclass(schema, SupportVerdict)
     key = 'RAG_PLAN_MAX_TOKENS' if issubclass(schema, Plan) else 'RAG_SELECTION_MAX_TOKENS' if compact else 'RAG_ANSWER_MAX_TOKENS'
@@ -649,10 +672,10 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
         if not 128 <= budget <= 2400:
             raise ValueError()
         request_timing.model_metric('output_budget', budget)
-        gpu_layers = int(os.environ.get('RAG_MODEL_GPU_LAYERS', '0'))
+        gpu_layers = 0 if hosted else int(os.environ.get('RAG_MODEL_GPU_LAYERS', '0'))
         if not -1 <= gpu_layers <= 256:
             raise ValueError()
-        keep_alive = os.environ.get('RAG_MODEL_KEEP_ALIVE', '10m')
+        keep_alive = '10m' if hosted else os.environ.get('RAG_MODEL_KEEP_ALIVE', '10m')
         if not re.fullmatch(r'-1|[1-9][0-9]{0,3}[mh]', keep_alive):
             raise ValueError()
     except ValueError:
@@ -661,13 +684,15 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
     async with app.state.slots:
         request_timing.add('queue', (time.perf_counter() - queued) * 1000)
         with request_timing.measure('verify'):
-            await verify_model(model, required('RAG_ANSWER_DIGEST'))
+            await verify_model(model, '' if hosted else required('RAG_ANSWER_DIGEST'))
         with request_timing.measure('inference'):
             payload = {
                 'model': model, 'stream': False, 'think': False, 'keep_alive': -1 if keep_alive == '-1' else keep_alive,
-                'format': schema.model_json_schema(), 'options': {'num_gpu': gpu_layers, 'num_ctx': LIMITS['context_tokens'], 'num_batch': model_batch_size(), 'num_predict': budget, 'temperature': 0},
+                'format': schema.model_json_schema(), 'options': {'num_gpu': gpu_layers, 'num_ctx': LIMITS['context_tokens'], 'num_batch': 1024 if hosted else model_batch_size(), 'num_predict': budget, 'temperature': 0},
                 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': model_wire(content).decode('utf-8')}],
             }
+            if hosted:
+                payload = deepinfra_payload(payload, schema.__name__)
             # MS48-TC08: measure the complete serialized request, including JSON
             # schema, prompt, options and transport metadata. UTF-8 bytes form a
             # conservative upper bound for the pinned byte-level Qwen tokenizer;
@@ -677,7 +702,9 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
                 raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
             if not request_timing.reserve_model_work(len(model_wire(payload)), budget):
                 raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
-            response = await model_request('/api/chat', payload)
+            response = await model_request('/v1/openai/chat/completions' if hosted else '/api/chat', payload)
+            if hosted:
+                response = normalize_deepinfra(response, model)
     for key, field in [('load', 'load_duration'), ('prompt', 'prompt_eval_duration'), ('generation', 'eval_duration')]:
         value = response.get(field)
         if type(value) in (int, float):
@@ -1513,4 +1540,5 @@ consistent=true unless SOURCE rules materially contradict under the SAME conditi
 
 @app.get('/health')
 async def health(_claims: Claims = Depends(authenticate)):
-    return {'ready': True, 'implementation_fingerprint': LOADED_IMPLEMENTATION}
+    return {'ready': True, 'implementation_fingerprint': LOADED_IMPLEMENTATION,
+            'answer_provider': provider(), 'answer_model': answer_model()}

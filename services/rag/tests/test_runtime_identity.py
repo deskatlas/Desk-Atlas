@@ -22,7 +22,8 @@ def test_health_exposes_imported_identity_without_echoing_credentials(monkeypatc
     loaded = app.LOADED_IMPLEMENTATION
     monkeypatch.setattr(app, 'implementation_fingerprint', lambda: 'new-source-not-loaded')
     result = asyncio.run(app.health(None))
-    assert result == {'ready': True, 'implementation_fingerprint': loaded}
+    assert result == {'ready': True, 'implementation_fingerprint': loaded,
+                      'answer_provider': 'ollama', 'answer_model': 'qwen3:4b'}
 
 
 def test_node_status_and_python_use_the_same_source_fingerprint():

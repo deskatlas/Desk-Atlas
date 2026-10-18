@@ -193,6 +193,7 @@ def main():
     threading.Thread(target=startup_watchdog, args=(completed, lambda: gpu), daemon=True).start()
     try:
         allowed = {'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', 'RAG_ANSWER_MODEL',
+                   'RAG_MODEL_PROVIDER', 'DEEPINFRA_API_KEY',
                    'RAG_ANSWER_DIGEST', 'RAG_EMBEDDING_FINGERPRINT', 'KB_ENABLED', 'OLLAMA_URL',
                    'RAG_PLAN_MAX_TOKENS', 'RAG_ANSWER_MAX_TOKENS', 'RAG_SELECTION_MAX_TOKENS',
                    'RAG_COMPACT_SELECTION', 'RAG_MODEL_GPU_LAYERS', 'RAG_MODEL_KEEP_ALIVE', 'RAG_PRELOAD_MODEL', 'RAG_MODEL_BATCH_SIZE'}
@@ -201,10 +202,12 @@ def main():
             if separator and key.strip() in allowed:
                 os.environ[key.strip()] = value.strip().strip('\"').strip("'")
         model = json.loads((root / 'answer-model.json').read_text(encoding='utf-8'))
-        os.environ.setdefault('RAG_ANSWER_MODEL', model['model'])
+        os.environ.setdefault('RAG_ANSWER_MODEL', 'Qwen/Qwen3-32B' if os.environ.get('RAG_MODEL_PROVIDER') == 'deepinfra' else model['model'])
         os.environ.setdefault('RAG_ANSWER_DIGEST', model['manifest_digest'])
         os.environ.update({'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1'})
         if args.gpu:
+            if os.environ.get('RAG_MODEL_PROVIDER') == 'deepinfra':
+                raise StartupFailure('GPU_RUNTIME_UNAVAILABLE')
             # Retain the approved GPU profile's preload and residency checks.
             os.environ['OLLAMA_URL'] = 'http://127.0.0.1:11435'
             os.environ['RAG_MODEL_GPU_LAYERS'] = '-1'

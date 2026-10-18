@@ -1,0 +1,11 @@
+# PRD-F26 / SDD-C21 / QAD-TC46: API and existing encoder, no Ollama image.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, --platform=linux/amd64, -f, cloudrun/api.Dockerfile, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/api-deepinfra:$BUILD_ID', .]
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/api-deepinfra:$BUILD_ID'
+substitutions:
+  _REGION: us-central1
+timeout: 3600s
+options:
+  logging: CLOUD_LOGGING_ONLY
