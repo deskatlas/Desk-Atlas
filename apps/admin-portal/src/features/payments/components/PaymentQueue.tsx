@@ -8,7 +8,14 @@ import type {
   PaymentQueueSortMode,
   RankedPaymentReviewQueueItem,
 } from '@deskatlas/domain';
-import { sortPaymentReviewQueue } from '@deskatlas/domain';
+import {
+  assignCanonicalQueueRanks,
+  sortPaymentReviewQueue,
+  evaluateAndSegregatePaymentReviews,
+  getReservationBookingStartTime,
+  formatOverdueElapsedDuration,
+  formatOverdueElapsedApproxHours,
+} from '@deskatlas/domain';
 
 function formatTimeAgo(dateStr: string | null): string {
   if (!dateStr) return 'just now';
@@ -28,8 +35,10 @@ function formatTimeAgo(dateStr: string | null): string {
 
 export function PaymentQueue() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'REVIEW' | 'REJECTED'>('REVIEW');
+  const [activeTab, setActiveTab] = useState<'REVIEW' | 'OVERDUE' | 'REFUNDED' | 'REJECTED'>('REVIEW');
   const [reviewQueue, setReviewQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
+  const [overdueQueue, setOverdueQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
+  const [refundedQueue, setRefundedQueue] = useState<PaymentReviewQueueItem[]>([]);
   const [rejectedQueue, setRejectedQueue] = useState<PaymentReviewDetail[]>([]);
   const [sortMode, setSortMode] = useState<PaymentQueueSortMode>('RANK_DESC');
   const [loading, setLoading] = useState(true);
@@ -39,17 +48,23 @@ export function PaymentQueue() {
     try {
       setLoading(true);
       setError(null);
-      const [reviewRes, rejectedRes] = await Promise.all([
+      const [reviewRes, rejectedRes, refundedRes] = await Promise.all([
         fetch('/api/admin/payments/reviews'),
         fetch('/api/admin/payments/reviews?status=REJECTED'),
+        fetch('/api/admin/payments/reviews?status=REFUNDED'),
       ]);
 
       if (!reviewRes.ok) {
         throw new Error(`Failed to load payment review queue (${reviewRes.status})`);
       }
       const reviewData = await reviewRes.json();
-      const rawReviewQueue: PaymentReviewQueueItem[] = reviewData.queue || [];
-      const sortedReview = [...rawReviewQueue].sort((a, b) => {
+      const rawAllQueue: PaymentReviewQueueItem[] = reviewData.all || [
+        ...(reviewData.queue || []),
+        ...(reviewData.overdue || []),
+      ];
+
+      // Defensively sort items by proofSubmittedAt ascending
+      const sortedAll = [...rawAllQueue].sort((a, b) => {
         const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
         const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
         if (aTime !== bTime) {
@@ -57,16 +72,29 @@ export function PaymentQueue() {
         }
         return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
       });
-      const canonicalQueue: RankedPaymentReviewQueueItem[] = sortedReview.map((item, index) => ({
-        ...item,
-        queueRank: index + 1,
-      }));
-      setReviewQueue(canonicalQueue);
+
+      // Assign canonical FIFO ranks (#1..#N) across all pending reviews
+      const rankedAll = assignCanonicalQueueRanks(sortedAll);
+
+      // Segregate into active review and overdue review
+      const now = new Date();
+      const segregated = evaluateAndSegregatePaymentReviews(rankedAll, now);
+
+      setReviewQueue(segregated.activeQueue);
+      setOverdueQueue(segregated.overdueQueue);
 
       if (rejectedRes.ok) {
         const rejectedData = await rejectedRes.json();
         const rawRejected: PaymentReviewDetail[] = rejectedData.rejected || rejectedData.queue || [];
         setRejectedQueue(rawRejected);
+      }
+
+      if (refundedRes.ok) {
+        const refundedData = await refundedRes.json();
+        const rawRefunded: PaymentReviewQueueItem[] = refundedData.refunded || refundedData.queue || [];
+        setRefundedQueue(rawRefunded);
+      } else if (segregated.refundedQueue && segregated.refundedQueue.length > 0) {
+        setRefundedQueue(segregated.refundedQueue);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load payments.');
@@ -83,13 +111,17 @@ export function PaymentQueue() {
     return sortPaymentReviewQueue(reviewQueue, sortMode);
   }, [reviewQueue, sortMode]);
 
+  const displayedOverdueQueue = useMemo(() => {
+    return sortPaymentReviewQueue(overdueQueue, sortMode);
+  }, [overdueQueue, sortMode]);
+
   return (
     <main data-screen-label="Payments" style={{ padding: '26px 28px 40px' }}>
       <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Online Payments</h1>
       <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '16px' }}>Review submitted proofs, inspect rejected payments, and allocate workspaces</div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button
           data-testid="tab-awaiting-review"
           onClick={() => setActiveTab('REVIEW')}
@@ -110,6 +142,7 @@ export function PaymentQueue() {
         >
           <span>Awaiting Review</span>
           <span
+            data-testid="badge-awaiting-review-count"
             style={{
               fontSize: '11px',
               padding: '1px 7px',
@@ -119,6 +152,74 @@ export function PaymentQueue() {
             }}
           >
             {reviewQueue.length}
+          </span>
+        </button>
+
+        <button
+          data-testid="tab-overdue-reviews"
+          onClick={() => setActiveTab('OVERDUE')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: activeTab === 'OVERDUE' ? '2px solid #B45309' : '1px solid var(--da-border)',
+            background: activeTab === 'OVERDUE' ? '#B45309' : '#fff',
+            color: activeTab === 'OVERDUE' ? '#fff' : 'var(--da-text-primary)',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'var(--da-font-family)',
+          }}
+        >
+          <span>Overdue (Refund Eligible)</span>
+          <span
+            data-testid="badge-overdue-count"
+            style={{
+              fontSize: '11px',
+              padding: '1px 7px',
+              borderRadius: '9999px',
+              background: activeTab === 'OVERDUE' ? 'rgba(255,255,255,0.25)' : '#FEF3C7',
+              color: activeTab === 'OVERDUE' ? '#fff' : '#B45309',
+              fontWeight: 800,
+            }}
+          >
+            {overdueQueue.length}
+          </span>
+        </button>
+
+        <button
+          data-testid="tab-refunded-payments"
+          onClick={() => setActiveTab('REFUNDED')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '20px',
+            border: activeTab === 'REFUNDED' ? '2px solid #047857' : '1px solid var(--da-border)',
+            background: activeTab === 'REFUNDED' ? '#047857' : '#fff',
+            color: activeTab === 'REFUNDED' ? '#fff' : 'var(--da-text-primary)',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'var(--da-font-family)',
+          }}
+        >
+          <span>Refunded</span>
+          <span
+            data-testid="badge-refunded-count"
+            style={{
+              fontSize: '11px',
+              padding: '1px 7px',
+              borderRadius: '9999px',
+              background: activeTab === 'REFUNDED' ? 'rgba(255,255,255,0.25)' : '#ECFDF5',
+              color: activeTab === 'REFUNDED' ? '#fff' : '#047857',
+              fontWeight: 800,
+            }}
+          >
+            {refundedQueue.length}
           </span>
         </button>
 
@@ -142,6 +243,7 @@ export function PaymentQueue() {
         >
           <span>Rejected Payments</span>
           <span
+            data-testid="badge-rejected-count"
             style={{
               fontSize: '11px',
               padding: '1px 7px',
@@ -303,6 +405,368 @@ export function PaymentQueue() {
             );
           })}
         </>
+      ) : activeTab === 'OVERDUE' ? (
+        <>
+          <div
+            data-testid="admin-payments-overdue-notice"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: '#FFFBEB',
+              border: '1px solid #FCD34D',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              fontSize: '12px',
+              color: '#92400E',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#D97706', flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <strong>Missed Review Notice:</strong> These bookings passed their scheduled start time prior to administrative review. Customers have been automatically notified that they are eligible for a 100% refund. Please inspect proof and disburse the refund or contact the customer to arrange a mutually agreed reschedule.
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Left: Section Title & Count Badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: '#B45309', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>
+                OVERDUE (REFUND ELIGIBLE)
+              </span>
+              <span style={{ fontSize: '10px', fontWeight: 800, background: '#FEF3C7', color: '#B45309', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 8px', fontFamily: 'var(--da-font-family)' }}>
+                {overdueQueue.length}
+              </span>
+            </div>
+
+            {/* Right: Sort Control */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label
+                htmlFor="admin-payments-overdue-sort-select"
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--da-text-secondary)',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Sort by:
+              </label>
+              <select
+                id="admin-payments-overdue-sort-select"
+                data-testid="admin-payments-sort-select"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as PaymentQueueSortMode)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border, #CBD5E1)',
+                  background: '#fff',
+                  color: 'var(--da-text-primary, #0F172A)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  fontFamily: 'var(--da-font-family)',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: 'var(--da-shadow-sm)',
+                }}
+              >
+                <option value="RANK_DESC">Ranking: Descending</option>
+                <option value="RANK_ASC">Ranking: Ascending</option>
+                <option value="AMOUNT_DESC">Amount: Descending</option>
+                <option value="AMOUNT_ASC">Amount: Ascending</option>
+              </select>
+            </div>
+          </div>
+
+          {loading && (
+            <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
+              Loading overdue payment reviews...
+            </div>
+          )}
+
+          {error && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '12px', padding: '16px 20px', color: '#991B1B', fontSize: '13px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{error}</span>
+              <button onClick={fetchQueues} style={{ background: '#991B1B', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+            </div>
+          )}
+
+          {!loading && !error && displayedOverdueQueue.length === 0 && (
+            <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '14px', fontFamily: 'var(--da-font-family)' }}>
+              No overdue payments requiring refund triage.
+            </div>
+          )}
+
+          {!loading && !error && displayedOverdueQueue.map((p) => {
+            const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+            const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
+            const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();
+            const queueNumber = p.queueRank;
+            const startIso = getReservationBookingStartTime(p.submittedCandidates);
+            const elapsedDuration = startIso ? formatOverdueElapsedDuration(startIso) : 'Overdue';
+            const elapsedApprox = startIso ? formatOverdueElapsedApproxHours(startIso) : 'Overdue';
+
+            return (
+              <div
+                key={p.paymentAttemptId}
+                data-testid="overdue-payment-item"
+                style={{
+                  background: '#fff',
+                  border: '1px solid #FCD34D',
+                  borderRadius: '14px',
+                  padding: '16px 20px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '10px',
+                  boxShadow: 'var(--da-shadow-sm)',
+                  gap: '16px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div
+                    data-testid="payment-queue-number"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '11px',
+                      background: '#FEF3C7',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      fontWeight: 800,
+                      fontSize: '15px',
+                      color: '#B45309',
+                      fontFamily: 'var(--da-font-family)',
+                      border: '1px solid #FCD34D',
+                    }}
+                  >
+                    #{queueNumber}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)', fontSize: '14px' }}>{refDisplay}</span>
+                      <span
+                        data-testid="overdue-refund-badge"
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          background: '#FEF3C7',
+                          color: '#B45309',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #FCD34D',
+                          letterSpacing: '0.04em',
+                          fontFamily: 'var(--da-font-family)',
+                        }}
+                      >
+                        MISSED REVIEW - ELIGIBLE FOR REFUND
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
+                      {customerName} &middot; <strong style={{ color: 'var(--da-text-primary)' }}>₱{formattedAmount}</strong> &middot;{' '}
+                      <span data-testid="overdue-elapsed-text">{elapsedDuration}</span>{' '}
+                      <span data-testid="overdue-elapsed-approx" style={{ color: 'var(--da-text-secondary)', fontSize: '11px' }}>({elapsedApprox})</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  data-testid="review-refund-button"
+                  onClick={() => router.push(`/manage/payments/${p.paymentAttemptId}`)}
+                  style={{
+                    background: 'linear-gradient(0deg, #B45309 70%, #92400E)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '9px',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 10px 1px rgba(180,83,9,.25)',
+                  }}
+                >
+                  Review & Refund
+                </button>
+              </div>
+            );
+          })}
+        </>
+      ) : activeTab === 'REFUNDED' ? (
+        <>
+          <div
+            data-testid="admin-payments-refunded-notice"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: '#ECFDF5',
+              border: '1px solid #A7F3D0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              fontSize: '12px',
+              color: '#065F46',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#047857', flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <strong>Refunds Disbursed:</strong> These payments have been refunded to customers due to missed review window or administrative cancellation. Automated refund confirmation emails have been sent to customers.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '14px' }}>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: '#047857', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>
+              REFUNDED PAYMENTS
+            </span>
+            <span
+              data-testid="refunded-section-count"
+              style={{
+                fontSize: '10px',
+                fontWeight: 800,
+                background: '#ECFDF5',
+                color: '#047857',
+                borderRadius: '9999px',
+                whiteSpace: 'nowrap',
+                padding: '2px 8px',
+                fontFamily: 'var(--da-font-family)',
+              }}
+            >
+              {refundedQueue.length}
+            </span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--da-border)' }}></div>
+          </div>
+
+          {loading && (
+            <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
+              Loading refunded payments...
+            </div>
+          )}
+
+          {error && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '12px', padding: '16px 20px', color: '#991B1B', fontSize: '13px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{error}</span>
+              <button onClick={fetchQueues} style={{ background: '#991B1B', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+            </div>
+          )}
+
+          {!loading && !error && refundedQueue.length === 0 && (
+            <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '14px', fontFamily: 'var(--da-font-family)' }}>
+              No refunded payments recorded.
+            </div>
+          )}
+
+          {!loading && !error && refundedQueue.map((p) => {
+            const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+            const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
+            const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();
+            const refundedTime = formatTimeAgo(p.refundedAt || p.proofSubmittedAt);
+
+            return (
+              <div
+                key={p.paymentAttemptId}
+                data-testid="refunded-payment-item"
+                style={{
+                  background: '#fff',
+                  border: '1px solid #A7F3D0',
+                  borderRadius: '14px',
+                  padding: '16px 20px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '10px',
+                  boxShadow: 'var(--da-shadow-sm)',
+                  gap: '16px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '11px',
+                      background: '#ECFDF5',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      fontWeight: 800,
+                      fontSize: '15px',
+                      color: '#047857',
+                      fontFamily: 'var(--da-font-family)',
+                      border: '1px solid #A7F3D0',
+                    }}
+                  >
+                    ₱
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)', fontSize: '14px' }}>{refDisplay}</span>
+                      <span
+                        data-testid="refunded-status-badge"
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          background: '#ECFDF5',
+                          color: '#047857',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #A7F3D0',
+                          letterSpacing: '0.04em',
+                          fontFamily: 'var(--da-font-family)',
+                        }}
+                      >
+                        REFUND DISBURSED
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
+                      {customerName} &middot; <strong style={{ color: 'var(--da-text-primary)' }}>₱{formattedAmount}</strong> &middot; refunded {refundedTime}
+                    </div>
+                    {p.refundNotes && (
+                      <div style={{ fontSize: '11px', color: '#047857', marginTop: '2px', fontFamily: 'var(--da-font-family)' }}>
+                        Note: {p.refundNotes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  data-testid="inspect-refund-button"
+                  onClick={() => router.push(`/manage/payments/${p.paymentAttemptId}`)}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #A7F3D0',
+                    color: '#047857',
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Inspect
+                </button>
+              </div>
+            );
+          })}
+        </>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '12px' }}>
@@ -366,35 +830,31 @@ export function PaymentQueue() {
                       justifyContent: 'center',
                       flexShrink: 0,
                       fontWeight: 800,
-                      fontSize: '16px',
+                      fontSize: '15px',
                       color: '#991B1B',
                       fontFamily: 'var(--da-font-family)',
-                      border: '1px solid #FCA5A5',
+                      border: '1px solid rgba(153,27,27,0.15)',
                     }}
                   >
                     ✕
                   </div>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 800, color: '#991B1B', fontSize: '14px' }}>{refDisplay}</span>
-                      <span style={{ fontSize: '10px', fontWeight: 800, background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px' }}>REJECTED</span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', marginTop: '2px' }}>
+                    <div style={{ fontWeight: 800, color: '#991B1B', fontSize: '14px' }}>{refDisplay}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
                       {customerName} &middot; <strong style={{ color: 'var(--da-text-primary)' }}>₱{formattedAmount}</strong> &middot; rejected {rejectedTime}
                     </div>
                     {p.rejectionReason && (
-                      <div style={{ fontSize: '11px', color: '#991B1B', marginTop: '3px', fontWeight: 600 }}>
+                      <div style={{ fontSize: '11px', color: '#991B1B', marginTop: '2px', fontFamily: 'var(--da-font-family)' }}>
                         Reason: {p.rejectionReason}
                       </div>
                     )}
                   </div>
                 </div>
                 <button
-                  data-testid="inspect-rejected-proof-button"
                   onClick={() => router.push(`/manage/payments/${p.paymentAttemptId}`)}
                   style={{
                     background: '#fff',
-                    border: '1px solid #991B1B',
+                    border: '1px solid #FECACA',
                     color: '#991B1B',
                     padding: '9px 18px',
                     borderRadius: '8px',
@@ -403,7 +863,7 @@ export function PaymentQueue() {
                     cursor: 'pointer',
                   }}
                 >
-                  Inspect Proof
+                  Inspect
                 </button>
               </div>
             );

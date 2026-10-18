@@ -247,6 +247,11 @@ export interface PaymentReviewQueueItem {
   paymentMethodId: string | null;
   proofSubmittedAt: string | null;
   submittedCandidates: ReservationCandidate[];
+  refundStatus?: RefundStatus;
+  refundNotes?: string | null;
+  refundedAt?: string | null;
+  overdueNotifiedAt?: string | null;
+  isOverdue?: boolean;
 }
 
 export type PaymentQueueSortMode =
@@ -263,11 +268,15 @@ export interface PaymentReviewDetail extends PaymentReviewQueueItem {
   proofStoragePath: string | null;
   rejectionReason: string | null;
   refundStatus: RefundStatus;
+  refundNotes?: string | null;
+  refundedAt?: string | null;
   processedAt: string | null;
   processedByUserId: string | null;
   grossAmountDue?: number | null;
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
+  overdueNotifiedAt?: string | null;
+  isOverdue?: boolean;
 }
 
 export type PaymentReviewDecision = "APPROVE" | "REJECT" | "RECONSIDER_APPROVE";

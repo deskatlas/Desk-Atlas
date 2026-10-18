@@ -1042,7 +1042,7 @@ export class ReservationSupabaseRepository
 
     return reviews
       .filter((review): review is PaymentReviewDetail => review !== null)
-      .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, refundStatus: _refundStatus, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem)
+      .map(({ proofStoragePath: _proofStoragePath, rejectionReason: _rejectionReason, processedAt: _processedAt, processedByUserId: _processedByUserId, ...queueItem }) => queueItem)
       .sort((a, b) => {
         const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
         const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
@@ -1067,6 +1067,27 @@ export class ReservationSupabaseRepository
       .sort((a, b) => {
         const aTime = a.processedAt ? new Date(a.processedAt).getTime() : 0;
         const bTime = b.processedAt ? new Date(b.processedAt).getTime() : 0;
+        if (aTime !== bTime) {
+          return bTime - aTime;
+        }
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      });
+  }
+
+  async listRefundedPayments(): Promise<PaymentReviewDetail[]> {
+    const attempts = await this.request<any[]>(
+      "/payment_attempts?select=*&channel=eq.WEB&refund_status=eq.REFUNDED&order=refunded_at.desc.nullslast,created_at.desc"
+    );
+
+    const reviews = await Promise.all(
+      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt))
+    );
+
+    return reviews
+      .filter((review): review is PaymentReviewDetail => review !== null)
+      .sort((a, b) => {
+        const aTime = a.refundedAt || a.processedAt ? new Date(a.refundedAt || a.processedAt).getTime() : 0;
+        const bTime = b.refundedAt || b.processedAt ? new Date(b.refundedAt || b.processedAt).getTime() : 0;
         if (aTime !== bTime) {
           return bTime - aTime;
         }
@@ -2231,6 +2252,9 @@ export class ReservationSupabaseRepository
       proofStoragePath: attempt.proof_storage_path,
       rejectionReason: attempt.rejection_reason,
       refundStatus: attempt.refund_status,
+      refundNotes: attempt.refund_notes ?? null,
+      refundedAt: attempt.refunded_at ?? null,
+      overdueNotifiedAt: attempt.overdue_notified_at ?? null,
       processedAt: attempt.processed_at,
       processedByUserId: attempt.processed_by_user_id,
       grossAmountDue: reservation.gross_amount_due != null ? Number(reservation.gross_amount_due) : undefined,

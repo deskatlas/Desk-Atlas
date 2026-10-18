@@ -135,6 +135,7 @@ export * from './services/paymentSessionService';
 export * from './services/paymentReviewRepository';
 export * from './services/paymentReviewService';
 export * from './services/paymentReviewSorting';
+export * from './services/paymentReviewOverdueService';
 export * from './services/counterPaymentRepository';
 export * from './services/counterPaymentService';
 export * from './services/candidateValidationService';
