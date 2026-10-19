@@ -2805,6 +2805,10 @@ export class ReservationSupabaseRepository
       );
     }
 
+    if (r.attendance_reconfirmed_at) {
+      timeline.push(`${formatTimelineDate(r.attendance_reconfirmed_at)} - ${customerName} reconfirmed attendance`);
+    }
+
     if (r.checked_in_at) {
       timeline.push(`${formatTimelineDate(r.checked_in_at)} - Customer checked in`);
     }
@@ -3056,6 +3060,8 @@ export class ReservationSupabaseRepository
       grossAmountDue: r.gross_amount_due != null ? Number(r.gross_amount_due) : undefined,
       discountAmount: r.discount_amount != null ? Number(r.discount_amount) : undefined,
       promoCodeUsed: r.promo_code_used ?? undefined,
+      reminderSentAt: r.reminder_sent_at ?? null,
+      attendanceReconfirmedAt: r.attendance_reconfirmed_at ?? null,
     };
   }
 

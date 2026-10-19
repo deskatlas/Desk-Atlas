@@ -1749,6 +1749,10 @@ export class ReservationMemoryRepository
       );
     }
 
+    if (r.attendanceReconfirmedAt) {
+      timeline.push(`${formatTimelineDate(r.attendanceReconfirmedAt)} - ${customerName} reconfirmed attendance`);
+    }
+
     if (r.checkedInAt) {
       timeline.push(`${formatTimelineDate(r.checkedInAt)} - Customer checked in`);
     }
@@ -1906,6 +1910,8 @@ export class ReservationMemoryRepository
       grossAmountDue: r.grossAmountDue,
       discountAmount: r.discountAmount,
       promoCodeUsed: r.promoCodeUsed,
+      reminderSentAt: r.reminderSentAt ?? null,
+      attendanceReconfirmedAt: r.attendanceReconfirmedAt ?? null,
     };
   }
 

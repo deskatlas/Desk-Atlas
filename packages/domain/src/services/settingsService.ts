@@ -5,6 +5,7 @@ import type { AdminReservationRepository } from './adminReservationRepository';
 import type { TransactionalEmailService } from './transactionalEmailService';
 import {
   calculateCancellationCutoffHours,
+  calculateReminderAdvanceHours,
   calculateRescheduleMaxAdvanceHours,
   type AdminPaymentMethod,
   type BusinessClosureException,
@@ -13,6 +14,7 @@ import {
   type CreateBusinessClosureInput,
   type CreatePaymentMethodInput,
   type CustomerCancellationCutoffUnit,
+  type CustomerReminderAdvanceUnit,
   type LandingPreviewPhoto,
   type OperatingHoursConfig,
   type OperatingHoursDaySchedule,
@@ -79,6 +81,9 @@ export function createAdminSettingsService(
       customerCancellationCutoffValue: number;
       customerCancellationCutoffUnit: CustomerCancellationCutoffUnit;
       customerCancellationCutoffHours: number;
+      customerReminderAdvanceValue: number;
+      customerReminderAdvanceUnit: CustomerReminderAdvanceUnit;
+      customerReminderAdvanceHours: number;
       maxAdvanceBookingDays: number;
       bookingIntervalMinutes: number;
       paymentExpiryMinutes: number;
@@ -106,6 +111,10 @@ export function createAdminSettingsService(
       const cancellationUnit = (businessSettings.customerCancellationCutoffUnit as CustomerCancellationCutoffUnit) ?? 'HOURS';
       const cancellationHours = calculateCancellationCutoffHours(cancellationValue, cancellationUnit);
 
+      const reminderValue = businessSettings.customerReminderAdvanceValue ?? 12;
+      const reminderUnit = (businessSettings.customerReminderAdvanceUnit as CustomerReminderAdvanceUnit) ?? 'HOURS';
+      const reminderHours = calculateReminderAdvanceHours(reminderValue, reminderUnit);
+
       return {
         businessName: businessSettings.businessName,
         timezone: businessSettings.timezone,
@@ -123,6 +132,9 @@ export function createAdminSettingsService(
         customerCancellationCutoffValue: cancellationValue,
         customerCancellationCutoffUnit: cancellationUnit,
         customerCancellationCutoffHours: cancellationHours,
+        customerReminderAdvanceValue: reminderValue,
+        customerReminderAdvanceUnit: reminderUnit,
+        customerReminderAdvanceHours: reminderHours,
         maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays ?? 90,
         bookingIntervalMinutes: businessSettings.bookingIntervalMinutes ?? 30,
         paymentExpiryMinutes: businessSettings.paymentExpiryMinutes ?? 60,
@@ -183,6 +195,8 @@ export function createAdminSettingsService(
         rescheduleMaxAdvanceUnit: input.rescheduleMaxAdvanceUnit ?? current.rescheduleMaxAdvanceUnit,
         customerCancellationCutoffValue: input.customerCancellationCutoffValue !== undefined ? input.customerCancellationCutoffValue : current.customerCancellationCutoffValue,
         customerCancellationCutoffUnit: input.customerCancellationCutoffUnit !== undefined ? input.customerCancellationCutoffUnit : current.customerCancellationCutoffUnit,
+        customerReminderAdvanceValue: input.customerReminderAdvanceValue !== undefined ? input.customerReminderAdvanceValue : current.customerReminderAdvanceValue,
+        customerReminderAdvanceUnit: input.customerReminderAdvanceUnit !== undefined ? input.customerReminderAdvanceUnit : current.customerReminderAdvanceUnit,
         maxAdvanceBookingDays: input.maxAdvanceBookingDays ?? current.maxAdvanceBookingDays,
         bookingIntervalMinutes: input.bookingIntervalMinutes ?? current.bookingIntervalMinutes,
         paymentExpiryMinutes: input.paymentExpiryMinutes ?? current.paymentExpiryMinutes,
@@ -850,6 +864,32 @@ function normalizeBusinessSettingsInput(
   }
 
   if (
+    input.customerReminderAdvanceUnit !== undefined &&
+    input.customerReminderAdvanceUnit !== null &&
+    input.customerReminderAdvanceUnit !== 'DAYS' &&
+    input.customerReminderAdvanceUnit !== 'HOURS'
+  ) {
+    throw new SettingsValidationError('Customer reminder advance unit must be DAYS or HOURS');
+  }
+
+  if (
+    input.customerReminderAdvanceValue !== undefined &&
+    input.customerReminderAdvanceValue !== null
+  ) {
+    const isDays = (input.customerReminderAdvanceUnit || 'HOURS') === 'DAYS';
+    const maxBound = isDays ? 14 : 336;
+    if (
+      !Number.isInteger(input.customerReminderAdvanceValue) ||
+      input.customerReminderAdvanceValue < 1 ||
+      input.customerReminderAdvanceValue > maxBound
+    ) {
+      throw new SettingsValidationError(
+        `Customer reminder advance timing must be an integer between 1 and ${maxBound} ${isDays ? 'days' : 'hours'}`
+      );
+    }
+  }
+
+  if (
     input.maxAdvanceBookingDays !== undefined &&
     input.maxAdvanceBookingDays !== null
   ) {
@@ -968,6 +1008,14 @@ function normalizeBusinessSettingsInput(
     customerCancellationCutoffUnit:
       input.customerCancellationCutoffUnit !== undefined && input.customerCancellationCutoffUnit !== null
         ? input.customerCancellationCutoffUnit
+        : 'HOURS',
+    customerReminderAdvanceValue:
+      input.customerReminderAdvanceValue !== undefined && input.customerReminderAdvanceValue !== null
+        ? input.customerReminderAdvanceValue
+        : 12,
+    customerReminderAdvanceUnit:
+      input.customerReminderAdvanceUnit !== undefined && input.customerReminderAdvanceUnit !== null
+        ? input.customerReminderAdvanceUnit
         : 'HOURS',
     maxAdvanceBookingDays:
       input.maxAdvanceBookingDays !== undefined && input.maxAdvanceBookingDays !== null

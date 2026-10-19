@@ -10,7 +10,9 @@ export type AdminNotificationType =
   | "MANUAL_RESOLUTION_REQUIRED"
   | "ADMIN_INVITATION_ACCEPTED"
   | "STAFF_INVITATION_ACCEPTED"
-  | "KNOWLEDGE_RESULT";
+  | "KNOWLEDGE_RESULT"
+  | "CUSTOMER_REMINDER_SENT"
+  | "CUSTOMER_REFUND_ELIGIBLE";
 
 export interface AdminNotificationItem {
   id: string;

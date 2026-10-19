@@ -41,6 +41,10 @@ export interface ReportReservationRecord {
   rescheduleCount?: number | null;
   updatedAt?: string | null;
   rescheduledAt?: string | null;
+  reminderSentAt?: string | null;
+  attendanceReconfirmedAt?: string | null;
+  refundStatus?: "NONE" | "REQUIRED" | "REFUNDED" | "ELIGIBLE" | null;
+  cancellationRefundNotifiedAt?: string | null;
 }
 
 export interface ReportPaymentAttemptRecord {
@@ -55,7 +59,7 @@ export interface ReportPaymentAttemptRecord {
     | "REJECTED"
     | "EXPIRED"
     | "CANCELLED";
-  refundStatus: "NONE" | "REQUIRED" | "REFUNDED";
+  refundStatus: "NONE" | "REQUIRED" | "REFUNDED" | "ELIGIBLE";
   amount: number;
   currency: string;
   paymentMethodId: string | null;
@@ -64,6 +68,8 @@ export interface ReportPaymentAttemptRecord {
   createdAt: string;
   proofSubmittedAt: string | null;
   processedAt: string | null;
+  overdueNotifiedAt?: string | null;
+  cancellationRefundNotifiedAt?: string | null;
 }
 
 export type AdminReportRange = "today" | "7days" | "30days" | "month" | "year";

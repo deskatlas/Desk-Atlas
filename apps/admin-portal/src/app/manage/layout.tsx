@@ -28,6 +28,26 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const [paymentsCount, setPaymentsCount] = useState<number>(0);
   const [kioskCount, setKioskCount] = useState<number>(0);
 
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  const [pushBannerDismissed, setPushBannerDismissed] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestPushPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        setPushPermission(perm);
+      } catch {
+        // Ignore permission request error
+      }
+    }
+  };
+
   const fetchBadgeCounts = useCallback(async () => {
     if (!user) return;
     try {
@@ -45,6 +65,19 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   useActiveTabPolling(fetchBadgeCounts, 45000, { enabled: Boolean(user) });
+
+  useEffect(() => {
+    const handleBadgeRefresh = (e: Event) => {
+      const customEvent = e as CustomEvent<{ paymentsCount?: number }>;
+      if (typeof customEvent.detail?.paymentsCount === 'number') {
+        setPaymentsCount(customEvent.detail.paymentsCount);
+      } else {
+        fetchBadgeCounts();
+      }
+    };
+    window.addEventListener('deskatlas:badge-refresh', handleBadgeRefresh);
+    return () => window.removeEventListener('deskatlas:badge-refresh', handleBadgeRefresh);
+  }, [fetchBadgeCounts]);
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
@@ -220,7 +253,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                   {getIcon(item.iconType, isActive)}
                   {sidebarOpen && <span>{item.label}</span>}
                   {sidebarOpen && typeof item.badge === 'number' && item.badge > 0 && (
-                    <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 800, background: '#FFF0CC', color: 'var(--da-brand-dark)', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 7px' }}>
+                    <span
+                      data-testid={item.id === '/manage/payments' ? "payments-badge-count" : undefined}
+                      style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 800, background: '#FFF0CC', color: 'var(--da-brand-dark)', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 7px' }}
+                    >
                       {item.badge}
                     </span>
                   )}
@@ -270,6 +306,62 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
 
         </div>
+
+        {/* PUSH NOTIFICATION BANNER */}
+        {pushPermission === 'default' && !pushBannerDismissed && (
+          <div
+            data-testid="push-notification-banner"
+            style={{
+              background: '#EFF6FF',
+              borderBottom: '1px solid #BFDBFE',
+              padding: '10px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '13px',
+              color: '#1E40AF',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Enable desktop push notifications for real-time reminder dispatches and refund alerts.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                data-testid="enable-push-button"
+                onClick={requestPushPermission}
+                style={{
+                  background: '#2563EB',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '6px 14px',
+                  fontWeight: 700,
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                Enable Notifications
+              </button>
+              <button
+                type="button"
+                data-testid="dismiss-push-banner"
+                onClick={() => setPushBannerDismissed(true)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#6B7280',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* PAGE CONTENT */}
         {children}

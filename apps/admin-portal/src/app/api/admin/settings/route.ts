@@ -75,6 +75,16 @@ export async function PATCH(request: NextRequest) {
           body.maxAdvanceBookingDays !== undefined && body.maxAdvanceBookingDays !== null
             ? Number(body.maxAdvanceBookingDays)
             : 90,
+        customerCancellationCutoffValue:
+          body.customerCancellationCutoffValue !== undefined && body.customerCancellationCutoffValue !== null
+            ? Number(body.customerCancellationCutoffValue)
+            : undefined,
+        customerCancellationCutoffUnit: body.customerCancellationCutoffUnit,
+        customerReminderAdvanceValue:
+          body.customerReminderAdvanceValue !== undefined && body.customerReminderAdvanceValue !== null
+            ? Number(body.customerReminderAdvanceValue)
+            : undefined,
+        customerReminderAdvanceUnit: body.customerReminderAdvanceUnit,
         dayPassStartTime: body.dayPassStartTime,
         dayPassEndTime: body.dayPassEndTime,
         nightPassStartTime: body.nightPassStartTime,

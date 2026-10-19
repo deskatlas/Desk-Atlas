@@ -60,6 +60,8 @@ export interface Reservation {
   promoCodeUsed?: string | null;
   promoQuoteSnapshot?: Record<string, unknown> | null;
   pricingRevision?: number;
+  reminderSentAt?: string | null;
+  attendanceReconfirmedAt?: string | null;
 }
 
 export type CandidateRank = 0 | 1 | 2;
@@ -499,6 +501,7 @@ export interface GuestReservationTrackingResult {
   grossAmountDue?: number | null;
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
+  attendanceReconfirmedAt?: string | null;
 }
 
 export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue" | "cancelled" | "closure_impacted";
@@ -555,6 +558,8 @@ export interface AdminReservationSummary {
   refundedAt?: string | null;
   refundNotes?: string | null;
   cancellationRefundNotifiedAt?: string | null;
+  reminderSentAt?: string | null;
+  attendanceReconfirmedAt?: string | null;
 }
 
 export interface AdminReservationCandidateSummary {
@@ -648,6 +653,8 @@ export interface AdminReservationDetail {
   grossAmountDue?: number | null;
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
+  reminderSentAt?: string | null;
+  attendanceReconfirmedAt?: string | null;
 }
 
 export interface ClosureImpactedReservationSummary {

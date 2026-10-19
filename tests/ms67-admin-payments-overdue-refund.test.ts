@@ -36,14 +36,14 @@ function createMockItem(overrides: Partial<PaymentReviewQueueItem> & { startTime
     proofSubmittedAt: rest.proofSubmittedAt !== undefined ? rest.proofSubmittedAt : "2026-10-18T06:30:00.000Z",
     submittedCandidates: startTime
       ? [
-          {
-            rank: 0,
-            workspaceInstanceId: "ws-1",
-            startAt: startTime,
-            endAt: new Date(new Date(startTime).getTime() + 7200000).toISOString(),
-            isAssigned: false,
-          },
-        ]
+        {
+          rank: 0,
+          workspaceInstanceId: "ws-1",
+          startAt: startTime,
+          endAt: new Date(new Date(startTime).getTime() + 7200000).toISOString(),
+          isAssigned: false,
+        },
+      ]
       : rest.submittedCandidates || [],
     overdueNotifiedAt: rest.overdueNotifiedAt ?? null,
     refundStatus: rest.refundStatus || "NONE",
@@ -129,7 +129,7 @@ describe("MS-67: Admin Payment Review Overdue Detection, Customer Refund Notific
     expect(fileContent).toContain('data-testid="admin-payments-overdue-notice"');
     expect(fileContent).toContain("Missed Review Notice:");
     expect(fileContent).toContain(
-      "These bookings passed their scheduled start time prior to administrative review. Customers have been automatically notified that they are eligible for a 100% refund."
+      "These bookings passed their scheduled start time prior to administrative review. Customers have been automatically notified that they are eligible for a refund."
     );
     expect(fileContent).toContain("OVERDUE (REFUND ELIGIBLE)");
   });
@@ -176,7 +176,7 @@ describe("MS-67: Admin Payment Review Overdue Detection, Customer Refund Notific
     expect(emailResult.subject).toContain("Action Required: Refund Eligibility for Reservation RES-98214A - DeskAtlas");
     expect(emailResult.text).toContain("Dear Maria,");
     expect(emailResult.text).toContain("We sincerely apologize.");
-    expect(emailResult.text).toContain("eligible for a 100% full refund of your payment (₱600)");
+    expect(emailResult.text).toContain("eligible for a full refund of your payment (₱600)");
     expect(emailResult.text).toContain("Priority Refund Processing");
     expect(emailResult.text).toContain("Disbursement");
     expect(emailResult.text).toContain("Rescheduling Alternative");
@@ -436,5 +436,79 @@ describe("MS-67: Admin Payment Review Overdue Detection, Customer Refund Notific
 
     // BAN-PUNCT-01: Zero em-dashes in source code
     expect(fileContent).not.toContain("—");
+  });
+
+  it("MS67-TC13: Payment Notification Pill Strictly Counts and Shows Only Awaiting Review and Overdue (Refund Eligible)", () => {
+    // 1. Verify /api/admin/badge-counts/route.ts implementation
+    const routePath = path.resolve(
+      __dirname,
+      "../apps/admin-portal/src/app/api/admin/badge-counts/route.ts"
+    );
+    const routeContent = fs.readFileSync(routePath, "utf-8");
+
+    expect(routeContent).toContain("evaluateAndSegregatePaymentReviews(rawQueue, now)");
+    expect(routeContent).toContain("item.refundStatus !== \"REFUNDED\"");
+    expect(routeContent).toContain("const paymentsCount = awaitingReviewCount + overdueCount;");
+    expect(routeContent).toContain("awaitingReviewCount");
+    expect(routeContent).toContain("overdueCount");
+
+    // 2. Verify layout badge rendering and event sync
+    const layoutPath = path.resolve(
+      __dirname,
+      "../apps/admin-portal/src/app/manage/layout.tsx"
+    );
+    const layoutContent = fs.readFileSync(layoutPath, "utf-8");
+
+    expect(layoutContent).toContain("badge: paymentsCount > 0 ? paymentsCount : undefined");
+    expect(layoutContent).toContain("data-testid={item.id === '/manage/payments' ? \"payments-badge-count\" : undefined}");
+    expect(layoutContent).toContain("deskatlas:badge-refresh");
+
+    // 3. Functional segregation assertion
+    const awaitingItem = createMockItem({
+      paymentAttemptId: "pay-active-1",
+      startTime: "2026-10-18T12:00:00.000Z",
+      paymentStatus: "UNDER_REVIEW",
+      refundStatus: "NONE",
+    });
+    const overdueItem = createMockItem({
+      paymentAttemptId: "pay-overdue-1",
+      startTime: "2026-10-18T07:00:00.000Z",
+      paymentStatus: "UNDER_REVIEW",
+      refundStatus: "NONE",
+    });
+    const refundedItem = createMockItem({
+      paymentAttemptId: "pay-refunded-1",
+      startTime: "2026-10-18T06:00:00.000Z",
+      paymentStatus: "UNDER_REVIEW",
+      refundStatus: "REFUNDED",
+    });
+    const rejectedItem = createMockItem({
+      paymentAttemptId: "pay-rejected-1",
+      startTime: "2026-10-18T11:00:00.000Z",
+      paymentStatus: "REJECTED",
+      refundStatus: "NONE",
+    });
+
+    const segregated = evaluateAndSegregatePaymentReviews(
+      [awaitingItem, overdueItem, refundedItem, rejectedItem],
+      fixedNow
+    );
+
+    const awaitingCount = segregated.activeQueue.filter(
+      (item) => (item.paymentStatus === "UNDER_REVIEW" || !item.paymentStatus) && item.refundStatus !== "REFUNDED"
+    ).length;
+    const overdueCount = segregated.overdueQueue.filter(
+      (item) => (item.paymentStatus === "UNDER_REVIEW" || !item.paymentStatus) && item.refundStatus !== "REFUNDED"
+    ).length;
+    const totalPaymentsCount = awaitingCount + overdueCount;
+
+    // Must strictly equal 2 (1 awaiting + 1 overdue; refunded and rejected excluded)
+    expect(awaitingCount).toBe(1);
+    expect(overdueCount).toBe(1);
+    expect(totalPaymentsCount).toBe(2);
+
+    // BAN-PUNCT-01: Zero em-dashes
+    expect(routeContent).not.toContain("—");
+    expect(layoutContent).not.toContain("—");
   });
 });

@@ -6,6 +6,8 @@ export interface GuestReservationTrackingRecord {
   customerFirstName?: string;
   customerLastName?: string;
   customerEmail: string;
+  customerContactNumber?: string | null;
+  customerPhone?: string | null;
   reservationStatus: string;
   amountDue: number;
   grossAmountDue?: number | null;
@@ -26,6 +28,8 @@ export interface GuestReservationTrackingRecord {
   closureDate?: string | null;
   closureNotifiedAt?: string | null;
   manualResolutionNotes?: string | null;
+  reminderSentAt?: string | null;
+  attendanceReconfirmedAt?: string | null;
 }
 
 export interface GuestReservationTrackingRepository {
