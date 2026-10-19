@@ -154,8 +154,49 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+
+      // Pillar 4: Admin Cancellation Receipt Email Dispatch
+      const emailService = createTransactionalEmailService();
+      const adminEmail = businessSettings?.contactEmail?.trim() || process.env.ADMIN_NOTIFICATION_EMAIL || "support@deskatlas.com";
+      const cutoffVal = businessSettings?.customerCancellationCutoffValue ?? 12;
+      const cutoffUnitVal = businessSettings?.customerCancellationCutoffUnit ?? "HOURS";
+      const cutoffNoticeText =
+        cutoffUnitVal === "DAYS"
+          ? `${cutoffVal} ${cutoffVal === 1 ? "day" : "days"}`
+          : `${cutoffVal} ${cutoffVal === 1 ? "hour" : "hours"}`;
+
+      const bookingStartMs = trackingRecord.finalAssignment?.bookingStartAt
+        ? new Date(trackingRecord.finalAssignment.bookingStartAt).getTime()
+        : 0;
+      const noticeHours = bookingStartMs > nowMs
+        ? Math.round(((bookingStartMs - nowMs) / (1000 * 60 * 60)) * 10) / 10
+        : 0;
+
+      await emailService.sendAdminCancellationReceiptEmail({
+        to: adminEmail,
+        referenceCode: trackingRecord.referenceCode,
+        customerFirstName: trackingRecord.customerFirstName || "Valued Guest",
+        customerLastName: trackingRecord.customerLastName || "",
+        customerEmail: trackingRecord.customerEmail,
+        customerPhone: trackingRecord.customerPhone,
+        workspaceName: trackingRecord.finalAssignment?.workspaceDisplayName,
+        scheduledWindow:
+          trackingRecord.finalAssignment?.bookingStartAt && trackingRecord.finalAssignment?.bookingEndAt
+            ? `${trackingRecord.finalAssignment.bookingStartAt} - ${trackingRecord.finalAssignment.bookingEndAt}`
+            : undefined,
+        cancelledAt: nowIso,
+        noticeHours,
+        cutoffNoticeDisplay: cutoffNoticeText,
+        amountDue: trackingRecord.amountDue ?? 0,
+        paymentMethod: latestAttempt?.payment_method,
+        paymentAttemptId: latestAttempt?.id,
+        reservationId: trackingRecord.reservationId,
+        adminPortalUrl: process.env.NEXT_PUBLIC_ADMIN_PORTAL_URL || process.env.ADMIN_PORTAL_URL,
+      }).catch((err) => {
+        console.warn("[TrackCancelRoute] Failed to dispatch admin cancellation receipt email:", err);
+      });
     } catch (emailErr: any) {
-      console.warn("[TrackCancelRoute] Error during refund email notification dispatch:", emailErr?.message);
+      console.warn("[TrackCancelRoute] Error during refund/receipt email notification dispatch:", emailErr?.message);
     }
 
     return NextResponse.json({

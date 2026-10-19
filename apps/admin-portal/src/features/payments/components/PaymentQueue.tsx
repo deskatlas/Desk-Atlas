@@ -38,7 +38,7 @@ export function PaymentQueue() {
   const [activeTab, setActiveTab] = useState<'REVIEW' | 'OVERDUE' | 'REFUNDED' | 'REJECTED'>('REVIEW');
   const [reviewQueue, setReviewQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
   const [overdueQueue, setOverdueQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
-  const [refundedQueue, setRefundedQueue] = useState<PaymentReviewQueueItem[]>([]);
+  const [refundedQueue, setRefundedQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
   const [rejectedQueue, setRejectedQueue] = useState<PaymentReviewDetail[]>([]);
   const [sortMode, setSortMode] = useState<PaymentQueueSortMode>('RANK_DESC');
   const [loading, setLoading] = useState(true);
@@ -83,6 +83,20 @@ export function PaymentQueue() {
       setReviewQueue(segregated.activeQueue);
       setOverdueQueue(segregated.overdueQueue);
 
+      if (typeof window !== 'undefined') {
+        const awaitingCount = segregated.activeQueue.filter(
+          (item) => (item.paymentStatus === 'UNDER_REVIEW' || !item.paymentStatus) && item.refundStatus !== 'REFUNDED'
+        ).length;
+        const overdueCount = segregated.overdueQueue.filter(
+          (item) => (item.paymentStatus === 'UNDER_REVIEW' || !item.paymentStatus) && item.refundStatus !== 'REFUNDED'
+        ).length;
+        window.dispatchEvent(
+          new CustomEvent('deskatlas:badge-refresh', {
+            detail: { paymentsCount: awaitingCount + overdueCount },
+          })
+        );
+      }
+
       if (rejectedRes.ok) {
         const rejectedData = await rejectedRes.json();
         const rawRejected: PaymentReviewDetail[] = rejectedData.rejected || rejectedData.queue || [];
@@ -92,9 +106,11 @@ export function PaymentQueue() {
       if (refundedRes.ok) {
         const refundedData = await refundedRes.json();
         const rawRefunded: PaymentReviewQueueItem[] = refundedData.refunded || refundedData.queue || [];
-        setRefundedQueue(rawRefunded);
+        const rankedRefunded = assignCanonicalQueueRanks(rawRefunded);
+        setRefundedQueue(rankedRefunded);
       } else if (segregated.refundedQueue && segregated.refundedQueue.length > 0) {
-        setRefundedQueue(segregated.refundedQueue);
+        const rankedRefunded = assignCanonicalQueueRanks(segregated.refundedQueue);
+        setRefundedQueue(rankedRefunded);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load payments.');
@@ -114,6 +130,10 @@ export function PaymentQueue() {
   const displayedOverdueQueue = useMemo(() => {
     return sortPaymentReviewQueue(overdueQueue, sortMode);
   }, [overdueQueue, sortMode]);
+
+  const displayedRefundedQueue = useMemo(() => {
+    return sortPaymentReviewQueue(refundedQueue, sortMode);
+  }, [refundedQueue, sortMode]);
 
   return (
     <main data-screen-label="Payments" style={{ padding: '26px 28px 40px' }}>
@@ -427,8 +447,39 @@ export function PaymentQueue() {
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
             <div>
-              <strong>Missed Review Notice:</strong> These bookings passed their scheduled start time prior to administrative review. Customers have been automatically notified that they are eligible for a 100% refund. Please inspect proof and disburse the refund or contact the customer to arrange a mutually agreed reschedule.
+              <strong>Missed Review Notice:</strong> These bookings passed their scheduled start time prior to administrative review. Customers have been automatically notified that they are eligible for a refund. Please inspect proof and disburse the refund or contact the customer to arrange a mutually agreed reschedule.
             </div>
+          </div>
+
+          <div
+            data-testid="admin-payments-overdue-sort-notice"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#FFFBEB',
+              border: '1px solid #FCD34D',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              marginBottom: '20px',
+              fontSize: '12px',
+              color: '#92400E',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#B45309', flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <span>
+              <strong>Notice:</strong>{' '}
+              {sortMode === 'RANK_DESC'
+                ? "Overdue reviews are sorted by proof upload time (earliest first). The rank badge indicates original queue arrival order."
+                : sortMode === 'AMOUNT_DESC'
+                ? "Sorted by highest amount first. The rank badge (#) permanently identifies each customer's original submission order."
+                : sortMode === 'AMOUNT_ASC'
+                ? "Sorted by lowest amount first. The rank badge (#) permanently identifies each customer's original submission order."
+                : "Active sorting applied. The rank badge (#) permanently identifies each customer's original submission order."}
+            </span>
           </div>
 
           <div
@@ -466,7 +517,7 @@ export function PaymentQueue() {
               </label>
               <select
                 id="admin-payments-overdue-sort-select"
-                data-testid="admin-payments-sort-select"
+                data-testid="admin-payments-overdue-sort-select"
                 value={sortMode}
                 onChange={(e) => setSortMode(e.target.value as PaymentQueueSortMode)}
                 style={{
@@ -632,26 +683,107 @@ export function PaymentQueue() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '14px' }}>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: '#047857', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>
-              REFUNDED PAYMENTS
+          <div
+            data-testid="admin-payments-refunded-sort-notice"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#F0FDF4',
+              border: '1px solid #BBF7D0',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              marginBottom: '20px',
+              fontSize: '12px',
+              color: '#166534',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#047857', flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <span>
+              <strong>Notice:</strong>{' '}
+              {sortMode === 'RANK_DESC'
+                ? "Refunded payments are sorted by original submission order (earliest first). The rank badge indicates initial queue arrival."
+                : sortMode === 'AMOUNT_DESC'
+                ? "Sorted by highest refund amount first. The rank badge (#) permanently identifies each customer's original submission order."
+                : sortMode === 'AMOUNT_ASC'
+                ? "Sorted by lowest refund amount first. The rank badge (#) permanently identifies each customer's original submission order."
+                : "Active sorting applied. The rank badge (#) permanently identifies each customer's original submission order."}
             </span>
-            <span
-              data-testid="refunded-section-count"
-              style={{
-                fontSize: '10px',
-                fontWeight: 800,
-                background: '#ECFDF5',
-                color: '#047857',
-                borderRadius: '9999px',
-                whiteSpace: 'nowrap',
-                padding: '2px 8px',
-                fontFamily: 'var(--da-font-family)',
-              }}
-            >
-              {refundedQueue.length}
-            </span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--da-border)' }}></div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Left: Section Title & Count Badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: '#047857', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>
+                REFUNDED PAYMENTS
+              </span>
+              <span
+                data-testid="refunded-section-count"
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  background: '#ECFDF5',
+                  color: '#047857',
+                  borderRadius: '9999px',
+                  whiteSpace: 'nowrap',
+                  padding: '2px 8px',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                {refundedQueue.length}
+              </span>
+            </div>
+
+            {/* Right: Sort Control */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label
+                htmlFor="admin-payments-refunded-sort-select"
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--da-text-secondary)',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Sort by:
+              </label>
+              <select
+                id="admin-payments-refunded-sort-select"
+                data-testid="admin-payments-refunded-sort-select"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as PaymentQueueSortMode)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border, #CBD5E1)',
+                  background: '#fff',
+                  color: 'var(--da-text-primary, #0F172A)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  fontFamily: 'var(--da-font-family)',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: 'var(--da-shadow-sm)',
+                }}
+              >
+                <option value="RANK_DESC">Ranking: Descending</option>
+                <option value="RANK_ASC">Ranking: Ascending</option>
+                <option value="AMOUNT_DESC">Amount: Descending</option>
+                <option value="AMOUNT_ASC">Amount: Ascending</option>
+              </select>
+            </div>
           </div>
 
           {loading && (
@@ -667,13 +799,13 @@ export function PaymentQueue() {
             </div>
           )}
 
-          {!loading && !error && refundedQueue.length === 0 && (
+          {!loading && !error && displayedRefundedQueue.length === 0 && (
             <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '14px', fontFamily: 'var(--da-font-family)' }}>
               No refunded payments recorded.
             </div>
           )}
 
-          {!loading && !error && refundedQueue.map((p) => {
+          {!loading && !error && displayedRefundedQueue.map((p) => {
             const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
             const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
             const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();
@@ -699,6 +831,7 @@ export function PaymentQueue() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                   <div
+                    data-testid="refunded-payment-queue-number"
                     style={{
                       width: '40px',
                       height: '40px',
@@ -715,7 +848,7 @@ export function PaymentQueue() {
                       border: '1px solid #A7F3D0',
                     }}
                   >
-                    ₱
+                    #{p.queueRank}
                   </div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>

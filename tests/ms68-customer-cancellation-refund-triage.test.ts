@@ -249,7 +249,7 @@ describe("MS-68: Customer Booking Cancellation, Refund Eligibility, and Admin Re
     expect(emailResult.subject).toContain("Reservation Cancelled: Refund Eligibility Confirmation for RES-CAN-01 - DeskAtlas");
     expect(emailResult.text).toContain("Dear Maria,");
     expect(emailResult.text).toContain("Your reservation #RES-CAN-01 at DeskAtlas has been successfully cancelled");
-    expect(emailResult.text).toContain("eligible for a 100% refund of your payment");
+    expect(emailResult.text).toContain("eligible for a refund of your payment");
     expect(emailResult.text).toContain("Amount Eligible for Refund: ₱750");
     expect(emailResult.text).toContain("Eligible for Disbursement");
     expect(emailResult.text).toContain("Priority Disbursement Review");
@@ -447,7 +447,7 @@ describe("MS-68: Customer Booking Cancellation, Refund Eligibility, and Admin Re
 
     expect(emailResult.subject).toContain("Payment Refund Confirmed for Reservation RES-REF-99 - DeskAtlas");
     expect(emailResult.text).toContain("Dear Juan,");
-    expect(emailResult.text).toContain("A 100% full refund of ₱500 has been disbursed to your source payment account.");
+    expect(emailResult.text).toContain("A full refund of ₱500 has been disbursed to your source payment account.");
     expect(emailResult.text).toContain("GCash reference 20261018991823");
     expect(emailResult.text).toContain("Completed / Disbursed");
 

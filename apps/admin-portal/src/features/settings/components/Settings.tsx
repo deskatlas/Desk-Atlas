@@ -345,6 +345,8 @@ export function Settings() {
     rescheduleMaxAdvanceUnit: 'DAYS',
     customerCancellationCutoffValue: 12,
     customerCancellationCutoffUnit: 'HOURS',
+    customerReminderAdvanceValue: 12,
+    customerReminderAdvanceUnit: 'HOURS',
     maxAdvanceBookingDays: 90,
     dayPassStartTime: '07:00',
     dayPassEndTime: '23:30',
@@ -938,6 +940,12 @@ export function Settings() {
         ? 12
         : Math.min(maxCancellationBound, Math.max(1, Number(businessSettings.customerCancellationCutoffValue)));
 
+      const normalizedReminderAdvanceUnit = businessSettings.customerReminderAdvanceUnit === 'DAYS' ? 'DAYS' : 'HOURS';
+      const maxReminderBound = normalizedReminderAdvanceUnit === 'DAYS' ? 14 : 336;
+      const normalizedReminderAdvanceValue = !businessSettings.customerReminderAdvanceValue || Number(businessSettings.customerReminderAdvanceValue) < 1
+        ? 12
+        : Math.min(maxReminderBound, Math.max(1, Number(businessSettings.customerReminderAdvanceValue)));
+
       const payload = {
         ...businessSettings,
         facebookUrl: businessSettings.facebookUrl?.trim() || null,
@@ -957,6 +965,8 @@ export function Settings() {
         rescheduleMaxAdvanceUnit: normalizedMaxAdvanceUnit,
         customerCancellationCutoffValue: normalizedCancellationCutoffValue,
         customerCancellationCutoffUnit: normalizedCancellationCutoffUnit,
+        customerReminderAdvanceValue: normalizedReminderAdvanceValue,
+        customerReminderAdvanceUnit: normalizedReminderAdvanceUnit,
         maxAdvanceBookingDays: normalizedMaxAdvanceBookingDays,
         dayPassStartTime: businessSettings.dayPassStartTime || '07:00',
         dayPassEndTime: businessSettings.dayPassEndTime || '23:30',
@@ -2131,6 +2141,56 @@ export function Settings() {
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                         Default is 12 hours. Minimum notice required before scheduled booking start time for customer self-service cancellation on Track Reservation.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                        Advance Reservation Reminder Timing
+                      </label>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input 
+                          type="number" 
+                          min={1} 
+                          max={businessSettings.customerReminderAdvanceUnit === 'DAYS' ? 14 : 336} 
+                          value={(businessSettings.customerReminderAdvanceValue as unknown) === '' ? '' : (businessSettings.customerReminderAdvanceValue ?? 12)}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setBusinessSettings({
+                              ...businessSettings,
+                              customerReminderAdvanceValue: raw === '' ? ('' as unknown as number) : Number(raw),
+                            });
+                          }}
+                          onBlur={() => {
+                            const maxLimit = businessSettings.customerReminderAdvanceUnit === 'DAYS' ? 14 : 336;
+                            if (!businessSettings.customerReminderAdvanceValue || Number(businessSettings.customerReminderAdvanceValue) < 1) {
+                              setBusinessSettings({ ...businessSettings, customerReminderAdvanceValue: 12 });
+                            } else if (Number(businessSettings.customerReminderAdvanceValue) > maxLimit) {
+                              setBusinessSettings({ ...businessSettings, customerReminderAdvanceValue: maxLimit });
+                            }
+                          }}
+                          onKeyDown={(e) => handleNumericKeyDown(e)}
+                          data-testid="customer-reminder-advance-value-input"
+                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        />
+                        <select 
+                          value={businessSettings.customerReminderAdvanceUnit || 'HOURS'}
+                          onChange={(e) => {
+                            const newUnit = e.target.value as 'DAYS' | 'HOURS';
+                            setBusinessSettings({
+                              ...businessSettings,
+                              customerReminderAdvanceUnit: newUnit,
+                            });
+                          }}
+                          data-testid="customer-reminder-advance-unit-select"
+                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }} 
+                        >
+                          <option value="HOURS">Hours</option>
+                          <option value="DAYS">Days</option>
+                        </select>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Default is 12 hours. Customers with confirmed bookings will automatically receive an airline-style advance reminder email with a one-click attendance reconfirmation button at this threshold prior to scheduled start.
                       </div>
                     </div>
 

@@ -1,6 +1,7 @@
 import {
   DEFAULT_WORKSPACE_STATUS_COLORS,
   calculateCancellationCutoffHours,
+  calculateReminderAdvanceHours,
   type AdminPaymentMethod,
   type BusinessSettings,
   type CreatePaymentMethodInput,
@@ -44,6 +45,8 @@ type BusinessSettingsRow = {
   reschedule_max_advance_unit?: 'DAYS' | 'HOURS' | null;
   customer_cancellation_cutoff_value?: number | null;
   customer_cancellation_cutoff_unit?: 'HOURS' | 'DAYS' | null;
+  customer_reminder_advance_value?: number | null;
+  customer_reminder_advance_unit?: 'HOURS' | 'DAYS' | null;
   max_advance_booking_days?: number | null;
   day_pass_start_time?: string | null;
   day_pass_end_time?: string | null;
@@ -197,6 +200,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         customerCancellationCutoffValue: 12,
         customerCancellationCutoffUnit: 'HOURS',
         customerCancellationCutoffHours: 12,
+        customerReminderAdvanceValue: 12,
+        customerReminderAdvanceUnit: 'HOURS',
+        customerReminderAdvanceHours: 12,
         maxAdvanceBookingDays: 90,
         dayPassStartTime: '07:00',
         dayPassEndTime: '23:30',
@@ -212,6 +218,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
     const cancelVal = row.customer_cancellation_cutoff_value ?? 12;
     const cancelUnit = (row.customer_cancellation_cutoff_unit as 'HOURS' | 'DAYS') ?? 'HOURS';
+    const reminderVal = row.customer_reminder_advance_value ?? 12;
+    const reminderUnit = (row.customer_reminder_advance_unit as 'HOURS' | 'DAYS') ?? 'HOURS';
 
     const result = {
       id: row.id,
@@ -236,6 +244,9 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customerCancellationCutoffValue: cancelVal,
       customerCancellationCutoffUnit: cancelUnit,
       customerCancellationCutoffHours: calculateCancellationCutoffHours(cancelVal, cancelUnit),
+      customerReminderAdvanceValue: reminderVal,
+      customerReminderAdvanceUnit: reminderUnit,
+      customerReminderAdvanceHours: calculateReminderAdvanceHours(reminderVal, reminderUnit),
       maxAdvanceBookingDays: row.max_advance_booking_days ?? 90,
       dayPassStartTime: row.day_pass_start_time ?? '07:00',
       dayPassEndTime: row.day_pass_end_time ?? '23:30',
@@ -278,6 +289,8 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       reschedule_max_advance_unit: input.rescheduleMaxAdvanceUnit ?? 'DAYS',
       customer_cancellation_cutoff_value: input.customerCancellationCutoffValue ?? 12,
       customer_cancellation_cutoff_unit: input.customerCancellationCutoffUnit ?? 'HOURS',
+      customer_reminder_advance_value: input.customerReminderAdvanceValue ?? 12,
+      customer_reminder_advance_unit: input.customerReminderAdvanceUnit ?? 'HOURS',
       max_advance_booking_days: input.maxAdvanceBookingDays ?? 90,
       day_pass_start_time: input.dayPassStartTime ?? '07:00',
       day_pass_end_time: input.dayPassEndTime ?? '23:30',
@@ -429,6 +442,12 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       customerCancellationCutoffHours: calculateCancellationCutoffHours(
         row.customer_cancellation_cutoff_value ?? input.customerCancellationCutoffValue ?? 12,
         (row.customer_cancellation_cutoff_unit as 'HOURS' | 'DAYS') ?? input.customerCancellationCutoffUnit ?? 'HOURS'
+      ),
+      customerReminderAdvanceValue: row.customer_reminder_advance_value ?? input.customerReminderAdvanceValue ?? 12,
+      customerReminderAdvanceUnit: (row.customer_reminder_advance_unit as 'HOURS' | 'DAYS') ?? input.customerReminderAdvanceUnit ?? 'HOURS',
+      customerReminderAdvanceHours: calculateReminderAdvanceHours(
+        row.customer_reminder_advance_value ?? input.customerReminderAdvanceValue ?? 12,
+        (row.customer_reminder_advance_unit as 'HOURS' | 'DAYS') ?? input.customerReminderAdvanceUnit ?? 'HOURS'
       ),
       maxAdvanceBookingDays: row.max_advance_booking_days ?? input.maxAdvanceBookingDays ?? 90,
       dayPassStartTime: row.day_pass_start_time ?? input.dayPassStartTime ?? '07:00',

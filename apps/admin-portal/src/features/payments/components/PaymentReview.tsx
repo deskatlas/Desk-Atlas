@@ -119,6 +119,9 @@ export function PaymentReview({ id }: { id: string }) {
       setShowRefundModal(false);
       setRefundNotes('');
       fetchDetail();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deskatlas:badge-refresh'));
+      }
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Error processing refund.');
     } finally {
@@ -152,6 +155,9 @@ export function PaymentReview({ id }: { id: string }) {
       setIsApproveSuccess(true);
       setShowApproveModal(true);
       fetchDetail();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deskatlas:badge-refresh'));
+      }
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Error reconsidering payment.');
     } finally {
@@ -226,6 +232,9 @@ export function PaymentReview({ id }: { id: string }) {
 
       setApproveResult(data);
       setIsApproveSuccess(true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deskatlas:badge-refresh'));
+      }
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Error approving payment.');
     } finally {
@@ -268,6 +277,9 @@ export function PaymentReview({ id }: { id: string }) {
       }
 
       setShowRejectModal(false);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deskatlas:badge-refresh'));
+      }
       router.push('/manage/payments');
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Error rejecting payment.');

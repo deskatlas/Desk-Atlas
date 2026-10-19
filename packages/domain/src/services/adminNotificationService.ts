@@ -151,6 +151,50 @@ export function createAdminNotificationService(
             },
           });
         }
+
+        // Customer advance reminder dispatched
+        if (res.reminderSentAt) {
+          addNotification({
+            id: `res-rem-sent-${res.reservationId}`,
+            type: "CUSTOMER_REMINDER_SENT",
+            title: "Reservation Reminder Dispatched",
+            description: `Advance reminder email sent to ${fullName} for reservation #${refCode} (${workspaceName})`,
+            link: `/manage/reservations?id=${res.reservationId}`,
+            timestamp: res.reminderSentAt,
+            metadata: {
+              reservationId: res.reservationId,
+              referenceCode: refCode,
+              customerName: fullName,
+              workspaceName,
+            },
+          });
+        }
+
+        // Customer self-cancellation refund eligible
+        if (
+          (res.cancellationRefundNotifiedAt || res.refundStatus === "REQUIRED" || res.refundStatus === "ELIGIBLE") &&
+          res.reservationStatus === "CANCELLED"
+        ) {
+          const formattedAmount = Number(res.amountDue || 0).toLocaleString("en-US", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          });
+          const time = res.cancellationRefundNotifiedAt || (res as any).updatedAt || res.createdAt;
+          addNotification({
+            id: `refund-cancel-${res.reservationId}`,
+            type: "CUSTOMER_REFUND_ELIGIBLE",
+            title: "Refund Due: Customer Cancellation",
+            description: `${fullName} cancelled reservation #${refCode} within policy notice. Full refund of ₱${formattedAmount} is eligible for disbursement.`,
+            link: `/manage/reservations?filter=cancelled_refund_eligible&id=${res.reservationId}`,
+            timestamp: time,
+            metadata: {
+              reservationId: res.reservationId,
+              referenceCode: refCode,
+              customerName: fullName,
+              amount: res.amountDue,
+            },
+          });
+        }
       }
 
       // 2. Payment proof submissions, approvals, rejections
@@ -218,6 +262,34 @@ export function createAdminNotificationService(
               reservationId: pay.reservationId,
               referenceCode: refCode,
               rejectionReason: (pay as any).rejectionReason,
+            },
+          });
+        }
+
+        // Payment review overdue refund eligible
+        if (
+          pay.overdueNotifiedAt ||
+          (pay.refundStatus === "REQUIRED" && pay.paymentStatus === "UNDER_REVIEW") ||
+          pay.refundStatus === "ELIGIBLE"
+        ) {
+          const formattedAmount = Number(pay.amount || 0).toLocaleString("en-US", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          });
+          const time = pay.overdueNotifiedAt || pay.proofSubmittedAt || pay.createdAt;
+          addNotification({
+            id: `refund-overdue-${pay.paymentAttemptId}`,
+            type: "CUSTOMER_REFUND_ELIGIBLE",
+            title: "Refund Due: Overdue Payment Review",
+            description: `Payment for reservation #${refCode} (${customerName}) passed scheduled start time unreviewed. Eligible for 100% refund of ₱${formattedAmount}.`,
+            link: `/manage/payments?tab=OVERDUE&id=${pay.paymentAttemptId}`,
+            timestamp: time,
+            metadata: {
+              paymentAttemptId: pay.paymentAttemptId,
+              reservationId: pay.reservationId,
+              referenceCode: refCode,
+              customerName,
+              amount: pay.amount,
             },
           });
         }

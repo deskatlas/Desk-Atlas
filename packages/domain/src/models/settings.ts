@@ -31,6 +31,26 @@ export const DEFAULT_WORKSPACE_STATUS_COLORS: WorkspaceStatusColors = {
 
 export type RescheduleMaxAdvanceUnit = 'DAYS' | 'HOURS';
 export type CustomerCancellationCutoffUnit = 'DAYS' | 'HOURS';
+export type CustomerReminderAdvanceUnit = 'DAYS' | 'HOURS';
+
+export function calculateReminderAdvanceHours(
+  valueOrSettings?: number | BusinessSettings | { customerReminderAdvanceValue?: number | null; customerReminderAdvanceUnit?: CustomerReminderAdvanceUnit | null } | null,
+  unit?: CustomerReminderAdvanceUnit | null
+): number {
+  if (valueOrSettings && typeof valueOrSettings === 'object') {
+    const val = valueOrSettings.customerReminderAdvanceValue;
+    const u = valueOrSettings.customerReminderAdvanceUnit;
+    return calculateReminderAdvanceHours(val, u);
+  }
+  const numValue = valueOrSettings !== undefined && valueOrSettings !== null && !isNaN(Number(valueOrSettings)) && Number(valueOrSettings) > 0
+    ? Number(valueOrSettings)
+    : 12;
+  const unitNormalized = (unit || 'HOURS').toUpperCase();
+  if (unitNormalized === 'DAYS') {
+    return numValue * 24;
+  }
+  return numValue;
+}
 
 export function calculateCancellationCutoffHours(
   valueOrSettings?: number | BusinessSettings | { customerCancellationCutoffValue?: number | null; customerCancellationCutoffUnit?: CustomerCancellationCutoffUnit | null } | null,
@@ -88,6 +108,9 @@ export interface BusinessSettings {
   customerCancellationCutoffValue?: number;
   customerCancellationCutoffUnit?: CustomerCancellationCutoffUnit;
   customerCancellationCutoffHours?: number;
+  customerReminderAdvanceValue?: number;
+  customerReminderAdvanceUnit?: CustomerReminderAdvanceUnit;
+  customerReminderAdvanceHours?: number;
   maxAdvanceBookingDays?: number;
   dayPassStartTime?: string;
   dayPassEndTime?: string;
@@ -154,6 +177,8 @@ export interface UpdateBusinessSettingsInput {
   rescheduleMaxAdvanceUnit?: RescheduleMaxAdvanceUnit | null;
   customerCancellationCutoffValue?: number | null;
   customerCancellationCutoffUnit?: CustomerCancellationCutoffUnit | null;
+  customerReminderAdvanceValue?: number | null;
+  customerReminderAdvanceUnit?: CustomerReminderAdvanceUnit | null;
   maxAdvanceBookingDays?: number | null;
   dayPassStartTime?: string;
   dayPassEndTime?: string;

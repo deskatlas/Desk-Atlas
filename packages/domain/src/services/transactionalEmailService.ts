@@ -1374,19 +1374,19 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
       <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Selected Workspace Candidates</div>
       <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
         ${input.candidates.map((c) => {
-          const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
-          const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
-          const floorInfo = c.floorName ? ` (${c.floorName})` : '';
-          const startTimeStr = formatEmailTimeOnly(c.startAt);
-          const endTimeStr = formatEmailTimeOnly(c.endAt);
-          const timeInfo = startTimeStr && endTimeStr ? ` - ${startTimeStr} to ${endTimeStr}` : '';
-          return `
+    const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
+    const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
+    const floorInfo = c.floorName ? ` (${c.floorName})` : '';
+    const startTimeStr = formatEmailTimeOnly(c.startAt);
+    const endTimeStr = formatEmailTimeOnly(c.endAt);
+    const timeInfo = startTimeStr && endTimeStr ? ` - ${startTimeStr} to ${endTimeStr}` : '';
+    return `
           <tr style="border-bottom: 1px solid #f1f5f9;">
             <td style="padding: 6px 0; font-weight: 600; color: ${c.rank === 0 ? '#0284c7' : '#64748b'}; width: 35%;">${escapeHtml(rankLabel)}</td>
             <td style="padding: 6px 0; color: #1e293b;">${escapeHtml(spotInfo + floorInfo + timeInfo)}</td>
           </tr>
           `;
-        }).join('')}
+  }).join('')}
       </table>
     </div>
   ` : '';
@@ -1394,13 +1394,13 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
   const candidatesText = input.candidates && input.candidates.length > 0 ? `
 Selected Candidates:
 ${input.candidates.map((c) => {
-  const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
-  const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Option ${c.rank + 1}`;
-  const startTimeStr = formatEmailTimeOnly(c.startAt);
-  const endTimeStr = formatEmailTimeOnly(c.endAt);
-  const timeInfo = startTimeStr && endTimeStr ? ` (${startTimeStr} to ${endTimeStr})` : '';
-  return `- ${rankLabel}: ${spotInfo}${timeInfo}`;
-}).join('\n')}
+    const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
+    const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Option ${c.rank + 1}`;
+    const startTimeStr = formatEmailTimeOnly(c.startAt);
+    const endTimeStr = formatEmailTimeOnly(c.endAt);
+    const timeInfo = startTimeStr && endTimeStr ? ` (${startTimeStr} to ${endTimeStr})` : '';
+    return `- ${rankLabel}: ${spotInfo}${timeInfo}`;
+  }).join('\n')}
   `.trim() : '';
 
   const html = `
@@ -1470,7 +1470,7 @@ ${renderBusinessFooterText(profile)}
 export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInput): { subject: string; html: string; text: string } {
   const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your ${profile.businessName || 'DeskAtlas'} Booking Has Ended — We Value Your Feedback!`;
+  const subject = `Your ${profile.businessName || 'DeskAtlas'} Booking Has Ended - We Value Your Feedback!`;
   const defaultSurveyUrl = process.env.SURVEY_FORM_URL || process.env.NEXT_PUBLIC_SURVEY_FORM_URL || 'https://forms.google.com/deskatlas-feedback';
   const surveyUrl = input.surveyUrl || defaultSurveyUrl;
   const bookAgainUrl = input.bookAgainUrl || process.env.DESKATLAS_PUBLIC_APP_URL || 'https://deskatlas.com';
@@ -1559,7 +1559,7 @@ export function renderBookingEndedSurveyEmail(input: BookingEndedSurveyEmailInpu
   `.trim();
 
   const text = `
-Your ${profile.businessName || 'DeskAtlas'} Booking Has Ended — We Value Your Feedback!
+Your ${profile.businessName || 'DeskAtlas'} Booking Has Ended - We Value Your Feedback!
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
@@ -1682,17 +1682,17 @@ export function renderSuperAdminInvitationAcceptedEmail(input: SuperAdminInvitat
   const dashboardUrl = input.dashboardUrl || 'http://localhost:3000/manage/staff';
   const activatedFormatted = input.activatedAt
     ? new Date(input.activatedAt).toLocaleString('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        hour12: true,
-      })
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: true,
+    })
     : new Date().toLocaleString('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        hour12: true,
-      });
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: true,
+    });
 
   const html = `
 <!DOCTYPE html>
@@ -2302,11 +2302,11 @@ export function renderTeamMemberJoinedEmail(input: TeamMemberJoinedEmailInput): 
   const joinedFormatted = input.joinedAt
     ? formatEmailTime(input.joinedAt)
     : new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        hour12: true,
-      }).format(new Date());
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: true,
+    }).format(new Date());
 
   const html = `
 <!DOCTYPE html>
@@ -2385,11 +2385,11 @@ export function renderAccountDeactivatedEmail(input: AccountStatusChangedEmailIn
   const effectiveFormatted = input.effectiveAt
     ? formatEmailTime(input.effectiveAt)
     : new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        hour12: true,
-      }).format(new Date());
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: true,
+    }).format(new Date());
 
   const supportEmail = profile.contactEmail || input.supportEmail || 'support@deskatlas.com';
   const contactNumber = profile.contactPhone || input.contactNumber || '+63 2 8123 4567';
@@ -2482,11 +2482,11 @@ export function renderAccountReactivatedEmail(input: AccountStatusChangedEmailIn
   const effectiveFormatted = input.effectiveAt
     ? formatEmailTime(input.effectiveAt)
     : new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        hour12: true,
-      }).format(new Date());
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: true,
+    }).format(new Date());
 
   const loginUrl = input.loginUrl || 'http://localhost:3000/manage/login';
 
@@ -2576,11 +2576,11 @@ export function renderRoleChangeNotificationEmail(input: RoleChangeNotificationE
   const updatedFormatted = input.updatedAt
     ? formatEmailTime(input.updatedAt)
     : new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        hour12: true,
-      }).format(new Date());
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: true,
+    }).format(new Date());
 
   const supportEmail = profile.contactEmail || input.supportEmail || 'support@deskatlas.com';
   const contactNumber = profile.contactPhone || input.contactNumber || '+63 2 8123 4567';
@@ -3496,6 +3496,76 @@ export class TransactionalEmailService {
   ): Promise<EmailSendResult> {
     return this.sendPaymentRefundSuccessEmail(input);
   }
+
+  async sendAdvanceReservationReminderEmail(
+    input: AdvanceReservationReminderEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: AdvanceReservationReminderEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderAdvanceReservationReminderEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'advance-reservation-reminder',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-advance-reservation-reminder' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Advance reminder webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendAdminCancellationReceiptEmail(
+    input: AdminCancellationReceiptEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: AdminCancellationReceiptEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderAdminCancellationReceiptEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'admin-cancellation-receipt',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-admin-cancellation-receipt' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Admin cancellation receipt webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
 }
 
 export interface ClosureImpactNoticeEmailInput extends BaseEmailBusinessFields {
@@ -4266,7 +4336,7 @@ export function renderPaymentReviewOverdueRefundEmail(
       
       <div class="refund-box">
         <strong>100% Refund Entitlement:</strong><br>
-        Because we were unable to confirm your workspace in time for your reservation, you are eligible for a 100% full refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
+        Because we were unable to confirm your workspace in time for your reservation, you are eligible for a full refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
       </div>
 
       <div style="margin: 18px 0;">
@@ -4301,7 +4371,7 @@ Dear ${firstName},
 
 We sincerely apologize. Your upcoming reservation at DeskAtlas scheduled for ${formattedBookingDate} at ${formattedBookingTime} passed its start time without receiving administrative review.
 
-Because we were unable to confirm your workspace in time for your reservation, you are eligible for a 100% full refund of your payment (₱${formattedAmount}).
+Because we were unable to confirm your workspace in time for your reservation, you are eligible for a full refund of your payment (₱${formattedAmount}).
 
 What Happens Next:
 1. Priority Refund Processing: Our administrative team has flagged your booking for priority refund review.
@@ -4381,7 +4451,7 @@ export function renderPaymentRefundSuccessEmail(
       
       <div class="success-box">
         <strong>Refund Status: Completed</strong><br>
-        A 100% full refund of <strong>₱${escapeHtml(formattedAmount)}</strong> has been disbursed to your source payment account.
+        A refund of <strong>₱${escapeHtml(formattedAmount)}</strong> has been disbursed to your source payment account.
       </div>
 
       <div class="summary-box">
@@ -4411,7 +4481,7 @@ Dear ${firstName},
 
 We are writing to confirm that your payment refund for reservation ${input.referenceCode} has been successfully disbursed and recorded.
 
-A 100% full refund of ₱${formattedAmount} has been disbursed to your source payment account.
+A full refund of ₱${formattedAmount} has been disbursed to your source payment account.
 
 Refund Summary:
 - Reference Code: ${input.referenceCode}
@@ -4489,7 +4559,7 @@ export function renderCustomerCancellationRefundEligibleEmail(
       
       <div class="notice-box">
         <strong>100% Refund Eligibility Confirmed</strong><br>
-        Because your cancellation was submitted at least ${escapeHtml(cutoff)} prior to your scheduled start time, you are eligible for a 100% refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
+        Because your cancellation was submitted at least ${escapeHtml(cutoff)} prior to your scheduled start time, you are eligible for a refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
       </div>
 
       <div class="summary-box">
@@ -4527,7 +4597,7 @@ Dear ${firstName},
 
 Your reservation #${input.referenceCode} at ${businessName} has been successfully cancelled per your request.
 
-Because your cancellation was submitted at least ${cutoff} prior to your scheduled start time, you are eligible for a 100% refund of your payment.
+Because your cancellation was submitted at least ${cutoff} prior to your scheduled start time, you are eligible for a refund of your payment.
 
 Cancellation & Refund Summary:
 - Reservation Reference: ${input.referenceCode}
@@ -4551,12 +4621,278 @@ ${renderBusinessFooterText(profile)}
   return { subject, html, text };
 }
 
-export type CustomerRefundDisbursedEmailInput = PaymentRefundSuccessEmailInput;
-export const renderCustomerRefundDisbursedEmail = renderPaymentRefundSuccessEmail;
+export interface AdvanceReservationReminderEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName: string;
+  customerLastName?: string;
+  referenceCode: string;
+  workspaceName: string;
+  workspaceType?: string;
+  formattedDate: string;
+  startTime: string;
+  endTime: string;
+  durationHours?: number | string;
+  venueAddress?: string;
+  reconfirmUrl: string;
+  trackUrl: string;
+}
+
+export function renderAdvanceReservationReminderEmail(
+  input: AdvanceReservationReminderEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const firstName = input.customerFirstName?.trim() || 'Valued Guest';
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = `Reminder: Your upcoming ${businessName} reservation #${input.referenceCode} is coming up soon!`;
+  const venueAddress = input.venueAddress || 'DeskAtlas Main Venue, 2nd Floor, Commercial Center, Metro Manila';
+  const website = input.websiteUrl || profile.websiteUrl || 'https://www.thedeskatlas.com';
+  const phone = input.contactPhone || profile.contactPhone || '+63 917 123 4567';
+  const trackBase = input.trackUrl || `${website}/track?ref=${encodeURIComponent(input.referenceCode)}`;
+  const rescheduleUrl = trackBase.includes('?') ? `${trackBase}&action=reschedule` : `${trackBase}?action=reschedule`;
+  const cancelUrl = trackBase.includes('?') ? `${trackBase}&action=cancel` : `${trackBase}?action=cancel`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 580px; margin: 0 auto; padding: 32px; }
+    .header { text-align: center; margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .brand { font-size: 20px; font-weight: 800; color: #064e3b; letter-spacing: -0.02em; }
+    .greeting { font-size: 16px; font-weight: 600; color: #0f172a; margin-top: 16px; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .details-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; margin: 20px 0; font-size: 14px; }
+    .details-title { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #047857; margin-bottom: 12px; }
+    .detail-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .cta-container { text-align: center; margin: 28px 0; }
+    .cta-button { display: inline-block; background-color: #047857; color: #ffffff !important; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; }
+    .actions-box { background-color: #f1f5f9; border-radius: 8px; padding: 16px; margin: 20px 0; font-size: 13px; color: #475569; text-align: center; }
+    .action-links { margin-top: 10px; display: flex; justify-content: center; gap: 16px; }
+    .action-link { color: #047857; font-weight: 700; text-decoration: underline; font-size: 13px; }
+    .policy-box { background-color: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #854d0e; margin: 20px 0; }
+    .footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">${escapeHtml(businessName)}</div>
+    </div>
+    <div class="content">
+      <div class="greeting">Hi ${escapeHtml(firstName)},</div>
+      <p>This is a friendly reminder that your reservation at <strong>${escapeHtml(businessName)}</strong> is coming up soon!</p>
+      <p>We are excited to host you and want to ensure a smooth, productive workspace experience. Please reconfirm your attendance below so our team can prepare your spot:</p>
+
+      <div class="details-box">
+        <div class="details-title">Reservation Details</div>
+        <div class="detail-row"><span>Booking Reference:</span> <strong>#${escapeHtml(input.referenceCode)}</strong></div>
+        <div class="detail-row"><span>Workspace Spot:</span> <span>${escapeHtml(input.workspaceName)}${input.workspaceType ? ` (${escapeHtml(input.workspaceType)})` : ''}</span></div>
+        <div class="detail-row"><span>Scheduled Date:</span> <span>${escapeHtml(input.formattedDate)}</span></div>
+        <div class="detail-row"><span>Time Window:</span> <span>${escapeHtml(input.startTime)} to ${escapeHtml(input.endTime)}${input.durationHours ? ` (${escapeHtml(String(input.durationHours))} hours)` : ''}</span></div>
+        <div class="detail-row"><span>Venue Address:</span> <span>${escapeHtml(venueAddress)}</span></div>
+      </div>
+
+      <div class="cta-container">
+        <a href="${escapeHtml(input.reconfirmUrl)}" class="cta-button" data-testid="email-confirm-attendance-btn">CONFIRM ATTENDANCE</a>
+      </div>
+
+      <div class="actions-box">
+        <strong>Need to make changes to your booking?</strong><br>
+        You can manage your reservation online anytime prior to the cutoff window:
+        <div class="action-links">
+          <a href="${escapeHtml(rescheduleUrl)}" class="action-link">Reschedule Booking</a>
+          &bull;
+          <a href="${escapeHtml(cancelUrl)}" class="action-link">Cancel Reservation</a>
+        </div>
+      </div>
+
+      <div class="policy-box">
+        <strong>Policy Notice:</strong> Rescheduling and cancellations are available within the allowable time window established by the venue.
+      </div>
+
+      <p style="margin-top: 24px;">See you soon,<br><strong>The DeskAtlas Front Desk Team</strong><br>${escapeHtml(website)} | ${escapeHtml(phone)}</p>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Hi ${firstName},
+
+This is a friendly reminder that your reservation at ${businessName} is coming up soon!
+
+We are excited to host you and want to ensure a smooth, productive workspace experience. Please reconfirm your attendance below so our team can prepare your spot:
+
+RESERVATION DETAILS
+Booking Reference: #${input.referenceCode}
+Workspace Spot: ${input.workspaceName}${input.workspaceType ? ` (${input.workspaceType})` : ''}
+Scheduled Date: ${input.formattedDate}
+Time Window: ${input.startTime} to ${input.endTime}${input.durationHours ? ` (${input.durationHours} hours)` : ''}
+Venue Address: ${venueAddress}
+
+CONFIRM ATTENDANCE
+(Link: ${input.reconfirmUrl})
+
+Need to make changes to your booking?
+You can manage your reservation online anytime prior to the cutoff window:
+
+Reschedule Booking: ${rescheduleUrl}
+Cancel Reservation: ${cancelUrl}
+
+See you soon,
+The DeskAtlas Front Desk Team
+${website} | ${phone}
+
+Policy Notice: Rescheduling and cancellations are available within the allowable time window established by the venue.
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export interface AdminCancellationReceiptEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  referenceCode: string;
+  customerFirstName: string;
+  customerLastName?: string;
+  customerEmail: string;
+  customerPhone?: string | null;
+  workspaceName?: string;
+  scheduledWindow?: string;
+  formattedSchedule?: string;
+  cancelledAt?: string;
+  formattedCancelledAt?: string;
+  noticeHours?: number | string;
+  cutoffNoticeDisplay?: string;
+  amountDue?: number;
+  paymentMethod?: string;
+  paymentAttemptId?: string;
+  reservationId?: string;
+  adminPortalUrl?: string;
+}
+
+export function renderAdminCancellationReceiptEmail(
+  input: AdminCancellationReceiptEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerFullName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || input.customerFirstName || 'Customer';
+  const subject = `[CANCELLATION RECEIPT] Customer Self-Cancelled Reservation #${input.referenceCode} - ${businessName}`;
+  const formattedAmount = Number(input.amountDue || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const nowIso = new Date().toISOString();
+  const formattedCancelledAt = input.formattedCancelledAt || input.cancelledAt || nowIso;
+  const scheduleDisplay = input.formattedSchedule || input.scheduledWindow || 'Scheduled Window';
+  const adminBase = input.adminPortalUrl || process.env.DESKATLAS_ADMIN_URL || 'https://admin.thedeskatlas.com';
+  const triageLink = `${adminBase}/manage/reservations?filter=cancelled_refund_eligible&id=${encodeURIComponent(input.reservationId || '')}`;
+  const noticeDisplay = input.noticeHours !== undefined ? `${input.noticeHours} hours prior to start` : 'prior to start';
+  const cutoffDisplay = input.cutoffNoticeDisplay || '12 hours';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 600px; margin: 0 auto; padding: 32px; }
+    .header { margin-bottom: 20px; border-bottom: 2px solid #b45309; padding-bottom: 14px; }
+    .title { font-size: 16px; font-weight: 800; color: #b45309; letter-spacing: 0.04em; margin: 0; text-transform: uppercase; }
+    .content { font-size: 14px; line-height: 1.6; color: #334155; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .summary-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; margin-bottom: 10px; }
+    .summary-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+    .triage-box { background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 16px 0; color: #92400e; font-size: 13px; }
+    .cta-container { margin: 20px 0; text-align: center; }
+    .cta-button { display: inline-block; background-color: #b45309; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 13px; }
+    .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">ADMINISTRATIVE NOTICE: CUSTOMER RESERVATION CANCELLED</div>
+    </div>
+    <div class="content">
+      <p>A customer has self-cancelled their upcoming reservation via the self-service tracking portal.</p>
+
+      <div class="summary-box">
+        <div class="summary-title">Cancellation Summary</div>
+        <div class="summary-row"><span>Booking Reference:</span> <strong>#${escapeHtml(input.referenceCode)}</strong></div>
+        <div class="summary-row"><span>Customer Name:</span> <span>${escapeHtml(customerFullName)}</span></div>
+        <div class="summary-row"><span>Customer Email:</span> <span>${escapeHtml(input.customerEmail)}</span></div>
+        <div class="summary-row"><span>Customer Phone:</span> <span>${escapeHtml(input.customerPhone || 'Not provided')}</span></div>
+        <div class="summary-row"><span>Workspace Spot:</span> <span>${escapeHtml(input.workspaceName || 'Workspace')}</span></div>
+        <div class="summary-row"><span>Scheduled Window:</span> <span>${escapeHtml(scheduleDisplay)}</span></div>
+        <div class="summary-row"><span>Cancelled At:</span> <span>${escapeHtml(formattedCancelledAt)}</span></div>
+        <div class="summary-row"><span>Notice Provided:</span> <span>${escapeHtml(noticeDisplay)}</span></div>
+      </div>
+
+      <div class="triage-box">
+        <strong>REFUND TRIAGE STATUS:</strong><br>
+        &bull; Policy Cutoff: ${escapeHtml(cutoffDisplay)} required notice<br>
+        &bull; Refund Status: <strong>ELIGIBLE (100% Refund of ₱${escapeHtml(formattedAmount)})</strong><br>
+        &bull; Original Payment: ${escapeHtml(input.paymentMethod || 'Online Payment')} (Attempt ID: ${escapeHtml(input.paymentAttemptId || 'N/A')})
+      </div>
+
+      <p><strong>ACTION REQUIRED:</strong><br>Please navigate to the Admin Portal to review original payment proof and process the refund disbursement:</p>
+      
+      <div class="cta-container">
+        <a href="${escapeHtml(triageLink)}" class="cta-button" data-testid="admin-triage-receipt-link">Open Refund Triage Queue</a>
+      </div>
+
+      <div class="footer">
+        DeskAtlas Automated Operations Dispatch<br>
+        Timestamp: ${escapeHtml(nowIso)}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+ADMINISTRATIVE NOTICE: CUSTOMER RESERVATION CANCELLED
+
+A customer has self-cancelled their upcoming reservation via the self-service tracking portal.
+
+CANCELLATION SUMMARY:
+- Booking Reference: #${input.referenceCode}
+- Customer Name: ${customerFullName}
+- Customer Email: ${input.customerEmail}
+- Customer Phone: ${input.customerPhone || 'Not provided'}
+- Workspace Spot: ${input.workspaceName || 'Workspace'}
+- Scheduled Window: ${scheduleDisplay}
+- Cancelled At: ${formattedCancelledAt}
+- Notice Provided: ${noticeDisplay}
+
+REFUND TRIAGE STATUS:
+- Policy Cutoff: ${cutoffDisplay} required notice
+- Refund Status: ELIGIBLE (100% Refund of ₱${formattedAmount})
+- Original Payment: ${input.paymentMethod || 'Online Payment'} (Attempt ID: ${input.paymentAttemptId || 'N/A'})
+
+ACTION REQUIRED:
+Please navigate to the Admin Portal to review original payment proof and process the refund disbursement:
+Link: ${triageLink}
+
+DeskAtlas Automated Operations Dispatch
+Timestamp: ${nowIso}
+  `.trim();
+
+  return { subject, html, text };
+}
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {
   return new TransactionalEmailService(config);
 }
+
 
 
 

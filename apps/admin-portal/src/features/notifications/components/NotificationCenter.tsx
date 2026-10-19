@@ -130,6 +130,18 @@ function getNotificationConfig(type: AdminNotificationType) {
         color: "#0284c7",
         bgColor: "#e0f2fe",
       };
+    case "CUSTOMER_REMINDER_SENT":
+      return {
+        icon: Bell,
+        color: "#2563EB",
+        bgColor: "#DBEAFE",
+      };
+    case "CUSTOMER_REFUND_ELIGIBLE":
+      return {
+        icon: DollarSign,
+        color: "#B45309",
+        bgColor: "#FEF3C7",
+      };
     default:
       return {
         icon: Bell,
@@ -149,6 +161,7 @@ export function NotificationCenter() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const seenNotificationIdsRef = useRef<Set<string> | null>(null);
 
   const fetchNotifications = async () => {
     try {
@@ -160,7 +173,34 @@ export function NotificationCenter() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.notifications)) {
-          setNotifications(data.notifications);
+          const incoming: AdminNotificationItem[] = data.notifications;
+          if (
+            seenNotificationIdsRef.current !== null &&
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            const newItems = incoming.filter((item) => !seenNotificationIdsRef.current!.has(item.id));
+            for (const item of newItems) {
+              try {
+                const notif = new Notification(item.title, {
+                  body: item.description,
+                  icon: "/icons/deskatlas-alert-icon.png",
+                  data: { url: item.link },
+                });
+                notif.onclick = () => {
+                  window.focus();
+                  if (item.link) {
+                    router.push(item.link);
+                  }
+                };
+              } catch {
+                // Ignore notification construction errors
+              }
+            }
+          }
+          seenNotificationIdsRef.current = new Set(incoming.map((item) => item.id));
+          setNotifications(incoming);
         }
       }
     } catch {

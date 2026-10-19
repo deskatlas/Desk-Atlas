@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { evaluateAndSegregatePaymentReviews } from "@deskatlas/domain";
 import { getAdminReservationService } from "../reservations/_lib/reservationService";
 import { getAdminPaymentReviewService } from "../payments/_lib/paymentReviewService";
 
@@ -33,7 +34,18 @@ export async function GET() {
         r.status.toLowerCase() !== "rejected"
     ).length;
 
-    const paymentsCount = Array.isArray(reviewQueue) ? reviewQueue.length : 0;
+    const rawQueue = Array.isArray(reviewQueue) ? reviewQueue : [];
+    const now = new Date();
+    const { activeQueue, overdueQueue } = evaluateAndSegregatePaymentReviews(rawQueue, now);
+
+    // Number notif pill for payments: strictly only count awaiting review and overdue (refund eligible)
+    const awaitingReviewCount = activeQueue.filter(
+      (item) => (item.paymentStatus === "UNDER_REVIEW" || !item.paymentStatus) && item.refundStatus !== "REFUNDED"
+    ).length;
+    const overdueCount = overdueQueue.filter(
+      (item) => (item.paymentStatus === "UNDER_REVIEW" || !item.paymentStatus) && item.refundStatus !== "REFUNDED"
+    ).length;
+    const paymentsCount = awaitingReviewCount + overdueCount;
 
     return NextResponse.json(
       {
@@ -43,6 +55,8 @@ export async function GET() {
         awaitingProof: reservationsCount,
         paymentReviews: paymentsCount,
         counterQueue: kioskCount,
+        awaitingReviewCount,
+        overdueCount,
       },
       {
         headers: {
