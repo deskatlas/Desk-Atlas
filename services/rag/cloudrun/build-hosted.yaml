@@ -1,0 +1,10 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, --platform=linux/amd64, -f, cloudrun/hosted-api.Dockerfile, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/api-hosted:$BUILD_ID', .]
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/deskatlas-rag/api-hosted:$BUILD_ID'
+substitutions:
+  _REGION: us-central1
+timeout: 1800s
+options:
+  logging: CLOUD_LOGGING_ONLY

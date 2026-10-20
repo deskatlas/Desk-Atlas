@@ -264,4 +264,8 @@ export * from './services/assistantSynthesis';
 export * from './services/assistantPresentation';
 export * from './services/customerCancellationService';
 export * from './services/reservationReminderService';
+export * from './models/promoAnalytics';
+export * from './services/promoAnalyticsService';
+export * from './services/promoAnalyticsSupabaseRepository';
+export * from './services/promoAnalyticsExport';
 

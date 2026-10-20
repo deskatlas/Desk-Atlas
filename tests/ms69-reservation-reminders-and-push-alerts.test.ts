@@ -408,7 +408,7 @@ describe("MS-69: Customer Advance Reservation Reminders, Attendance Reconfirmati
     expect(rendered.html).toContain("REF-CANCEL-RECEIPT");
     expect(rendered.html).toContain("Dedicated Pod A");
     expect(rendered.html).toContain("48 hours prior to start");
-    expect(rendered.html).toContain("ELIGIBLE (100% Refund of ₱850)");
+    expect(rendered.html).toContain("ELIGIBLE (Full Refund of ₱850)");
     expect(rendered.text).toContain("https://manage.thedeskatlas.com/manage/reservations?filter=cancelled_refund_eligible&id=res-cancel-99");
     expect(rendered.html).toContain("https://manage.thedeskatlas.com/manage/reservations?filter=cancelled_refund_eligible&amp;id=res-cancel-99");
   });
@@ -526,7 +526,7 @@ describe("MS-69: Customer Advance Reservation Reminders, Attendance Reconfirmati
 
     expect(overdueAlert).toBeDefined();
     expect(overdueAlert?.description).toContain("Payment for reservation #REF-OVERDUE-1 (Apolinario Mabini) passed scheduled start time unreviewed.");
-    expect(overdueAlert?.description).toContain("Eligible for 100% refund of ₱1,200.");
+    expect(overdueAlert?.description).toContain("Eligible for full refund of ₱1,200.");
     expect(overdueAlert?.link).toBe("/manage/payments?tab=OVERDUE&id=pay-overdue-1");
   });
 

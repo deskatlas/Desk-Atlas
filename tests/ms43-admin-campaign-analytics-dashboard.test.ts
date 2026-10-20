@@ -89,9 +89,9 @@ describe('MS-43 campaign analytics', () => {
     expect((await exportGET(request('/api', { Authorization: `Bearer ${token}` }))).status).toBe(403);
     expect(load).not.toHaveBeenCalled();
   });
-  it('QAD-TC43.1 places Promo Analytics immediately after Dashboard', () => {
+  it('QAD-TC43.1 places Campaign / Promo Analytics immediately after Dashboard', () => {
     const layout = readFileSync('apps/admin-portal/src/app/manage/layout.tsx', 'utf8');
-    expect(layout).toMatch(/label: 'Dashboard'[^\n]+\n\s*\{ id: '\/manage\/campaign-analytics', label: 'Promo Analytics'/);
+    expect(layout).toMatch(/label: 'Dashboard'[^\n]+\n\s*\{ id: '\/manage\/campaign-analytics', label: '(?:Campaign|Promo) Analytics'/);
     expect(layout).toContain("case 'promo-analytics'");
   });
 

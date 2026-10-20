@@ -564,7 +564,7 @@ function buildCheckinSheet(workbook: ExcelJS.Workbook, reservations: ReportReser
 /**
  * Builds Cancellation Sheet.
  */
-function buildCancellationSheet(
+export function buildCancellationSheet(
   workbook: ExcelJS.Workbook,
   reservations: ReportReservationRecord[],
   payments: ReportPaymentAttemptRecord[]
@@ -578,6 +578,7 @@ function buildCancellationSheet(
     { header: "Customer Name", key: "customerName", width: 24 },
     { header: "Reservation Status", key: "status", width: 24 },
     { header: "Refund Status", key: "refundStatus", width: 18 },
+    { header: "Refund Date", key: "refundDate", width: 22 },
     { header: "Amount Due", key: "amountDue", width: 16 },
     { header: "Currency", key: "currency", width: 12 },
     { header: "Created At", key: "createdAt", width: 20 },
@@ -586,12 +587,19 @@ function buildCancellationSheet(
   const headerRow = sheet.getRow(1);
   headerRow.height = 28;
   headerRow.eachCell((cell) => styleTableHeaderCell(cell));
-  sheet.autoFilter = "A1:G1";
+  sheet.autoFilter = "A1:H1";
 
-  const refundMap = new Map<string, string>();
+  const refundStatusMap = new Map<string, string>();
+  const refundDateMap = new Map<string, string | null>();
+
   for (const p of payments) {
-    if (p.refundStatus === "REFUNDED") refundMap.set(p.reservationId, "REFUNDED");
-    else if (!refundMap.has(p.reservationId)) refundMap.set(p.reservationId, p.refundStatus);
+    if (p.refundStatus === "REFUNDED") {
+      refundStatusMap.set(p.reservationId, "REFUNDED");
+      if (p.refundedAt) refundDateMap.set(p.reservationId, p.refundedAt);
+    } else if (!refundStatusMap.has(p.reservationId)) {
+      refundStatusMap.set(p.reservationId, p.refundStatus);
+      if (p.refundedAt) refundDateMap.set(p.reservationId, p.refundedAt);
+    }
   }
 
   const cancelled = reservations.filter(
@@ -599,11 +607,15 @@ function buildCancellationSheet(
   );
 
   cancelled.forEach((r, idx) => {
+    const refundDateRaw = refundDateMap.get(r.reservationId) || r.refundedAt;
+    const formattedRefundDate = refundDateRaw ? formatDateTime(refundDateRaw) : "N/A";
+
     const row = sheet.addRow({
       ref: r.referenceCode,
       customerName: `${r.customerFirstName} ${r.customerLastName}`.trim(),
       status: r.reservationStatus,
-      refundStatus: refundMap.get(r.reservationId) ?? "NONE",
+      refundStatus: refundStatusMap.get(r.reservationId) ?? "NONE",
+      refundDate: formattedRefundDate,
       amountDue: r.amountDue,
       currency: r.currency,
       createdAt: formatDateTime(r.createdAt),
@@ -616,11 +628,11 @@ function buildCancellationSheet(
       if (colNumber === 3) {
         applyStatusBadgeStyle(cell, String(cell.value));
       }
-      if (colNumber === 5) {
+      if (colNumber === 6) {
         cell.numFmt = "₱#,##0.00";
         cell.alignment = { horizontal: "right", vertical: "middle" };
       }
-      if ([1, 4, 6, 7].includes(colNumber)) {
+      if ([1, 4, 5, 7, 8].includes(colNumber)) {
         cell.alignment = { horizontal: "center", vertical: "middle" };
       }
     });
@@ -708,7 +720,7 @@ function applyCardBorder(sheet: ExcelJS.Worksheet, rangeStr: string, borderColor
   }
 }
 
-function formatDateTime(iso: string, timezone = "Asia/Manila"): string {
+export function formatDateTime(iso: string, timezone = "Asia/Manila"): string {
   if (!iso) return "";
   try {
     const d = new Date(iso);

@@ -6,6 +6,8 @@ import {
   type RateTargetType,
   filterPromotionalRates,
   getPromotionalStatus,
+  paginateList,
+  getPaginationPageNumbers,
 } from '@deskatlas/domain';
 
 interface TemplateOption {
@@ -427,6 +429,13 @@ export function PromotionsList() {
     }
   };
 
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 15;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterWorkspaceId, filterRateType, filterStatus]);
+
   const filteredPromotions = useMemo(() => {
     return filterPromotionalRates(promotions, {
       searchQuery,
@@ -436,15 +445,33 @@ export function PromotionsList() {
     });
   }, [promotions, searchQuery, filterWorkspaceId, filterRateType, filterStatus]);
 
+  const pagination = useMemo(() => {
+    return paginateList(filteredPromotions, currentPage, PAGE_SIZE);
+  }, [filteredPromotions, currentPage]);
+
+  const paginatedPromotions = pagination.items;
+  const pageNumbers = useMemo(() => {
+    return getPaginationPageNumbers(pagination.page, pagination.totalPages);
+  }, [pagination.page, pagination.totalPages]);
+
   const allFilteredIds = useMemo(() => filteredPromotions.map((p) => p.id), [filteredPromotions]);
-  const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedPromoIds.has(id));
-  const isSomeSelected = allFilteredIds.some((id) => selectedPromoIds.has(id)) && !isAllSelected;
+  const currentPageIds = useMemo(() => paginatedPromotions.map((p) => p.id), [paginatedPromotions]);
+  const isAllSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedPromoIds.has(id));
+  const isSomeSelected = currentPageIds.some((id) => selectedPromoIds.has(id)) && !isAllSelected;
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
-      setSelectedPromoIds(new Set());
+      setSelectedPromoIds((prev) => {
+        const next = new Set(prev);
+        currentPageIds.forEach((id) => next.delete(id));
+        return next;
+      });
     } else {
-      setSelectedPromoIds(new Set(allFilteredIds));
+      setSelectedPromoIds((prev) => {
+        const next = new Set(prev);
+        currentPageIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
   };
 
@@ -888,7 +915,7 @@ export function PromotionsList() {
                 </tr>
               </thead>
               <tbody>
-                {filteredPromotions.map((promo) => {
+                {paginatedPromotions.map((promo) => {
                   const targetedNames = promo.workspaceTemplateIds
                     .map((id) => templates.find((t) => t.id === id)?.name || id)
                     .join(', ');
@@ -998,6 +1025,129 @@ export function PromotionsList() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Controls Toolbar */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 20px',
+              background: '#fff',
+              borderTop: '1px solid var(--da-border, #E5E7EB)',
+              borderRadius: '0 0 8px 8px',
+              fontSize: '13px',
+              color: 'var(--da-text-secondary, #6B7280)',
+              fontFamily: 'var(--da-font-family)',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}
+          >
+            <div>
+              Showing{' '}
+              <strong style={{ color: 'var(--da-text-primary, #111827)' }}>
+                {filteredPromotions.length === 0 ? 0 : pagination.startIndex}
+              </strong>{' '}
+              to{' '}
+              <strong style={{ color: 'var(--da-text-primary, #111827)' }}>
+                {filteredPromotions.length === 0 ? 0 : pagination.endIndex}
+              </strong>{' '}
+              of{' '}
+              <strong style={{ color: 'var(--da-text-primary, #111827)' }}>
+                {filteredPromotions.length}
+              </strong>{' '}
+              promotions
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={pagination.page <= 1}
+                aria-label="Previous Page"
+                style={{
+                  height: '36px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: pagination.page <= 1 ? 'not-allowed' : 'pointer',
+                  opacity: pagination.page <= 1 ? 0.5 : 1,
+                  background: 'transparent',
+                  color: 'var(--da-text-secondary, #6B7280)',
+                  border: '1px solid var(--da-border, #D1D5DB)',
+                }}
+              >
+                Prev
+              </button>
+
+              {pageNumbers.map((pg, i) => {
+                if (typeof pg === 'string') {
+                  return (
+                    <span
+                      key={`ellipsis-${i}`}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '13px',
+                        color: 'var(--da-text-secondary, #6B7280)',
+                      }}
+                    >
+                      …
+                    </span>
+                  );
+                }
+                const isActive = pg === pagination.page;
+                return (
+                  <button
+                    key={pg}
+                    type="button"
+                    onClick={() => setCurrentPage(pg)}
+                    aria-label={`Page ${pg}`}
+                    aria-current={isActive ? 'page' : undefined}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      padding: 0,
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      background: isActive ? 'var(--da-brand-dark, #0C3B27)' : 'transparent',
+                      color: isActive ? '#fff' : 'var(--da-text-secondary, #6B7280)',
+                      border: isActive ? 'none' : '1px solid var(--da-border, #D1D5DB)',
+                    }}
+                  >
+                    {pg}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))}
+                disabled={pagination.page >= pagination.totalPages}
+                aria-label="Next Page"
+                style={{
+                  height: '36px',
+                  padding: '0 12px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: pagination.page >= pagination.totalPages ? 'not-allowed' : 'pointer',
+                  opacity: pagination.page >= pagination.totalPages ? 0.5 : 1,
+                  background: 'transparent',
+                  color: 'var(--da-text-secondary, #6B7280)',
+                  border: '1px solid var(--da-border, #D1D5DB)',
+                }}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       )}

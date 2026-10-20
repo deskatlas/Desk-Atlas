@@ -17,8 +17,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session] = useState(() => new AdminSessionLifecycle((input, init) => window.fetch(input, init), user => {
     try {
-      if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      else localStorage.removeItem(STORAGE_KEY);
+      if (user) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      else sessionStorage.removeItem(STORAGE_KEY);
     } catch { /* Storage may be unavailable. */ }
   }, { endpoint: '/api/auth/session', roles: ['staff', 'admin'], credential: user => user.assistantToken ?? user.token }));
   const state = useSyncExternalStore(session.subscribe, session.snapshot, () => initialSession);
@@ -51,31 +51,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return response;
     };
     window.fetch = intercepted;
+    // MS-75: Clean up any stale localStorage residue to guarantee tab-bound session lifecycle
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
     let raw: string | null = null;
-    try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* Verify only available credentials. */ }
+    try { raw = sessionStorage.getItem(STORAGE_KEY); } catch { /* Verify only available credentials. */ }
     void session.restore(raw);
-    const synchronize = (event: StorageEvent) => {
-      if (event.storageArea === localStorage && (event.key === STORAGE_KEY || event.key === null)) void session.restore(event.newValue);
-    };
-    window.addEventListener('storage', synchronize);
     return () => {
-      window.removeEventListener('storage', synchronize);
       if (window.fetch === intercepted) window.fetch = originalFetch;
       session.abandon();
     };
   }, [session]);
   useActiveTabPolling(session.check, 60000, { enabled: Boolean(state.user) || state.retryable, immediate: false });
-  useEffect(() => {
-    if (!state.expiresAt || !state.user) return;
-    const timer = setTimeout(() => session.reject(state.generation, 'AUTH_REQUIRED'), Math.max(0, state.expiresAt - Date.now()));
-    return () => clearTimeout(timer);
-  }, [session, state.expiresAt, state.generation, state.user]);
+  // MS-75: Active in-tab sessions must not expire automatically. No client-side eviction timer.
   useEffect(() => {
     if (state.isDeactivated) {
       try { sessionStorage.clear(); } catch { /* Storage may be unavailable. */ }
     }
   }, [state.isDeactivated]);
   const login: AuthContextType['login'] = (role, name, details) => { void session.login({ role, name, ...details }); };
+
   return <AuthContext.Provider value={{ user: state.user, isDeactivated: state.isDeactivated, login, logout: session.logout }}>
     {state.error && !state.isDeactivated && <div role="alert"><p>{state.error}</p>{state.retryable && <Button onClick={() => { void session.check(); }}>Retry session verification</Button>}</div>}
     {state.loading ? <p role="status">Checking your session...</p> : children}

@@ -5,6 +5,7 @@
 !models.json
 !answer-model.json
 !runtime-requirements.lock.txt
+!service-requirements.lock.txt
 !rag/
 !rag/*.py
 !rag/*.json
@@ -16,5 +17,7 @@
 !cloudrun/verify_answer.py
 !cloudrun/build.yaml
 !cloudrun/build-deepinfra.yaml
+!cloudrun/build-hosted.yaml
+!cloudrun/hosted-api.Dockerfile
 !.gcloudignore
 !.dockerignore

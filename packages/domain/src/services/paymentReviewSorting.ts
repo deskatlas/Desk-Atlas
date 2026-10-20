@@ -83,3 +83,163 @@ export function sortPaymentReviewQueue<T extends RankedPaymentReviewQueueItem>(
       return queue;
   }
 }
+
+// MS-72: PRD-F6, SDD-C5, DSD-UI11, ERD-E10, ERD-E13, QAD-TC53
+// Multi-criterion sorting and chronological triage for rejected online payments.
+
+export type RejectedQueueSortMode =
+  | "REJECTED_DESC"
+  | "REJECTED_ASC"
+  | "AMOUNT_DESC"
+  | "AMOUNT_ASC";
+
+/**
+ * Sorts rejected payment items according to the selected sorting mode.
+ * Supports elapsed time (rejection timestamp) and monetary amount sorting with deterministic tie-breaking.
+ */
+export function sortRejectedPaymentsQueue<T extends {
+  paymentAttemptId: string;
+  amountDue: number | string;
+  processedAt?: string | null;
+  proofSubmittedAt?: string | null;
+  createdAt?: string;
+}>(
+  items: T[],
+  sortMode: RejectedQueueSortMode = "REJECTED_DESC"
+): T[] {
+  const shallowCopy = [...items];
+
+  const getRejectionTime = (item: T): number => {
+    const raw = item.processedAt || item.proofSubmittedAt || item.createdAt;
+    if (!raw) return 0;
+    const time = new Date(raw).getTime();
+    return isNaN(time) ? 0 : time;
+  };
+
+  const getNumericAmount = (item: T): number => {
+    const num = Number(item.amountDue);
+    return isNaN(num) ? 0 : num;
+  };
+
+  return shallowCopy.sort((a, b) => {
+    switch (sortMode) {
+      case "REJECTED_DESC": {
+        // Most recently rejected first (highest timestamp)
+        const diff = getRejectionTime(b) - getRejectionTime(a);
+        if (diff !== 0) return diff;
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      case "REJECTED_ASC": {
+        // Oldest rejection first (lowest timestamp)
+        const diff = getRejectionTime(a) - getRejectionTime(b);
+        if (diff !== 0) return diff;
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      case "AMOUNT_DESC": {
+        // Highest monetary amount first
+        const diff = getNumericAmount(b) - getNumericAmount(a);
+        if (diff !== 0) return diff;
+        // Tie-breaker 1: most recently rejected first
+        const timeDiff = getRejectionTime(b) - getRejectionTime(a);
+        if (timeDiff !== 0) return timeDiff;
+        // Tie-breaker 2: paymentAttemptId
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      case "AMOUNT_ASC": {
+        // Lowest monetary amount first
+        const diff = getNumericAmount(a) - getNumericAmount(b);
+        if (diff !== 0) return diff;
+        // Tie-breaker 1: most recently rejected first
+        const timeDiff = getRejectionTime(b) - getRejectionTime(a);
+        if (timeDiff !== 0) return timeDiff;
+        // Tie-breaker 2: paymentAttemptId
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      default:
+        return 0;
+    }
+  });
+}
+
+export type { RecentQueueSortMode } from "../models/reservation";
+
+/**
+ * Sorts overdue and refunded payment queue items according to the selected sorting mode.
+ * Supports chronological recency (most recent descending / oldest first ascending) and
+ * monetary amount sorting with deterministic tie-breaking.
+ */
+export function sortRecentPaymentsQueue<T extends {
+  paymentAttemptId: string;
+  amountDue: number | string;
+  proofSubmittedAt?: string | null;
+  refundedAt?: string | null;
+  processedAt?: string | null;
+  createdAt?: string;
+}>(
+  items: T[],
+  sortMode: import("../models/reservation").RecentQueueSortMode = "RECENT_DESC",
+  timeExtractor?: (item: T) => number
+): T[] {
+  const shallowCopy = [...items];
+
+  const getDefaultTime = (item: T): number => {
+    if (timeExtractor) return timeExtractor(item);
+    const raw = item.refundedAt || item.proofSubmittedAt || item.processedAt || item.createdAt;
+    if (!raw) return 0;
+    const time = new Date(raw).getTime();
+    return isNaN(time) ? 0 : time;
+  };
+
+  const getNumericAmount = (item: T): number => {
+    const num = Number(item.amountDue);
+    return isNaN(num) ? 0 : num;
+  };
+
+  return shallowCopy.sort((a, b) => {
+    switch (sortMode) {
+      case "RECENT_DESC": {
+        // Most recent first (highest timestamp)
+        const diff = getDefaultTime(b) - getDefaultTime(a);
+        if (diff !== 0) return diff;
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      case "RECENT_ASC": {
+        // Oldest first (lowest timestamp)
+        const diff = getDefaultTime(a) - getDefaultTime(b);
+        if (diff !== 0) return diff;
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      case "AMOUNT_DESC": {
+        // Highest monetary amount first
+        const diff = getNumericAmount(b) - getNumericAmount(a);
+        if (diff !== 0) return diff;
+        // Tie-breaker 1: most recent first
+        const timeDiff = getDefaultTime(b) - getDefaultTime(a);
+        if (timeDiff !== 0) return timeDiff;
+        // Tie-breaker 2: paymentAttemptId
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      case "AMOUNT_ASC": {
+        // Lowest monetary amount first
+        const diff = getNumericAmount(a) - getNumericAmount(b);
+        if (diff !== 0) return diff;
+        // Tie-breaker 1: most recent first
+        const timeDiff = getDefaultTime(b) - getDefaultTime(a);
+        if (timeDiff !== 0) return timeDiff;
+        // Tie-breaker 2: paymentAttemptId
+        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
+      }
+
+      default:
+        return 0;
+    }
+  });
+}
+

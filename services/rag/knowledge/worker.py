@@ -1,11 +1,13 @@
 """SPEC5-TC06..08,13,16,19: polling durable jobs through a narrow TS gateway.
 
 Parser containers have no network, credentials, or model access. This process
-owns only a worker gateway token; Supabase service-role keys stay in TypeScript.
+owns a worker gateway token and optional hosted encoder key. Supabase service-role
+keys stay in TypeScript. The parser receives neither credential.
 """
 import hashlib
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import tempfile
@@ -19,6 +21,7 @@ from knowledge.chunk import chunk_sections
 from knowledge.preparation import verify_preparation, verify_support_preparation
 from knowledge.structure import manifest_hash
 from rag.encoder import Encoder
+from rag.embedding_provider import embedding_provider, embedding_fingerprint, HostedEncoder
 
 ROOT = Path(__file__).resolve().parents[1]
 SAFE_ERRORS = {"TYPE_MISMATCH", "UNSAFE_FILE", "ENCRYPTED_FILE", "MALFORMED_FILE", "EMPTY_TEXT", "PARSER_FAILED", "PARSER_REVISION_MISMATCH", "STORAGE_FAILED", "EMBEDDING_FAILED", "RESOURCE_LIMIT", "MANIFEST_INVALID", "CONTENT_LIMIT", "UNREADABLE_PAGE"}
@@ -117,6 +120,10 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
                         raise ValueError("MANIFEST_INVALID")
             if source.stat().st_size != version["source_bytes"] or hashlib.sha256(source.read_bytes()).hexdigest() != version["source_sha256"]:
                 raise ValueError("MANIFEST_INVALID")
+            # The parser runs as UID 65534. The host directory stays private;
+            # only this read-only bind-mounted file is readable in the sandbox.
+            if os.name != 'nt':
+                source.chmod(0o444)
             checkpoint("CONVERTING" if version["detected_type"] == "DOC" else "OCR" if version["detected_type"] == "PDF" else "EXTRACTING")
             image = os.environ.get("KB_PARSER_IMAGE", "deskatlas-knowledge-parser:local")
             if not image or image.startswith("-"):
@@ -143,7 +150,7 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
                 raise ValueError("MANIFEST_INVALID")
             checkpoint("NORMALIZING")
             checkpoint("CHUNKING")
-            chunks = chunk_sections(extraction["sections"], encoder._model.tokenizer)
+            chunks = chunk_sections(extraction["sections"], encoder.tokenizer if isinstance(encoder, HostedEncoder) else encoder._model.tokenizer)
             extraction['warning_codes'].append('SECTION_SCOPE_REVIEW')
             if any(chunk['section_context']['unresolved'] for chunk in chunks):
                 extraction['warning_codes'].append('SECTION_CONTEXT_UNRESOLVED')
@@ -213,8 +220,8 @@ def main():
     if os.environ.get('KB_WORKER_MODE', 'all') not in {'all', 'ingest'}:
         raise SystemExit('INVALID_WORKER_MODE')
     manifest = json.loads((ROOT / "models.json").read_text())
-    fingerprint = hashlib.sha256(json.dumps(manifest["embedding"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    encoder = LazyEncoder(manifest, ROOT / ".cache" / 'models')
+    fingerprint = embedding_fingerprint(manifest)
+    encoder = HostedEncoder() if embedding_provider() == 'deepinfra' else LazyEncoder(manifest, ROOT / '.cache' / 'models')
     if os.environ.get('KB_WORKER_MODE') == 'ingest':
         run_lane(gateway, 'INGEST', encoder, fingerprint)
     else:
@@ -222,4 +229,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # A VM service stop must execute the parser's owned-container cleanup.
+    # The default SIGTERM action would exit without running its finally block.
+    def terminate(_signal, _frame):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, terminate)
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

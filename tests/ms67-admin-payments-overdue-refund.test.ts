@@ -183,7 +183,7 @@ describe("MS-67: Admin Payment Review Overdue Detection, Customer Refund Notific
     expect(emailResult.text).toContain("RES-98214A");
     expect(emailResult.text).toContain("+63 917 555 0199");
 
-    expect(emailResult.html).toContain("100% Refund Entitlement");
+    expect(emailResult.html).toContain("Full Refund Entitlement");
     expect(emailResult.html).toContain("RES-98214A");
     expect(emailResult.html).toContain("₱600");
   });

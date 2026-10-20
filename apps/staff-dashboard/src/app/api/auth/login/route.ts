@@ -78,8 +78,9 @@ export async function POST(request: NextRequest) {
         displayName: session.actor.displayName || 'Staff Member',
       },
       token: session.token,
-      assistantToken: issueStaffAssistantSession(session.actor.id, process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
+      assistantToken: issueStaffAssistantSession(session.actor.id, process.env.SUPABASE_SERVICE_ROLE_KEY || '', Date.now(), { persistent: true }),
     });
+
   } catch (error: unknown) {
     if (trimmedEmail) {
       const failResult = loginRateLimiter.recordFailedAttempt('staff', trimmedEmail, ip);

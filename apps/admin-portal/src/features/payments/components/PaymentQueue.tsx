@@ -6,11 +6,15 @@ import type {
   PaymentReviewQueueItem,
   PaymentReviewDetail,
   PaymentQueueSortMode,
+  RecentQueueSortMode,
   RankedPaymentReviewQueueItem,
+  RejectedQueueSortMode,
 } from '@deskatlas/domain';
 import {
   assignCanonicalQueueRanks,
   sortPaymentReviewQueue,
+  sortRecentPaymentsQueue,
+  sortRejectedPaymentsQueue,
   evaluateAndSegregatePaymentReviews,
   getReservationBookingStartTime,
   formatOverdueElapsedDuration,
@@ -37,10 +41,13 @@ export function PaymentQueue() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'REVIEW' | 'OVERDUE' | 'REFUNDED' | 'REJECTED'>('REVIEW');
   const [reviewQueue, setReviewQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
-  const [overdueQueue, setOverdueQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
-  const [refundedQueue, setRefundedQueue] = useState<RankedPaymentReviewQueueItem[]>([]);
+  const [overdueQueue, setOverdueQueue] = useState<PaymentReviewQueueItem[]>([]);
+  const [refundedQueue, setRefundedQueue] = useState<PaymentReviewQueueItem[]>([]);
   const [rejectedQueue, setRejectedQueue] = useState<PaymentReviewDetail[]>([]);
   const [sortMode, setSortMode] = useState<PaymentQueueSortMode>('RANK_DESC');
+  const [overdueSortMode, setOverdueSortMode] = useState<RecentQueueSortMode>('RECENT_DESC');
+  const [refundedSortMode, setRefundedSortMode] = useState<RecentQueueSortMode>('RECENT_DESC');
+  const [rejectedSortMode, setRejectedSortMode] = useState<RejectedQueueSortMode>('REJECTED_DESC');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,24 +70,14 @@ export function PaymentQueue() {
         ...(reviewData.overdue || []),
       ];
 
-      // Defensively sort items by proofSubmittedAt ascending
-      const sortedAll = [...rawAllQueue].sort((a, b) => {
-        const aTime = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
-        const bTime = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
-        if (aTime !== bTime) {
-          return aTime - bTime;
-        }
-        return a.paymentAttemptId.localeCompare(b.paymentAttemptId);
-      });
-
-      // Assign canonical FIFO ranks (#1..#N) across all pending reviews
-      const rankedAll = assignCanonicalQueueRanks(sortedAll);
-
       // Segregate into active review and overdue review
       const now = new Date();
-      const segregated = evaluateAndSegregatePaymentReviews(rankedAll, now);
+      const segregated = evaluateAndSegregatePaymentReviews(rawAllQueue, now);
 
-      setReviewQueue(segregated.activeQueue);
+      // Assign canonical FIFO ranks (#1..#N) strictly inside the active awaiting review queue
+      const rankedActive = assignCanonicalQueueRanks(segregated.activeQueue);
+
+      setReviewQueue(rankedActive);
       setOverdueQueue(segregated.overdueQueue);
 
       if (typeof window !== 'undefined') {
@@ -106,11 +103,9 @@ export function PaymentQueue() {
       if (refundedRes.ok) {
         const refundedData = await refundedRes.json();
         const rawRefunded: PaymentReviewQueueItem[] = refundedData.refunded || refundedData.queue || [];
-        const rankedRefunded = assignCanonicalQueueRanks(rawRefunded);
-        setRefundedQueue(rankedRefunded);
+        setRefundedQueue(rawRefunded);
       } else if (segregated.refundedQueue && segregated.refundedQueue.length > 0) {
-        const rankedRefunded = assignCanonicalQueueRanks(segregated.refundedQueue);
-        setRefundedQueue(rankedRefunded);
+        setRefundedQueue(segregated.refundedQueue);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load payments.');
@@ -128,12 +123,21 @@ export function PaymentQueue() {
   }, [reviewQueue, sortMode]);
 
   const displayedOverdueQueue = useMemo(() => {
-    return sortPaymentReviewQueue(overdueQueue, sortMode);
-  }, [overdueQueue, sortMode]);
+    return sortRecentPaymentsQueue(overdueQueue, overdueSortMode, (p) => {
+      return p.proofSubmittedAt ? new Date(p.proofSubmittedAt).getTime() : 0;
+    });
+  }, [overdueQueue, overdueSortMode]);
 
   const displayedRefundedQueue = useMemo(() => {
-    return sortPaymentReviewQueue(refundedQueue, sortMode);
-  }, [refundedQueue, sortMode]);
+    return sortRecentPaymentsQueue(refundedQueue, refundedSortMode, (p) => {
+      const raw = p.refundedAt || p.proofSubmittedAt;
+      return raw ? new Date(raw).getTime() : 0;
+    });
+  }, [refundedQueue, refundedSortMode]);
+
+  const displayedRejectedQueue = useMemo(() => {
+    return sortRejectedPaymentsQueue(rejectedQueue, rejectedSortMode);
+  }, [rejectedQueue, rejectedSortMode]);
 
   return (
     <main data-screen-label="Payments" style={{ padding: '26px 28px 40px' }}>
@@ -472,13 +476,13 @@ export function PaymentQueue() {
             </svg>
             <span>
               <strong>Notice:</strong>{' '}
-              {sortMode === 'RANK_DESC'
-                ? "Overdue reviews are sorted by proof upload time (earliest first). The rank badge indicates original queue arrival order."
-                : sortMode === 'AMOUNT_DESC'
-                ? "Sorted by highest amount first. The rank badge (#) permanently identifies each customer's original submission order."
-                : sortMode === 'AMOUNT_ASC'
-                ? "Sorted by lowest amount first. The rank badge (#) permanently identifies each customer's original submission order."
-                : "Active sorting applied. The rank badge (#) permanently identifies each customer's original submission order."}
+              {overdueSortMode === 'RECENT_DESC'
+                ? "Overdue reviews are sorted by proof upload time (most recent first)."
+                : overdueSortMode === 'RECENT_ASC'
+                ? "Overdue reviews are sorted by proof upload time (oldest first)."
+                : overdueSortMode === 'AMOUNT_DESC'
+                ? "Sorted by highest amount first. Ties are ordered by most recent proof upload."
+                : "Sorted by lowest amount first. Ties are ordered by most recent proof upload."}
             </span>
           </div>
 
@@ -518,8 +522,8 @@ export function PaymentQueue() {
               <select
                 id="admin-payments-overdue-sort-select"
                 data-testid="admin-payments-overdue-sort-select"
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as PaymentQueueSortMode)}
+                value={overdueSortMode}
+                onChange={(e) => setOverdueSortMode(e.target.value as RecentQueueSortMode)}
                 style={{
                   padding: '6px 12px',
                   borderRadius: '8px',
@@ -534,8 +538,8 @@ export function PaymentQueue() {
                   boxShadow: 'var(--da-shadow-sm)',
                 }}
               >
-                <option value="RANK_DESC">Ranking: Descending</option>
-                <option value="RANK_ASC">Ranking: Ascending</option>
+                <option value="RECENT_DESC">Most Recent: Descending</option>
+                <option value="RECENT_ASC">Most Recent: Ascending</option>
                 <option value="AMOUNT_DESC">Amount: Descending</option>
                 <option value="AMOUNT_ASC">Amount: Ascending</option>
               </select>
@@ -565,7 +569,6 @@ export function PaymentQueue() {
             const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
             const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
             const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();
-            const queueNumber = p.queueRank;
             const startIso = getReservationBookingStartTime(p.submittedCandidates);
             const elapsedDuration = startIso ? formatOverdueElapsedDuration(startIso) : 'Overdue';
             const elapsedApprox = startIso ? formatOverdueElapsedApproxHours(startIso) : 'Overdue';
@@ -590,7 +593,7 @@ export function PaymentQueue() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                   <div
-                    data-testid="payment-queue-number"
+                    data-testid="overdue-payment-badge"
                     style={{
                       width: '40px',
                       height: '40px',
@@ -607,7 +610,7 @@ export function PaymentQueue() {
                       border: '1px solid #FCD34D',
                     }}
                   >
-                    #{queueNumber}
+                    !
                   </div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
@@ -704,13 +707,13 @@ export function PaymentQueue() {
             </svg>
             <span>
               <strong>Notice:</strong>{' '}
-              {sortMode === 'RANK_DESC'
-                ? "Refunded payments are sorted by original submission order (earliest first). The rank badge indicates initial queue arrival."
-                : sortMode === 'AMOUNT_DESC'
-                ? "Sorted by highest refund amount first. The rank badge (#) permanently identifies each customer's original submission order."
-                : sortMode === 'AMOUNT_ASC'
-                ? "Sorted by lowest refund amount first. The rank badge (#) permanently identifies each customer's original submission order."
-                : "Active sorting applied. The rank badge (#) permanently identifies each customer's original submission order."}
+              {refundedSortMode === 'RECENT_DESC'
+                ? "Refunded payments are sorted by refund time (most recent first)."
+                : refundedSortMode === 'RECENT_ASC'
+                ? "Refunded payments are sorted by refund time (oldest first)."
+                : refundedSortMode === 'AMOUNT_DESC'
+                ? "Sorted by highest refund amount first. Ties are ordered by most recent refund."
+                : "Sorted by lowest refund amount first. Ties are ordered by most recent refund."}
             </span>
           </div>
 
@@ -762,8 +765,8 @@ export function PaymentQueue() {
               <select
                 id="admin-payments-refunded-sort-select"
                 data-testid="admin-payments-refunded-sort-select"
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as PaymentQueueSortMode)}
+                value={refundedSortMode}
+                onChange={(e) => setRefundedSortMode(e.target.value as RecentQueueSortMode)}
                 style={{
                   padding: '6px 12px',
                   borderRadius: '8px',
@@ -778,8 +781,8 @@ export function PaymentQueue() {
                   boxShadow: 'var(--da-shadow-sm)',
                 }}
               >
-                <option value="RANK_DESC">Ranking: Descending</option>
-                <option value="RANK_ASC">Ranking: Ascending</option>
+                <option value="RECENT_DESC">Most Recent: Descending</option>
+                <option value="RECENT_ASC">Most Recent: Ascending</option>
                 <option value="AMOUNT_DESC">Amount: Descending</option>
                 <option value="AMOUNT_ASC">Amount: Ascending</option>
               </select>
@@ -831,7 +834,7 @@ export function PaymentQueue() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                   <div
-                    data-testid="refunded-payment-queue-number"
+                    data-testid="refunded-payment-badge"
                     style={{
                       width: '40px',
                       height: '40px',
@@ -848,7 +851,7 @@ export function PaymentQueue() {
                       border: '1px solid #A7F3D0',
                     }}
                   >
-                    #{p.queueRank}
+                    ✓
                   </div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
@@ -902,10 +905,107 @@ export function PaymentQueue() {
         </>
       ) : (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '12px' }}>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: '#991B1B', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>REJECTED PAYMENTS</span>
-            <span style={{ fontSize: '10px', fontWeight: 800, background: '#FEE2E2', color: '#991B1B', borderRadius: '9999px', whiteSpace: 'nowrap', padding: '2px 8px', fontFamily: 'var(--da-font-family)' }}>{rejectedQueue.length}</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--da-border)' }}></div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Left: Title & Count Badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: '#991B1B', fontFamily: 'var(--da-font-family)', letterSpacing: '.08em' }}>
+                REJECTED PAYMENTS
+              </span>
+              <span
+                data-testid="rejected-section-count"
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  background: '#FEE2E2',
+                  color: '#991B1B',
+                  borderRadius: '9999px',
+                  whiteSpace: 'nowrap',
+                  padding: '2px 8px',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                {rejectedQueue.length}
+              </span>
+            </div>
+
+            {/* Right: Sorting Control */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label
+                htmlFor="admin-payments-rejected-sort-select"
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--da-text-secondary)',
+                  fontFamily: 'var(--da-font-family)',
+                }}
+              >
+                Sort by:
+              </label>
+              <select
+                id="admin-payments-rejected-sort-select"
+                data-testid="admin-payments-rejected-sort-select"
+                value={rejectedSortMode}
+                onChange={(e) => setRejectedSortMode(e.target.value as RejectedQueueSortMode)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--da-border, #CBD5E1)',
+                  background: '#fff',
+                  color: 'var(--da-text-primary, #0F172A)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  fontFamily: 'var(--da-font-family)',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: 'var(--da-shadow-sm)',
+                }}
+              >
+                <option value="REJECTED_DESC">Rejected: Most Recent</option>
+                <option value="REJECTED_ASC">Rejected: Oldest First</option>
+                <option value="AMOUNT_DESC">Amount: Descending</option>
+                <option value="AMOUNT_ASC">Amount: Ascending</option>
+              </select>
+            </div>
+          </div>
+
+          <div
+            data-testid="admin-payments-rejected-sort-notice"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#FEF2F2',
+              border: '1px solid #FECACA',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              marginBottom: '16px',
+              fontSize: '12px',
+              color: '#991B1B',
+              fontFamily: 'var(--da-font-family)',
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#991B1B', flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <span>
+              <strong>Notice:</strong>{' '}
+              {rejectedSortMode === 'REJECTED_DESC'
+                ? "Showing most recently rejected payments first (newest to oldest)."
+                : rejectedSortMode === 'REJECTED_ASC'
+                ? "Showing oldest rejected payments first (oldest to newest)."
+                : rejectedSortMode === 'AMOUNT_DESC'
+                ? "Sorted by highest rejected amount first. Ties are ordered by most recent rejection."
+                : "Sorted by lowest rejected amount first. Ties are ordered by most recent rejection."}
+            </span>
           </div>
 
           {loading && (
@@ -921,13 +1021,13 @@ export function PaymentQueue() {
             </div>
           )}
 
-          {!loading && !error && rejectedQueue.length === 0 && (
+          {!loading && !error && displayedRejectedQueue.length === 0 && (
             <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '14px', fontFamily: 'var(--da-font-family)' }}>
               No rejected online payments recorded.
             </div>
           )}
 
-          {!loading && !error && rejectedQueue.map((p) => {
+          {!loading && !error && displayedRejectedQueue.map((p) => {
             const formattedAmount = Number(p.amountDue).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
             const refDisplay = p.reservationReferenceCode || p.paymentAttemptId.slice(0, 8);
             const customerName = `${p.customerFirstName} ${p.customerLastName}`.trim();

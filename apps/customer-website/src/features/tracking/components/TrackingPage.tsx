@@ -8,6 +8,7 @@ import { CustomerRelocateModal } from "./CustomerRelocateModal";
 import { CustomerCancelModal } from "./CustomerCancelModal";
 import { CancellationTermsModal } from "./CancellationTermsModal";
 import { mapReservationStatusDisplay } from "../utils/reservationStatusMap";
+import { formatCleanScheduleRange } from "../utils/scheduleFormatter";
 
 import { RewardsAccessCard } from "./RewardsAccessCard";
 
@@ -474,7 +475,10 @@ export function TrackingPage({
             amountDue={data.amountDue}
             formattedSchedule={
               data.finalAssignment?.bookingStartAt && data.finalAssignment?.bookingEndAt
-                ? `${data.finalAssignment.bookingStartAt} - ${data.finalAssignment.bookingEndAt}`
+                ? formatCleanScheduleRange(
+                    data.finalAssignment.bookingStartAt,
+                    data.finalAssignment.bookingEndAt
+                  )
                 : undefined
             }
             workspaceName={data.finalAssignment?.workspaceDisplayName}

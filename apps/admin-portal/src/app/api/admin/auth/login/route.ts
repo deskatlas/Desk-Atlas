@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
           loginRateLimiter.recordSuccessfulLogin('admin', trimmedEmail, ip);
           return NextResponse.json({
             user: result.user,
-            token: issueAdminSession(result.user.id, serviceRoleKey),
+            token: issueAdminSession(result.user.id, serviceRoleKey, Date.now(), { persistent: true }),
           });
         } else {
           const rawErr = String(result.error || '');

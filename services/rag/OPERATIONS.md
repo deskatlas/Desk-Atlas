@@ -1,5 +1,10 @@
 # SPEC-6 operations
 
+October 20 hosted embedding and upload-worker instructions:
+[migration contract](DEEPINFRA-EMBEDDINGS.md) and
+[operator walkthrough](deploy/HOSTED-UPLOADS.md). Do not activate hosted query
+embeddings against the old local vector generation.
+
 October 18 amendment: [DeepInfra migration](DEEPINFRA-MIGRATION.md)
 supersedes local-only answering restrictions below for the explicitly selected
 DeepInfra provider. There is no automatic hosted fallback. Deployment and

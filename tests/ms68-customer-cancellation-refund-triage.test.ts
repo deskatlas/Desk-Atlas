@@ -204,7 +204,7 @@ describe("MS-68: Customer Booking Cancellation, Refund Eligibility, and Admin Re
     expect(modalSource).toContain('data-testid="customer-cancel-modal"');
     expect(modalSource).toContain('data-testid="cancellation-refund-notice-banner"');
     expect(modalSource).toContain('data-testid="customer-confirm-cancel-button"');
-    expect(modalSource).toContain("100% Refund Notice:");
+    expect(modalSource).toContain("Full Refund Notice:");
   });
 
   it("MS68-TC05: Immediate Spot Inventory De-allocation sets isAssigned to false", () => {
@@ -255,7 +255,7 @@ describe("MS-68: Customer Booking Cancellation, Refund Eligibility, and Admin Re
     expect(emailResult.text).toContain("Priority Disbursement Review");
     expect(emailResult.text).toContain("Payment Disbursement");
 
-    expect(emailResult.html).toContain("100% Refund Eligibility Confirmed");
+    expect(emailResult.html).toContain("Full Refund Eligibility Confirmed");
     expect(emailResult.html).toContain("RES-CAN-01");
     expect(emailResult.html).toContain("₱750");
 

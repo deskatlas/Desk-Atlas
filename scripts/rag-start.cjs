@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 const root = resolve(__dirname, '..');
 const service = join(root, 'services', 'rag');
 const apiKeys = [
-  'RAG_MODEL_PROVIDER', 'DEEPINFRA_API_KEY',
+  'RAG_MODEL_PROVIDER', 'RAG_EMBEDDING_PROVIDER', 'DEEPINFRA_API_KEY',
   'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID',
   'RAG_ANSWER_MODEL', 'RAG_ANSWER_DIGEST', 'RAG_EMBEDDING_FINGERPRINT',
   'RAG_PRELOAD_MODEL', 'RAG_MODEL_GPU_LAYERS', 'RAG_MODEL_KEEP_ALIVE', 'RAG_MODEL_BATCH_SIZE',
@@ -16,6 +16,7 @@ const apiKeys = [
 ];
 const purgeKeys = ['KB_ENABLED', 'KB_GATEWAY_URL', 'KB_WORKER_TOKEN', 'KB_WORKER_MODE'];
 const workerKeys = [
+  'RAG_EMBEDDING_PROVIDER', 'DEEPINFRA_API_KEY',
   'KB_ENABLED', 'KB_GATEWAY_URL', 'KB_WORKER_TOKEN', 'KB_EMBEDDING_THREADS', 'KB_WORKER_MODE',
   'KB_PARSER_IMAGE', 'KB_PARSER_MEMORY', 'KB_PARSER_TIMEOUT_SECONDS',
 ];
@@ -42,6 +43,9 @@ function runtimeEnvironment(mode, saved, inherited, answer) {
   const env = Object.fromEntries(Object.entries(inherited).filter(([key]) =>
     !/^(SUPABASE_|NEXT_PUBLIC_|RAG_|KB_|OLLAMA_|DEEPINFRA_)/i.test(key)));
   for (const key of keys) if (config[key] !== undefined) env[key] = config[key];
+  const embeddingProvider = config.RAG_EMBEDDING_PROVIDER ?? 'local';
+  if (!['local', 'deepinfra'].includes(embeddingProvider)) throw new Error('Invalid RAG_EMBEDDING_PROVIDER.');
+  if (mode === 'worker' && embeddingProvider !== 'deepinfra') delete env.DEEPINFRA_API_KEY;
   const required = mode === 'api'
     ? ['RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', provider === 'deepinfra' ? 'DEEPINFRA_API_KEY' : 'RAG_ANSWER_DIGEST']
     : ['KB_WORKER_TOKEN'];
@@ -49,6 +53,7 @@ function runtimeEnvironment(mode, saved, inherited, answer) {
     throw new Error('Set KB_ENABLED=true in apps/admin-portal/.env.local before starting the worker.');
   }
   if (mode === 'api' && env.KB_ENABLED === 'true') required.push('RAG_EMBEDDING_FINGERPRINT');
+  if (mode !== 'purge' && embeddingProvider === 'deepinfra') required.push('DEEPINFRA_API_KEY');
   for (const key of required) if (!env[key]) throw new Error(`Missing ${key} in saved configuration.`);
   for (const key of ['RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'KB_WORKER_TOKEN']) {
     if (keys.includes(key) && env[key]?.length < 32) throw new Error(`${key} must contain at least 32 characters.`);
