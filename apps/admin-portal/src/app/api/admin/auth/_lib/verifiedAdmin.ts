@@ -27,7 +27,10 @@ export async function verifyAdministrator(request: Request) {
     if (token.startsWith('da_admin_v1.')) {
       id = verifyAdminSession(token, process.env.SUPABASE_SERVICE_ROLE_KEY ?? '');
       // Only read claims after full signature and lifetime validation.
-      if (id) expiresAt = (JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as { exp: number }).exp;
+      if (id) {
+        const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as { exp?: number; persistent?: boolean };
+        expiresAt = claims.persistent === true ? null : (typeof claims.exp === 'number' ? claims.exp : null);
+      }
     } else if (!token.startsWith('da_')) {
       const { data, error } = await client.auth.getUser(token);
       if (error) {

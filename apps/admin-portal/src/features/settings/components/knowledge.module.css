@@ -19,3 +19,63 @@
 .form .check { flex-direction: row; align-items: flex-start; }
 .preview { max-height: 45vh; overflow: auto; border: 1px solid var(--da-border); padding: 16px; border-radius: 8px; }
 .preview pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.7; }
+
+/* MS-75: Knowledge Base Audience Filter Pills */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.filterPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--da-border);
+  background: var(--da-surface, #fff);
+  color: var(--da-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.filterPill:hover {
+  background: var(--da-canvas, #F3F7F4);
+  color: var(--da-text-primary);
+}
+.filterPillActive {
+  background: var(--da-brand-dark) !important;
+  color: #fff !important;
+  border-color: var(--da-brand-dark) !important;
+}
+.pillBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--da-canvas, #e2e8f0);
+  color: var(--da-text-primary);
+}
+.filterPillActive .pillBadge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.emptyNotice {
+  padding: 24px;
+  text-align: center;
+  background: var(--da-canvas);
+  border: 1px dashed var(--da-border);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--da-text-secondary);
+  margin: 12px 0;
+}
+

@@ -115,7 +115,7 @@ def startup_watchdog(completed, owned_runtime, *, timeout=180):
 
 
 def preload_encoder_runtime():
-    if os.environ.get('KB_ENABLED') == 'true':
+    if os.environ.get('KB_ENABLED') == 'true' and os.environ.get('RAG_EMBEDDING_PROVIDER', 'local') == 'local':
         print('RAG startup stage: native embedding runtime.', flush=True)
         from rag.encoder import preload_runtime
         preload_runtime()
@@ -193,7 +193,7 @@ def main():
     threading.Thread(target=startup_watchdog, args=(completed, lambda: gpu), daemon=True).start()
     try:
         allowed = {'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', 'RAG_ANSWER_MODEL',
-                   'RAG_MODEL_PROVIDER', 'DEEPINFRA_API_KEY',
+                   'RAG_MODEL_PROVIDER', 'RAG_EMBEDDING_PROVIDER', 'DEEPINFRA_API_KEY',
                    'RAG_ANSWER_DIGEST', 'RAG_EMBEDDING_FINGERPRINT', 'KB_ENABLED', 'OLLAMA_URL',
                    'RAG_PLAN_MAX_TOKENS', 'RAG_ANSWER_MAX_TOKENS', 'RAG_SELECTION_MAX_TOKENS',
                    'RAG_COMPACT_SELECTION', 'RAG_MODEL_GPU_LAYERS', 'RAG_MODEL_KEEP_ALIVE', 'RAG_PRELOAD_MODEL', 'RAG_MODEL_BATCH_SIZE'}

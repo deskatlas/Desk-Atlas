@@ -52,6 +52,7 @@ export function Reports() {
     { label: 'Occupancy Rate', value: '0%', trend: '0% vs previous period', positive: true, rawValue: 0 },
     { label: 'Total Bookings', value: '0', trend: '0% vs previous period', positive: true, rawValue: 0 },
     { label: 'No Shows & Cancellations', value: '0', trend: '0% vs previous period', positive: true, rawValue: 0 },
+    { label: 'Refunds Disbursed', value: '₱ 0.00', trend: '0% vs previous period', positive: true, rawValue: 0 },
   ];
 
   return (
@@ -135,12 +136,16 @@ export function Reports() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: 0 }}>Revenue Overview</h3>
             {snapshot?.revenueOverview && (
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>
-                7-Day Total: <strong style={{ color: 'var(--da-brand-dark)' }}>{snapshot.revenueOverview.formattedTotalAmount}</strong>
+              <span
+                data-testid="admin-reports-revenue-overview-period-total"
+                style={{ fontSize: '13px', fontWeight: 700, color: 'var(--da-text-secondary)' }}
+              >
+                {snapshot.revenueOverview.periodLabel} Total:{' '}
+                <strong style={{ color: 'var(--da-brand-dark)' }}>{snapshot.revenueOverview.formattedTotalAmount}</strong>
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', height: '200px', gap: '10px', paddingTop: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', height: '200px', gap: '8px', paddingTop: '20px' }}>
             {(snapshot?.revenueOverview?.bars ?? [
               { label: 'Sun', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
               { label: 'Mon', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
@@ -149,7 +154,7 @@ export function Reports() {
               { label: 'Thu', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
               { label: 'Fri', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
               { label: 'Sat', heightPercentage: 0, amount: 0, formattedAmount: '₱ 0.00', date: '' },
-            ]).map((bar, i) => {
+            ]).map((bar, i, allBars) => {
               const labelInfo = getRevenueBarLabelInfo(
                 bar.heightPercentage,
                 bar.amount,
@@ -177,7 +182,7 @@ export function Reports() {
                     <span
                       data-testid={`revenue-bar-label-${i}`}
                       style={{
-                        fontSize: '10px',
+                        fontSize: allBars.length > 14 ? '8px' : '10px',
                         fontWeight: labelInfo.isZero ? 500 : 700,
                         color: labelInfo.isZero ? 'var(--da-text-secondary)' : 'var(--da-brand-dark)',
                         fontFamily: 'var(--da-font-family)',
@@ -199,7 +204,7 @@ export function Reports() {
                       height: `${Math.max(bar.heightPercentage, 4)}%`,
                       background: 'var(--da-brand-dark)',
                       borderRadius: '4px 4px 0 0',
-                      opacity: i === 6 ? 1 : 0.8,
+                      opacity: i === (allBars.length - 1) ? 1 : 0.8,
                       transition: 'height 0.3s ease',
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -214,7 +219,7 @@ export function Reports() {
                       <span
                         data-testid={`revenue-bar-label-${i}`}
                         style={{
-                          fontSize: '10px',
+                          fontSize: allBars.length > 14 ? '8px' : '10px',
                           fontWeight: 700,
                           color: '#ffffff',
                           fontFamily: 'var(--da-font-family)',
@@ -229,8 +234,8 @@ export function Reports() {
                     )}
                   </div>
 
-                  {/* Day of week label */}
-                  <div style={{ fontSize: '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
+                  {/* Day of week or period label */}
+                  <div style={{ fontSize: allBars.length > 14 ? '9px' : '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
                     {bar.label}
                   </div>
                 </div>

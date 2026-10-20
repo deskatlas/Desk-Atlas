@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { formatCleanScheduleRange } from "../utils/scheduleFormatter";
 
 interface CustomerCancelModalProps {
   isOpen: boolean;
@@ -25,6 +26,18 @@ export function CustomerCancelModal({
 }: CustomerCancelModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // If formattedSchedule contains raw ISO patterns (e.g. 'T' and '-'), run defensive fallback formatting
+  const displaySchedule = useMemo(() => {
+    if (!formattedSchedule) return null;
+    if (formattedSchedule.includes("T") && formattedSchedule.includes("-")) {
+      const parts = formattedSchedule.split(/\s+-\s+/);
+      if (parts.length === 2 && !isNaN(Date.parse(parts[0].trim())) && !isNaN(Date.parse(parts[1].trim()))) {
+        return formatCleanScheduleRange(parts[0].trim(), parts[1].trim());
+      }
+    }
+    return formattedSchedule;
+  }, [formattedSchedule]);
 
   if (!isOpen) return null;
 
@@ -108,7 +121,12 @@ export function CustomerCancelModal({
           <p className="text-sm text-[var(--da-text-secondary)] leading-relaxed">
             Are you sure you want to cancel your upcoming reservation
             {workspaceName ? ` for ${workspaceName}` : ""}
-            {formattedSchedule ? ` (${formattedSchedule})` : ""}? Once confirmed, your assigned workspace spot will be immediately released.
+            {displaySchedule ? (
+              <>
+                {" "}
+                (<span data-testid="cancel-modal-schedule-text" className="font-semibold text-[var(--da-text-primary)]">{displaySchedule}</span>)
+              </>
+            ) : null}? Once confirmed, your assigned workspace spot will be immediately released.
           </p>
 
           <div
@@ -120,8 +138,8 @@ export function CustomerCancelModal({
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
               <div>
-                <strong className="block font-bold text-amber-950 mb-1">100% Refund Notice:</strong>
-                You are cancelling within the allowed notice period. You are eligible for a 100% refund of your payment (₱{formattedAmount}). Our administrative team will process the refund to your source account.
+                <strong className="block font-bold text-amber-950 mb-1">Full Refund Notice:</strong>
+                You are cancelling within the allowed notice period. You are eligible for a full refund of your payment (₱{formattedAmount}). Our administrative team will process the refund to your source account.
               </div>
             </div>
           </div>

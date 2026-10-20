@@ -262,6 +262,12 @@ export type PaymentQueueSortMode =
   | "AMOUNT_DESC"
   | "AMOUNT_ASC";
 
+export type RecentQueueSortMode =
+  | "RECENT_DESC"
+  | "RECENT_ASC"
+  | "AMOUNT_DESC"
+  | "AMOUNT_ASC";
+
 export interface RankedPaymentReviewQueueItem extends PaymentReviewQueueItem {
   queueRank: number;
 }

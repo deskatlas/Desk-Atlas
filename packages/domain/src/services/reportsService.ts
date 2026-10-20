@@ -12,7 +12,7 @@ import {
   ReportReservationRecord,
 } from "../models/reports";
 import { ReportsRepository } from "./reportsRepository";
-import { buildAdminExcelWorkbook } from "./excelReportBuilder";
+import { buildAdminExcelWorkbook, formatDateTime } from "./excelReportBuilder";
 
 const REPORT_CATEGORY_DEFINITIONS: Array<{
   id: AdminReportCategorySummary["id"];
@@ -93,6 +93,20 @@ export class ReportsService {
       ["CANCELLED", "NEEDS_MANUAL_RESOLUTION"].includes(r.reservationStatus)
     ).length;
 
+    const currentRefundedPayments = payments.filter((attempt) => {
+      if (attempt.refundStatus !== "REFUNDED") return false;
+      const ts = attempt.refundedAt ?? attempt.processedAt ?? attempt.createdAt;
+      return Boolean(ts && isWithinRange(ts, rangeBounds.currentStart, rangeBounds.currentEnd));
+    });
+    const prevRefundedPayments = payments.filter((attempt) => {
+      if (attempt.refundStatus !== "REFUNDED") return false;
+      const ts = attempt.refundedAt ?? attempt.processedAt ?? attempt.createdAt;
+      return Boolean(ts && isWithinRange(ts, rangeBounds.prevStart, rangeBounds.prevEnd));
+    });
+
+    const currentTotalRefunded = currentRefundedPayments.reduce((sum, a) => sum + a.amount, 0);
+    const prevTotalRefunded = prevRefundedPayments.reduce((sum, a) => sum + a.amount, 0);
+
     const summaryMetrics = [
       {
         label: getReservationsMetricLabel(range),
@@ -122,9 +136,16 @@ export class ReportsService {
         trend: `${formatComparisonTrend(cancelledCurrent, cancelledPrev)} ${rangeBounds.comparisonLabel}`,
         positive: cancelledCurrent <= cancelledPrev,
       },
+      {
+        label: "Refunds Disbursed",
+        value: formatCurrency(currentTotalRefunded, currency),
+        rawValue: currentTotalRefunded,
+        trend: `${formatComparisonTrend(currentTotalRefunded, prevTotalRefunded)} ${rangeBounds.comparisonLabel}`,
+        positive: currentTotalRefunded <= prevTotalRefunded,
+      },
     ];
 
-    const revenueOverview = buildRevenueOverview(now, payments, currency);
+    const revenueOverview = buildRevenueOverview(now, payments, currency, range);
     const topWorkspaces = buildTopWorkspaces(currentReservations.length > 0 ? currentReservations : reservations);
 
     const reportCategories = REPORT_CATEGORY_DEFINITIONS.map((definition) => ({
@@ -387,32 +408,142 @@ function formatComparisonTrend(current: number, previous: number): string {
 function buildRevenueOverview(
   now: Date,
   payments: ReportPaymentAttemptRecord[],
-  currency: string
+  currency: string,
+  range: AdminReportRange = "7days"
 ): AdminRevenueOverview {
   const approvedPayments = payments.filter(
     (p) => p.paymentStatus === "APPROVED" && p.processedAt !== null
   );
 
+  let periodLabel = "7-Day";
   const days: AdminRevenueOverviewBar[] = [];
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
-    const dateIsoPrefix = d.toISOString().slice(0, 10);
-    const dayLabel = dayNames[d.getUTCDay()];
+  switch (range) {
+    case "today": {
+      periodLabel = "Today's";
+      const todayIsoPrefix = now.toISOString().slice(0, 10);
+      const todayPayments = approvedPayments.filter((p) =>
+        p.processedAt?.startsWith(todayIsoPrefix)
+      );
+      const todayAmount = todayPayments.reduce((sum, p) => sum + p.amount, 0);
 
-    const dayPayments = approvedPayments.filter((p) =>
-      p.processedAt?.startsWith(dateIsoPrefix)
-    );
-    const dayAmount = dayPayments.reduce((sum, p) => sum + p.amount, 0);
+      days.push({
+        label: "Today",
+        date: todayIsoPrefix,
+        amount: todayAmount,
+        formattedAmount: formatCurrency(todayAmount, currency),
+        heightPercentage: 0,
+      });
+      break;
+    }
 
-    days.push({
-      label: dayLabel,
-      date: dateIsoPrefix,
-      amount: dayAmount,
-      formattedAmount: formatCurrency(dayAmount, currency),
-      heightPercentage: 0,
-    });
+    case "7days": {
+      periodLabel = "7-Day";
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+        const dateIsoPrefix = d.toISOString().slice(0, 10);
+        const dayPayments = approvedPayments.filter((p) =>
+          p.processedAt?.startsWith(dateIsoPrefix)
+        );
+        const dayAmount = dayPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        days.push({
+          label: dayNames[d.getUTCDay()],
+          date: dateIsoPrefix,
+          amount: dayAmount,
+          formattedAmount: formatCurrency(dayAmount, currency),
+          heightPercentage: 0,
+        });
+      }
+      break;
+    }
+
+    case "30days": {
+      periodLabel = "30-Day";
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+        const dateIsoPrefix = d.toISOString().slice(0, 10);
+        const dayPayments = approvedPayments.filter((p) =>
+          p.processedAt?.startsWith(dateIsoPrefix)
+        );
+        const dayAmount = dayPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        days.push({
+          label: `${d.getUTCMonth() + 1}/${d.getUTCDate()}`,
+          date: dateIsoPrefix,
+          amount: dayAmount,
+          formattedAmount: formatCurrency(dayAmount, currency),
+          heightPercentage: 0,
+        });
+      }
+      break;
+    }
+
+    case "month": {
+      periodLabel = "This Month's";
+      const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day));
+        const dateIsoPrefix = d.toISOString().slice(0, 10);
+        const dayPayments = approvedPayments.filter((p) =>
+          p.processedAt?.startsWith(dateIsoPrefix)
+        );
+        const dayAmount = dayPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        days.push({
+          label: `${day}`,
+          date: dateIsoPrefix,
+          amount: dayAmount,
+          formattedAmount: formatCurrency(dayAmount, currency),
+          heightPercentage: 0,
+        });
+      }
+      break;
+    }
+
+    case "year": {
+      periodLabel = "This Year's";
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      for (let m = 0; m < 12; m++) {
+        const monthPrefix = `${now.getUTCFullYear()}-${String(m + 1).padStart(2, "0")}`;
+        const monthPayments = approvedPayments.filter((p) =>
+          p.processedAt?.startsWith(monthPrefix)
+        );
+        const monthAmount = monthPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        days.push({
+          label: monthNames[m],
+          date: monthPrefix,
+          amount: monthAmount,
+          formattedAmount: formatCurrency(monthAmount, currency),
+          heightPercentage: 0,
+        });
+      }
+      break;
+    }
+
+    default: {
+      periodLabel = "7-Day";
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+        const dateIsoPrefix = d.toISOString().slice(0, 10);
+        const dayPayments = approvedPayments.filter((p) =>
+          p.processedAt?.startsWith(dateIsoPrefix)
+        );
+        const dayAmount = dayPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        days.push({
+          label: dayNames[d.getUTCDay()],
+          date: dateIsoPrefix,
+          amount: dayAmount,
+          formattedAmount: formatCurrency(dayAmount, currency),
+          heightPercentage: 0,
+        });
+      }
+      break;
+    }
   }
 
   const maxAmount = Math.max(...days.map((d) => d.amount), 0);
@@ -429,6 +560,7 @@ function buildRevenueOverview(
   return {
     totalAmount,
     formattedTotalAmount: formatCurrency(totalAmount, currency),
+    periodLabel,
     currency,
     bars,
   };
@@ -670,12 +802,15 @@ function buildCancellationRows(
   payments: ReportPaymentAttemptRecord[]
 ) {
   const refundStatusByReservation = new Map<string, string>();
+  const refundDateByReservation = new Map<string, string | null>();
   for (const payment of payments) {
-    const existing = refundStatusByReservation.get(payment.reservationId);
-    if (existing === "REFUNDED") {
-      continue;
+    if (payment.refundStatus === "REFUNDED") {
+      refundStatusByReservation.set(payment.reservationId, "REFUNDED");
+      if (payment.refundedAt) refundDateByReservation.set(payment.reservationId, payment.refundedAt);
+    } else if (!refundStatusByReservation.has(payment.reservationId)) {
+      refundStatusByReservation.set(payment.reservationId, payment.refundStatus);
+      if (payment.refundedAt) refundDateByReservation.set(payment.reservationId, payment.refundedAt);
     }
-    refundStatusByReservation.set(payment.reservationId, payment.refundStatus);
   }
 
   return reservations
@@ -684,15 +819,19 @@ function buildCancellationRows(
       reservation.reservationStatus === "NEEDS_MANUAL_RESOLUTION"
     )
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .map((reservation) => ({
-      reference_code: reservation.referenceCode,
-      customer_name: `${reservation.customerFirstName} ${reservation.customerLastName}`.trim(),
-      reservation_status: reservation.reservationStatus,
-      refund_status: refundStatusByReservation.get(reservation.reservationId) ?? "NONE",
-      amount_due: reservation.amountDue,
-      currency: reservation.currency,
-      created_at: reservation.createdAt,
-    }));
+    .map((reservation) => {
+      const refundDateRaw = refundDateByReservation.get(reservation.reservationId) || reservation.refundedAt;
+      return {
+        reference_code: reservation.referenceCode,
+        customer_name: `${reservation.customerFirstName} ${reservation.customerLastName}`.trim(),
+        reservation_status: reservation.reservationStatus,
+        refund_status: refundStatusByReservation.get(reservation.reservationId) ?? "NONE",
+        refund_date: refundDateRaw ? formatDateTime(refundDateRaw) : "N/A",
+        amount_due: reservation.amountDue,
+        currency: reservation.currency,
+        created_at: reservation.createdAt,
+      };
+    });
 }
 
 function buildCheckInRows(reservations: ReportReservationRecord[]) {

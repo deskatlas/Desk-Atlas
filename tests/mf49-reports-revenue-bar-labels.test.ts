@@ -87,7 +87,7 @@ describe("MF-49: Reports Revenue Overview Bar Labels (PRD-F15)", () => {
         () => new Date("2026-08-29T12:00:00.000Z")
       );
 
-      const snapshot = await reportsService.getAdminReportsSnapshot("30days");
+      const snapshot = await reportsService.getAdminReportsSnapshot("7days");
       const { bars, currency } = snapshot.revenueOverview;
 
       assert.equal(bars.length, 7);
@@ -205,7 +205,14 @@ describe("MF-49: Reports Revenue Overview Bar Labels (PRD-F15)", () => {
       for (const r of ranges) {
         const snapshot = await reportsService.getAdminReportsSnapshot(r);
         assert.equal(snapshot.range, r);
-        assert.ok(snapshot.revenueOverview.bars.length === 7);
+        const expectedBarCounts: Record<string, number> = {
+          today: 1,
+          "7days": 7,
+          "30days": 30,
+          month: 31,
+          year: 12,
+        };
+        assert.equal(snapshot.revenueOverview.bars.length, expectedBarCounts[r]);
 
         // Every bar in the snapshot maps to a valid label info
         for (const bar of snapshot.revenueOverview.bars) {

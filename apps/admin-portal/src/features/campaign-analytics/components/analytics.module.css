@@ -39,3 +39,58 @@
 .dialog .card { width: 440px; max-width: 100%; }
 @media (max-width: 1279px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .page { padding: 20px 16px; } .grid, .panels { grid-template-columns: 1fr; } }
+
+.paginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+  margin-top: 12px;
+  border-top: 1px solid var(--da-border);
+  font-size: 13px;
+  color: var(--da-text-secondary);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.paginationCounter {
+  font-size: 12px;
+  color: var(--da-text-secondary);
+}
+.paginationCounter strong {
+  color: var(--da-text-primary);
+}
+.paginationControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pageButton {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--da-border);
+  background: #fff;
+  color: var(--da-text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pageButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pageButton:hover:not(:disabled) {
+  background: var(--da-canvas, #F3F7F4);
+}
+.activePage {
+  background: var(--da-brand-dark) !important;
+  color: #fff !important;
+  border-color: var(--da-brand-dark) !important;
+}
+.pageEllipsis {
+  padding: 0 6px;
+  color: var(--da-text-secondary);
+  font-size: 13px;
+}
+

@@ -12,11 +12,12 @@ export async function GET(request: Request) {
     let expiresAt: number | null = null;
     try {
       const claims: unknown = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
-      if (claims && typeof claims === 'object' && 'exp' in claims && typeof claims.exp === 'number') {
+      if (claims && typeof claims === 'object' && !('persistent' in claims && claims.persistent === true) && 'exp' in claims && typeof claims.exp === 'number') {
         const expiry = token.startsWith('da_') ? claims.exp : claims.exp * 1000;
         if (Number.isSafeInteger(expiry)) expiresAt = expiry;
       }
     } catch { /* Authorization above remains authoritative. */ }
+
     return Response.json({ active: true, deactivated: false, expiresAt,
       user: { id: actor.id, role: actor.role.toLowerCase() } }, { headers });
   } catch (error: unknown) {

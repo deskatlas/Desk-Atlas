@@ -1076,6 +1076,11 @@ export class ReservationMemoryRepository
           [...(reservation.candidates ?? [])].sort((left, right) => left.rank - right.rank)[0] ??
           null;
 
+        const attempts = Array.from(this.paymentAttempts.values())
+          .filter((a) => a.reservationId === reservation.id)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        const latestAttempt = attempts[0] ?? null;
+
         return {
           reservationId: reservation.id,
           referenceCode: reservation.referenceCode,
@@ -1099,6 +1104,8 @@ export class ReservationMemoryRepository
           floorName: assignedCandidate ? "Unknown Floor" : null,
           rescheduleCount: reservation.rescheduleCount ?? null,
           updatedAt: reservation.updatedAt ?? null,
+          refundStatus: latestAttempt?.refundStatus ?? null,
+          refundedAt: latestAttempt?.refundedAt ?? null,
         } satisfies ReportReservationRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -1126,6 +1133,7 @@ export class ReservationMemoryRepository
           createdAt: attempt.createdAt,
           proofSubmittedAt: attempt.proofSubmittedAt,
           processedAt: attempt.processedAt,
+          refundedAt: attempt.refundedAt ?? null,
         } satisfies ReportPaymentAttemptRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));

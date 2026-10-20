@@ -1,0 +1,20 @@
+[Unit]
+Description=DeskAtlas knowledge ingestion and cleanup
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=deskatlas
+SupplementaryGroups=docker
+WorkingDirectory=/opt/deskatlas/rag
+EnvironmentFile=/etc/deskatlas-worker.env
+ExecStart=/opt/deskatlas/rag/.venv-worker/bin/python -m knowledge.worker
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=180
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

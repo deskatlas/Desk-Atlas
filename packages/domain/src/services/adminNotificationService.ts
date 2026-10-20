@@ -281,7 +281,7 @@ export function createAdminNotificationService(
             id: `refund-overdue-${pay.paymentAttemptId}`,
             type: "CUSTOMER_REFUND_ELIGIBLE",
             title: "Refund Due: Overdue Payment Review",
-            description: `Payment for reservation #${refCode} (${customerName}) passed scheduled start time unreviewed. Eligible for 100% refund of ₱${formattedAmount}.`,
+            description: `Payment for reservation #${refCode} (${customerName}) passed scheduled start time unreviewed. Eligible for full refund of ₱${formattedAmount}.`,
             link: `/manage/payments?tab=OVERDUE&id=${pay.paymentAttemptId}`,
             timestamp: time,
             metadata: {

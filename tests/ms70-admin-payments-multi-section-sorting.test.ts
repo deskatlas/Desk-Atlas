@@ -1,15 +1,15 @@
-// MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmonization for Overdue and Refunded Payments
-// Traceability: PRD-F6, SDD-C5, DSD-UI11, ERD-E10, ERD-E13, QAD-TC51, MS70-TC01..08
+// MS-70: Admin Online Payments Queue Multi-Section Sorting Harmonization for Overdue and Refunded Payments
+// Traceability: PRD-F6, SDD-C5, DSD-UI11, ERD-E10, ERD-E13, QAD-TC51, MS70-TC01..09
 
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
   assignCanonicalQueueRanks,
-  sortPaymentReviewQueue,
-  type PaymentQueueSortMode,
+  evaluateAndSegregatePaymentReviews,
+  sortRecentPaymentsQueue,
+  type RecentQueueSortMode,
   type PaymentReviewQueueItem,
-  type RankedPaymentReviewQueueItem,
 } from "@deskatlas/domain";
 
 function createMockItem(overrides: Partial<PaymentReviewQueueItem>): PaymentReviewQueueItem {
@@ -18,7 +18,7 @@ function createMockItem(overrides: Partial<PaymentReviewQueueItem>): PaymentRevi
     reservationId: overrides.reservationId || "res-default",
     reservationReferenceCode: overrides.reservationReferenceCode || "REF-DEF",
     reservationStatus: "AWAITING_PAYMENT_PROOF",
-    paymentStatus: overrides.paymentStatus || "PENDING_REVIEW",
+    paymentStatus: overrides.paymentStatus || "UNDER_REVIEW",
     customerFirstName: overrides.customerFirstName || "Test",
     customerLastName: overrides.customerLastName || "Customer",
     customerEmail: overrides.customerEmail || "customer@example.com",
@@ -35,10 +35,10 @@ function createMockItem(overrides: Partial<PaymentReviewQueueItem>): PaymentRevi
 }
 
 describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmonization (QAD-TC51)", () => {
-  // Items per MS-70 specification:
-  // Item A: submitted 08:00:00, amount ₱250 -> Canonical Rank #1
-  // Item B: submitted 08:15:00, amount ₱1,500 -> Canonical Rank #2
-  // Item C: submitted 08:30:00, amount ₱800 -> Canonical Rank #3
+  // Items per specification:
+  // Item A: submitted 08:00:00, refunded 10:00:00, amount ₱250
+  // Item B: submitted 08:15:00, refunded 10:05:00, amount ₱1,500
+  // Item C: submitted 08:30:00, refunded 10:10:00, amount ₱800
   const rawRefundedA = createMockItem({
     paymentAttemptId: "pay-refunded-a",
     reservationReferenceCode: "RES-REF-A",
@@ -72,94 +72,75 @@ describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmon
     refundedAt: "2026-10-18T10:10:00.000Z",
   });
 
-  // Assign canonical ranks from arbitrary ingestion order (C, A, B)
-  const rankedRefundedBatch: RankedPaymentReviewQueueItem[] = assignCanonicalQueueRanks([
-    rawRefundedC,
-    rawRefundedA,
-    rawRefundedB,
-  ]);
+  const refundedBatch = [rawRefundedC, rawRefundedA, rawRefundedB];
 
-  it("MS70-TC01: Refunded Tab Ranking Descending Sorting renders items in FIFO order with ranks #1, #2, #3", () => {
-    expect(rankedRefundedBatch).toHaveLength(3);
-    expect(rankedRefundedBatch[0].paymentAttemptId).toBe("pay-refunded-a");
-    expect(rankedRefundedBatch[0].queueRank).toBe(1);
-    expect(rankedRefundedBatch[1].paymentAttemptId).toBe("pay-refunded-b");
-    expect(rankedRefundedBatch[1].queueRank).toBe(2);
-    expect(rankedRefundedBatch[2].paymentAttemptId).toBe("pay-refunded-c");
-    expect(rankedRefundedBatch[2].queueRank).toBe(3);
+  it("MS70-TC01: Refunded Tab Most Recent Descending Sorting renders items newest to oldest", () => {
+    const sortedRecentDesc = sortRecentPaymentsQueue(refundedBatch, "RECENT_DESC", (p) => {
+      const raw = p.refundedAt || p.proofSubmittedAt;
+      return raw ? new Date(raw).getTime() : 0;
+    });
 
-    const sortedRankDesc = sortPaymentReviewQueue(rankedRefundedBatch, "RANK_DESC");
-    expect(sortedRankDesc.map((item) => item.paymentAttemptId)).toEqual([
-      "pay-refunded-a",
-      "pay-refunded-b",
+    // C (10:10:00) -> B (10:05:00) -> A (10:00:00)
+    expect(sortedRecentDesc.map((item) => item.paymentAttemptId)).toEqual([
       "pay-refunded-c",
+      "pay-refunded-b",
+      "pay-refunded-a",
     ]);
-    expect(sortedRankDesc.map((item) => item.queueRank)).toEqual([1, 2, 3]);
   });
 
-  it("MS70-TC02: Refunded Tab Ranking Ascending Sorting displays reverse order #3, #2, #1 while retaining rank badges", () => {
-    const sortedRankAsc = sortPaymentReviewQueue(rankedRefundedBatch, "RANK_ASC");
-    expect(sortedRankAsc.map((item) => item.paymentAttemptId)).toEqual([
-      "pay-refunded-c",
-      "pay-refunded-b",
+  it("MS70-TC02: Refunded Tab Most Recent Ascending Sorting displays oldest to newest", () => {
+    const sortedRecentAsc = sortRecentPaymentsQueue(refundedBatch, "RECENT_ASC", (p) => {
+      const raw = p.refundedAt || p.proofSubmittedAt;
+      return raw ? new Date(raw).getTime() : 0;
+    });
+
+    // A (10:00:00) -> B (10:05:00) -> C (10:10:00)
+    expect(sortedRecentAsc.map((item) => item.paymentAttemptId)).toEqual([
       "pay-refunded-a",
+      "pay-refunded-b",
+      "pay-refunded-c",
     ]);
-    expect(sortedRankAsc.map((item) => item.queueRank)).toEqual([3, 2, 1]);
   });
 
   it("MS70-TC03: Refunded Tab Amount Descending Sorting orders by highest monetary amount due", () => {
-    // Expected order: Item B (₱1,500, #2), Item C (₱800, #3), Item A (₱250, #1)
-    const sortedAmountDesc = sortPaymentReviewQueue(rankedRefundedBatch, "AMOUNT_DESC");
+    // Expected order: Item B (₱1,500), Item C (₱800), Item A (₱250)
+    const sortedAmountDesc = sortRecentPaymentsQueue(refundedBatch, "AMOUNT_DESC");
     expect(sortedAmountDesc.map((item) => item.paymentAttemptId)).toEqual([
       "pay-refunded-b",
       "pay-refunded-c",
       "pay-refunded-a",
     ]);
     expect(sortedAmountDesc.map((item) => item.amountDue)).toEqual([1500, 800, 250]);
-    expect(sortedAmountDesc.map((item) => item.queueRank)).toEqual([2, 3, 1]);
   });
 
   it("MS70-TC04: Refunded Tab Amount Ascending Sorting orders by lowest monetary amount due", () => {
-    // Expected order: Item A (₱250, #1), Item C (₱800, #3), Item B (₱1,500, #2)
-    const sortedAmountAsc = sortPaymentReviewQueue(rankedRefundedBatch, "AMOUNT_ASC");
+    // Expected order: Item A (₱250), Item C (₱800), Item B (₱1,500)
+    const sortedAmountAsc = sortRecentPaymentsQueue(refundedBatch, "AMOUNT_ASC");
     expect(sortedAmountAsc.map((item) => item.paymentAttemptId)).toEqual([
       "pay-refunded-a",
       "pay-refunded-c",
       "pay-refunded-b",
     ]);
     expect(sortedAmountAsc.map((item) => item.amountDue)).toEqual([250, 800, 1500]);
-    expect(sortedAmountAsc.map((item) => item.queueRank)).toEqual([1, 3, 2]);
   });
 
-  it("MS70-TC05: Refunded Item Immutable Rank Badge Preservation verifies badge persistence across all sort modes", () => {
-    const modes: PaymentQueueSortMode[] = ["RANK_DESC", "RANK_ASC", "AMOUNT_DESC", "AMOUNT_ASC"];
-
-    for (const mode of modes) {
-      const sorted = sortPaymentReviewQueue(rankedRefundedBatch, mode);
-      // For each item in the sorted result, its queueRank property must match its canonical rank
-      for (const item of sorted) {
-        if (item.paymentAttemptId === "pay-refunded-a") {
-          expect(item.queueRank).toBe(1);
-        } else if (item.paymentAttemptId === "pay-refunded-b") {
-          expect(item.queueRank).toBe(2);
-        } else if (item.paymentAttemptId === "pay-refunded-c") {
-          expect(item.queueRank).toBe(3);
-        }
-      }
-    }
-
-    // Component source check: verifies rank badge is rendered with data-testid="refunded-payment-queue-number"
+  it("MS70-TC05: Status Badges Rendering replaces order numbers in overdue and refunded tabs", () => {
+    // Component source check: verifies status badges replace rank numbers
     const componentPath = path.resolve(
       __dirname,
       "../apps/admin-portal/src/features/payments/components/PaymentQueue.tsx"
     );
     const fileContent = fs.readFileSync(componentPath, "utf-8");
 
-    expect(fileContent).toContain('data-testid="refunded-payment-queue-number"');
-    expect(fileContent).toContain("#{p.queueRank}");
+    // Must have overdue badge and refunded badge test ids
+    expect(fileContent).toContain('data-testid="overdue-payment-badge"');
+    expect(fileContent).toContain('data-testid="refunded-payment-badge"');
+
+    // Must NOT have rank numbers in overdue or refunded queue item rendering
+    expect(fileContent).not.toContain("#{p.queueRank}");
   });
 
-  it("MS70-TC06: Overdue Tab Four-Mode Sorting Parity mirrors sorting logic with deterministic tie-breaking", () => {
+  it("MS70-TC06: Overdue Tab Four-Mode Recent and Amount Sorting Parity with deterministic tie-breaking", () => {
     const overdueA = createMockItem({
       paymentAttemptId: "pay-overdue-a",
       amountDue: 350,
@@ -176,31 +157,30 @@ describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmon
       proofSubmittedAt: "2026-10-18T05:30:00.000Z",
     });
 
-    const rankedOverdue = assignCanonicalQueueRanks([overdueB, overdueC, overdueA]);
-    expect(rankedOverdue.map((i) => i.paymentAttemptId)).toEqual([
-      "pay-overdue-a",
-      "pay-overdue-b",
+    const overdueList = [overdueB, overdueC, overdueA];
+
+    // Test RECENT_DESC (newest first: C 05:30 -> B 05:15 -> A 05:00)
+    const odRecentDesc = sortRecentPaymentsQueue(overdueList, "RECENT_DESC", (p) =>
+      p.proofSubmittedAt ? new Date(p.proofSubmittedAt).getTime() : 0
+    );
+    expect(odRecentDesc.map((i) => i.paymentAttemptId)).toEqual([
       "pay-overdue-c",
+      "pay-overdue-b",
+      "pay-overdue-a",
     ]);
 
-    // Test RANK_DESC
-    const odRankDesc = sortPaymentReviewQueue(rankedOverdue, "RANK_DESC");
-    expect(odRankDesc.map((i) => i.paymentAttemptId)).toEqual([
+    // Test RECENT_ASC (oldest first: A 05:00 -> B 05:15 -> C 05:30)
+    const odRecentAsc = sortRecentPaymentsQueue(overdueList, "RECENT_ASC", (p) =>
+      p.proofSubmittedAt ? new Date(p.proofSubmittedAt).getTime() : 0
+    );
+    expect(odRecentAsc.map((i) => i.paymentAttemptId)).toEqual([
       "pay-overdue-a",
       "pay-overdue-b",
       "pay-overdue-c",
-    ]);
-
-    // Test RANK_ASC
-    const odRankAsc = sortPaymentReviewQueue(rankedOverdue, "RANK_ASC");
-    expect(odRankAsc.map((i) => i.paymentAttemptId)).toEqual([
-      "pay-overdue-c",
-      "pay-overdue-b",
-      "pay-overdue-a",
     ]);
 
     // Test AMOUNT_DESC
-    const odAmtDesc = sortPaymentReviewQueue(rankedOverdue, "AMOUNT_DESC");
+    const odAmtDesc = sortRecentPaymentsQueue(overdueList, "AMOUNT_DESC");
     expect(odAmtDesc.map((i) => i.paymentAttemptId)).toEqual([
       "pay-overdue-b",
       "pay-overdue-c",
@@ -208,7 +188,7 @@ describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmon
     ]);
 
     // Test AMOUNT_ASC
-    const odAmtAsc = sortPaymentReviewQueue(rankedOverdue, "AMOUNT_ASC");
+    const odAmtAsc = sortRecentPaymentsQueue(overdueList, "AMOUNT_ASC");
     expect(odAmtAsc.map((i) => i.paymentAttemptId)).toEqual([
       "pay-overdue-a",
       "pay-overdue-c",
@@ -216,7 +196,7 @@ describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmon
     ]);
   });
 
-  it("MS70-TC07: Amount Sorting Deterministic Tie-Breaking prioritizes earlier canonical rank", () => {
+  it("MS70-TC07: Amount Sorting Deterministic Tie-Breaking prioritizes most recent item", () => {
     const tie1 = createMockItem({
       paymentAttemptId: "pay-tie-1",
       amountDue: 500,
@@ -228,21 +208,57 @@ describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmon
       proofSubmittedAt: "2026-10-18T08:10:00.000Z",
     });
 
-    const rankedTie = assignCanonicalQueueRanks([tie2, tie1]);
-    expect(rankedTie[0].paymentAttemptId).toBe("pay-tie-1");
-    expect(rankedTie[0].queueRank).toBe(1);
-    expect(rankedTie[1].paymentAttemptId).toBe("pay-tie-2");
-    expect(rankedTie[1].queueRank).toBe(2);
+    // In AMOUNT_DESC and AMOUNT_ASC, tie2 (more recent) must precede tie1
+    const tieDesc = sortRecentPaymentsQueue([tie1, tie2], "AMOUNT_DESC");
+    expect(tieDesc.map((i) => i.paymentAttemptId)).toEqual(["pay-tie-2", "pay-tie-1"]);
 
-    // Both AMOUNT_DESC and AMOUNT_ASC must resolve identical amounts by queueRank asc
-    const tieDesc = sortPaymentReviewQueue(rankedTie, "AMOUNT_DESC");
-    expect(tieDesc.map((i) => i.paymentAttemptId)).toEqual(["pay-tie-1", "pay-tie-2"]);
-
-    const tieAsc = sortPaymentReviewQueue(rankedTie, "AMOUNT_ASC");
-    expect(tieAsc.map((i) => i.paymentAttemptId)).toEqual(["pay-tie-1", "pay-tie-2"]);
+    const tieAsc = sortRecentPaymentsQueue([tie1, tie2], "AMOUNT_ASC");
+    expect(tieAsc.map((i) => i.paymentAttemptId)).toEqual(["pay-tie-2", "pay-tie-1"]);
   });
 
-  it("MS70-TC08: Accessibility & Design Token Conformance verifies testids, labels, and design tokens", () => {
+  it("MS70-TC08: Single awaiting review record receives rank #1 even when overdue records exist", () => {
+    const now = new Date("2026-10-18T12:00:00.000Z");
+
+    const overdue1 = createMockItem({
+      paymentAttemptId: "pay-od-1",
+      submittedCandidates: [{ rank: 0, startAt: "2026-10-18T08:00:00.000Z", endAt: "2026-10-18T10:00:00.000Z", workspaceInstanceId: "inst-1", isAssigned: false }],
+      proofSubmittedAt: "2026-10-18T07:00:00.000Z",
+    });
+    const overdue2 = createMockItem({
+      paymentAttemptId: "pay-od-2",
+      submittedCandidates: [{ rank: 0, startAt: "2026-10-18T09:00:00.000Z", endAt: "2026-10-18T11:00:00.000Z", workspaceInstanceId: "inst-2", isAssigned: false }],
+      proofSubmittedAt: "2026-10-18T07:30:00.000Z",
+    });
+    const overdue3 = createMockItem({
+      paymentAttemptId: "pay-od-3",
+      submittedCandidates: [{ rank: 0, startAt: "2026-10-18T09:30:00.000Z", endAt: "2026-10-18T11:30:00.000Z", workspaceInstanceId: "inst-3", isAssigned: false }],
+      proofSubmittedAt: "2026-10-18T08:00:00.000Z",
+    });
+    const overdue4 = createMockItem({
+      paymentAttemptId: "pay-od-4",
+      submittedCandidates: [{ rank: 0, startAt: "2026-10-18T10:00:00.000Z", endAt: "2026-10-18T11:45:00.000Z", workspaceInstanceId: "inst-4", isAssigned: false }],
+      proofSubmittedAt: "2026-10-18T08:30:00.000Z",
+    });
+    const active1 = createMockItem({
+      paymentAttemptId: "pay-active-1",
+      submittedCandidates: [{ rank: 0, startAt: "2026-10-18T14:00:00.000Z", endAt: "2026-10-18T16:00:00.000Z", workspaceInstanceId: "inst-5", isAssigned: false }],
+      proofSubmittedAt: "2026-10-18T09:00:00.000Z",
+    });
+
+    const rawAll = [overdue1, overdue2, overdue3, overdue4, active1];
+    const segregated = evaluateAndSegregatePaymentReviews(rawAll, now);
+
+    expect(segregated.overdueQueue).toHaveLength(4);
+    expect(segregated.activeQueue).toHaveLength(1);
+
+    // Ranking activeQueue strictly inside awaiting review tab produces #1 (NOT #5)
+    const rankedActive = assignCanonicalQueueRanks(segregated.activeQueue);
+    expect(rankedActive).toHaveLength(1);
+    expect(rankedActive[0].paymentAttemptId).toBe("pay-active-1");
+    expect(rankedActive[0].queueRank).toBe(1);
+  });
+
+  it("MS70-TC09: Accessibility & Design Token Conformance verifies testids, labels, and design tokens", () => {
     const componentPath = path.resolve(
       __dirname,
       "../apps/admin-portal/src/features/payments/components/PaymentQueue.tsx"
@@ -263,8 +279,9 @@ describe("MS-70: Admin Online Payments Queue Multi-Section Sorting Filter Harmon
     expect(fileContent).toContain('data-testid="admin-payments-overdue-sort-notice"');
     expect(fileContent).toContain('data-testid="admin-payments-refunded-sort-notice"');
 
-    // Refunded item canonical rank badge
-    expect(fileContent).toContain('data-testid="refunded-payment-queue-number"');
+    // Select options for Most Recent and Amount
+    expect(fileContent).toContain('<option value="RECENT_DESC">Most Recent: Descending</option>');
+    expect(fileContent).toContain('<option value="RECENT_ASC">Most Recent: Ascending</option>');
 
     // Memoized sort arrays for both sections
     expect(fileContent).toContain("const displayedOverdueQueue = useMemo(() => {");

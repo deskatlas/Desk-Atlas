@@ -93,7 +93,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { id: '/manage', label: 'Dashboard', iconType: 'dashboard' },
-    { id: '/manage/campaign-analytics', label: 'Promo Analytics', iconType: 'promo-analytics' },
+    { id: '/manage/campaign-analytics', label: 'Campaign Analytics', iconType: 'campaign-analytics' },
+    { id: '/manage/promo-analytics', label: 'Promo Analytics', iconType: 'promo-analytics' },
     { id: '/manage/reservations', label: 'Reservations', iconType: 'reservations', badge: reservationsCount > 0 ? reservationsCount : undefined },
     { id: '/manage/workspace-map', label: 'Workspace Map', iconType: 'map' },
     { id: '/manage/payments', label: 'Payments', iconType: 'payments', badge: paymentsCount > 0 ? paymentsCount : undefined },
@@ -112,6 +113,13 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     // Return the specific SVG/HTML structures from the prototype for each icon
     const color = isActive ? 'var(--da-primary)' : 'currentColor';
     switch (type) {
+      case 'campaign-analytics':
+        return (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+            <line x1="7" y1="7" x2="7.01" y2="7" />
+          </svg>
+        );
       case 'promo-analytics':
         return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3v18h18M7 16v-4m5 4V7m5 9v-7" /></svg>;
       case 'dashboard':

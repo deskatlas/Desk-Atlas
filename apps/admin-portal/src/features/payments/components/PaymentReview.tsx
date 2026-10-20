@@ -531,7 +531,7 @@ export function PaymentReview({ id }: { id: string }) {
                 OVERDUE REVIEW TRIAGE
               </div>
               <div style={{ fontSize: '11px', color: '#B45309', marginBottom: '12px', lineHeight: 1.4 }}>
-                Customer has been notified of 100% refund eligibility. Allocating original spots directly is blocked under No-Hold rules unless consensually rescheduled.
+                Customer has been notified of full refund eligibility. Allocating original spots directly is blocked under No-Hold rules unless consensually rescheduled.
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button

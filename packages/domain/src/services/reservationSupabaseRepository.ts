@@ -1896,6 +1896,9 @@ export class ReservationSupabaseRepository
           createdAt: attempt.created_at,
           proofSubmittedAt: attempt.proof_submitted_at,
           processedAt: attempt.processed_at,
+          refundedAt: attempt.refunded_at ?? null,
+          overdueNotifiedAt: attempt.overdue_notified_at ?? null,
+          cancellationRefundNotifiedAt: attempt.cancellation_refund_notified_at ?? null,
         } satisfies ReportPaymentAttemptRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));

@@ -1,5 +1,5 @@
 'use client';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, useActiveTabPolling } from '@deskatlas/ui';
 import type { KnowledgeAudience, KnowledgeCleanup, KnowledgeDocument, KnowledgeNotice, KnowledgeVersion } from '@deskatlas/domain';
 import { knowledgeDisplayTitle, knowledgeProcessingRemedy, knowledgeWorkingDocument } from '@deskatlas/domain';
@@ -7,12 +7,15 @@ import { KnowledgeFreshness } from '../knowledgeFreshness';
 import { useAuth } from '../../auth';
 import s from './knowledge.module.css';
 
+export type AudienceFilter = 'ALL' | 'ADMIN_ONLY' | 'ADMIN_AND_STAFF';
+
 type PreviewChunk = { content: string; heading_path: string; page_start: number | null };
 
-// MS-64 / PRD-F27 / DSD-UI17: one upload authorizes verified background publication.
+// MS-64 / MS-75 / PRD-F27 / DSD-UI17: one upload authorizes verified background publication.
 export function KnowledgeBaseSettings() {
   const { user, loading, sessionGeneration, isSessionCurrent } = useAuth();
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>('ALL');
   const [notices, setNotices] = useState<KnowledgeNotice[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [cleanup, setCleanup] = useState<KnowledgeCleanup[]>([]);
@@ -27,6 +30,7 @@ export function KnowledgeBaseSettings() {
   const [fileNameEdited, setFileNameEdited] = useState(false);
   const [preview, setPreview] = useState<{ document: KnowledgeDocument; version: KnowledgeVersion; chunks: PreviewChunk[] } | null>(null);
   const [remove, setRemove] = useState<{ document: KnowledgeDocument; version?: KnowledgeVersion } | null>(null);
+
   const dialog = useRef<HTMLDialogElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef(false);
@@ -179,8 +183,58 @@ export function KnowledgeBaseSettings() {
     } catch (e) { if (current() && freshness.current.accepts(read)) setError(e instanceof Error ? e.message : 'Unable to load more documents.'); }
     finally { if (current()) setBusy(false); }
   }
+  const audienceCounts = useMemo(() => {
+    let adminOnly = 0;
+    let adminAndStaff = 0;
+    for (const doc of documents) {
+      if (doc.audience === 'ADMIN_ONLY') adminOnly++;
+      else if (doc.audience === 'ADMIN_AND_STAFF') adminAndStaff++;
+    }
+    return {
+      ALL: documents.length,
+      ADMIN_ONLY: adminOnly,
+      ADMIN_AND_STAFF: adminAndStaff,
+    };
+  }, [documents]);
+
+  const filteredDocuments = useMemo(() => {
+    if (audienceFilter === 'ALL') return documents;
+    return documents.filter((doc) => doc.audience === audienceFilter);
+  }, [documents, audienceFilter]);
+
   return <section className={s.root}>
     <div className={s.header}><div><h2>Knowledge Base</h2><p>Upload operating documents. We prepare them and make them available to your chosen audience.</p></div><Button ref={uploadButton} onClick={() => openUpload()} disabled={busy || loading || !user?.token}>Upload document</Button></div>
+    {documents.length > 0 && (
+      <div className={s.filterBar} role="group" aria-label="Filter documents by audience">
+        <button
+          type="button"
+          className={`${s.filterPill} ${audienceFilter === 'ALL' ? s.filterPillActive : ''}`}
+          aria-pressed={audienceFilter === 'ALL'}
+          onClick={() => setAudienceFilter('ALL')}
+        >
+          All Files
+          <span className={s.pillBadge}>{audienceCounts.ALL}</span>
+        </button>
+        <button
+          type="button"
+          className={`${s.filterPill} ${audienceFilter === 'ADMIN_ONLY' ? s.filterPillActive : ''}`}
+          aria-pressed={audienceFilter === 'ADMIN_ONLY'}
+          onClick={() => setAudienceFilter('ADMIN_ONLY')}
+        >
+          Admin Only
+          <span className={s.pillBadge}>{audienceCounts.ADMIN_ONLY}</span>
+        </button>
+        <button
+          type="button"
+          className={`${s.filterPill} ${audienceFilter === 'ADMIN_AND_STAFF' ? s.filterPillActive : ''}`}
+          aria-pressed={audienceFilter === 'ADMIN_AND_STAFF'}
+          onClick={() => setAudienceFilter('ADMIN_AND_STAFF')}
+        >
+          Admin & Staff
+          <span className={s.pillBadge}>{audienceCounts.ADMIN_AND_STAFF}</span>
+        </button>
+      </div>
+    )}
     {error && <p role="alert" className={s.feedback}>{error}</p>}
     {message && <p role="status" className={s.feedback}>{message}</p>}
     {notices.some(n => !n.read_at) && <details className={s.feedback}><summary>Processing results ({notices.filter(n => !n.read_at).length} unread)</summary>{notices.filter(n => !n.read_at).map(n => <div className={s.header} key={n.id}><span>{n.kind === 'AVAILABLE' ? 'Document available to its selected audience' : n.kind === 'READY_FOR_REVIEW' ? 'Upload this file again to make it available' : n.kind === 'PURGE_FAILED' ? 'Cleanup needs attention' : 'Processing needs attention'}{n.error_code ? `: ${knowledgeProcessingRemedy(n.error_code)}` : ''}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => perform(async () => { await request(`notifications/${n.id}`, 'PATCH'); })}>Dismiss</Button></div>)}</details>}
@@ -193,14 +247,14 @@ export function KnowledgeBaseSettings() {
         {cleanupCursor && <Button variant="ghost" size="sm" disabled={busy} onClick={() => { cleanupPages.current++; void load(); }}>More cleanup results</Button>}
       </details>
     </aside>}
-    {documents.map(document => <article className={s.card} key={document.id}>
+    {filteredDocuments.map(document => <article className={s.card} key={document.id}>
       <div className={s.header}><div><h3>{document.title}</h3><p>{document.audience === 'ADMIN_ONLY' ? 'Admin only' : 'Admin and staff'}</p></div>
         <details className={s.menu}><summary>Document actions</summary><div className={s.actions}><Button variant="secondary" size="sm" disabled={busy} onClick={() => openUpload(document)}>Upload replacement</Button><Button variant="secondary" size="sm" disabled={busy} onClick={() => perform(async () => { await request(`documents/${document.id}/audience`, 'PATCH', { ...revision(document), audience: document.audience === 'ADMIN_ONLY' ? 'ADMIN_AND_STAFF' : 'ADMIN_ONLY' }); setMessage('Document audience updated.'); })}>{document.audience === 'ADMIN_ONLY' ? 'Share with staff' : 'Make admin only'}</Button><Button variant="danger" size="sm" disabled={busy} onClick={() => setRemove({ document })}>Remove document</Button></div></details>
       </div>
       {document.versions.map((version, index) => {
         const job = document.jobs.filter(j => j.version_id === version.id && j.kind === 'INGEST').at(-1);
         const status = { UPLOADING: 'Uploading', QUEUED: 'Processing', PROCESSING: 'Processing', READY: 'Upload again to make available', PUBLISHED: 'Available', FAILED: 'Could not process', REMOVED: 'Removed', SUPERSEDED: 'Replaced' }[version.status];
-        return <div key={version.id} className={s.version}><div><strong>{version.original_filename}</strong><p>{index > 0 && document.active_version_id ? 'Pending replacement - ' : ''}{status} Ã‚Â· Version {version.version_number}</p>
+        return <div key={version.id} className={s.version}><div><strong>{version.original_filename}</strong><p>{index > 0 && document.active_version_id ? 'Pending replacement - ' : ''}{status} · Version {version.version_number}</p>
           {version.status === 'FAILED' && <p role="note">{knowledgeProcessingRemedy(job?.last_error_code)}</p>}</div>
           <div className={s.actions}>
             {['READY', 'PUBLISHED'].includes(version.status) && <Button size="sm" variant="secondary" disabled={busy} onClick={() => openPreview(document, version)}>Preview</Button>}
@@ -211,7 +265,15 @@ export function KnowledgeBaseSettings() {
           </div></div>;
       })}
     </article>)}
+    {documents.length > 0 && filteredDocuments.length === 0 && (
+      <p className={s.emptyNotice}>
+        {audienceFilter === 'ADMIN_ONLY'
+          ? 'No admin-only documents found.'
+          : 'No documents shared with admin and staff found.'}
+      </p>
+    )}
     {cursor && <Button variant="secondary" disabled={busy} onClick={more}>Load more</Button>}
+
     <dialog ref={dialog} className={s.dialog} onKeyDown={trapDialogFocus} onCancel={event => { if (busy) event.preventDefault(); else close(); }} aria-label={upload ? 'Upload knowledge document' : preview ? 'Preview knowledge document' : 'Confirm removal'}>
       <div className={s.header}><h2>{upload ? upload.target ? 'Upload replacement' : 'Upload document' : preview ? 'Preview document' : 'Confirm removal'}</h2><Button variant="ghost" onClick={close} disabled={busy} aria-label="Close dialog">Close</Button></div>
       {error && <p role="alert">{error}</p>}

@@ -17,8 +17,9 @@ REGION = 'us-central1'
 IMAGE_PREFIX = 'us-central1-docker.pkg.dev/deskatlas-rag/deskatlas-rag/api-deepinfra@sha256:'
 
 
-def prepare(service, image, secret_version='1'):
-    if not re.fullmatch(re.escape(IMAGE_PREFIX) + r'[a-f0-9]{64}', image):
+def prepare(service, image, secret_version='1', hosted_embeddings=False):
+    image_prefix = IMAGE_PREFIX.replace('api-deepinfra@', 'api-hosted@') if hosted_embeddings else IMAGE_PREFIX
+    if not re.fullmatch(re.escape(image_prefix) + r'[a-f0-9]{64}', image):
         raise ValueError('IMMUTABLE_DEEPINFRA_IMAGE_REQUIRED')
     if not re.fullmatch(r'[1-9][0-9]*', secret_version):
         raise ValueError('NUMBERED_SECRET_VERSION_REQUIRED')
@@ -56,6 +57,13 @@ def prepare(service, image, secret_version='1'):
             'name': 'deepinfra-api-key', 'key': secret_version}}},
     ])
     api['env'] = env
+    if hosted_embeddings:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from rag.embedding_provider import FINGERPRINT
+        api['env'] = [item for item in api['env'] if item['name'] not in ('RAG_EMBEDDING_PROVIDER', 'RAG_EMBEDDING_FINGERPRINT')]
+        api['env'].extend([{'name': 'RAG_EMBEDDING_PROVIDER', 'value': 'deepinfra'},
+                           {'name': 'RAG_EMBEDDING_FINGERPRINT', 'value': FINGERPRINT}])
     template['spec']['containers'] = [api]
     return result
 
@@ -65,6 +73,7 @@ def main():
     parser.add_argument('--image', required=True)
     parser.add_argument('--secret-version', default='1')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--hosted-embeddings', action='store_true')
     args = parser.parse_args()
     cli = shutil.which('gcloud.cmd') or shutil.which('gcloud')
     if not cli:
@@ -74,7 +83,7 @@ def main():
         capture_output=True, text=True, check=False)
     if response.returncode:
         raise ValueError('SERVICE_CONFIGURATION_READ_FAILED')
-    manifest = prepare(json.loads(response.stdout), args.image, args.secret_version)
+    manifest = prepare(json.loads(response.stdout), args.image, args.secret_version, args.hosted_embeddings)
     # Exclusive creation protects any previously reviewed deployment artifact.
     with args.output.open('x', encoding='utf-8') as output:
         json.dump(manifest, output, indent=2)

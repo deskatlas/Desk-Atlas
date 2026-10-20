@@ -4335,7 +4335,7 @@ export function renderPaymentReviewOverdueRefundEmail(
       <p>We sincerely apologize. Your upcoming reservation at DeskAtlas scheduled for <strong>${escapeHtml(formattedBookingDate)}</strong> at <strong>${escapeHtml(formattedBookingTime)}</strong> passed its start time without receiving administrative review.</p>
       
       <div class="refund-box">
-        <strong>100% Refund Entitlement:</strong><br>
+        <strong>Full Refund Entitlement:</strong><br>
         Because we were unable to confirm your workspace in time for your reservation, you are eligible for a full refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
       </div>
 
@@ -4558,7 +4558,7 @@ export function renderCustomerCancellationRefundEligibleEmail(
       <p>Your reservation <strong>#${escapeHtml(input.referenceCode)}</strong> at ${escapeHtml(businessName)} has been successfully cancelled per your request.</p>
       
       <div class="notice-box">
-        <strong>100% Refund Eligibility Confirmed</strong><br>
+        <strong>Full Refund Eligibility Confirmed</strong><br>
         Because your cancellation was submitted at least ${escapeHtml(cutoff)} prior to your scheduled start time, you are eligible for a refund of your payment (<strong>₱${escapeHtml(formattedAmount)}</strong>).
       </div>
 
@@ -4838,7 +4838,7 @@ export function renderAdminCancellationReceiptEmail(
       <div class="triage-box">
         <strong>REFUND TRIAGE STATUS:</strong><br>
         &bull; Policy Cutoff: ${escapeHtml(cutoffDisplay)} required notice<br>
-        &bull; Refund Status: <strong>ELIGIBLE (100% Refund of ₱${escapeHtml(formattedAmount)})</strong><br>
+        &bull; Refund Status: <strong>ELIGIBLE (Full Refund of ₱${escapeHtml(formattedAmount)})</strong><br>
         &bull; Original Payment: ${escapeHtml(input.paymentMethod || 'Online Payment')} (Attempt ID: ${escapeHtml(input.paymentAttemptId || 'N/A')})
       </div>
 
@@ -4875,7 +4875,7 @@ CANCELLATION SUMMARY:
 
 REFUND TRIAGE STATUS:
 - Policy Cutoff: ${cutoffDisplay} required notice
-- Refund Status: ELIGIBLE (100% Refund of ₱${formattedAmount})
+- Refund Status: ELIGIBLE (Full Refund of ₱${formattedAmount})
 - Original Payment: ${input.paymentMethod || 'Online Payment'} (Attempt ID: ${input.paymentAttemptId || 'N/A'})
 
 ACTION REQUIRED:

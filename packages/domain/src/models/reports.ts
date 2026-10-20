@@ -44,6 +44,7 @@ export interface ReportReservationRecord {
   reminderSentAt?: string | null;
   attendanceReconfirmedAt?: string | null;
   refundStatus?: "NONE" | "REQUIRED" | "REFUNDED" | "ELIGIBLE" | null;
+  refundedAt?: string | null;
   cancellationRefundNotifiedAt?: string | null;
 }
 
@@ -68,6 +69,7 @@ export interface ReportPaymentAttemptRecord {
   createdAt: string;
   proofSubmittedAt: string | null;
   processedAt: string | null;
+  refundedAt?: string | null;
   overdueNotifiedAt?: string | null;
   cancellationRefundNotifiedAt?: string | null;
 }
@@ -93,6 +95,7 @@ export interface AdminRevenueOverviewBar {
 export interface AdminRevenueOverview {
   totalAmount: number;
   formattedTotalAmount: string;
+  periodLabel: string;
   currency: string;
   bars: AdminRevenueOverviewBar[];
 }

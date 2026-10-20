@@ -1,4 +1,4 @@
-"""SPEC-4 SDD-C21: bounded, private CPU inference. No database or chat storage."""
+"""SPEC-4 SDD-C21: bounded authenticated inference. No database or chat storage."""
 import asyncio
 import base64
 import hashlib
@@ -19,6 +19,7 @@ from rag.procedure import strict_procedure_quotes, strict_faq_quotes
 from rag.governance import strict_governance_quotes
 from rag.runtime_identity import implementation_fingerprint
 from rag.answer_provider import provider, answer_model, deepinfra_headers, deepinfra_payload, normalize_deepinfra, DEEPINFRA_ORIGIN
+from rag.embedding_provider import embedding_provider, embedding_fingerprint, HostedEncoder
 
 # Capture once at import, so an old process cannot claim newly edited code.
 LOADED_IMPLEMENTATION = implementation_fingerprint()
@@ -541,10 +542,12 @@ async def lifespan(app: FastAPI):
             from rag.encoder import Encoder
             root = Path(__file__).resolve().parent
             manifest = json.loads((root / 'models.json').read_text(encoding='utf-8'))
-            fingerprint = hashlib.sha256(json.dumps(manifest['embedding'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            fingerprint = embedding_fingerprint(manifest)
             if required('RAG_EMBEDDING_FINGERPRINT') != fingerprint:
                 raise RuntimeError('Embedding fingerprint mismatch')
-            app.state.encoder = Encoder(manifest, root / '.cache' / 'models')
+            app.state.encoder = HostedEncoder() if embedding_provider() == 'deepinfra' else Encoder(manifest, root / '.cache' / 'models')
+            if embedding_provider() == 'deepinfra':
+                await app.state.encoder.encode_async(['Synthetic embedding readiness check.'])
             progress('embedding ready')
         if selected_provider == 'deepinfra':
             progress('hosted answer model verification')
@@ -948,6 +951,8 @@ Preserve names, identifiers, UI labels, permissions, exceptions and conditions. 
 
 
 async def encoder_work(query: str | list[str]):
+    if isinstance(app.state.encoder, HostedEncoder):
+        return await app.state.encoder.encode_async([query] if isinstance(query, str) else query, query=True)
     # asyncio.to_thread cannot stop native CPU work. Shield it, then drain on
     # cancellation before releasing admission/model slots (MS44-TC10).
     task = asyncio.create_task(asyncio.to_thread(app.state.encoder.encode, [query] if isinstance(query, str) else query, query=True))
