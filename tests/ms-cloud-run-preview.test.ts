@@ -50,6 +50,27 @@ describe('Cloud Run Preview identity', () => {
     expect(network).not.toHaveBeenCalled();
   });
 
+  it('admits only the explicit customer production identity and target', async () => {
+    vi.stubEnv('RAG_GOOGLE_AUTH', 'vercel-oidc-customer-production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('VERCEL_GIT_COMMIT_REF', 'main');
+    vi.stubEnv('RAG_SERVICE_URL', 'https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app');
+    vi.stubEnv('RAG_GOOGLE_WORKLOAD_PROVIDER', 'projects/252244258272/locations/global/workloadIdentityPools/vercel-customer-production/providers/vercel');
+    vi.stubEnv('RAG_GOOGLE_SERVICE_ACCOUNT', 'vercel-rag-customer@deskatlas-rag.iam.gserviceaccount.com');
+    network.mockResolvedValueOnce(Response.json({ access_token: 'synthetic-access' }))
+      .mockResolvedValueOnce(Response.json({ token: 'synthetic.google.identity' }));
+    expect(await createCloudRunIdentity(request(), new AbortController().signal)()).toBe('synthetic.google.identity');
+    expect(network).toHaveBeenCalledTimes(2);
+    for (const [name, value] of [['VERCEL_ENV', 'preview'], ['RAG_GOOGLE_SERVICE_ACCOUNT', 'vercel-rag-production@deskatlas-rag.iam.gserviceaccount.com'],
+      ['RAG_GOOGLE_WORKLOAD_PROVIDER', 'projects/123/locations/global/workloadIdentityPools/other/providers/vercel'], ['RAG_SERVICE_URL', endpoint]]) {
+      const previous = process.env[name];
+      vi.stubEnv(name, value);
+      network.mockClear();
+      await expect(createCloudRunIdentity(request(), new AbortController().signal)()).rejects.toThrow();
+      expect(network).not.toHaveBeenCalled();
+      vi.stubEnv(name, previous ?? '');
+    }
+  });
   it('exchanges the request assertion and mints an ID token for the service origin once per request', async () => {
     network.mockResolvedValueOnce(Response.json({ access_token: 'synthetic-access' }))
       .mockResolvedValueOnce(Response.json({ token: 'synthetic.google.identity' }));

@@ -92,6 +92,7 @@ type BlockingReservationRow = {
 export class SupabaseAvailabilityRepository implements AvailabilityRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
+  private readonly requestSignal?: AbortSignal;
   private readonly projectUrl: string;
   private readonly cache: QueryCache<AvailabilityReferenceValue>;
 
@@ -100,6 +101,8 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     serviceRoleKey?: string;
     cache?: QueryCache<AvailabilityReferenceValue>;
     invalidationRegistry?: CacheInvalidationRegistry;
+    // MS77-TC09/11: optional request-bound cancellation for authoritative reads.
+    signal?: AbortSignal;
   }) {
     const supabaseUrl =
       options?.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -116,6 +119,7 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     this.projectUrl = normalizeSupabaseProjectUrl(supabaseUrl);
     this.restUrl = `${this.projectUrl}/rest/v1`;
     this.serviceRoleKey = serviceRoleKey;
+    this.requestSignal = options?.signal;
     const projectCaches = getProjectReferenceCaches(this.projectUrl);
     this.cache = options?.cache ?? (projectCaches.referenceData as QueryCache<AvailabilityReferenceValue>);
     const registry = options?.invalidationRegistry ?? projectCaches.invalidationRegistry;
@@ -348,6 +352,7 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
       ...options,
       headers,
       cache: 'no-store',
+      ...(this.requestSignal ? { signal: AbortSignal.any([this.requestSignal, AbortSignal.timeout(10000), ...(options.signal ? [options.signal] : [])]) } : {}),
     });
 
     if (!response.ok) {

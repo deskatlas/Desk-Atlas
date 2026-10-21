@@ -2,7 +2,7 @@ import { z } from 'zod';
 export { z as knowledgeValidation } from 'zod';
 
 // SPEC-5 / PRD-F27 / SDD-C23,C24 / QAD-TC45.
-export const KnowledgeAudienceSchema = z.enum(['ADMIN_ONLY', 'ADMIN_AND_STAFF']);
+export const KnowledgeAudienceSchema = z.enum(['ADMIN_ONLY', 'ADMIN_AND_STAFF', 'CUSTOMER']);
 export const KnowledgeTypeSchema = z.enum(['MD', 'DOC', 'DOCX', 'PDF']);
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 export const KnowledgeUploadSchema = z.object({

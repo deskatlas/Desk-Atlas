@@ -9,6 +9,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 from uuid import UUID
@@ -23,6 +24,7 @@ from rag.embedding_provider import embedding_provider, embedding_fingerprint, Ho
 
 # Capture once at import, so an old process cannot claim newly edited code.
 LOADED_IMPLEMENTATION = implementation_fingerprint()
+CUSTOMER_INFERENCE = ContextVar('customer_inference', default=False)
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -456,6 +458,11 @@ class EvidenceCheck(Strict):
         return schema
 
 
+# MS76: customer endpoints use their own verifier; internal endpoints retain
+# Claims and cannot accept customer capabilities or business-data callbacks.
+from customer_access import CustomerClaims, verify_customer_capability
+
+
 class Claims(Strict):
     iss: Literal['deskatlas']
     aud: Literal['rag']
@@ -533,6 +540,7 @@ async def lifespan(app: FastAPI):
     try:
         progress('transport ready')
         app.state.slots = asyncio.Semaphore(2)
+        app.state.customer_slots = asyncio.Semaphore(2)
         app.state.requests = 0
         app.state.encoder = None
         if os.environ.get('KB_ENABLED') == 'true':
@@ -577,6 +585,40 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
+# MS77 / SDD-C21: customer capabilities never enter the internal verifier.
+from customer_access import verify_customer_capability, admit_customer_operation
+from customer_public import CustomerPlanInput, customer_plan, approved_characteristics, interpret_customer_question
+
+
+async def authenticate_customer(request: Request):
+    if not hmac.compare_digest(request.headers.get('authorization', ''), 'Bearer ' + required('RAG_SERVICE_TOKEN')):
+        raise HTTPException(401, detail='FORBIDDEN')
+    claims = verify_customer_capability(request.headers.get('x-request-capability', ''), required('RAG_CAPABILITY_SECRET'), required('RAG_SCOPE_ID'))
+    if os.environ.get('CUSTOMER_ASSISTANT_ENABLED') != 'true':
+        raise HTTPException(503, detail='ASSISTANT_UNAVAILABLE')
+    request.state.request_id = claims.request_id
+    CUSTOMER_INFERENCE.set(True)
+    return claims
+
+
+@app.post('/v1/customer/plan')
+async def public_customer_plan(body: CustomerPlanInput, claims=Depends(authenticate_customer)):
+    admit_customer_operation(claims, 'customer_knowledge')
+    return await interpret_customer_question(body, generate)
+
+
+@app.post('/v1/customer/embed')
+async def public_customer_embed(body: EmbedInput, claims=Depends(authenticate_customer)):
+    admit_customer_operation(claims, 'customer_knowledge')
+    if app.state.encoder is None:
+        raise HTTPException(503, detail='KNOWLEDGE_UNAVAILABLE')
+    async with app.state.customer_slots:
+        vectors = await encoder_work(body.query)
+    vector = vectors[0]
+    if len(vector) != 1024 or not all(type(x) in (int, float) and math.isfinite(x) for x in vector) or math.hypot(*vector) <= 0:
+        raise HTTPException(503, detail='EMBEDDING_MISMATCH')
+    return {'vector': [x / math.hypot(*vector) for x in vector]}
+
 
 # MS-44 / QAD-TC44: direct ASGI cancellation, including upstream disconnects.
 from rag.request_boundary import RequestBoundary
@@ -593,6 +635,45 @@ class DocumentSupportInput(Strict):
     query: str = Field(min_length=1, max_length=3000)
     sources: list[Source] = Field(min_length=1, max_length=1000)
     synthesis: bool = False
+
+
+class CustomerCharacteristicsInput(Strict):
+    sources: list[Source] = Field(max_length=1000)
+    ids: list[str] = Field(max_length=12)
+
+
+class CustomerKnowledgeSelectionInput(Strict):
+    message: str = Field(min_length=1, max_length=2000)
+    sources: list[Source] = Field(min_length=1, max_length=12)
+
+
+@app.post('/v1/customer/knowledge-selection')
+async def customer_knowledge_selection(body: CustomerKnowledgeSelectionInput, claims=Depends(authenticate_customer)):
+    from customer_public import select_customer_sources
+    admit_customer_operation(claims, 'customer_knowledge')
+    return {'chunk_ids': await select_customer_sources(body.message, [s.model_dump() for s in body.sources], generate)}
+
+
+@app.post('/v1/customer/characteristics')
+async def customer_characteristics(body: CustomerCharacteristicsInput, claims=Depends(authenticate_customer)):
+    admit_customer_operation(claims, 'customer_knowledge')
+    if sum(len(s.content.encode()) for s in body.sources) > 240000:
+        raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
+    return {'characteristics': approved_characteristics([s.model_dump() for s in body.sources], body.ids)}
+
+
+@app.post('/v1/customer/document-support')
+async def customer_document_support(body: DocumentSupportInput, request: Request, claims=Depends(authenticate_customer)):
+    admit_customer_operation(claims, 'customer_knowledge')
+    token = request_timing.work.set({'calls': 0, 'bytes': 0, 'output': 0,
+        'max_calls': DOCUMENT_BUDGET['model_calls'], 'max_bytes': DOCUMENT_BUDGET['aggregate_wire_bytes'],
+        'max_output': DOCUMENT_BUDGET['aggregate_output_tokens']})
+    try:
+        async with asyncio.timeout(DOCUMENT_BUDGET['deadline_seconds']):
+            result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, customer_reference=True)
+    finally:
+        request_timing.work.reset(token)
+    return {'contract': 'ms65-v1', 'binding': hashlib.sha256(await request.body()).hexdigest(), **result}
 
 
 @app.post('/v1/document-support')
@@ -684,7 +765,7 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
     except ValueError:
         raise HTTPException(503, detail='INVALID_TOKEN_BUDGET') from None
     queued = time.perf_counter()
-    async with app.state.slots:
+    async with (app.state.customer_slots if CUSTOMER_INFERENCE.get() else app.state.slots):
         request_timing.add('queue', (time.perf_counter() - queued) * 1000)
         with request_timing.measure('verify'):
             await verify_model(model, '' if hosted else required('RAG_ANSWER_DIGEST'))

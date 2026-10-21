@@ -54,3 +54,4 @@ export const appShellClassName = 'min-h-screen bg-slate-950 text-slate-100';
 
 
 
+export { AssistantAnswerText } from './components/assistantPresentation';

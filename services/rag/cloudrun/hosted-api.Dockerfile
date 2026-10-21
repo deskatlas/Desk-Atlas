@@ -3,7 +3,7 @@ FROM python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc07
 WORKDIR /app
 COPY service-requirements.lock.txt .
 RUN pip install --no-cache-dir -r service-requirements.lock.txt && useradd --create-home rag
-COPY models.json app.py serve_local.py ./
+COPY models.json app.py serve_local.py customer_access.py customer_public.py customer_booking_evidence.py ./
 COPY rag/ ./rag/
 ENV RAG_EMBEDDING_PROVIDER=deepinfra PYTHONDONTWRITEBYTECODE=1
 USER rag

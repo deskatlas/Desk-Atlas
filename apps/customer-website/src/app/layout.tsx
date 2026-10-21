@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "../styles/index.css";
 import { RewardsSessionProvider } from "@/features/tracking/context/RewardsSessionContext";
+import { CustomerAssistantProvider } from "@/features/assistant/CustomerAssistantProvider";
 
 export const metadata: Metadata = {
   title: "DeskAtlas",
@@ -12,7 +13,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <RewardsSessionProvider>{children}</RewardsSessionProvider>
+        <RewardsSessionProvider><CustomerAssistantProvider>{children}</CustomerAssistantProvider></RewardsSessionProvider>
       </body>
     </html>
   );

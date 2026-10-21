@@ -54,7 +54,9 @@ export function createErrorResponse(
 export const customerVerifyIdentitySchema = z.object({
   customer_code: z.string().trim().length(6),
   email: z.string().trim().email().max(254),
-});
+  // MS78-R01: an intent only selects purpose after the same identity check.
+  access_intent: z.enum(['REWARDS', 'REWARDS_AND_ASSISTANT']).default('REWARDS'),
+}).strict();
 
 export const customerBookingsQuerySchema = z.object({
   cursor: z.string().optional(),

@@ -14,6 +14,19 @@ import type {
 import { normalizeEmail, normalizeCustomerCode, isValidCustomerCode } from '@deskatlas/validation';
 
 export class CustomerMemoryRepository implements CustomerRepository {
+  async consumeRateLimits(entries: Array<{ scope: string; subjectHash: string; limit: number; windowSeconds: number }>): Promise<{ allowed: boolean; retryAfterSeconds?: number }> {
+    // Test driver critical section. Production serializes with PostgreSQL locks.
+    const now = this.nowProvider().getTime();
+    for (const entry of entries) {
+      const matching = this.rateLimitEvents.filter(e => e.scope === entry.scope && e.subjectHash === entry.subjectHash && Date.parse(e.createdAt) > now - entry.windowSeconds * 1000);
+      if (matching.length >= entry.limit) {
+        const oldest = Math.min(...matching.map(e => Date.parse(e.createdAt)));
+        return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((oldest + entry.windowSeconds * 1000 - now) / 1000)) };
+      }
+    }
+    for (const entry of entries) this.rateLimitEvents.push({ id: randomUUID(), scope: entry.scope, subjectHash: entry.subjectHash, createdAt: new Date(now).toISOString() });
+    return { allowed: true };
+  }
   private customers: Map<string, Customer> = new Map();
   private customersByEmail: Map<string, Customer> = new Map();
   private customersByCode: Map<string, Customer> = new Map();

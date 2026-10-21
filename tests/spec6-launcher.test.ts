@@ -11,6 +11,13 @@ const saved = {
 const answer = { model: 'synthetic-model', manifest_digest: 'b'.repeat(64) };
 
 describe('SPEC6-TC01: saved local launcher configuration', () => {
+  it('preserves explicit customer access settings for the API without enabling them by default', () => {
+    const configured = { ...saved, CUSTOMER_ASSISTANT_ENABLED: 'true', CUSTOMER_ASSISTANT_VERIFIED_ENABLED: 'false' };
+    const env = launcher.runtimeEnvironment('api', configured, {}, answer);
+    expect(env.CUSTOMER_ASSISTANT_ENABLED).toBe('true');
+    expect(env.CUSTOMER_ASSISTANT_VERIFIED_ENABLED).toBe('false');
+    expect(launcher.runtimeEnvironment('api', saved, {}, answer).CUSTOMER_ASSISTANT_ENABLED).toBeUndefined();
+  });
   it('forwards the provider key only to an explicitly hosted ingestion worker', () => {
     const env = launcher.runtimeEnvironment('worker', { ...saved, RAG_EMBEDDING_PROVIDER: 'deepinfra',
       DEEPINFRA_API_KEY: secret }, {}, answer);

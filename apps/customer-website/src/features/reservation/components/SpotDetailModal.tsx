@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useCustomerAssistant } from '@/features/assistant/CustomerAssistantProvider';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ export function SpotDetailModal({
   mainTemplateName,
 }: SpotDetailModalProps) {
   const [imageError, setImageError] = useState(false);
+  const assistant = useCustomerAssistant();
 
   if (!workspace) return null;
 
@@ -157,6 +159,14 @@ export function SpotDetailModal({
           </div>
         </div>
 
+        {process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
+          onOpenChange(false);
+          setTimeout(() => assistant?.askSpot({ workspace_id: workspace.workspaceInstanceId, template_id: workspace.templateId, floor_id: workspace.floorId }), 0);
+        }}>Ask about this spot</button>}
+        {process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
+          onOpenChange(false);
+          setTimeout(() => assistant?.compareSpot({ workspace_id: workspace.workspaceInstanceId }), 0);
+        }}>Add to comparison (up to 3 spots)</button>}
         {/* Recommendation Tags */}
         {workspace.tags && workspace.tags.length > 0 ? (
           <div className="mt-3">

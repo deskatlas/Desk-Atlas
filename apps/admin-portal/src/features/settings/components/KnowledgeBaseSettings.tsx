@@ -7,7 +7,12 @@ import { KnowledgeFreshness } from '../knowledgeFreshness';
 import { useAuth } from '../../auth';
 import s from './knowledge.module.css';
 
-export type AudienceFilter = 'ALL' | 'ADMIN_ONLY' | 'ADMIN_AND_STAFF';
+export type AudienceFilter = 'ALL' | KnowledgeAudience;
+
+const audienceLabels: Record<KnowledgeAudience, string> = {
+  ADMIN_ONLY: 'Admin only', ADMIN_AND_STAFF: 'Admin and staff',
+  CUSTOMER: 'Customer',
+};
 
 type PreviewChunk = { content: string; heading_path: string; page_start: number | null };
 
@@ -194,6 +199,7 @@ export function KnowledgeBaseSettings() {
       ALL: documents.length,
       ADMIN_ONLY: adminOnly,
       ADMIN_AND_STAFF: adminAndStaff,
+      CUSTOMER: documents.filter(doc => doc.audience === 'CUSTOMER').length,
     };
   }, [documents]);
 
@@ -203,7 +209,7 @@ export function KnowledgeBaseSettings() {
   }, [documents, audienceFilter]);
 
   return <section className={s.root}>
-    <div className={s.header}><div><h2>Knowledge Base</h2><p>Upload operating documents. We prepare them and make them available to your chosen audience.</p></div><Button ref={uploadButton} onClick={() => openUpload()} disabled={busy || loading || !user?.token}>Upload document</Button></div>
+    <div className={s.header}><div><h2>Knowledge Base</h2><p>Upload operating documents. We prepare them and make them available to your chosen audience. Customer knowledge is accessible to all customers without verification. Upload general policies only; never include private customer records or credentials.</p></div><Button ref={uploadButton} onClick={() => openUpload()} disabled={busy || loading || !user?.token}>Upload document</Button></div>
     {documents.length > 0 && (
       <div className={s.filterBar} role="group" aria-label="Filter documents by audience">
         <button
@@ -233,6 +239,11 @@ export function KnowledgeBaseSettings() {
           Admin & Staff
           <span className={s.pillBadge}>{audienceCounts.ADMIN_AND_STAFF}</span>
         </button>
+        {(['CUSTOMER'] as const).map(value => <button key={value} type="button"
+          className={`${s.filterPill} ${audienceFilter === value ? s.filterPillActive : ''}`}
+          aria-pressed={audienceFilter === value} onClick={() => setAudienceFilter(value)}>
+          {audienceLabels[value]}<span className={s.pillBadge}>{audienceCounts[value]}</span>
+        </button>)}
       </div>
     )}
     {error && <p role="alert" className={s.feedback}>{error}</p>}
@@ -248,8 +259,11 @@ export function KnowledgeBaseSettings() {
       </details>
     </aside>}
     {filteredDocuments.map(document => <article className={s.card} key={document.id}>
-      <div className={s.header}><div><h3>{document.title}</h3><p>{document.audience === 'ADMIN_ONLY' ? 'Admin only' : 'Admin and staff'}</p></div>
-        <details className={s.menu}><summary>Document actions</summary><div className={s.actions}><Button variant="secondary" size="sm" disabled={busy} onClick={() => openUpload(document)}>Upload replacement</Button><Button variant="secondary" size="sm" disabled={busy} onClick={() => perform(async () => { await request(`documents/${document.id}/audience`, 'PATCH', { ...revision(document), audience: document.audience === 'ADMIN_ONLY' ? 'ADMIN_AND_STAFF' : 'ADMIN_ONLY' }); setMessage('Document audience updated.'); })}>{document.audience === 'ADMIN_ONLY' ? 'Share with staff' : 'Make admin only'}</Button><Button variant="danger" size="sm" disabled={busy} onClick={() => setRemove({ document })}>Remove document</Button></div></details>
+      <div className={s.header}><div><h3>{document.title}</h3><p>{audienceLabels[document.audience]}</p></div>
+        <details className={s.menu}><summary>Document actions</summary><div className={s.actions}><Button variant="secondary" size="sm" disabled={busy} onClick={() => openUpload(document)}>Upload replacement</Button><label>Audience <select value={document.audience} disabled={busy} onChange={event => {
+          const next = event.target.value as KnowledgeAudience;
+          void perform(async () => { await request(`documents/${document.id}/audience`, 'PATCH', { ...revision(document), audience: next }); setMessage('Document audience updated.'); });
+        }}>{Object.entries(audienceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><Button variant="danger" size="sm" disabled={busy} onClick={() => setRemove({ document })}>Remove document</Button></div></details>
       </div>
       {document.versions.map((version, index) => {
         const job = document.jobs.filter(j => j.version_id === version.id && j.kind === 'INGEST').at(-1);
@@ -281,7 +295,7 @@ export function KnowledgeBaseSettings() {
         <label>File<input type="file" accept=".md,.doc,.docx,.pdf" required disabled={busy} onChange={e => { uploadRequest.current = { requestId: crypto.randomUUID(), uploaded: false }; const selected = e.target.files?.[0] ?? null; setFile(selected); if (!fileNameEdited) setFileName(upload.target?.title ?? (selected ? knowledgeDisplayTitle(selected.name) : '')); }} /></label>
         <p>Supported files: .md, .doc, .docx, .pdf</p>
         <label>File name<input type="text" value={fileName} required maxLength={200} pattern={'[^<>\\x00-\\x1f]+'} disabled={busy} onChange={e => { uploadRequest.current = { requestId: crypto.randomUUID(), uploaded: false }; setFileNameEdited(true); setFileName(e.target.value); }} /></label>
-        <label>Who can use this document?<select value={audience} onChange={e => { uploadRequest.current = { requestId: crypto.randomUUID(), uploaded: false }; setAudience(e.target.value as KnowledgeAudience); }} disabled={busy}><option value="ADMIN_ONLY">Admin only</option><option value="ADMIN_AND_STAFF">Admin and staff</option></select></label>
+        <label>Who can use this document?<select value={audience} onChange={e => { uploadRequest.current = { requestId: crypto.randomUUID(), uploaded: false }; setAudience(e.target.value as KnowledgeAudience); }} disabled={busy}><option value="ADMIN_ONLY">Admin only</option><option value="ADMIN_AND_STAFF">Admin and staff</option><option value="CUSTOMER">Customer</option></select></label>
         <p>We prepare your file and make it available to the chosen audience.{upload.target?.active_version_id ? ' The current file stays available until the replacement is ready.' : ''}</p>
         <Button type="submit" isLoading={busy} disabled={!file || !fileName.trim() || busy}>{busy ? 'Uploading' : 'Upload'}</Button>
       </form>}

@@ -406,8 +406,10 @@ export class CustomerService {
 
   async createAccessChallenge(
     customerCode: string,
-    email: string
+    email: string,
+    purpose: 'REWARDS_ACCESS' | 'REWARDS_AND_ASSISTANT_ACCESS' = 'REWARDS_ACCESS'
   ): Promise<{ accessToken: string; expiresAt: string; customer: Customer } | null> {
+    if (!['REWARDS_ACCESS', 'REWARDS_AND_ASSISTANT_ACCESS'].includes(purpose)) return null;
     const normalizedCode = normalizeCustomerCode(customerCode);
     const normalizedEmail = normalizeEmail(email);
 
@@ -425,7 +427,7 @@ export class CustomerService {
       await this.repository.createAccessChallenge({
         tokenHash,
         customerId: customer.id,
-        purpose: 'REWARDS_ACCESS',
+        purpose,
         createdAt: now.toISOString(),
         expiresAt,
       });
@@ -440,7 +442,8 @@ export class CustomerService {
 
   async verifyAccessToken(
     token: string,
-    now: Date = this.nowProvider()
+    now: Date = this.nowProvider(),
+    requiredPurpose: 'REWARDS_ACCESS' | 'REWARDS_AND_ASSISTANT_ACCESS' = 'REWARDS_ACCESS'
   ): Promise<Customer | null> {
     if (!token || typeof token !== 'string') return null;
     const tokenHash = createHash('sha256').update(token).digest('hex');
@@ -449,9 +452,12 @@ export class CustomerService {
     const challenge = await this.repository.findAccessChallengeByHash(tokenHash);
     if (!challenge) return null;
 
-    if (challenge.purpose !== 'REWARDS_ACCESS') return null;
+    // MS76-TC09: combined challenges retain rewards compatibility only.
+    if (requiredPurpose === 'REWARDS_AND_ASSISTANT_ACCESS') {
+      if (challenge.purpose !== requiredPurpose) return null;
+    } else if (requiredPurpose !== 'REWARDS_ACCESS' || !['REWARDS_ACCESS', 'REWARDS_AND_ASSISTANT_ACCESS'].includes(challenge.purpose)) return null;
     if (challenge.revokedAt) return null;
-    if (new Date(challenge.expiresAt) <= now) return null;
+    if (!Number.isFinite(Date.parse(challenge.expiresAt)) || new Date(challenge.expiresAt) <= now) return null;
 
     return this.repository.findCustomerById(challenge.customerId);
   }

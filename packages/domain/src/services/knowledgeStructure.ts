@@ -12,7 +12,7 @@ export interface KnowledgeStructureReview {
 }
 export interface KnowledgeDocumentReviewIdentity {
   source_sha256: string; content_sha256: string; structure_manifest_sha256: string;
-  generation: number; audience: 'ADMIN_ONLY' | 'ADMIN_AND_STAFF';
+  generation: number; audience: import('../models/knowledge').KnowledgeAudience;
 }
 // MS53-TC10/11/13: preparation proposes scope; explicit document approval and
 // database validation remain necessary. Single-unit sources retain everything.

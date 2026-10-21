@@ -1,0 +1,116 @@
+{
+  "milestone": "MS-77",
+  "status": "PENDING_BROWSER_ACCESS",
+  "synthetic_only": true,
+  "prerequisites": [
+    "Disposable database with migrations 032-036 and CUSTOMER fixtures",
+    "Browser access and nonproduction build with explicit fixture flags",
+    "Approved provider fixtures; no live credentials or tokens"
+  ],
+  "cases": [
+    {
+      "id": "MS77-TC03",
+      "steps": [
+        "Open Ask DeskAtlas on /",
+        "Ask Explain the booking process",
+        "Navigate to /reserve"
+      ],
+      "assert": [
+        "One launcher remains",
+        "Open panel and conversation survive ordinary navigation",
+        "Background navigation remains usable"
+      ]
+    },
+    {
+      "id": "MS77-TC04-close",
+      "steps": [
+        "Send a delayed fixture question",
+        "Close and reopen the panel",
+        "Release the old reply",
+        "Reload"
+      ],
+      "assert": [
+        "Conversation starts empty",
+        "Old replies and progress cannot reappear",
+        "Cancel binds original request/session/generation"
+      ]
+    },
+    {
+      "id": "MS77-TC04-context",
+      "steps": [
+        "Send a delayed spot query",
+        "Change schedule or selected spot",
+        "Release the previous reply"
+      ],
+      "assert": [
+        "Old suggestions and source previews are absent",
+        "Current context uses only explicit bounded fields"
+      ]
+    },
+    {
+      "id": "MS77-TC09",
+      "steps": [
+        "Get suggestions",
+        "Change the disposable published map",
+        "Click View spot"
+      ],
+      "assert": [
+        "Stale action shows a current-map notice",
+        "Candidate ranks remain unchanged",
+        "No reservation or inventory hold is created"
+      ]
+    },
+    {
+      "id": "MS77-TC10",
+      "steps": [
+        "Return fixture text containing script markup and external URLs",
+        "Open source preview"
+      ],
+      "assert": [
+        "No script runs",
+        "No model URL becomes navigation",
+        "Only allowlisted actions are clickable"
+      ]
+    },
+    {
+      "id": "MS77-TC13",
+      "steps": [
+        "Visit synthetic payment/proof/QR routes",
+        "Open generic help",
+        "Inspect outbound payloads in browser developer tools"
+      ],
+      "assert": [
+        "No URL, route token, proof, QR, form value or customer profile enters payloads",
+        "Public mode sends no customer bearer",
+        "No transcript in browser storage"
+      ]
+    },
+    {
+      "id": "MS77-TC14-keyboard",
+      "steps": [
+        "Open launcher using keyboard",
+        "Use question, schedule, Send, source, Cancel and Close",
+        "Open from Ask about this spot"
+      ],
+      "assert": [
+        "Controls have accessible names",
+        "Progress and answers are announced",
+        "Escape closes and clears chat",
+        "Focus returns to connected trigger or launcher fallback"
+      ]
+    },
+    {
+      "id": "MS77-TC14-mobile",
+      "steps": [
+        "Use a narrow mobile viewport",
+        "Open help during map navigation and checkout",
+        "Expand preferences and verification"
+      ],
+      "assert": [
+        "Full-width panel scrolls",
+        "Inputs and actions remain usable",
+        "Launcher does not obstruct checkout, consent or map controls"
+      ]
+    }
+  ]
+}

@@ -51,6 +51,9 @@ importers:
       '@deskatlas/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@deskatlas/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@deskatlas/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -256,6 +259,9 @@ importers:
       '@deskatlas/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@deskatlas/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@deskatlas/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -865,6 +871,18 @@ importers:
       '@types/pngjs':
         specifier: ^6.0.5
         version: 6.0.5
+
+  packages/server:
+    dependencies:
+      '@deskatlas/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@deskatlas/validation':
+        specifier: workspace:*
+        version: link:../validation
+      '@supabase/supabase-js':
+        specifier: ^2.112.4
+        version: 2.112.4
 
   packages/ui:
     dependencies:

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useCustomerAssistant } from '@/features/assistant/CustomerAssistantProvider';
 import { Link } from "react-router";
 import { Filter, X, Calendar as CalendarIcon, ChevronDown } from "lucide-react";
 import { WorkspaceMap } from "../components/WorkspaceMap";
@@ -29,6 +30,7 @@ export interface Workspace {
 }
 
 export function WorkspaceDiscoveryPage() {
+  const assistant = useCustomerAssistant();
   const [floors, setFloors] = useState<Floor[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState("");
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
@@ -53,6 +55,12 @@ export function WorkspaceDiscoveryPage() {
 
   const calendarRef = useRef<HTMLDivElement>(null);
   const timeDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const date = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
+    assistant?.setDiscovery({ ...(selectedWorkspace ? { workspace_id: selectedWorkspace.workspaceInstanceId } : {}),
+      ...(selectedFloorId ? { floor_id: selectedFloorId } : {}), date, start_time: filters.time, duration_minutes: Number(filters.duration) * 60 });
+    return () => assistant?.setDiscovery({});
+  }, [selectedWorkspace?.workspaceInstanceId, selectedFloorId, selectedDate, filters.time, filters.duration]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

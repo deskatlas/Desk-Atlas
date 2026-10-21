@@ -1,5 +1,12 @@
 // SPEC-5: PRD-F27, ERD-E24 through ERD-E29, QAD-TC45.
-export type KnowledgeAudience = 'ADMIN_ONLY' | 'ADMIN_AND_STAFF';
+export type KnowledgeAudience = 'ADMIN_ONLY' | 'ADMIN_AND_STAFF' | 'CUSTOMER';
+export type KnowledgePrincipal = 'ADMIN' | 'STAFF' | 'PUBLIC_VISITOR' | 'VERIFIED_CUSTOMER';
+// MS76-TC01: management authority does not grant conversational retrieval.
+export function knowledgeAudienceAllowed(audience: KnowledgeAudience, principal: KnowledgePrincipal): boolean {
+  if (principal === 'ADMIN') return audience === 'ADMIN_ONLY' || audience === 'ADMIN_AND_STAFF';
+  if (principal === 'STAFF') return audience === 'ADMIN_AND_STAFF';
+  return (principal === 'PUBLIC_VISITOR' || principal === 'VERIFIED_CUSTOMER') && audience === 'CUSTOMER';
+}
 export type KnowledgeStatus = 'UPLOADING' | 'QUEUED' | 'PROCESSING' | 'READY' | 'PUBLISHED' | 'SUPERSEDED' | 'FAILED' | 'REMOVED';
 export interface KnowledgeVersion {
   id: string; document_id: string; version_number: number; status: KnowledgeStatus;
@@ -50,7 +57,7 @@ export interface KnowledgeCleanup {
   waiting_upload?: number; cleaning_chunks?: number; retrying?: number; running?: number; awaiting_worker?: number;
 }
 export function knowledgeCanRetrieve(document: Pick<KnowledgeDocument, 'active_version_id' | 'deleted_at' | 'audience'>,
-  version: Pick<KnowledgeVersion, 'id' | 'status'>, role: 'ADMIN' | 'STAFF', fingerprint: string, activeFingerprint: string): boolean {
+  version: Pick<KnowledgeVersion, 'id' | 'status'>, role: KnowledgePrincipal, fingerprint: string, activeFingerprint: string): boolean {
   return !document.deleted_at && document.active_version_id === version.id && version.status === 'PUBLISHED'
-    && fingerprint === activeFingerprint && (role === 'ADMIN' || document.audience === 'ADMIN_AND_STAFF');
+    && fingerprint === activeFingerprint && knowledgeAudienceAllowed(document.audience, role);
 }

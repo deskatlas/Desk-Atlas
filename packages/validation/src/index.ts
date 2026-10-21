@@ -266,3 +266,6 @@ export * from './campaignSchema';
 export * from './spec3Schema';
 export * from './assistantSchema';
 export * from './knowledgeSchema';
+export * from './customerAssistantSchema';
+export * from './customerAssistanceSchema';
+export * from './publicCustomerAssistantSchema';

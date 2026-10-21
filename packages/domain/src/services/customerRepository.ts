@@ -47,6 +47,7 @@ export interface AccessChallengeData {
 }
 
 export interface CustomerRepository {
+  consumeRateLimits?(entries: Array<{ scope: string; subjectHash: string; limit: number; windowSeconds: number }>): Promise<{ allowed: boolean; retryAfterSeconds?: number }>;
   findCustomerByEmail(email: string): Promise<Customer | null>;
   findCustomerByCode(customerCode: string): Promise<Customer | null>;
   findCustomerById(id: string): Promise<Customer | null>;

@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir pip==25.2 \
     && pip install --no-cache-dir -r runtime-requirements.lock.txt \
     && pip check \
     && useradd --create-home rag
-COPY app.py .
+COPY app.py serve_local.py customer_access.py customer_public.py customer_booking_evidence.py ./
 COPY models.json .
 COPY rag/ ./rag/
 USER rag

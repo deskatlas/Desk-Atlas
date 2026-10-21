@@ -2,6 +2,52 @@ html {
   font-family: var(--da-font-family);
 }
 
+/* DSD-UI16 / MS77-TC14: compact assistant controls using the customer design tokens. */
+.customer-assistant-panel[data-slot="sheet-content"] {
+  width: 100%;
+  max-width: 28rem;
+  height: 100dvh;
+  overflow: hidden;
+  gap: 1rem;
+}
+
+.customer-assistant-panel .customer-assistant-scroll {
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+.customer-assistant-panel .da-primary-button,
+.customer-assistant-panel .da-secondary-button {
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.customer-assistant-panel .da-input {
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.customer-assistant-panel summary {
+  cursor: pointer;
+}
+
+.customer-assistant-panel [data-compact="true"] {
+  height: auto;
+  padding: 0.75rem 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 body {
   min-height: 100vh;
   background: var(--da-canvas);

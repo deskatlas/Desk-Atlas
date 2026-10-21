@@ -1,0 +1,71 @@
+
+> @deskatlas/customer-website@0.0.1 build C:\Users\reyna\Desk-Atlas\apps\customer-website
+> next build
+
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.mjs took 48ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.4s
+  Running TypeScript ...
+  Finished TypeScript in 5.6s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/37) ...
+  Generating static pages using 11 workers (9/37) 
+  Generating static pages using 11 workers (18/37) 
+  Generating static pages using 11 workers (27/37) 
+✓ Generating static pages using 11 workers (37/37) in 750ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/availability
+├ ƒ /api/booking/[token]
+├ ƒ /api/booking/validate-promo
+├ ƒ /api/cron/complete-bookings
+├ ƒ /api/customer-assistant/cancel
+├ ƒ /api/customer-assistant/progress
+├ ƒ /api/customer-assistant/query
+├ ƒ /api/customer-assistant/reservations
+├ ƒ /api/customer-assistant/session
+├ ƒ /api/customer-assistant/source
+├ ƒ /api/customer-assistant/spot
+├ ƒ /api/customer/bookings
+├ ƒ /api/customer/check-eligibility
+├ ƒ /api/customer/email-voucher
+├ ƒ /api/customer/email-voucher/status
+├ ƒ /api/customer/verify-identity
+├ ƒ /api/customer/vouchers
+├ ƒ /api/internal/rewards/process
+├ ƒ /api/landing-preview
+├ ƒ /api/pay/[token]
+├ ƒ /api/pay/[token]/proof
+├ ƒ /api/public/business-policy
+├ ƒ /api/public/promotions
+├ ƒ /api/published-map
+├ ƒ /api/reservations
+├ ƒ /api/settings
+├ ƒ /api/time
+├ ƒ /api/track
+├ ƒ /api/track/available-relocation-spots
+├ ƒ /api/track/cancel
+├ ƒ /api/track/reconfirm
+├ ƒ /api/track/relocate
+├ ƒ /api/track/reschedule
+├ ƒ /api/track/reschedule-availability
+├ ƒ /api/workspaces/[templateId]/price
+├ ƒ /booking/[token]
+├ ƒ /pass/[token]
+├ ƒ /pay/[token]
+├ ○ /reconfirm
+├ ○ /reserve
+├ ○ /track
+├ ƒ /track/[referenceCode]
+└ ○ /track/rewards
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

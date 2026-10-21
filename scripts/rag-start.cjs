@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 const root = resolve(__dirname, '..');
 const service = join(root, 'services', 'rag');
 const apiKeys = [
+  'CUSTOMER_ASSISTANT_ENABLED', 'CUSTOMER_ASSISTANT_VERIFIED_ENABLED',
   'RAG_MODEL_PROVIDER', 'RAG_EMBEDDING_PROVIDER', 'DEEPINFRA_API_KEY',
   'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID',
   'RAG_ANSWER_MODEL', 'RAG_ANSWER_DIGEST', 'RAG_EMBEDDING_FINGERPRINT',
