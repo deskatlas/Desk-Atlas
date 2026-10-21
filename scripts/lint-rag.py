@@ -11,6 +11,8 @@ paths.append(SERVICE / 'ms58_acceptance.py')
 paths.append(SERVICE / 'ms61_localization.py')
 paths.append(SERVICE / 'ms63_acceptance.py')
 paths.append(SERVICE / 'ms65_acceptance.py')
+paths.append(SERVICE / 'customer_booking_evidence.py')
+paths.extend([SERVICE / 'customer_access.py', SERVICE / 'customer_public.py'])
 for path in paths:
     try:
         source = path.read_text(encoding='utf-8')

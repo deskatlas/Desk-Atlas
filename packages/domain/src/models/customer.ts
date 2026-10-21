@@ -22,6 +22,7 @@ export type RateLimitScope =
   | 'VERIFY_IP'
   | 'VERIFY_EMAIL'
   | 'CUSTOMER_TOKEN'
+  | 'ASSISTANT_TOKEN'
   | 'PROMO_IP'
   | 'PROMO_EMAIL'
   | 'EMAIL_CUSTOMER'

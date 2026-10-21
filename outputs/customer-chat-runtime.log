@@ -1,0 +1,12 @@
+Starting RAG api with saved configuration. Press Ctrl+C to stop.
+RAG launch profile: direct.
+RAG startup stage: application import.
+RAG startup stage: application initialization (deadline 180 seconds).
+RAG startup stage: configuration.
+RAG startup stage: private transport.
+RAG startup stage: transport ready.
+RAG startup stage: embedding model.
+RAG startup stage: embedding ready.
+RAG startup stage: hosted answer model verification.
+RAG startup stage: models ready.
+RAG API Ready: application initialization completed on 127.0.0.1:8000.

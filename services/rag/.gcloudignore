@@ -1,6 +1,9 @@
 # SPEC-6: explicit upload allowlist; no env files, caches, uploads or evaluations.
 **
 !app.py
+!customer_access.py
+!customer_public.py
+!customer_booking_evidence.py
 !serve_local.py
 !models.json
 !answer-model.json

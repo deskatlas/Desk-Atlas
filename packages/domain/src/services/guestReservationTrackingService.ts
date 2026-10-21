@@ -1,3 +1,4 @@
+import { evaluateCustomerManagementEligibility } from './customerManagementEligibility';
 import {
   GuestReservationTrackingResult,
   GuestReservationTrackingStatus,
@@ -76,60 +77,10 @@ export class GuestReservationTrackingService {
       }
     }
 
-    const rescheduleCount = record.rescheduleCount ?? 0;
     const nowMs = this.nowProvider().getTime();
-    let canReschedule = false;
-
     const status = mapGuestTrackingStatus(record, nowMs);
-
-    const isClosurePending = Boolean(
-      record.isClosureImpacted &&
-      (record.closureImpactStatus === "AFFECTED_PENDING_ACTION" || record.closureImpactStatus === "MANUAL_RESOLUTION_REQUIRED")
-    );
-
-    if (
-      status === "CONFIRMED" &&
-      (isClosurePending || (rescheduleCount === 0 && record.finalAssignment?.bookingStartAt))
-    ) {
-      if (isClosurePending) {
-        canReschedule = true;
-      } else if (record.finalAssignment?.bookingStartAt) {
-        const startMs = new Date(record.finalAssignment.bookingStartAt).getTime();
-        const cutoffMs = cutoffHours * 60 * 60 * 1000;
-        if (nowMs <= startMs - cutoffMs) {
-          canReschedule = true;
-        }
-      }
-    }
-
-    const bookingStartMs = record.finalAssignment?.bookingStartAt
-      ? new Date(record.finalAssignment.bookingStartAt).getTime()
-      : 0;
-    const bookingEndMs = record.finalAssignment?.bookingEndAt
-      ? new Date(record.finalAssignment.bookingEndAt).getTime()
-      : 0;
-
-    let canCancel = false;
-    if (
-      status === "CONFIRMED" &&
-      !record.checkedInAt &&
-      !record.checkedOutAt &&
-      bookingStartMs > 0 &&
-      bookingStartMs > nowMs &&
-      nowMs <= bookingStartMs - cancellationCutoffHours * 3600 * 1000
-    ) {
-      canCancel = true;
-    }
-
-    const isInSession =
-      status === "CONFIRMED" &&
-      bookingStartMs > 0 &&
-      bookingEndMs > 0 &&
-      nowMs >= bookingStartMs &&
-      nowMs < bookingEndMs;
-
-    const remainingMinutes = isInSession ? Math.max(0, Math.round((bookingEndMs - nowMs) / 60000)) : 0;
-    const canRelocate = isInSession || isClosurePending;
+    const { rescheduleCount, canReschedule, canCancel, isInSession, canRelocate, remainingMinutes } =
+      evaluateCustomerManagementEligibility(record, status, cutoffHours, cancellationCutoffHours, nowMs);
 
     return {
       reservationId: record.reservationId,
@@ -163,7 +114,7 @@ export class GuestReservationTrackingService {
   }
 }
 
-function mapGuestTrackingStatus(
+export function mapGuestTrackingStatus(
   record: GuestReservationTrackingRecord,
   nowMs?: number
 ): GuestReservationTrackingStatus {

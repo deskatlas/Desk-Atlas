@@ -269,3 +269,8 @@ export * from './services/promoAnalyticsService';
 export * from './services/promoAnalyticsSupabaseRepository';
 export * from './services/promoAnalyticsExport';
 
+export * from './services/customerAssistanceService';
+export * from './services/customerAssistanceSupabaseRepository';
+export * from './services/customerManagementEligibility';
+export * from './services/publicSpotDecisionService';
+export { validateDocumentSupport } from './services/assistantDocumentSupport';

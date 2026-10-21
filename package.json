@@ -205,7 +205,16 @@
     "test:ms57:python": "python services/rag/run.py test-ms57",
     "rag:ms57:compare": "python services/rag/run.py ms57-compare",
     "test:ms56": "vitest run tests/ms56-evidence-selection.test.ts",
-    "test:ms56:python": "python services/rag/run.py test-ms56"
+    "test:ms56:python": "python services/rag/run.py test-ms56",
+    "test:ms76": "vitest run tests/ms76-customer-rag-foundations.test.ts",
+    "test:ms76:postgres": "python services/rag/run.py test-ms76-postgres",
+    "test:ms76:python": "python services/rag/run.py test-ms76",
+    "test:ms78": "vitest run tests/ms78-verified-customer-assistant.test.ts tests/ms78-reservations-route.test.ts tests/ms78-gateway-integration.test.ts tests/ms78-policy-evidence.test.ts",
+    "test:ms78:python": "python services/rag/run.py test-ms78",
+    "test:ms78:postgres": "python services/rag/run.py test-ms78-postgres",
+    "test:ms77": "vitest run tests/ms77-public-customer-assistant.test.ts tests/ms77-gateway.test.ts",
+    "test:ms77:python": "python services/rag/run.py test-ms77",
+    "test:ms77:postgres": "python tests/ms77-postgres-admission.py"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.112.4",

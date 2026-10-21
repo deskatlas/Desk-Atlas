@@ -1,4 +1,5 @@
 "use client";
+import { AskReservationButton } from '../../assistant/AskReservationButton';
 
 import { useEffect, useState } from "react";
 import type { RewardsSession } from "../context/RewardsSessionContext";
@@ -568,6 +569,7 @@ export function RewardsVoucherDashboard({
                   <tr key={b.id} className="hover:bg-slate-50/50">
                     <td className="p-3 font-mono font-bold text-slate-900">
                       {b.reference_code}
+                      <AskReservationButton reservationId={b.id} />
                     </td>
                     <td className="p-3 font-semibold">{b.source}</td>
                     <td className="p-3">

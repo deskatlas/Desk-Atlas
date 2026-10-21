@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   useRewardsSession,
@@ -16,12 +16,16 @@ export function formatLockoutTime(seconds: number): string {
 }
 
 interface RewardsAccessCardProps {
+  compact?: boolean;
+  accessIntent?: 'REWARDS' | 'REWARDS_AND_ASSISTANT';
   standalone?: boolean;
   initialError?: string | null;
   onSuccess?: (session: RewardsSession) => void;
 }
 
 export function RewardsAccessCard({
+  compact = false,
+  accessIntent = 'REWARDS',
   standalone = false,
   initialError = null,
   onSuccess,
@@ -34,6 +38,8 @@ export function RewardsAccessCard({
   const [verifyError, setVerifyError] = useState<string | null>(initialError);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const verificationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => verificationRequest.current?.abort(), []);
 
   const isLocked = Boolean(lockedUntil && remainingSeconds > 0);
 
@@ -142,18 +148,24 @@ export function RewardsAccessCard({
 
     setVerifyError(null);
     setIsVerifying(true);
+    verificationRequest.current?.abort();
+    const controller = new AbortController();
+    verificationRequest.current = controller;
 
     try {
       const res = await fetch("/api/customer/verify-identity", {
+        signal: controller.signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_code: customerCode.trim().toUpperCase(),
           email: email.trim().toLowerCase(),
+          access_intent: accessIntent,
         }),
       });
 
       const json = await res.json().catch(() => null);
+      if (controller.signal.aborted) return;
       if (!res.ok) {
         if (res.status === 429 || json?.error?.lockedUntil || json?.error?.retryAfterSeconds) {
           const lockTime =
@@ -191,6 +203,7 @@ export function RewardsAccessCard({
       const sessionData: RewardsSession = {
         accessToken: json.data.access_token,
         expiresAt: json.data.expires_at,
+        purpose: json.data.purpose,
         customer: {
           customerCode: json.data.customer.customer_code,
           firstName: json.data.customer.first_name,
@@ -209,6 +222,7 @@ export function RewardsAccessCard({
         router.push("/track/rewards");
       }
     } catch {
+      if (controller.signal.aborted) return;
       setVerifyError(
         "Customer ID and email do not match our records. Please check and try again."
       );
@@ -222,20 +236,21 @@ export function RewardsAccessCard({
         standalone ? "mx-auto max-w-xl" : "w-full"
       }`}
       data-testid="my-bookings-rewards-card"
+      data-compact={compact || undefined}
     >
       <div>
-        <p className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--da-primary)]">
+        {!compact && <p className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--da-primary)]">
           My Bookings & Rewards
-        </p>
-        <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.03em] text-[var(--da-brand-dark)]">
-          Access reward portal
+        </p>}
+        <h2 className={`${compact ? 'text-sm font-bold' : 'mt-2 text-2xl font-extrabold tracking-[-0.03em]'} text-[var(--da-brand-dark)]`}>
+          {accessIntent === 'REWARDS_AND_ASSISTANT' ? 'Verify Customer ID and email' : 'Access reward portal'}
         </h2>
         <p className="mt-1 text-xs text-[var(--da-text-secondary)]">
-          Enter your 6-character Customer ID and registered email address to access your rewards.
+          Enter your 6-character Customer ID and registered email address to access {accessIntent === 'REWARDS_AND_ASSISTANT' ? 'private reservation assistance and rewards' : 'your rewards'}.
         </p>
       </div>
 
-      <form onSubmit={handleVerify} className="mt-6 grid gap-4 w-full">
+      <form onSubmit={handleVerify} className={`${compact ? 'mt-3 gap-3' : 'mt-6 gap-4'} grid w-full`}>
         <label className="grid gap-2 text-xs font-bold text-[var(--da-brand-dark)]">
           Customer ID
           <input
@@ -275,7 +290,7 @@ export function RewardsAccessCard({
             ? `Try again in ${formatLockoutTime(remainingSeconds)}`
             : isVerifying
             ? "Verifying..."
-            : "View My Bookings & Rewards"}
+            : accessIntent === 'REWARDS_AND_ASSISTANT' ? 'Enable private assistance' : "View My Bookings & Rewards"}
         </button>
 
         {verifyError && (

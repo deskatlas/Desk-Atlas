@@ -1,0 +1,317 @@
+
+> deskatlas-monorepo@ build C:\Users\reyna\Desk-Atlas
+> pnpm -r build
+
+Scope: 9 of 10 workspace projects
+packages/config build$ echo 'Building config package'
+packages/validation build$ echo 'Building validation package'
+packages/config build: 'Building config package'
+packages/config build: Done
+packages/validation build: 'Building validation package'
+packages/validation build: Done
+packages/domain build$ echo 'Building domain package'
+packages/domain build: 'Building domain package'
+packages/domain build: Done
+packages/ui build$ echo 'Building ui package'
+packages/ui build: 'Building ui package'
+packages/ui build: Done
+apps/admin-portal build$ next build
+apps/customer-website build$ next build
+apps/kiosk build$ next build
+apps/staff-dashboard build$ next build
+apps/customer-website build: ▲ Next.js 16.3.2 (Turbopack)
+apps/customer-website build: - Environments: .env.local
+apps/admin-portal build: ▲ Next.js 16.3.2 (Turbopack)
+apps/admin-portal build: - Environments: .env.local
+apps/kiosk build: ▲ Next.js 16.3.2 (Turbopack)
+apps/kiosk build: - Environments: .env.local
+apps/staff-dashboard build: ▲ Next.js 16.3.2 (Turbopack)
+apps/staff-dashboard build: - Environments: .env.local
+apps/customer-website build: ✓ Running next.config.mjs took 78ms
+apps/admin-portal build: ✓ Running next.config.mjs took 81ms
+apps/kiosk build: ✓ Running next.config.mjs took 88ms
+apps/staff-dashboard build: ✓ Running next.config.mjs took 88ms
+apps/kiosk build:   Creating an optimized production build ...
+apps/customer-website build:   Creating an optimized production build ...
+apps/staff-dashboard build:   Creating an optimized production build ...
+apps/admin-portal build:   Creating an optimized production build ...
+apps/kiosk build: ✓ Compiled successfully in 3.7s
+apps/kiosk build:   Running TypeScript ...
+apps/staff-dashboard build: ✓ Compiled successfully in 4.4s
+apps/staff-dashboard build:   Running TypeScript ...
+apps/customer-website build: ✓ Compiled successfully in 5.7s
+apps/customer-website build:   Running TypeScript ...
+apps/admin-portal build: ✓ Compiled successfully in 8.4s
+apps/admin-portal build:   Running TypeScript ...
+apps/staff-dashboard build:   Finished TypeScript in 7.8s ...
+apps/staff-dashboard build:   Collecting page data using 11 workers ...
+apps/kiosk build:   Finished TypeScript in 9.6s ...
+apps/kiosk build:   Collecting page data using 11 workers ...
+apps/admin-portal build:   Finished TypeScript in 10.6s ...
+apps/admin-portal build:   Collecting page data using 11 workers ...
+apps/customer-website build:   Finished TypeScript in 14.7s ...
+apps/customer-website build:   Collecting page data using 11 workers ...
+apps/staff-dashboard build:   Generating static pages using 11 workers (0/27) ...
+apps/staff-dashboard build:   Generating static pages using 11 workers (6/27) 
+apps/staff-dashboard build:   Generating static pages using 11 workers (13/27) 
+apps/kiosk build:   Generating static pages using 11 workers (0/10) ...
+apps/staff-dashboard build:   Generating static pages using 11 workers (20/27) 
+apps/kiosk build:   Generating static pages using 11 workers (2/10) 
+apps/kiosk build:   Generating static pages using 11 workers (4/10) 
+apps/staff-dashboard build: ✓ Generating static pages using 11 workers (27/27) in 3.0s
+apps/staff-dashboard build:   Finalizing page optimization ...
+apps/staff-dashboard build: Route (app)
+apps/staff-dashboard build: ┌ ○ /
+apps/staff-dashboard build: ├ ○ /_not-found
+apps/staff-dashboard build: ├ ƒ /api/activity-log
+apps/staff-dashboard build: ├ ƒ /api/admin/settings
+apps/staff-dashboard build: ├ ƒ /api/assistant/cancel
+apps/staff-dashboard build: ├ ƒ /api/assistant/progress
+apps/staff-dashboard build: ├ ƒ /api/assistant/query
+apps/staff-dashboard build: ├ ƒ /api/assistant/sources/[versionId]/[chunkId]
+apps/staff-dashboard build: ├ ƒ /api/auth/invitation
+apps/staff-dashboard build: ├ ƒ /api/auth/login
+apps/staff-dashboard build: ├ ƒ /api/auth/session
+apps/staff-dashboard build: ├ ƒ /api/booking/[token]
+apps/staff-dashboard build: ├ ƒ /api/operations/activity
+apps/staff-dashboard build: ├ ƒ /api/operations/approaching-ends
+apps/staff-dashboard build: ├ ƒ /api/operations/closure-alerts
+apps/staff-dashboard build: ├ ƒ /api/operations/dashboard
+apps/staff-dashboard build: ├ ƒ /api/operations/occupancy
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/available-relocation-spots
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/check-in
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/check-out
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/extend
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/extend/availability
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/flag-manual
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/log-call
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/payment-history
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/qr
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/relocate
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/relocate/decision
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/[reservationId]/timeline
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/closure-impacts
+apps/staff-dashboard build: ├ ƒ /api/operations/reservations/near-checkout
+apps/staff-dashboard build: ├ ƒ /api/operations/workspaces/instances/[instanceId]
+apps/staff-dashboard build: ├ ƒ /api/payments/[paymentAttemptId]
+apps/staff-dashboard build: ├ ƒ /api/payments/[paymentAttemptId]/confirm
+apps/staff-dashboard build: ├ ƒ /api/payments/reviews/[paymentAttemptId]/proof
+apps/staff-dashboard build: ├ ƒ /api/published-map
+apps/staff-dashboard build: ├ ƒ /api/settings
+apps/staff-dashboard build: ├ ○ /manage
+apps/staff-dashboard build: ├ ○ /manage/activity-log
+apps/staff-dashboard build: ├ ○ /manage/kiosk-confirm
+apps/staff-dashboard build: ├ ○ /manage/reservations
+apps/staff-dashboard build: ├ ƒ /manage/reservations/[id]
+apps/staff-dashboard build: ├ ○ /manage/scan
+apps/staff-dashboard build: ├ ○ /manage/workspace-map
+apps/staff-dashboard build: └ ○ /verify-invitation
+apps/staff-dashboard build: ○  (Static)   prerendered as static content
+apps/staff-dashboard build: ƒ  (Dynamic)  server-rendered on demand
+apps/staff-dashboard build: Done
+apps/kiosk build:   Generating static pages using 11 workers (7/10) 
+apps/kiosk build: ✓ Generating static pages using 11 workers (10/10) in 3.6s
+apps/kiosk build:   Finalizing page optimization ...
+apps/kiosk build: Route (app)
+apps/kiosk build: ┌ ○ /_not-found
+apps/kiosk build: ├ ƒ /api/availability
+apps/kiosk build: ├ ƒ /api/booking/[token]
+apps/kiosk build: ├ ƒ /api/booking/validate-promo
+apps/kiosk build: ├ ƒ /api/payments/[paymentAttemptId]/confirm
+apps/kiosk build: ├ ƒ /api/public/promotions
+apps/kiosk build: ├ ƒ /api/published-map
+apps/kiosk build: ├ ƒ /api/reservations
+apps/kiosk build: ├ ƒ /api/settings
+apps/kiosk build: ├ ƒ /api/time
+apps/kiosk build: ├ ○ /kiosk
+apps/kiosk build: └ ○ /kiosk/reserve
+apps/kiosk build: ○  (Static)   prerendered as static content
+apps/kiosk build: ƒ  (Dynamic)  server-rendered on demand
+apps/kiosk build: Done
+apps/customer-website build:   Generating static pages using 11 workers (0/37) ...
+apps/admin-portal build:   Generating static pages using 11 workers (0/80) ...
+apps/customer-website build:   Generating static pages using 11 workers (9/37) 
+apps/admin-portal build:   Generating static pages using 11 workers (20/80) 
+apps/admin-portal build:   Generating static pages using 11 workers (40/80) 
+apps/customer-website build:   Generating static pages using 11 workers (18/37) 
+apps/admin-portal build:   Generating static pages using 11 workers (60/80) 
+apps/customer-website build:   Generating static pages using 11 workers (27/37) 
+apps/customer-website build: ✓ Generating static pages using 11 workers (37/37) in 1913ms
+apps/customer-website build:   Finalizing page optimization ...
+apps/customer-website build: Route (app)
+apps/customer-website build: ┌ ○ /
+apps/customer-website build: ├ ○ /_not-found
+apps/customer-website build: ├ ƒ /api/availability
+apps/customer-website build: ├ ƒ /api/booking/[token]
+apps/customer-website build: ├ ƒ /api/booking/validate-promo
+apps/customer-website build: ├ ƒ /api/cron/complete-bookings
+apps/customer-website build: ├ ƒ /api/customer-assistant/cancel
+apps/customer-website build: ├ ƒ /api/customer-assistant/progress
+apps/customer-website build: ├ ƒ /api/customer-assistant/query
+apps/customer-website build: ├ ƒ /api/customer-assistant/reservations
+apps/customer-website build: ├ ƒ /api/customer-assistant/session
+apps/customer-website build: ├ ƒ /api/customer-assistant/source
+apps/customer-website build: ├ ƒ /api/customer-assistant/spot
+apps/customer-website build: ├ ƒ /api/customer/bookings
+apps/customer-website build: ├ ƒ /api/customer/check-eligibility
+apps/customer-website build: ├ ƒ /api/customer/email-voucher
+apps/customer-website build: ├ ƒ /api/customer/email-voucher/status
+apps/customer-website build: ├ ƒ /api/customer/verify-identity
+apps/customer-website build: ├ ƒ /api/customer/vouchers
+apps/customer-website build: ├ ƒ /api/internal/rewards/process
+apps/customer-website build: ├ ƒ /api/landing-preview
+apps/customer-website build: ├ ƒ /api/pay/[token]
+apps/customer-website build: ├ ƒ /api/pay/[token]/proof
+apps/customer-website build: ├ ƒ /api/public/business-policy
+apps/customer-website build: ├ ƒ /api/public/promotions
+apps/customer-website build: ├ ƒ /api/published-map
+apps/customer-website build: ├ ƒ /api/reservations
+apps/customer-website build: ├ ƒ /api/settings
+apps/customer-website build: ├ ƒ /api/time
+apps/customer-website build: ├ ƒ /api/track
+apps/customer-website build: ├ ƒ /api/track/available-relocation-spots
+apps/customer-website build: ├ ƒ /api/track/cancel
+apps/customer-website build: ├ ƒ /api/track/reconfirm
+apps/customer-website build: ├ ƒ /api/track/relocate
+apps/customer-website build: ├ ƒ /api/track/reschedule
+apps/customer-website build: ├ ƒ /api/track/reschedule-availability
+apps/customer-website build: ├ ƒ /api/workspaces/[templateId]/price
+apps/customer-website build: ├ ƒ /booking/[token]
+apps/customer-website build: ├ ƒ /pass/[token]
+apps/customer-website build: ├ ƒ /pay/[token]
+apps/customer-website build: ├ ○ /reconfirm
+apps/customer-website build: ├ ○ /reserve
+apps/customer-website build: ├ ○ /track
+apps/customer-website build: ├ ƒ /track/[referenceCode]
+apps/customer-website build: └ ○ /track/rewards
+apps/customer-website build: ○  (Static)   prerendered as static content
+apps/customer-website build: ƒ  (Dynamic)  server-rendered on demand
+apps/admin-portal build: ✓ Generating static pages using 11 workers (80/80) in 2.2s
+apps/admin-portal build:   Finalizing page optimization ...
+apps/admin-portal build: Route (app)
+apps/admin-portal build: ┌ ○ /
+apps/admin-portal build: ├ ○ /_not-found
+apps/admin-portal build: ├ ƒ /api/admin/activity-log
+apps/admin-portal build: ├ ƒ /api/admin/auth/forgot-password
+apps/admin-portal build: ├ ƒ /api/admin/auth/google
+apps/admin-portal build: ├ ƒ /api/admin/auth/login
+apps/admin-portal build: ├ ƒ /api/admin/auth/reset-password
+apps/admin-portal build: ├ ƒ /api/admin/auth/reset-password/verify
+apps/admin-portal build: ├ ƒ /api/admin/auth/session
+apps/admin-portal build: ├ ƒ /api/admin/auth/setup
+apps/admin-portal build: ├ ƒ /api/admin/auth/setup/password
+apps/admin-portal build: ├ ƒ /api/admin/auth/setup/status
+apps/admin-portal build: ├ ƒ /api/admin/badge-counts
+apps/admin-portal build: ├ ƒ /api/admin/campaigns
+apps/admin-portal build: ├ ƒ /api/admin/campaigns/[id]
+apps/admin-portal build: ├ ƒ /api/admin/campaigns/[id]/rules
+apps/admin-portal build: ├ ƒ /api/admin/campaigns/[id]/status
+apps/admin-portal build: ├ ƒ /api/admin/campaigns/analytics
+apps/admin-portal build: ├ ƒ /api/admin/campaigns/analytics/export
+apps/admin-portal build: ├ ƒ /api/admin/dashboard
+apps/admin-portal build: ├ ƒ /api/admin/dashboard/occupancy
+apps/admin-portal build: ├ ƒ /api/admin/knowledge/[...path]
+apps/admin-portal build: ├ ƒ /api/admin/maps/draft
+apps/admin-portal build: ├ ƒ /api/admin/maps/publish
+apps/admin-portal build: ├ ƒ /api/admin/maps/published
+apps/admin-portal build: ├ ƒ /api/admin/notifications
+apps/admin-portal build: ├ ƒ /api/admin/occupancy
+apps/admin-portal build: ├ ƒ /api/admin/payments/reviews
+apps/admin-portal build: ├ ƒ /api/admin/payments/reviews/[paymentAttemptId]
+apps/admin-portal build: ├ ƒ /api/admin/payments/reviews/[paymentAttemptId]/decision
+apps/admin-portal build: ├ ƒ /api/admin/payments/reviews/[paymentAttemptId]/proof
+apps/admin-portal build: ├ ƒ /api/admin/payments/reviews/[paymentAttemptId]/refund
+apps/admin-portal build: ├ ƒ /api/admin/payments/urgent
+apps/admin-portal build: ├ ƒ /api/admin/promotions
+apps/admin-portal build: ├ ƒ /api/admin/promotions/analytics
+apps/admin-portal build: ├ ƒ /api/admin/promotions/analytics/export
+apps/admin-portal build: ├ ƒ /api/admin/reports
+apps/admin-portal build: ├ ƒ /api/admin/reports/export
+apps/admin-portal build: ├ ƒ /api/admin/reservations
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/available-relocation-spots
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/cancel
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/closure/flag-manual
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/closure/log-call
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/extend
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/extend/availability
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/flag-manual
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/refund
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/relocate
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/relocate/decision
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/reschedule
+apps/admin-portal build: ├ ƒ /api/admin/reservations/[id]/reschedule/availability
+apps/admin-portal build: ├ ƒ /api/admin/reservations/closure-impacts
+apps/admin-portal build: ├ ƒ /api/admin/reservations/export
+apps/admin-portal build: ├ ƒ /api/admin/reservations/near-checkout
+apps/admin-portal build: ├ ƒ /api/admin/settings
+apps/admin-portal build: ├ ƒ /api/admin/settings/closures
+apps/admin-portal build: ├ ƒ /api/admin/settings/closures/preview-impact
+apps/admin-portal build: ├ ƒ /api/admin/settings/operating-hours
+apps/admin-portal build: ├ ƒ /api/admin/settings/payment-methods
+apps/admin-portal build: ├ ƒ /api/admin/settings/payment-methods/upload-qr
+apps/admin-portal build: ├ ƒ /api/admin/settings/policy-pdf
+apps/admin-portal build: ├ ƒ /api/admin/staff
+apps/admin-portal build: ├ ƒ /api/admin/staff/[id]
+apps/admin-portal build: ├ ƒ /api/admin/staff/invitations
+apps/admin-portal build: ├ ƒ /api/admin/staff/invitations/[id]
+apps/admin-portal build: ├ ƒ /api/admin/structures
+apps/admin-portal build: ├ ƒ /api/admin/structures/[id]
+apps/admin-portal build: ├ ƒ /api/admin/workspace-instances/maintenance
+apps/admin-portal build: ├ ƒ /api/admin/workspace-usage
+apps/admin-portal build: ├ ƒ /api/admin/workspaces
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/floors
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/floors/[floorId]
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/instances
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/instances/[instanceId]
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/instances/[instanceId]/duplicate
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/instances/from-template
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/maintenance
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/templates
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/templates/[templateId]
+apps/admin-portal build: ├ ƒ /api/admin/workspaces/upload-image
+apps/admin-portal build: ├ ƒ /api/assistant/cancel
+apps/admin-portal build: ├ ƒ /api/assistant/progress
+apps/admin-portal build: ├ ƒ /api/assistant/query
+apps/admin-portal build: ├ ƒ /api/assistant/sources/[versionId]/[chunkId]
+apps/admin-portal build: ├ ƒ /api/booking/[token]
+apps/admin-portal build: ├ ƒ /api/internal/assistant/search
+apps/admin-portal build: ├ ƒ /api/internal/assistant/tools
+apps/admin-portal build: ├ ƒ /api/internal/knowledge/jobs/[[...path]]
+apps/admin-portal build: ├ ƒ /api/internal/rewards/process
+apps/admin-portal build: ├ ƒ /api/operations/closure-alerts
+apps/admin-portal build: ├ ƒ /api/operations/reservations/[reservationId]/check-in
+apps/admin-portal build: ├ ƒ /api/operations/reservations/[reservationId]/check-out
+apps/admin-portal build: ├ ƒ /api/payments/[paymentAttemptId]
+apps/admin-portal build: ├ ƒ /api/payments/[paymentAttemptId]/confirm
+apps/admin-portal build: ├ ƒ /api/published-map
+apps/admin-portal build: ├ ○ /manage
+apps/admin-portal build: ├ ○ /manage/activity-log
+apps/admin-portal build: ├ ○ /manage/auth/callback
+apps/admin-portal build: ├ ○ /manage/campaign-analytics
+apps/admin-portal build: ├ ○ /manage/forgot-password
+apps/admin-portal build: ├ ○ /manage/kiosk-confirm
+apps/admin-portal build: ├ ○ /manage/login
+apps/admin-portal build: ├ ○ /manage/map
+apps/admin-portal build: ├ ○ /manage/payments
+apps/admin-portal build: ├ ƒ /manage/payments/[id]
+apps/admin-portal build: ├ ƒ /manage/payments/review/[id]
+apps/admin-portal build: ├ ○ /manage/promo-analytics
+apps/admin-portal build: ├ ○ /manage/promotions
+apps/admin-portal build: ├ ○ /manage/reports
+apps/admin-portal build: ├ ○ /manage/reservations
+apps/admin-portal build: ├ ƒ /manage/reservations/[id]
+apps/admin-portal build: ├ ○ /manage/reset-password
+apps/admin-portal build: ├ ○ /manage/scan
+apps/admin-portal build: ├ ○ /manage/settings
+apps/admin-portal build: ├ ƒ /manage/setup
+apps/admin-portal build: ├ ƒ /manage/setup/password
+apps/admin-portal build: ├ ○ /manage/staff
+apps/admin-portal build: ├ ○ /manage/workspace-map
+apps/admin-portal build: └ ○ /manage/workspaces
+apps/admin-portal build: ○  (Static)   prerendered as static content
+apps/admin-portal build: ƒ  (Dynamic)  server-rendered on demand
+apps/customer-website build: Done
+apps/admin-portal build: Done

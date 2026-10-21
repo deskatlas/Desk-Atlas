@@ -192,7 +192,8 @@ def main():
     completed = threading.Event()
     threading.Thread(target=startup_watchdog, args=(completed, lambda: gpu), daemon=True).start()
     try:
-        allowed = {'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', 'RAG_ANSWER_MODEL',
+        allowed = {'CUSTOMER_ASSISTANT_ENABLED', 'CUSTOMER_ASSISTANT_VERIFIED_ENABLED',
+                   'RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET', 'RAG_SCOPE_ID', 'RAG_ANSWER_MODEL',
                    'RAG_MODEL_PROVIDER', 'RAG_EMBEDDING_PROVIDER', 'DEEPINFRA_API_KEY',
                    'RAG_ANSWER_DIGEST', 'RAG_EMBEDDING_FINGERPRINT', 'KB_ENABLED', 'OLLAMA_URL',
                    'RAG_PLAN_MAX_TOKENS', 'RAG_ANSWER_MAX_TOKENS', 'RAG_SELECTION_MAX_TOKENS',

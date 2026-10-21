@@ -13,7 +13,7 @@ COPY rag/ ./rag/
 COPY cloudrun/provision_embedding.py ./cloudrun/provision_embedding.py
 RUN python cloudrun/provision_embedding.py && chown -R rag:rag /app
 # serve_local.py is part of the existing loaded-code identity contract.
-COPY app.py serve_local.py ./
+COPY app.py serve_local.py customer_access.py customer_public.py customer_booking_evidence.py ./
 ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 USER rag
 EXPOSE 8000

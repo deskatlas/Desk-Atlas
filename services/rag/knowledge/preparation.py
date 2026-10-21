@@ -10,6 +10,43 @@ POLICY = 'kb-auto-v1'
 SAFE_WARNINGS = {'SECTION_SCOPE_REVIEW', 'BLANK_PAGE_SKIPPED', 'LEGACY_CONVERSION', 'OCR_REVIEW', 'TABLE_REVIEW'}
 
 
+def complete_section(original, bodies):
+    """Account for ordered source text and only source-backed table headers.
+
+    Split rows can span chunks, with the same header inserted between their
+    pieces. Match every original non-whitespace character in order, allowing
+    only those complete repeated headers inside their original table unit.
+    """
+    compact = lambda value: re.sub(r'\s+', '', value)
+    expected, actual = compact(original), compact(''.join(bodies))
+    if expected == actual:
+        return True
+    tables = []
+    offset = 0
+    for unit in re.split(r'\n\s*\n', original):
+        lines = unit.splitlines()
+        if (len(lines) > 2 and lines[0].lstrip().startswith('|')
+                and re.match(r'^\s*\|[\s|:\-]+\|?\s*$', lines[1])):
+            header = compact('\n'.join(lines[:2]))
+            tables.append((offset + len(header), offset + len(compact(unit)), header))
+        offset += len(compact(unit))
+    source_pos = chunk_pos = table_pos = 0
+    while source_pos < len(expected) and chunk_pos < len(actual):
+        while table_pos < len(tables) and source_pos >= tables[table_pos][1]:
+            table_pos += 1
+        if table_pos < len(tables):
+            start, end, header = tables[table_pos]
+            if (start <= source_pos < end and actual.startswith(header, chunk_pos)
+                    and not expected.startswith(header, source_pos)):
+                chunk_pos += len(header)
+                continue
+        if expected[source_pos] != actual[chunk_pos]:
+            return False
+        source_pos += 1
+        chunk_pos += 1
+    return source_pos == len(expected) and chunk_pos == len(actual)
+
+
 def verify_preparation(extraction, chunks):
     sections = extraction['sections']
     normalized = '\n\n'.join(section['text'] for section in sections)
@@ -40,13 +77,8 @@ def verify_preparation(extraction, chunks):
         by_section.setdefault(chunk['section_context']['section_id'], []).append(body)
     for sid, bodies in by_section.items():
         original = '\n\n'.join(section['text'] for section in sections if section.get('section_id') == sid)
-        compact = lambda value: re.sub(r'\s+', '', value)
-        if compact(original) != compact(''.join(bodies)):
-            # Repeated table headers are safe context; ordinary source lines
-            # must still be represented completely in the corresponding chunks.
-            combined = '\n'.join(bodies)
-            if any(line.strip() and line.strip() not in combined for line in original.splitlines()):
-                raise ValueError('MANIFEST_INVALID')
+        if not complete_section(original, bodies):
+            raise ValueError('MANIFEST_INVALID')
     if {s['section_id'] for s in sections if s['text'].strip()} != set(by_section):
         raise ValueError('MANIFEST_INVALID')
     return POLICY

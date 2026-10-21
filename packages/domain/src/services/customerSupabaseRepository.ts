@@ -20,6 +20,11 @@ export interface CustomerSupabaseConfig {
 }
 
 export class CustomerSupabaseRepository implements CustomerRepository {
+  async consumeRateLimits(entries: Array<{ scope: string; subjectHash: string; limit: number; windowSeconds: number }>): Promise<{ allowed: boolean; retryAfterSeconds?: number }> {
+    return this.request('/rpc/consume_customer_access_limits', {
+      method: 'POST', body: JSON.stringify({ p_entries: entries }),
+    });
+  }
   private readonly supabaseUrl: string;
   private readonly serviceRoleKey: string;
   private readonly fetcher: typeof fetch;

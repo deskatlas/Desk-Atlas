@@ -15,6 +15,7 @@ class RequestBoundary:
     def __init__(self, app, maximum=5, deadline=50):
         self.app, self.maximum, self.deadline = app, maximum, deadline
         self.active = 0
+        self.customer_active = 0
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
@@ -27,6 +28,7 @@ class RequestBoundary:
         metrics_token = request_timing.metrics.set(model_metrics)
         task = watcher = None
         admitted = False
+        customer = scope.get('path', '').startswith('/v1/customer/')
         started = False
 
         async def timed_send(message):
@@ -73,14 +75,17 @@ class RequestBoundary:
                     if message['type'] == 'http.disconnect':
                         return
                     body.extend(message.get('body', b''))
-                    if len(body) > (260000 if scope.get('path') == '/v1/document-support' else 120000):
+                    if len(body) > (260000 if scope.get('path') in ('/v1/document-support', '/v1/customer/document-support', '/v1/customer/characteristics') else 120000):
                         return await JSONResponse({'error': 'INVALID_REQUEST'}, 413)(scope, receive, timed_send)
                     if not message.get('more_body', False):
                         break
-                if self.active >= self.maximum:
+                if (self.customer_active >= 2 if customer else self.active >= self.maximum):
                     return await JSONResponse({'error': 'CAPACITY_BUSY'}, 429,
                         headers={'Retry-After': '5'})(scope, receive, timed_send)
-                self.active += 1
+                if customer:
+                    self.customer_active += 1
+                else:
+                    self.active += 1
                 admitted = True
                 delivered = False
 
@@ -116,7 +121,10 @@ class RequestBoundary:
                     with suppress(asyncio.CancelledError):
                         await pending
             if admitted:
-                self.active -= 1
+                if customer:
+                    self.customer_active -= 1
+                else:
+                    self.active -= 1
             request_timing.current.reset(token)
             request_timing.tokens.reset(counts_token)
             request_timing.metrics.reset(metrics_token)

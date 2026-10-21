@@ -31,6 +31,33 @@ def test_large_split_paragraph_retains_every_character(tmp_path):
     assert verify_preparation(extraction, chunks) == 'kb-auto-v1'
 
 
+def test_hosted_table_with_split_row_accounts_for_repeated_headers(tmp_path):
+    from rag.embedding_provider import ByteTokenizer
+    extraction, _ = prepared(tmp_path, '# Identifiers\n\n| Identifier | Meaning |\n| :--- | :--- |\n'
+                              '| Customer ID | ' + 'Preserve this customer qualification. ' * 25 + '|\n')
+    chunks = chunk_sections(extraction['sections'], ByteTokenizer())
+    assert len(chunks) > 1
+    assert verify_preparation(extraction, chunks) == 'kb-auto-v1'
+
+
+@pytest.mark.parametrize('damage', ['missing', 'changed', 'reordered', 'duplicated'])
+def test_repeated_table_headers_do_not_hide_source_damage(tmp_path, damage):
+    from rag.embedding_provider import ByteTokenizer
+    extraction, _ = prepared(tmp_path, '# Identifiers\n\n| Identifier | Meaning |\n| :--- | :--- |\n'
+                              '| Customer ID | ' + 'Preserve this customer qualification. ' * 25 + '|\n')
+    chunks = chunk_sections(extraction['sections'], ByteTokenizer())
+    if damage == 'missing':
+        chunks.pop()
+    elif damage == 'changed':
+        chunks[-1]['content'] = chunks[-1]['content'].replace('qualification', 'permission')
+    elif damage == 'reordered':
+        chunks.reverse()
+    else:
+        chunks.append(copy.deepcopy(chunks[-1]))
+    with pytest.raises(ValueError, match='MANIFEST_INVALID'):
+        verify_preparation(extraction, chunks)
+
+
 @pytest.mark.parametrize('damage', ['hash', 'offset', 'missing', 'qualification', 'unresolved', 'unknown', 'embedded'])
 def test_uncertain_or_incomplete_artifacts_cannot_publish(tmp_path, damage):
     extraction, chunks = prepared(tmp_path)
@@ -76,9 +103,13 @@ def test_supported_binary_formats_prepare_without_human_review(tmp_path, kind):
 
 
 @pytest.mark.parametrize('automatic', [True, False])
-def test_worker_completion_negotiates_only_new_intents(tmp_path, monkeypatch, automatic):
+@pytest.mark.parametrize('hosted_table', [False, True])
+def test_worker_completion_negotiates_only_new_intents(tmp_path, monkeypatch, automatic, hosted_table):
     from knowledge import worker
-    extraction, _ = prepared(tmp_path)
+    from rag.embedding_provider import ByteTokenizer
+    text = ('# Identifiers\n\n| Identifier | Meaning |\n| :--- | :--- |\n| Customer ID | '
+            + 'Preserve this qualification. ' * 25 + '|\n') if hosted_table else '# Checkout\nVerify payment.'
+    extraction, _ = prepared(tmp_path, text)
     raw = (tmp_path / 'guide.md').read_bytes()
     monkeypatch.setattr(worker, 'urlopen', lambda *args, **kwargs: io.BytesIO(raw))
     monkeypatch.setattr(worker.subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=json.dumps({'data': extraction}).encode()))
@@ -89,7 +120,7 @@ def test_worker_completion_negotiates_only_new_intents(tmp_path, monkeypatch, au
             calls.append((path, data))
 
     class Encoder:
-        _model = SimpleNamespace(tokenizer=CharacterTokenizer())
+        _model = SimpleNamespace(tokenizer=ByteTokenizer() if hosted_table else CharacterTokenizer())
 
         def encode(self, texts):
             return [[1.0] + [0.0] * 1023 for _ in texts]

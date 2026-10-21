@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useCustomerAssistant } from '@/features/assistant/CustomerAssistantProvider';
 import {
   usePublishedMap,
   mapPublishedFloorToWorkspaceCards,
@@ -330,6 +331,7 @@ function AmenityIcon({ type, name, color }: { type?: string; name?: string; colo
 
 export function ReservationPage() {
   const router = useRouter();
+  const assistant = useCustomerAssistant();
 
   // Dual Discovery Mode: "map" (Default interactive floor map) vs "category" (Template-first flow)
   const [discoveryMode, setDiscoveryMode] = useState<"map" | "category">("map");
@@ -1057,6 +1059,34 @@ export function ReservationPage() {
     setModalWorkspace(workspace);
     setIsModalOpen(true);
   };
+
+  // MS77-TC03/09: explicit pointer opens the ordinary detail path only after
+  // a fresh published-map read; candidate ranks and booking forms stay user-led.
+  const handoff = assistant?.handoff;
+  useEffect(() => {
+    if (!handoff) return;
+    let stopped = false;
+    const controller = new AbortController();
+    const consume = assistant?.consumeHandoff;
+    void fetch(`/api/customer-assistant/spot`, { method: 'POST', cache: 'no-store', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(handoff) }).then(async result => {
+      if (!result.ok) throw new Error('The spot or published map changed. Please select a spot from the current map.');
+      const data: { published: PublishedFloorMap } = await result.json();
+      const workspace = mapPublishedFloorToWorkspaceCards(data.published).find(w => w.workspaceInstanceId === handoff.workspace_id);
+      if (!workspace || data.published.version.id !== handoff.map_version_id) throw new Error('The published map changed. Please choose from the current map.');
+      if (!stopped) { setFloorId(handoff.floor_id); refetch(); handleSpotClick(workspace); consume?.(); }
+    }).catch(error => { if (!stopped && !controller.signal.aborted) { setTemplateMismatchWarning(error.message); consume?.(); } });
+    return () => { stopped = true; controller.abort(); };
+  }, [handoff]);
+  useEffect(() => {
+    if (!assistant) return;
+    assistant.setDiscovery({
+      ...(selectedWorkspace ? { workspace_id: selectedWorkspace.workspaceInstanceId, template_id: selectedWorkspace.templateId, floor_id: selectedWorkspace.floorId } : floorId ? { floor_id: floorId } : {}),
+      ...(discoveryMode === 'category' && selectedTemplate ? { template_id: selectedTemplate.id, date: catDate, duration_minutes: catDurationHours * 60,
+        ...(catStartTime ? { start_time: catStartTime } : {}) } : {}),
+    });
+    return () => { assistant.setDiscovery({}); };
+  }, [selectedWorkspace?.workspaceInstanceId, floorId, discoveryMode, selectedTemplate?.id, catDate, catStartTime, catDurationHours]);
 
   // Category selection in Category Flow
   const handleSelectTemplate = (template: WorkspaceTemplateSummary) => {

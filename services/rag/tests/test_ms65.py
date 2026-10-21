@@ -59,6 +59,46 @@ def test_partition_preserves_every_canonical_unit_and_utf16():
     assert units[0]['end'] == len(sources[0]['content']) + 1
 
 
+def test_generated_heading_prefix_is_context_not_duplicate_source_evidence():
+    import hashlib
+    from rag.document_support import canonical_units
+    heading = 'Operations 🌍 / Entry'
+    body = '# Entry\nNever admit a guest before payment.\n\nKeep the reference private.'
+    content = heading + '\n\n' + body
+    units = canonical_units([{'chunk_id': 'one', 'heading_path': heading, 'content': content,
+                              'content_hash': hashlib.sha256(content.encode()).hexdigest()}])
+    assert [u['text'] for u in units] == ['# Entry\nNever admit a guest before payment.', 'Keep the reference private.']
+    assert all(u['heading'] == heading for u in units)
+    for unit in units:
+        assert content.encode('utf-16-le')[unit['start'] * 2:unit['end'] * 2].decode('utf-16-le') == unit['text']
+
+
+def test_actual_heading_without_generated_prefix_remains_evidence():
+    import hashlib
+    from rag.document_support import canonical_units
+    content = 'Payment prerequisites\nNever admit a guest before payment.'
+    units = canonical_units([{'chunk_id': 'one', 'heading_path': 'Payment prerequisites', 'content': content,
+                              'content_hash': hashlib.sha256(content.encode()).hexdigest()}])
+    assert units[0]['text'] == content
+
+
+def test_many_split_chunks_keep_all_source_bodies_within_unchanged_budget():
+    import hashlib
+    from rag.document_support import canonical_units, partition, BUDGET
+    heading = 'Customer workspace guidance / ' + 'Situational recommendations ' * 5
+    sources = []
+    for i in range(134):
+        body = f'# Scenario {i}\n' + 'Preserve the documented conditions. ' * 10
+        content = heading + '\n\n' + body
+        sources.append({'chunk_id': str(i), 'heading_path': heading, 'content': content,
+                        'content_hash': hashlib.sha256(content.encode()).hexdigest()})
+    units = canonical_units(sources)
+    bundles = partition(units)
+    assert len(bundles) <= BUDGET['bundles'] == 24
+    assert len(units) == len(sources)
+    assert [u['text'] for u in units] == [s['content'][len(heading) + 2:].strip() for s in sources]
+
+
 def test_distant_restriction_is_checked_even_when_selector_omits_it():
     import asyncio
     import hashlib

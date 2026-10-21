@@ -11,6 +11,7 @@ export const RATE_LIMIT_RULES: Record<RateLimitScope, RateLimitRule> = {
   VERIFY_IP: { limit: 5, windowSeconds: 15 * 60 },
   VERIFY_EMAIL: { limit: 5, windowSeconds: 15 * 60 },
   CUSTOMER_TOKEN: { limit: 60, windowSeconds: 60 },
+  ASSISTANT_TOKEN: { limit: 10, windowSeconds: 600 },
   PROMO_IP: { limit: 10, windowSeconds: 60 },
   PROMO_EMAIL: { limit: 10, windowSeconds: 60 },
   EMAIL_CUSTOMER: { limit: 10, windowSeconds: 60 * 60 },
@@ -45,6 +46,10 @@ export class RateLimiterService {
   ): Promise<{ allowed: boolean; retryAfterSeconds?: number }> {
     const subjectHash = this.hashSubject(rawSubject);
     const rule = RATE_LIMIT_RULES[scope];
+
+    if (this.repository.consumeRateLimits) {
+      return this.repository.consumeRateLimits([{ scope, subjectHash, ...rule }]);
+    }
 
     const currentCount = await this.repository.countRateLimitEvents(
       scope,
@@ -82,5 +87,13 @@ export class RateLimiterService {
     if (!result.allowed) {
       throw new RateLimitedError(result.retryAfterSeconds || 60);
     }
+  }
+
+  // MS78-TC17: a single atomic admission consumes all required dimensions.
+  async consumeTogether(subjects: Array<{ scope: RateLimitScope; subject: string }>) {
+    if (!this.repository.consumeRateLimits) throw new Error('Atomic rate limits unavailable');
+    return this.repository.consumeRateLimits(subjects.map(({ scope, subject }) => ({
+      scope, subjectHash: this.hashSubject(subject), ...RATE_LIMIT_RULES[scope],
+    })));
   }
 }

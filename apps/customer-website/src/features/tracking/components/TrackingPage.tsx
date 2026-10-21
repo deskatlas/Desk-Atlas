@@ -11,6 +11,7 @@ import { mapReservationStatusDisplay } from "../utils/reservationStatusMap";
 import { formatCleanScheduleRange } from "../utils/scheduleFormatter";
 
 import { RewardsAccessCard } from "./RewardsAccessCard";
+import { AskReservationButton } from '../../assistant/AskReservationButton';
 
 interface TrackingPageProps {
   initialReferenceCode?: string;
@@ -237,6 +238,8 @@ export function TrackingPage({
                   </p>
                 </div>
               )}
+
+              <AskReservationButton reservationId={data.reservationId} />
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <InfoCard

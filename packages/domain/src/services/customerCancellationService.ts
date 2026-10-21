@@ -7,6 +7,7 @@ import { TransactionalEmailService } from "./transactionalEmailService";
 
 export interface CustomerCancellationEvaluation {
   canCancel: boolean;
+  reasonCode?: 'STATUS_NOT_CONFIRMED' | 'ALREADY_CHECKED_IN' | 'COMPLETED' | 'NO_SCHEDULE' | 'START_PASSED' | 'CUTOFF_PASSED';
   reason?: string;
   cutoffHours: number;
   cancellationCutoffDisplay: string;
@@ -23,7 +24,7 @@ export interface CustomerCancellationEvaluation {
  */
 export function evaluateCustomerCancellationEligibility(
   record: GuestReservationTrackingRecord,
-  settings?: BusinessSettings | null,
+  settings?: Pick<BusinessSettings, 'customerCancellationCutoffValue' | 'customerCancellationCutoffUnit'> | null,
   now: Date | number = new Date()
 ): CustomerCancellationEvaluation {
   const cutoffHours = calculateCancellationCutoffHours(settings);
@@ -40,6 +41,7 @@ export function evaluateCustomerCancellationEligibility(
     return {
       canCancel: false,
       reason: `Cannot cancel a reservation in ${record.reservationStatus.toLowerCase()} status.`,
+      reasonCode: 'STATUS_NOT_CONFIRMED',
       cutoffHours,
       cancellationCutoffDisplay,
     };
@@ -49,6 +51,7 @@ export function evaluateCustomerCancellationEligibility(
     return {
       canCancel: false,
       reason: "Cannot cancel a reservation that has already checked in.",
+      reasonCode: 'ALREADY_CHECKED_IN',
       cutoffHours,
       cancellationCutoffDisplay,
     };
@@ -58,6 +61,7 @@ export function evaluateCustomerCancellationEligibility(
     return {
       canCancel: false,
       reason: "Cannot cancel a completed reservation.",
+      reasonCode: 'COMPLETED',
       cutoffHours,
       cancellationCutoffDisplay,
     };
@@ -68,6 +72,7 @@ export function evaluateCustomerCancellationEligibility(
     return {
       canCancel: false,
       reason: "Reservation does not have a scheduled start time.",
+      reasonCode: 'NO_SCHEDULE',
       cutoffHours,
       cancellationCutoffDisplay,
     };
@@ -78,6 +83,7 @@ export function evaluateCustomerCancellationEligibility(
     return {
       canCancel: false,
       reason: "Scheduled start time has already passed.",
+      reasonCode: 'START_PASSED',
       cutoffHours,
       cancellationCutoffDisplay,
     };
@@ -88,6 +94,7 @@ export function evaluateCustomerCancellationEligibility(
     return {
       canCancel: false,
       reason: `Self-service cancellation closed ${cancellationCutoffDisplay} prior to booking start time.`,
+      reasonCode: 'CUTOFF_PASSED',
       cutoffHours,
       cancellationCutoffDisplay,
     };
