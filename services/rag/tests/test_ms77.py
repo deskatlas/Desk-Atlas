@@ -86,7 +86,7 @@ def test_customer_reference_resolution_uses_other_partitions_without_skipping_ve
     async def generate(prompt, data, schema):
         if schema is support.ReferenceIntent:
             return support.ReferenceIntent(scope='FACTUAL', task='Explain the condition for booking confirmation.')
-        if schema is support.Inspection:
+        if issubclass(schema, support.Inspection):
             index = data['units'][0]['i']
             return support.Inspection(relevant=[index] if index == 0 else [], unresolved=index == 1)
         if schema is support.ReferenceResolution:
@@ -176,7 +176,7 @@ def test_customer_draft_requires_independent_consistency_and_emits_only_cited_sp
     async def generate(prompt, data, schema):
         if schema is support.ReferenceIntent:
             return support.ReferenceIntent(scope='FACTUAL', task='Explain confirmation requirements.')
-        if schema is support.Inspection:
+        if issubclass(schema, support.Inspection):
             return support.Inspection(relevant=[0, 1], unresolved=False)
         if schema is support.ReferenceComposition:
             return support.ReferenceComposition(blocks=[{'kind': 'text', 'text': texts[1], 'support': [1]}])
@@ -212,7 +212,8 @@ def test_customer_reference_packing_keeps_every_original_rule_and_heading(monkey
 
 @pytest.mark.parametrize('omit_restriction', [False, True])
 @pytest.mark.parametrize('unicode_context', [False, True])
-def test_customer_refinement_preserves_required_conditions_and_rechecks_all_units(monkeypatch, omit_restriction, unicode_context):
+@pytest.mark.parametrize('customer_reference', [False, True])
+def test_document_refinement_preserves_required_conditions_and_rechecks_all_units(monkeypatch, omit_restriction, unicode_context, customer_reference):
     import asyncio
     import hashlib
     from fastapi import HTTPException
@@ -227,24 +228,26 @@ def test_customer_refinement_preserves_required_conditions_and_rechecks_all_unit
     async def generate(prompt, data, schema):
         if schema is support.ReferenceIntent:
             return support.ReferenceIntent(scope='POLICY', task='Explain entry requirements.')
-        if schema is support.Inspection:
+        if issubclass(schema, support.Inspection):
             return support.Inspection(relevant=[u['i'] for u in data['units']], unresolved=False)
-        if schema is support.ReferenceSelection:
-            return support.ReferenceSelection(relevant=[u['i'] for u in data['candidates'] if u['text'] == 'Allow entry after payment verification.'
-                or (u['text'] == texts[19] and not omit_restriction)])
-        if schema is support.ReferenceComposition:
-            return support.ReferenceComposition(blocks=[{'kind': 'text', 'text': u['text'], 'support': [u['i']]}
-                for u in data['evidence'] if not omit_restriction or u['text'] != texts[19]])
+        if schema in (support.ReferenceSelection, support.DraftSelection):
+            picked = [u for u in data['candidates'] if u['text'] == 'Allow entry after payment verification.'
+                or (u['text'] == texts[19] and not omit_restriction)]
+            return schema(draft=[{'text': u['text'], 'support': [u['i']]} for u in picked]) if schema is support.DraftSelection else schema(relevant=[u['i'] for u in picked])
+        if schema is support.ReferenceComposition or issubclass(schema, support.Composition):
+            blocks = [{'kind': 'text', 'text': u['text'], 'support': [u['i']]}
+                for u in data['evidence'] if not omit_restriction or u['text'] != texts[19]]
+            return schema(blocks=blocks) if schema is support.ReferenceComposition else schema(scope='FACTUAL', blocks=blocks)
         if 'units' in data:
             checked.extend(u['i'] for u in data['units'])
         complete = any(texts[19] == b['text'] for b in data['answer']['blocks'])
         return support.Verification(relevant=True, supported=True, complete=complete, consistent=True, safe=True)
     if omit_restriction:
         with pytest.raises(HTTPException) as failure:
-            asyncio.run(support.document_answer('What are the entry requirements?', sources, generate, customer_reference=True))
+            asyncio.run(support.document_answer('What are the entry requirements?', sources, generate, customer_reference=customer_reference))
         assert failure.value.detail == 'UNRESOLVED_CONTEXT'
     else:
-        result = asyncio.run(support.document_answer('What are the entry requirements?', sources, generate, customer_reference=True))
+        result = asyncio.run(support.document_answer('What are the entry requirements?', sources, generate, customer_reference=customer_reference))
         assert [span['quote'] for span in result['spans']] == ['Allow entry after payment verification.', texts[19]]
         for span in result['spans']:
             original = texts[int(span['chunk_id'])].encode('utf-16-le')

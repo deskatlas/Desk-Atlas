@@ -194,6 +194,16 @@ describe('SPEC4-TC09/10/11/12: deterministic metrics and time', () => {
     for (const text of ['How many bookings today?','Ilang kumpirmadong booking ngayong araw?','Ilan ang bookings today sa current operations?']) expect(currentOperationalPlan(text)?.tools[0].name).toBe('operational_snapshot');
     expect(currentOperationalPlan('Compare bookings today with last month')).toBeUndefined();
   });
+  it('routes current check-in counts and permits only a redundant current-day period', () => {
+    for (const text of ['how many check ins today', 'How many check-ins today?', 'Count checkins today', 'Ilan ang naka-check in ngayon?']) {
+      expect(currentOperationalPlan(text)?.tools[0].name).toBe('operational_snapshot');
+    }
+    expect(authorizeAssistantTool(admin, tool('operational_snapshot', {period: 'today'})).args.period).toBeUndefined();
+    expect(() => authorizeAssistantTool(admin, tool('operational_snapshot', {period: 'yesterday'}))).toThrow();
+    expect(() => authorizeAssistantTool(admin, tool('operational_snapshot', {period: 'today', statuses: ['CHECKED_IN']}))).toThrow();
+    expect(currentOperationalPlan('How many check-ins yesterday?')).toBeUndefined();
+    expect(currentOperationalPlan('How many check-ins today and how do I check someone in?')).toBeUndefined();
+  });
   it('uses half-open inclusive local dates and DST rather than 24-hour arithmetic', () => {
     const spring = resolveAssistantPeriod(tool('booking_report',{start_date:'2026-03-08',end_date:'2026-03-08'}).args,'America/New_York',asOf);
     expect(spring.start).toBe('2026-03-08T05:00:00.000Z'); expect(spring.end).toBe('2026-03-09T04:00:00.000Z');

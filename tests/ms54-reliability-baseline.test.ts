@@ -10,7 +10,9 @@ import { AssistantDiagnostics } from '../apps/admin-portal/src/server/assistant/
 const db = vi.hoisted(() => ({ rpc: vi.fn(), epoch: 1, active: true }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({
   rpc: (...args: unknown[]) => ({ abortSignal: () => db.rpc(...args) }),
-  from: (table: string) => ({ select: () => ({ eq: () => {
+  from: (table: string) => ({ select: () => ({
+    in: (_column: string, ids: string[]) => ({ abortSignal: async () => ({ data: ids.map(id => ({ id, support_contract: null })), error: null }) }),
+    eq: () => {
     const result = () => ({ data: table === 'staff_profiles' ? { role: 'ADMIN', is_active: db.active }
       : table === 'business_settings' ? { timezone: 'Asia/Manila' } : { epoch: db.epoch, active_embedding_fingerprint: 'synthetic' }, error: null });
     return { maybeSingle: async () => result(), abortSignal: () => ({ single: async () => result(), maybeSingle: async () => result() }) };

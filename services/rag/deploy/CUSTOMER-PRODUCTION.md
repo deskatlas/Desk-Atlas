@@ -91,3 +91,29 @@ traffic. Preserved existing model/provider/embedding/secrets settings and set
 Authenticated health returned 200 and matched the local serving fingerprint.
 An internal capability on the customer plan route returned 401; no Google
 identity returned 403 on health. Website/customer activation is still pending.
+
+## October 21 public website activation and credential repair
+
+The maintainer published merge `00a18fe` to main and enabled the two public
+website flags, leaving the verified flags off. Backend revision
+`deskatlas-rag-chat-production-00005-crg` enables authenticated customer routes.
+Direct synthetic customer planning/embedding calls returned 200; customer
+capabilities on the internal plan route returned 401.
+
+The initial website session succeeded but its question returned 503, with
+401 observed on the corresponding Cloud Run request. The maintainer confirmed
+the customer secrets had been copied from the local admin environment because
+the production values were hidden. Sensitive Vercel values cannot be compared
+through the list API. Replaced the customer Production service token and
+capability secret from the exact production Cloud Run Secret Manager version 1
+values in process memory, and synchronized the seven non-secret connection
+settings. No key values were printed or committed. Redeployed the same code as
+`desk-atlas-customer-website-lwm0dtg8x-desk-atlas.vercel.app`, aliased to the live
+customer domain.
+
+Post-redeployment metadata-only public checks passed: session HTTP 200;
+customer check-in question HTTP 200, ANSWER, six citations, no limitations,
+34.06 seconds; unauthenticated owned-booking question HTTP 200, VERIFY_REQUIRED,
+zero citations, 2.06 seconds. This proves these two paths, not broad model
+quality, mobile rendering or verified customer-owned booking acceptance.
+Repeatable probe: `python services/rag/deploy/check-customer-live.py`.

@@ -38,7 +38,7 @@ export function currentOperationalPlan(message: string): AssistantPlan | undefin
   // MS44-TC04: the existing snapshot shortcut must also defer mixed intent.
   if (/[;\n]|\b(and|also|then|how|procedure|policy|sop|paano|at|saka|report|ulat)\b/.test(text.replace(/how many/g, 'count'))) return undefined;
   if (/history|yesterday|last|previous|noong|kahapon|nakaraan|revenue|payment|kita|magkano|compare|comparison|floor|desk|template|\d/.test(text)) return undefined;
-  if (!/how many|count|\bilang\b|\bilan\b|\bbilang\b/.test(text) || !/bookings?|reservations?|reserbasyon/.test(text) || !/today|ngayong araw|ngayon/.test(text)) return undefined;
+  if (!/how many|count|number of|\bilang\b|\bilan\b/.test(text) || !/bookings?|reservations?|reserbasyon|check[ -]?ins?|checked[ -]?in/.test(text) || !/today|ngayong araw|ngayon/.test(text)) return undefined;
   return { kind: 'OPERATIONAL', query: '', tools: [assistantToolSchema.parse({ name: 'operational_snapshot', args: {} })] };
 }
 
@@ -140,6 +140,9 @@ export function authorizeAssistantTool(actor: AssistantActor, input: unknown): A
   if (actor.role !== 'ADMIN' && !['operational_snapshot', 'workspace_availability'].includes(tool.name)) throw new AssistantError('FORBIDDEN', 'Historical and financial reports require administrator access.', 403);
   const args = tool.args;
   if (args.period && (args.start_date || args.end_date)) throw new AssistantError('CLARIFICATION_REQUIRED', 'Choose a named period or explicit dates.');
+  // SPEC-4 / QAD-TC44: an explicit current-day period is equivalent to this
+  // tool's fixed business day. Other periods and filters still fail closed.
+  if (tool.name === 'operational_snapshot' && args.period === 'today') delete args.period;
   if (tool.name === 'operational_snapshot' && Object.keys(args).some(k => !['floor_id', 'basis', 'grouping'].includes(k))) throw new AssistantError('UNSUPPORTED_REPORT', 'Operational snapshot supports only the current business day and optional floor.');
   if (tool.name === 'workspace_availability') {
     if (!args.start_at || !args.end_at || Date.parse(args.start_at) >= Date.parse(args.end_at)) throw new AssistantError('CLARIFICATION_REQUIRED', 'Specify an availability start and end time.');
