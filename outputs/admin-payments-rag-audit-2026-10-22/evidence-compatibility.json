@@ -1,0 +1,44 @@
+{
+  "read_only": true,
+  "exact_source_bytes_match": false,
+  "match_basis": "TITLE",
+  "status": "PUBLISHED",
+  "support_contract": "ms65-v1",
+  "chunks": 28,
+  "verification_policy": "kb-auto-v1",
+  "published_corpus": {
+    "total": 18,
+    "ms65_versions": 8
+  },
+  "expected_payment_guidance_present": {
+    "inspect_proof": true,
+    "reconsider_approve": true,
+    "rejected_incorrectly": true
+  },
+  "local_gateway_contract": "legacy",
+  "legacy_rejected": true,
+  "document_reader_accepted": true,
+  "results": [
+    {
+      "rpc": "assistant_expand_evidence",
+      "error": false,
+      "complete": false,
+      "reason": "REPROCESS_REQUIRED",
+      "sources": 0
+    },
+    {
+      "rpc": "assistant_expand_evidence_v3",
+      "error": false,
+      "complete": false,
+      "reason": "REPROCESS_REQUIRED",
+      "sources": 0
+    },
+    {
+      "rpc": "assistant_document_evidence",
+      "error": false,
+      "complete": null,
+      "reason": null,
+      "sources": 28
+    }
+  ]
+}

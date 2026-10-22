@@ -52,7 +52,8 @@ def test_navigation_does_not_expand_an_unrelated_handbook_but_explicit_required_
 
 
 @pytest.mark.parametrize('reject', [False, True])
-def test_all_customer_partitions_checked_with_bounded_concurrency_and_canonical_spans(monkeypatch, reject):
+@pytest.mark.parametrize('customer_reference', [False, True])
+def test_all_customer_partitions_checked_with_bounded_concurrency_and_canonical_spans(monkeypatch, reject, customer_reference):
     monkeypatch.setitem(support.BUDGET, 'bundle_bytes', 220)
     texts = ['Customer Wi-Fi is offered, but uptime is not guaranteed.'] + ['Unrelated background ' + str(index) + 'x' * 80 for index in range(7)]
     sources = [{'chunk_id': str(index), 'heading_path': 'Amenities', 'content': text, 'content_hash': hashlib.sha256(text.encode()).hexdigest()} for index, text in enumerate(texts)]
@@ -64,26 +65,58 @@ def test_all_customer_partitions_checked_with_bounded_concurrency_and_canonical_
             return support.ReferenceIntent(scope='FACTUAL', task='Explain customer Wi-Fi.')
         if schema is support.ReferenceComposition:
             return support.ReferenceComposition(blocks=[{'kind': 'text', 'text': texts[0], 'support': [0]}])
+        if issubclass(schema, support.Composition):
+            return schema(scope='FACTUAL', blocks=[{'kind': 'text', 'text': texts[0], 'support': [0]}])
         if 'units' in data:
             active += 1
             maximum = max(maximum, active)
             await asyncio.sleep(0)
             active -= 1
-        if schema is support.Inspection:
+        if issubclass(schema, support.Inspection):
             return support.Inspection(relevant=[unit['i'] for unit in data['units'] if unit['i'] == 0], unresolved=False)
         if 'units' in data:
             checked.update(unit['i'] for unit in data['units'])
         return support.Verification(relevant=True, supported=True, complete=not (reject and 'units' in data and any(unit['i'] == 7 for unit in data['units'])), consistent=True, safe=True)
     if reject:
         with pytest.raises(HTTPException) as failure:
-            asyncio.run(support.document_answer('May wifi ba kayo?', sources, generate, customer_reference=True))
+            asyncio.run(support.document_answer('May wifi ba kayo?', sources, generate, customer_reference=customer_reference))
         assert failure.value.detail == 'UNRESOLVED_CONTEXT'
     else:
-        answer = asyncio.run(support.document_answer('May wifi ba kayo?', sources, generate, customer_reference=True))
+        answer = asyncio.run(support.document_answer('May wifi ba kayo?', sources, generate, customer_reference=customer_reference))
         assert answer['outcome'] == 'COMPLETE'
         assert answer['spans'][0]['quote'] == texts[0]
     assert checked == set(range(len(texts)))
-    assert maximum == 2 and active == 0
+    assert maximum == (2 if customer_reference else support.BUDGET['concurrency']) and active == 0
+
+
+def test_failed_internal_partition_cancels_other_inflight_work(monkeypatch):
+    monkeypatch.setitem(support.BUDGET, 'bundle_bytes', 220)
+    texts = ['Rule ' + str(index) + 'x' * 100 for index in range(3)]
+    sources = [{'chunk_id': str(index), 'heading_path': 'Rules', 'content': text,
+        'content_hash': hashlib.sha256(text.encode()).hexdigest()} for index, text in enumerate(texts)]
+    active = cancelled = 0
+    async def run():
+        both_started = asyncio.Event()
+        async def generate(prompt, data, schema):
+            nonlocal active, cancelled
+            active += 1
+            if active == 2:
+                both_started.set()
+            try:
+                await both_started.wait()
+                if data['units'][0]['i'] == 0:
+                    raise HTTPException(503, detail='MODEL_UNAVAILABLE')
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
+            finally:
+                active -= 1
+        with pytest.raises(HTTPException) as caught:
+            await asyncio.wait_for(support.document_answer('Explain the rules.', sources, generate), 1)
+        assert caught.value.detail == 'MODEL_UNAVAILABLE'
+    asyncio.run(run())
+    assert active == 0 and cancelled >= 1
 
 
 def test_repeated_prose_preserves_every_original_context_and_alias_offsets():

@@ -11,12 +11,13 @@ import { CampaignRuleInputSchema } from '../packages/validation/src/campaignSche
 // Verifies source-grounded dependency closure, preserved causal failure outcomes,
 // broad intent clarification, migration reversibility, and SPEC2 campaign validation.
 
-const db = vi.hoisted(() => ({ rpc: vi.fn(), epoch: 1 }));
+const db = vi.hoisted(() => ({ rpc: vi.fn(), epoch: 1, supportContract: 'ms65-v1' as string | null }));
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     rpc: (...args: unknown[]) => ({ abortSignal: () => db.rpc(...args) }),
     from: (table: string) => ({
       select: () => ({
+        in: (_column: string, ids: string[]) => ({ abortSignal: async () => ({ data: ids.map(id => ({ id, support_contract: db.supportContract })), error: null }) }),
         eq: () => {
           const result = () => ({
             data: table === 'staff_profiles'
@@ -61,6 +62,8 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
   let emptyReconsideration = false;
   let withdrawOnSupport = false;
   let withdrawn = false;
+  let reprocessRequired = false;
+  let documentOverflow = false;
 
   beforeEach(() => {
     db.epoch = 1;
@@ -70,6 +73,9 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     emptyReconsideration = false;
     withdrawOnSupport = false;
     withdrawn = false;
+    reprocessRequired = false;
+    documentOverflow = false;
+    db.supportContract = 'ms65-v1';
 
     sources = [makeSource('Staff must monitor the lobby occupancy and assist walk-in customers.')];
     candidates = [...sources, makeSource('Keep counter clean.'), makeSource('Check equipment.')];
@@ -92,7 +98,8 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     }
 
     db.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => ({
-      error: null,
+      error: name === 'assistant_document_evidence' && withdrawn ? { message: 'KNOWLEDGE_CHANGED' }
+        : name === 'assistant_document_evidence' && documentOverflow && (args.p_chunks as string[]).length > 1 ? { message: 'CONTEXT_BUDGET_EXCEEDED' } : null,
       data:
         name === 'assistant_document_evidence'
           ? {contract: 'ms65-v1', epoch: db.epoch, sources}
@@ -113,7 +120,7 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
                   })),
                 }
               : name.startsWith('assistant_expand_evidence')
-                ? (++expansions && (expansions === 1 || alwaysOverflow)
+                ? (reprocessRequired ? { complete: false, reason: 'REPROCESS_REQUIRED', sources: [] } : ++expansions && (expansions === 1 || alwaysOverflow)
                     ? { complete: false, reason: 'CONTEXT_BUDGET', sources: [] }
                     : {
                         complete: true,
@@ -187,6 +194,62 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     vi.clearAllMocks();
   });
 
+  function paymentRequest(message = 'What should I check before approving a payment?') {
+    return new Request('http://localhost/api/assistant/query', {
+      method: 'POST', headers: { Origin: 'http://localhost', 'Content-Type': 'application/json',
+        Authorization: `Bearer ${issueAdminSession(randomUUID(), process.env.SUPABASE_SERVICE_ROLE_KEY!)}` },
+      body: JSON.stringify({ session_id: randomUUID(), request_id: randomUUID(), message }),
+    });
+  }
+
+  it('payment audit: missing production reader configuration fails before planning', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', undefined);
+    const response = await assistantQuery(paymentRequest());
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.message).toContain('document reader');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('payment audit: legacy reader incompatibility does not prescribe replacing valid evidence', async () => {
+    reprocessRequired = true;
+    const response = await assistantQuery(paymentRequest());
+    const payload = await response.json();
+    expect(payload.data.limitations.join()).toContain('READER_INCOMPATIBLE');
+    expect(payload.data.limitations.join()).not.toContain('upload a replacement');
+    expect(payload.data.outcome).toBe('SERVICE_FAILURE');
+  });
+
+  it('payment audit: genuine legacy preparation failure retains source review recovery', async () => {
+    reprocessRequired = true;
+    db.supportContract = null;
+    const response = await assistantQuery(paymentRequest());
+    const payload = await response.json();
+    expect(payload.data.limitations.join()).toContain('REPROCESS_REQUIRED');
+    expect(payload.data.outcome).toBe('SOURCE_REVIEW');
+  });
+
+  it.each([
+    "I'm new to handling payments. Where do I start?",
+    "I need to review a customer's payment. What should I check?",
+    'I think I rejected a payment by mistake. How can I fix it?',
+    'What happens to the desk after I approve a payment?',
+    'The receipt is hard to read. What should I do?',
+    "Do I have to explain why I'm rejecting a payment?",
+    'Paano ko malalaman kung okay na i-approve yung payment?',
+  ])('payment audit: configured document reader admits broad task %s', async message => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    const response = await assistantQuery(paymentRequest(message));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.data.outcome).toBe('SUPPORTED');
+    expect(payload.data.citations).toHaveLength(1);
+    expect(selections).toBe(1);
+    expect(expansions).toBe(0);
+    const planCall = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/v1/plan'));
+    expect(JSON.parse(String(planCall?.[1]?.body))).toMatchObject({ message, evidence_contract: 'ms65-v1' });
+  });
+
   it('MS65-TC01/06: negotiated gateway returns verified guidance and proof spanning eight chunks', async () => {
     vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
     vi.stubEnv('RAG_SYNTHESIS_ENABLED', 'true');
@@ -204,7 +267,29 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     expect(payload.data.evidence_spans).toHaveLength(8);
     expect(payload.data.citations).toHaveLength(8);
     expect(payload.data.summary).toContain('Perform action 8.');
-    expect(selections).toBe(0);
+    expect(selections).toBe(1);
+  });
+
+  it('payment audit: irrelevant retrieved documents cannot exhaust full-document admission', async () => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    documentOverflow = true;
+    const response = await assistantQuery(paymentRequest());
+    const payload = await response.json();
+    expect(payload.data.outcome).toBe('SUPPORTED');
+    expect(db.rpc).toHaveBeenCalledWith('assistant_document_evidence', expect.objectContaining({ p_chunks: [sources[0].chunk_id] }));
+  });
+
+  it('an empty relevant-document selection reports an evidence gap rather than a service outage', async () => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) => String(url).endsWith('/v1/context')
+      ? Response.json({chunk_ids: [], ambiguous: false}) : original(url, init));
+    const response = await assistantQuery(paymentRequest());
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.data.limitations.join(' ')).toContain('NO_RELEVANT_SOURCE');
+    expect(payload.data.limitations.join(' ')).not.toContain('service is unavailable');
+    expect(payload.data.citations).toEqual([]);
   });
 
   it('MS65-TC17: altered bindings and fabricated source spans cannot release prose', () => {
@@ -230,6 +315,43 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     }));
     const payload = await response.json();
     expect(response.status).toBe(409);
+    expect(payload.error.code).toBe('KNOWLEDGE_CHANGED');
+    expect(payload.data).toBeUndefined();
+  });
+
+  it('revalidates the complete document snapshot in one RPC before release', async () => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    vi.stubEnv('RAG_SYNTHESIS_ENABLED', 'true');
+    const response = await assistantQuery(new Request('http://localhost/api/assistant/query', {
+      method: 'POST', headers: {Origin: 'http://localhost', 'Content-Type': 'application/json',
+        Authorization: `Bearer ${issueAdminSession(randomUUID(), process.env.SUPABASE_SERVICE_ROLE_KEY!)}`},
+      body: JSON.stringify({session_id: randomUUID(), request_id: randomUUID(), message: 'Explain shift monitoring.'}),
+    }));
+    expect(response.status).toBe(200);
+    expect(db.rpc.mock.calls.filter(([name]) => name === 'assistant_document_evidence')).toHaveLength(2);
+    expect(db.rpc.mock.calls.filter(([name]) => name === 'assistant_read_source')).toHaveLength(0);
+  });
+
+  it.each(['changed', 'missing', 'duplicate'] as const)('rejects a %s final document snapshot', async mutation => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    vi.stubEnv('RAG_SYNTHESIS_ENABLED', 'true');
+    sources.push({...makeSource('Never approve without valid proof.'), version_id: sources[0].version_id});
+    const original = db.rpc.getMockImplementation()!;
+    let reads = 0;
+    db.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      const result = await original(name, args) as {error: unknown; data: unknown};
+      if (name !== 'assistant_document_evidence' || ++reads !== 2) return result;
+      const changed = mutation === 'missing' ? sources.slice(0, 1) : mutation === 'duplicate' ? [sources[0], sources[0]]
+        : [sources[0], {...sources[1], content: 'Changed after verification.'}];
+      return {...result, data: {contract: 'ms65-v1', epoch: db.epoch, sources: changed}};
+    });
+    const response = await assistantQuery(new Request('http://localhost/api/assistant/query', {
+      method: 'POST', headers: {Origin: 'http://localhost', 'Content-Type': 'application/json',
+        Authorization: `Bearer ${issueAdminSession(randomUUID(), process.env.SUPABASE_SERVICE_ROLE_KEY!)}`},
+      body: JSON.stringify({session_id: randomUUID(), request_id: randomUUID(), message: 'Explain shift monitoring.'}),
+    }));
+    expect(response.status).toBe(409);
+    const payload = await response.json();
     expect(payload.error.code).toBe('KNOWLEDGE_CHANGED');
     expect(payload.data).toBeUndefined();
   });

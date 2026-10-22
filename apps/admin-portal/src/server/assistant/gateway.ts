@@ -35,6 +35,19 @@ function config(name: string): string {
   if (!value) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant configuration is incomplete.', 503);
   return value;
 }
+// PRD-F26/F27 / payment audit: production readers must be chosen deliberately.
+function validateEvidenceContract(value: string | undefined): void {
+  if (process.env.NODE_ENV === 'production' && !value) throw new AssistantError('MODEL_UNAVAILABLE', 'The assistant document reader is not configured. Ask an administrator to check evidence compatibility before enabling the assistant.', 503);
+  if (!['legacy', 'ms59-v1', 'ms65-v1'].includes(value ?? 'legacy')) throw new AssistantError('MODEL_UNAVAILABLE', 'Unsupported evidence contract.', 503);
+}
+
+async function checkRejectedReader(db: SupabaseClient, versions: string[], signal: AbortSignal): Promise<void> {
+  // IDs come only from actor/scoped retrieval. No source text is read or released.
+  const { data, error } = await db.from('kb_document_versions').select('id,support_contract').in('id', versions).abortSignal(signal);
+  const rows: unknown = data;
+  if (error || !Array.isArray(rows) || rows.length !== versions.length || rows.some(row => !row || typeof row !== 'object' || !('id' in row) || !versions.includes(String(row.id)) || !('support_contract' in row))) throw new AssistantError('DATA_UNAVAILABLE', 'Evidence compatibility could not be verified.', 503);
+  if (rows.some(row => row.support_contract === 'ms65-v1')) throw new AssistantError('MODEL_UNAVAILABLE', 'READER_INCOMPATIBLE: The assistant document reader is incompatible with this published version. Ask an administrator to update the assistant configuration. This compatibility error does not require replacing the document.', 503);
+}
 function boundedConfig(name: string, fallback: number, min: number, max: number): number {
   const value = Number(process.env[name] || fallback);
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant resource configuration is invalid.', 503);
@@ -118,7 +131,8 @@ async function rpc(db: SupabaseClient, name: string, args: Record<string, unknow
     if (error.message.includes('CONTEXT_BUDGET_EXCEEDED')) throw new AssistantError('INCOMPLETE_EVIDENCE', 'CONTEXT_BUDGET: This request exceeds the verified document inspection capacity. Ask about one narrower task.', 400);
     if (error.message.includes('UNRESOLVED_CONTEXT')) throw new AssistantError('INCOMPLETE_CONTEXT', 'Reviewed source context could not be verified. Ask an administrator to review the applicable source structure.', 400);
     if (error.message.includes('MANIFEST_INVALID')) throw new AssistantError('INCOMPLETE_CONTEXT', 'REPROCESS_REQUIRED: Stored evidence integrity could not be verified. Ask an administrator to review or reprocess the document.', 400);
-    const code = ['FORBIDDEN','KNOWLEDGE_CHANGED','UNSUPPORTED_REPORT','UNSUPPORTED_HISTORY'].find(c => error.message.includes(c));
+    if (error.message.includes('KNOWLEDGE_CHANGED')) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
+    const code = ['FORBIDDEN','UNSUPPORTED_REPORT','UNSUPPORTED_HISTORY'].find(c => error.message.includes(c));
     throw new AssistantError(code ?? 'DATA_UNAVAILABLE', code === 'FORBIDDEN' ? 'This request is not permitted.' : code ? 'Unsupported metric, filters, or result size. Use a smaller range or coarser grouping.' : 'Verified data is unavailable.', code === 'FORBIDDEN' ? 403 : code ? 400 : 503);
   }
   return data as unknown;
@@ -126,6 +140,7 @@ async function rpc(db: SupabaseClient, name: string, args: Record<string, unknow
 // MS-45: one actor-scoped snapshot, without embedding or model inference.
 async function availability(verified: Verified, signal: AbortSignal) {
   if (process.env.RAG_ENABLED !== 'true' || process.env.KB_ENABLED !== 'true') return { enabled: false, knowledge_epoch: 0 };
+  validateEvidenceContract(process.env.RAG_EVIDENCE_CONTRACT);
   const base = new URL(config('RAG_SERVICE_URL'));
   if (base.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(base.hostname)) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant configuration is incomplete.', 503);
   if (config('RAG_SERVICE_TOKEN').length < 32 || config('RAG_CAPABILITY_SECRET').length < 32) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant configuration is incomplete.', 503);
@@ -281,7 +296,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     if (mainContract && (mainContract !== 'ms60-v1' || answerContract !== 'ms59-v1')) throw new AssistantError('INVALID_REQUEST', 'Unsupported main answer contract.', 400);
     const signal = budget.signal;
     const measure: typeof timing.measure = (stage, work) => { diagnostics.enter(stage); return budget!.run(() => timing.measure(stage, work)); };
-    if (!['legacy', 'ms59-v1', 'ms65-v1'].includes(process.env.RAG_EVIDENCE_CONTRACT ?? 'legacy')) throw new AssistantError('MODEL_UNAVAILABLE', 'Unsupported evidence contract.', 503);
+    validateEvidenceContract(process.env.RAG_EVIDENCE_CONTRACT);
     sameOrigin(request); const verified = await measure('auth', () => authorizeAssistant(request, signal)); diagnostics.authorize(); enabled();
     await measure('catalog', () => requireKnowledge(verified, signal));
     const parsed = assistantQuerySchema.safeParse(await measure('validate', () => jsonBody(request, signal)));
@@ -375,9 +390,34 @@ export async function assistantQuery(request: Request): Promise<Response> {
             diagnostics.units('ranked', candidates.map(source => source.chunk_id));
             if (documentContract && candidates.length) {
               entry.stage = 'preparing';
+              // Payment audit / MS65: retrieval neighbors are candidates, not
+              // mandatory whole-document context. Select by meaning first;
+              // expansion and independent verification still inspect every
+              // canonical unit of each selected authorized generation.
+              let documentSeeds = candidates.map(source => source.chunk_id);
+              if (new Set(candidates.map(source => source.version_id)).size > 1) {
+                const documentIndexes = new Map([...new Set(candidates.map(source => source.version_id))].map((version, index) => [version, index]));
+                const selection = assistantContextSelectionSchema.parse(await measure('context', () => model('/v1/context', {
+                  evidence_contract: 'ms65-v1', reliability_contract: 'ms60-v1', query: plan.query || input.message,
+                  original_query: assistantContextualQuestion(input.message, input.recent_context?.user_turns?.at(-1)),
+                  sources: candidates.map(({ chunk_id, title, heading_path, content, version_id }) => ({ chunk_id, title, heading_path, content, document_index: documentIndexes.get(version_id)! })),
+                }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
+                selectionAttempts++; diagnostics.count('selection_attempts', selectionAttempts);
+                if (selection.chunk_ids.some(id => !candidates.some(source => source.chunk_id === id))) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
+                if (selection.ambiguous) throw new AssistantError('AMBIGUOUS_SCOPE', 'Which task or procedure do you mean?', 400);
+                documentSeeds = selection.chunk_ids;
+              }
+              if (!documentSeeds.length) throw new AssistantError('NO_RELEVANT_SOURCE', copy.gap, 400);
+              const selectedVersions = new Set<string>();
+              documentSeeds = documentSeeds.filter(id => {
+                const version = candidates.find(source => source.chunk_id === id)!.version_id;
+                if (selectedVersions.has(version)) return false;
+                selectedVersions.add(version); return true;
+              });
+              diagnostics.count('selected_count', documentSeeds.length);
               const documentEvidence = assistantDocumentEvidenceSchema.parse(await measure('expand', () => rpc(verified.client, 'assistant_document_evidence', {
                 p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'),
-                p_chunks: candidates.map(source => source.chunk_id),
+                p_chunks: documentSeeds,
               }, signal)));
               if (documentEvidence.epoch !== knowledgeEpoch || documentEvidence.sources.some(s => s.epoch !== knowledgeEpoch || createHash('sha256').update(s.content).digest('hex') !== s.content_hash)) throw new AssistantError('KNOWLEDGE_CHANGED', 'Source generation changed. Please retry.', 409);
               const supportPayload = { contract: 'ms65-v1', synthesis: synthesisEnabled, query: assistantContextualQuestion(input.message, input.recent_context?.user_turns?.at(-1)), sources: documentEvidence.sources };
@@ -481,9 +521,13 @@ export async function assistantQuery(request: Request): Promise<Response> {
                 diagnostics.count(expansionAttempts === 0 ? 'first_union_count' : 'final_union_count', unique.size);
               }
               expansionAttempts++; diagnostics.count('expansion_attempts', expansionAttempts);
-              return assistantEvidenceSchema.parse(await measure('expand', () => rpc(verified.client, evidenceV3 ? 'assistant_expand_evidence_v3' : 'assistant_expand_evidence', {
+              const result = assistantEvidenceSchema.parse(await measure('expand', () => rpc(verified.client, evidenceV3 ? 'assistant_expand_evidence_v3' : 'assistant_expand_evidence', {
               p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_chunks: selectedIds,
               }, signal)));
+              if (!result.complete && 'reason' in result && result.reason === 'REPROCESS_REQUIRED') {
+                await checkRejectedReader(verified.client, [...new Set(candidates.filter(source => selectedIds.includes(source.chunk_id)).map(source => source.version_id))], signal);
+              }
+              return result;
             };
             let expanded = selectedIds.length ? await expand() : { complete: true as const, sources: [], groups: [] };
             const evidencePayload = () => ({ query, original_query: input.message, reliability_contract: 'ms60-v1', sources: expanded.sources,
@@ -598,7 +642,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
             if (signal.aborted) throw e;
             const code = e instanceof AssistantError ? e.code : 'DATA_UNAVAILABLE';
             if (code === 'AMBIGUOUS_SCOPE' && e instanceof AssistantError) documentClarification = e.message;
-            limitations.push(`${code}: ${code === 'AMBIGUOUS_SCOPE' ? 'Clarification is required to choose the applicable task.' : (code === 'INCOMPLETE_CONTEXT' || code === 'INCOMPLETE_EVIDENCE') && e instanceof AssistantError ? e.message : code === 'CONFLICTING_SOURCES' ? copy.conflict : code === 'INVALID_MODEL_OUTPUT' ? copy.modelOutput : code === 'MODEL_TIMEOUT' || code === 'REQUEST_TIMEOUT' ? copy.modelTimeout : code === 'MODEL_UNAVAILABLE' ? 'Local model is unavailable. Verified tables remain available.' : 'The document service is unavailable. Please retry. Verified tables remain available.'}`); sources = []; contextSources = []; summary = ''; synthesis = undefined; evidenceSpans = [];
+            limitations.push(`${code}: ${code === 'AMBIGUOUS_SCOPE' ? 'Clarification is required to choose the applicable task.' : (code === 'INCOMPLETE_CONTEXT' || code === 'INCOMPLETE_EVIDENCE' || code === 'MODEL_UNAVAILABLE' && e instanceof AssistantError && e.message.startsWith('READER_INCOMPATIBLE:')) && e instanceof AssistantError ? e.message : code === 'NO_RELEVANT_SOURCE' ? copy.gap : code === 'CONFLICTING_SOURCES' ? copy.conflict : code === 'INVALID_MODEL_OUTPUT' ? copy.modelOutput : code === 'MODEL_TIMEOUT' || code === 'REQUEST_TIMEOUT' ? copy.modelTimeout : code === 'MODEL_UNAVAILABLE' ? 'Local model is unavailable. Verified tables remain available.' : 'The document service is unavailable. Please retry. Verified tables remain available.'}`); sources = []; contextSources = []; summary = ''; synthesis = undefined; evidenceSpans = [];
           }
           const current = await measure('catalog', () => epoch(verified.client, signal));
           if (!summary) synthesisStatus = synthesisEnabled ? 'NOT_ADMITTED' : 'DISABLED';
@@ -616,7 +660,18 @@ export async function assistantQuery(request: Request): Promise<Response> {
     const finalIdentity = await measure('auth', () => authorizeAssistant(request, signal));
     if (finalIdentity.actor.id !== verified.actor.id || finalIdentity.actor.role !== verified.actor.role) throw new AssistantError('FORBIDDEN', 'Account permissions changed.', 403);
     const finalSources = [...sources, ...contextSources];
-    for (let offset = 0; offset < finalSources.length; offset += 4) await Promise.all(finalSources.slice(offset, offset + 4).map(async source => {
+    if (documentContract && finalSources.length) {
+      // MS65: one actor/scoped database snapshot checks ALL inspected chunks,
+      // including uncited context, without repeated network round trips.
+      const roots = [...new Map(finalSources.map(source => [source.version_id, source.chunk_id])).values()];
+      const snapshot = assistantDocumentEvidenceSchema.safeParse(await measure('evidence', () => rpc(verified.client, 'assistant_document_evidence', {
+        p_actor: finalIdentity.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_chunks: roots,
+      }, signal)));
+      if (!snapshot.success || snapshot.data.epoch !== knowledgeEpoch || snapshot.data.sources.length !== finalSources.length
+        || finalSources.some(source => !snapshot.data.sources.some(current => JSON.stringify(current) === JSON.stringify(source)))) {
+        throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);
+      }
+    } else for (let offset = 0; offset < finalSources.length; offset += 4) await Promise.all(finalSources.slice(offset, offset + 4).map(async source => {
       const current = await measure('evidence', () => rpc(verified.client, 'assistant_read_source', { p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_version: source.version_id, p_chunk: source.chunk_id }, signal));
       const checked = assistantSourceSchema.safeParse(current);
       if (!checked.success || checked.data.content_hash !== source.content_hash || checked.data.content !== source.content || checked.data.epoch !== knowledgeEpoch) throw new AssistantError('KNOWLEDGE_CHANGED', 'Published knowledge changed. Please retry.', 409);

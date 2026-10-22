@@ -141,6 +141,6 @@ export function readableAssistantTime(timestamp: string, timezone?: string): str
   catch { return `${timestamp} (timezone unavailable)`; }
 }
 export function assistantLimitation(line: string): { text: string; diagnostic?: string } {
-  const match = /^([A-Z][A-Z_]+):\s*(?:(SELECTION_EXHAUSTED(?::\s*(?:CONTEXT_BUDGET|OUTPUT_BUDGET_EXCEEDED))?|OUTPUT_BUDGET_EXCEEDED|CONTEXT_BUDGET_EXCEEDED|CONTEXT_BUDGET|REPROCESS_REQUIRED|UNRESOLVED_CONTEXT):\s*)?(.+)$/.exec(line);
+  const match = /^([A-Z][A-Z_]+):\s*(?:(SELECTION_EXHAUSTED(?::\s*(?:CONTEXT_BUDGET|OUTPUT_BUDGET_EXCEEDED))?|OUTPUT_BUDGET_EXCEEDED|CONTEXT_BUDGET_EXCEEDED|CONTEXT_BUDGET|REPROCESS_REQUIRED|READER_INCOMPATIBLE|UNRESOLVED_CONTEXT):\s*)?(.+)$/.exec(line);
   return match ? { text: match[3], diagnostic: [match[1], match[2]].filter(Boolean).join(': ') } : { text: line };
 }
