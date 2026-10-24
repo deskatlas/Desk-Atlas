@@ -446,11 +446,13 @@ describe("MS-67: Admin Payment Review Overdue Detection, Customer Refund Notific
     );
     const routeContent = fs.readFileSync(routePath, "utf-8");
 
-    expect(routeContent).toContain("evaluateAndSegregatePaymentReviews(rawQueue, now)");
-    expect(routeContent).toContain("item.refundStatus !== \"REFUNDED\"");
-    expect(routeContent).toContain("const paymentsCount = awaitingReviewCount + overdueCount;");
-    expect(routeContent).toContain("awaitingReviewCount");
-    expect(routeContent).toContain("overdueCount");
+    expect(routeContent).toContain("client.rpc('admin_badge_counts'");
+    const aggregate = fs.readFileSync(path.resolve(__dirname,
+      '../supabase/migrations/037_admin_badge_counts.sql'), 'utf-8');
+    expect(aggregate).toContain("p.status='UNDER_REVIEW'");
+    expect(aggregate).toContain("p.refund_status IS DISTINCT FROM 'REFUNDED'");
+    expect(aggregate).toContain("'paymentsCount',active_count+overdue_count");
+    expect(aggregate).toContain("'awaitingReviewCount',active_count,'overdueCount',overdue_count");
 
     // 2. Verify layout badge rendering and event sync
     const layoutPath = path.resolve(

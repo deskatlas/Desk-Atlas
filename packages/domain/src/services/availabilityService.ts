@@ -142,6 +142,15 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
         settings.maxAdvanceBookingDays ?? 90
       );
 
+      const bookableIds = instances.filter(instance => getWorkspaceAvailabilityStatus(instance).isBookable).map(instance => instance.id);
+      const window = repository.prepareWindow && bookableIds.length > 1 ? await repository.prepareWindow(bookableIds,
+        zonedDateTimeToUtc(normalized.date, '00:00', settings.timezone).toISOString(),
+        zonedDateTimeToUtc(addDays(normalized.date, Math.ceil(normalized.durationMinutes / MINUTES_PER_DAY) + 1), '00:00', settings.timezone).toISOString()) : undefined;
+      const slotRepository: AvailabilityRepository = window ? {
+        getWorkspaceInstance: id => repository.getWorkspaceInstance(id), getBusinessSettings: () => repository.getBusinessSettings(),
+        listOperatingHours: day => repository.listOperatingHours(day), ...window,
+      } : repository;
+
       const allInstances: AvailableInstanceSummary[] = [];
 
       for (const instance of instances) {
@@ -169,7 +178,7 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
         }
 
         const slots = await listTimeSlotsForDate(
-          repository,
+          slotRepository,
           settings,
           true,
           instance.id,
@@ -202,8 +211,8 @@ export function createAvailabilityService(repository: AvailabilityRepository) {
             const slotEnd = new Date(slotStart.getTime() + normalized.durationMinutes * 60_000);
 
             const [blocks, reservations] = await Promise.all([
-              repository.listScheduleBlocks(instance.id, slotStart.toISOString(), slotEnd.toISOString()),
-              repository.listBlockingReservations(instance.id, slotStart.toISOString(), slotEnd.toISOString()),
+              slotRepository.listScheduleBlocks(instance.id, slotStart.toISOString(), slotEnd.toISOString()),
+              slotRepository.listBlockingReservations(instance.id, slotStart.toISOString(), slotEnd.toISOString()),
             ]);
 
             const reason = getSlotBlockingReason(

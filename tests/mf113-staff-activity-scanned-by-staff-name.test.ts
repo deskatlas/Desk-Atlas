@@ -122,6 +122,11 @@ describe("MF-113: Staff Dashboard Today's Activity Display Staff Name in Scanned
         return mockStaffProfiles;
       }
       if (path.startsWith("/reservations?select=")) {
+        const batch = path.match(/id=in\.\(([^)]+)\)/);
+        if (batch) return batch[1].split(',').flatMap(id => {
+          const row = mockReservationData[decodeURIComponent(id)];
+          return row ? [row] : [];
+        });
         const idMatch = path.match(/id=eq\.([^&]+)/);
         if (idMatch) {
           const resId = decodeURIComponent(idMatch[1]);

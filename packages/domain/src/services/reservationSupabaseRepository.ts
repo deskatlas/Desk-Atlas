@@ -122,7 +122,7 @@ interface ReservationCandidateRow {
   id: string;
   reservation_id: string;
   workspace_instance_id: string;
-  rank: number;
+  rank: CandidateRank;
   is_assigned?: boolean | null;
   start_at?: string | null;
   end_at?: string | null;
@@ -139,6 +139,84 @@ interface PaymentAttemptRow {
   expires_at?: string | null;
   rejection_reason?: string | null;
   [key: string]: unknown;
+}
+
+interface PaymentReportAttemptRow {
+  id: string;
+  reservation_id: string;
+  payment_method_id: string | null;
+  channel: ReportPaymentAttemptRecord['channel'];
+  status: ReportPaymentAttemptRecord['paymentStatus'];
+  refund_status: ReportPaymentAttemptRecord['refundStatus'];
+  amount?: number | string | null;
+  created_at: string;
+  proof_submitted_at: string | null;
+  processed_at: string | null;
+  refunded_at?: string | null;
+  overdue_notified_at?: string | null;
+  cancellation_refund_notified_at?: string | null;
+}
+
+interface PaymentReportReservationRow {
+  id: string;
+  reference_code: string;
+  amount_due: number | string;
+  currency: string;
+}
+
+interface PaymentReportMethodRow {
+  id: string;
+  method_type: ReportPaymentAttemptRecord['paymentMethodType'];
+  display_name: string;
+}
+
+interface PaymentReviewReservationRow extends PaymentReportReservationRow {
+  status: ReservationStatus;
+  customer_first_name: string;
+  customer_last_name: string;
+  customer_email: string;
+  gross_amount_due?: number | string | null;
+  discount_amount?: number | string | null;
+  promo_code_used?: string | null;
+}
+
+interface PaymentReviewAttemptRow extends PaymentAttemptRow {
+  channel: 'WEB' | 'KIOSK';
+  status: PaymentReviewQueueItem['paymentStatus'];
+  payment_method_id: string | null;
+  proof_submitted_at: string | null;
+  proof_storage_path: string | null;
+  rejection_reason: string | null;
+  refund_status: PaymentReviewDetail['refundStatus'];
+  refund_notes?: string | null;
+  refunded_at?: string | null;
+  overdue_notified_at?: string | null;
+  processed_at: string | null;
+  processed_by_user_id: string | null;
+}
+
+interface ReviewHydration {
+  reservations: Map<string, PaymentReviewReservationRow>;
+  candidates: ReservationCandidateRow[];
+  instancesById: Map<string, CatalogWorkspaceInstance>;
+  templatesById: Map<string, CatalogWorkspaceTemplate>;
+  floorsById: Map<string, CatalogFloor>;
+}
+
+interface ActivityReservationRow {
+  id: string;
+  reference_code: string;
+  customer_first_name: string;
+  customer_last_name: string;
+}
+
+interface ActivityRow {
+  entity_id: string;
+  action: string;
+  created_at: string;
+  actor_user_id: OperationalActivityRecord['actorUserId'];
+  actor_role: OperationalActivityRecord['actorRole'];
+  metadata?: { actor_name?: string; reentry?: boolean; event_type?: string } | null;
 }
 
 interface RelocationAuditLogRow {
@@ -258,8 +336,13 @@ export class ReservationSupabaseRepository
     expiresAt: number;
   } = { expiresAt: 0 };
 
+  private catalogGeneration = 0;
+  private catalogLoad?: ReturnType<ReservationSupabaseRepository['loadVenueCatalog']>;
+
   public invalidateCatalogCache(): void {
     this.catalogCache.expiresAt = 0;
+    this.catalogGeneration++;
+    this.catalogLoad = undefined;
   }
 
   private async getVenueCatalog(): Promise<{
@@ -273,6 +356,18 @@ export class ReservationSupabaseRepository
       return this.catalogCache.data;
     }
 
+    if (this.catalogLoad) return this.catalogLoad;
+    const generation = this.catalogGeneration;
+    const pending = this.loadVenueCatalog();
+    this.catalogLoad = pending;
+    try {
+      const catalog = await pending;
+      if (generation === this.catalogGeneration) this.catalogCache = { data: catalog, expiresAt: Date.now() + 60_000 };
+      return catalog;
+    } finally { if (this.catalogLoad === pending) this.catalogLoad = undefined; }
+  }
+
+  private async loadVenueCatalog() {
     const [instancesRows, templatesRows, floorsRows, paymentMethodsRows] =
       await Promise.all([
         this.request<CatalogWorkspaceInstance[]>("/workspace_instances?select=*"),
@@ -301,16 +396,18 @@ export class ReservationSupabaseRepository
       paymentMethodsById,
     };
 
-    this.catalogCache = {
-      data: catalog,
-      expiresAt: now + 60_000,
-    };
-
     return catalog;
   }
 
+  private embeddedChildren(rows: Array<{ candidates?: unknown; attempts?: unknown }>):
+    { candidates: ReservationCandidateRow[]; attempts: PaymentAttemptRow[] } | undefined {
+    if (!rows.every(row => Array.isArray(row.candidates) && Array.isArray(row.attempts))) return undefined;
+    return { candidates: rows.flatMap(row => row.candidates as ReservationCandidateRow[]),
+      attempts: rows.flatMap(row => row.attempts as PaymentAttemptRow[]) };
+  }
+
   private async fetchCandidatesForReservationIds(
-    reservationIds: string[]
+    reservationIds: string[], strict = false
   ): Promise<ReservationCandidateRow[]> {
     if (!reservationIds.length) return [];
     const chunkSize = 60;
@@ -324,7 +421,7 @@ export class ReservationSupabaseRepository
         const inFilter = chunk.map((id) => encodeURIComponent(id)).join(",");
         return this.request<ReservationCandidateRow[]>(
           `/reservation_candidates?select=*&reservation_id=in.(${inFilter})&order=rank.asc`
-        ).catch(() => []);
+        ).catch((error: unknown) => { if (strict) throw error; return []; });
       })
     );
 
@@ -433,7 +530,8 @@ export class ReservationSupabaseRepository
       cancelled_at?: string | null;
       cancelled_by_user_id?: string | null;
       [key: string]: unknown;
-    }>
+    }>,
+    children?: { candidates: ReservationCandidateRow[]; attempts: PaymentAttemptRow[] }
   ): Promise<StaffOperationalReservation[]> {
     if (!reservations || reservations.length === 0) {
       return [];
@@ -444,8 +542,8 @@ export class ReservationSupabaseRepository
     const hasAnyClosureImpacted = reservations.some((r) => Boolean((r as any).is_closure_impacted));
     const [candidatesRows, paymentAttemptsRows, catalog, relocationMap, activeClosureBlocks] =
       await Promise.all([
-        this.fetchCandidatesForReservationIds(reservationIds),
-        this.fetchPaymentAttemptsForReservationIds(reservationIds),
+        children ? Promise.resolve(children.candidates) : this.fetchCandidatesForReservationIds(reservationIds),
+        children ? Promise.resolve(children.attempts) : this.fetchPaymentAttemptsForReservationIds(reservationIds),
         this.getVenueCatalog(),
         this.fetchRelocationAuditLogsForReservationIds(reservationIds),
         hasAnyClosureImpacted
@@ -520,7 +618,7 @@ export class ReservationSupabaseRepository
           closureExceptionId = null;
 
           const nowIso = new Date().toISOString();
-          this.request(`/reservations?id=eq.${encodeURIComponent(reservation.id)}`, {
+          this.request(`/reservations?id=eq.${encodeURIComponent(reservation.id)}&is_closure_impacted=eq.true&updated_at=eq.${encodeURIComponent(reservation.updated_at)}`, {
             method: "PATCH",
             body: JSON.stringify({
               is_closure_impacted: false,
@@ -1032,12 +1130,13 @@ export class ReservationSupabaseRepository
   }
 
   async listPaymentReviewQueue(): Promise<PaymentReviewQueueItem[]> {
-    const attempts = await this.request<any[]>(
+    const attempts = await this.request<PaymentReviewAttemptRow[]>(
       "/payment_attempts?select=*&channel=eq.WEB&status=eq.UNDER_REVIEW&order=proof_submitted_at.asc.nullslast,created_at.asc"
     );
 
+    const context = await this.loadReviewHydration(attempts);
     const reviews = await Promise.all(
-      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt))
+      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt, context))
     );
 
     return reviews
@@ -1054,12 +1153,13 @@ export class ReservationSupabaseRepository
   }
 
   async listRejectedPayments(): Promise<PaymentReviewDetail[]> {
-    const attempts = await this.request<any[]>(
+    const attempts = await this.request<PaymentReviewAttemptRow[]>(
       "/payment_attempts?select=*&channel=eq.WEB&status=eq.REJECTED&order=processed_at.desc.nullslast,created_at.desc"
     );
 
+    const context = await this.loadReviewHydration(attempts);
     const reviews = await Promise.all(
-      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt))
+      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt, context))
     );
 
     return reviews
@@ -1075,12 +1175,13 @@ export class ReservationSupabaseRepository
   }
 
   async listRefundedPayments(): Promise<PaymentReviewDetail[]> {
-    const attempts = await this.request<any[]>(
+    const attempts = await this.request<PaymentReviewAttemptRow[]>(
       "/payment_attempts?select=*&channel=eq.WEB&refund_status=eq.REFUNDED&order=refunded_at.desc.nullslast,created_at.desc"
     );
 
+    const context = await this.loadReviewHydration(attempts);
     const reviews = await Promise.all(
-      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt))
+      attempts.map(async (attempt) => this.loadPaymentReview(attempt.id, attempt, context))
     );
 
     return reviews
@@ -1669,10 +1770,10 @@ export class ReservationSupabaseRepository
 
   async listOperationalReservations(_nowIso: string): Promise<StaffOperationalReservation[]> {
     const reservations = await this.request<any[]>(
-      "/reservations?select=*&order=created_at.desc&limit=200"
+      "/reservations?select=*,candidates:reservation_candidates(*),attempts:payment_attempts(*)&candidates.order=rank.asc&attempts.order=created_at.desc&order=created_at.desc&limit=200"
     );
 
-    const summaries = await this.loadOperationalReservationsBatched(reservations ?? []);
+    const summaries = await this.loadOperationalReservationsBatched(reservations ?? [], this.embeddedChildren(reservations ?? []));
 
     return summaries
       .filter((summary): summary is StaffOperationalReservation => summary !== null)
@@ -1687,10 +1788,10 @@ export class ReservationSupabaseRepository
 
   async listOccupancy(nowIso: string): Promise<OccupancyRecord[]> {
     const reservations = await this.request<any[]>(
-      "/reservations?select=*&status=in.(CONFIRMED,CHECKED_IN)&limit=200"
+      "/reservations?select=*,candidates:reservation_candidates(*),attempts:payment_attempts(*)&candidates.order=rank.asc&attempts.order=created_at.desc&status=in.(CONFIRMED,CHECKED_IN)&limit=200"
     );
 
-    const summaries = await this.loadOperationalReservationsBatched(reservations ?? []);
+    const summaries = await this.loadOperationalReservationsBatched(reservations ?? [], this.embeddedChildren(reservations ?? []));
 
     return summaries
       .filter((summary): summary is StaffOperationalReservation => summary !== null)
@@ -1715,78 +1816,43 @@ export class ReservationSupabaseRepository
   }
 
   async listOperationalActivity(limit: number): Promise<OperationalActivityRecord[]> {
-    const rows = await this.request<any[]>(
-      `/audit_logs?select=*&action=in.(reservation_checked_in,reservation_checked_out,reservation_reentered,reservation_rescheduled)&order=created_at.desc&limit=${limit}`
+    const rows = await this.request<ActivityRow[]>(
+      `/audit_logs?select=entity_id,action,created_at,actor_user_id,actor_role,metadata&action=in.(reservation_checked_in,reservation_checked_out,reservation_reentered,reservation_rescheduled)&order=created_at.desc&limit=${limit}`
     );
-
-    const actorUserIds = Array.from(
-      new Set(
-        rows
-          .map((r) => r.actor_user_id)
-          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-      )
-    );
-
-    const profileMap = new Map<string, string>();
-    if (actorUserIds.length > 0) {
-      try {
-        const idFilter = actorUserIds.map((id) => encodeURIComponent(id)).join(",");
-        const profiles = await this.request<any[]>(
-          `/staff_profiles?select=user_id,display_name&user_id=in.(${idFilter})`
-        );
-        if (Array.isArray(profiles)) {
-          for (const p of profiles) {
-            if (p.user_id && p.display_name) {
-              profileMap.set(p.user_id, p.display_name);
-            }
-          }
-        }
-      } catch {
-        // non-blocking fallback
-      }
-    }
-
-    const events: (OperationalActivityRecord | null)[] = await Promise.all(
-      rows.map(async (row): Promise<OperationalActivityRecord | null> => {
-        const summary = await this.loadOperationalReservation(row.entity_id);
-        if (!summary) {
-          return null;
-        }
-
-        const resolvedActorName =
-          row.metadata?.actor_name ||
-          (row.actor_user_id ? profileMap.get(row.actor_user_id) : undefined) ||
-          (row.actor_role === "ADMIN" ? "Admin" : row.actor_role === "STAFF" ? "Staff" : row.actor_role === "CUSTOMER" ? "Customer" : null);
-
-        return {
-          reservationId: summary.reservationId,
-          referenceCode: summary.referenceCode,
-          customerName: `${summary.customerFirstName} ${summary.customerLastName}`.trim(),
-          workspaceDisplayName: summary.workspaceDisplayName,
-          workspaceInstanceCode: summary.workspaceInstanceCode,
-          activityType:
-            row.action === "reservation_rescheduled"
-              ? "RESCHEDULED"
-              : row.action === "reservation_checked_out"
-                ? "CHECK_OUT"
-                : (row.action === "reservation_reentered" || row.metadata?.reentry === true || row.metadata?.event_type === "RE_ENTRY")
-                  ? "REENTRY"
-                  : "CHECK_IN",
-          occurredAt: row.created_at,
-          actorUserId: row.actor_user_id,
-          actorRole: row.actor_role,
-          actorName: resolvedActorName,
-        };
-      })
-    );
-
-    const filtered: OperationalActivityRecord[] = [];
-    for (const event of events) {
-      if (event !== null) {
-        filtered.push(event);
-      }
-    }
-    return filtered;
+    if (!rows.length) return [];
+    const ids = [...new Set(rows.map(row => row.entity_id))];
+    const actorIds = [...new Set(rows.map(row => row.actor_user_id).filter((id): id is string => Boolean(id)))];
+    const [reservations, candidates, profiles] = await Promise.all([
+      this.fetchReportRowsByIds<ActivityReservationRow>('reservations',
+        'id,reference_code,customer_first_name,customer_last_name', ids),
+      this.fetchCandidatesForReservationIds(ids, true),
+      this.fetchReportRowsByIds<{ user_id: string; display_name: string }>('staff_profiles',
+        'user_id,display_name', actorIds, 'user_id').catch((): Array<{ user_id: string; display_name: string }> => []),
+    ]);
+    const instances = await this.fetchReportRowsByIds<Pick<CatalogWorkspaceInstance, 'id' | 'display_name' | 'instance_code'>>('workspace_instances',
+      'id,display_name,instance_code', candidates.map(candidate => candidate.workspace_instance_id));
+    const byId = new Map(reservations.map(row => [row.id, row]));
+    const instancesById = new Map(instances.map(row => [row.id, row]));
+    const profilesById = new Map(profiles.map(row => [row.user_id, row.display_name]));
+    return rows.flatMap((row): OperationalActivityRecord[] => {
+      const reservation = byId.get(row.entity_id);
+      if (!reservation) return [];
+      const choices = candidates.filter(candidate => candidate.reservation_id === reservation.id);
+      const chosen = choices.find(candidate => candidate.is_assigned) ?? choices[0];
+      const instance = chosen ? instancesById.get(chosen.workspace_instance_id) : undefined;
+      return [{
+        reservationId: reservation.id, referenceCode: reservation.reference_code,
+        customerName: `${reservation.customer_first_name} ${reservation.customer_last_name}`.trim(),
+        workspaceDisplayName: instance?.display_name ?? instance?.instance_code ?? null,
+        workspaceInstanceCode: instance?.instance_code ?? null,
+        activityType: row.action === 'reservation_rescheduled' ? 'RESCHEDULED'
+          : row.action === 'reservation_checked_out' ? 'CHECK_OUT'
+          : row.action === 'reservation_reentered' || row.metadata?.reentry === true || row.metadata?.event_type === 'RE_ENTRY' ? 'REENTRY' : 'CHECK_IN',
+        occurredAt: row.created_at, actorUserId: row.actor_user_id, actorRole: row.actor_role,
+        actorName: row.metadata?.actor_name || (row.actor_user_id ? profilesById.get(row.actor_user_id) : undefined)
+          || (row.actor_role === 'ADMIN' ? 'Admin' : row.actor_role === 'STAFF' ? 'Staff' : row.actor_role === 'CUSTOMER' ? 'Customer' : null),
+      }];
+    });
   }
 
   async listReportReservations(): Promise<ReportReservationRecord[]> {
@@ -1857,15 +1923,18 @@ export class ReservationSupabaseRepository
   }
 
   async listReportPaymentAttempts(): Promise<ReportPaymentAttemptRecord[]> {
-    const attempts = await this.request<any[]>(
+    const attempts = await this.request<PaymentReportAttemptRow[]>(
       "/payment_attempts?select=*&order=created_at.desc&limit=500"
     );
-    const reservations = await this.request<any[]>(
-      "/reservations?select=id,reference_code,amount_due,currency"
-    );
-    const paymentMethods = await this.request<any[]>(
-      "/payment_methods?select=id,method_type,display_name"
-    );
+    if (!attempts.length) return [];
+
+    // MS-35 / PRD-F15: bound metadata reads to this report, with no state cache.
+    const [reservations, paymentMethods] = await Promise.all([
+      this.fetchReportRowsByIds<PaymentReportReservationRow>('reservations',
+        'id,reference_code,amount_due,currency', attempts.map(attempt => attempt.reservation_id)),
+      this.fetchReportRowsByIds<PaymentReportMethodRow>('payment_methods',
+        'id,method_type,display_name', attempts.map(attempt => attempt.payment_method_id)),
+    ]);
 
     const reservationsById = new Map(
       reservations.map((reservation) => [reservation.id, reservation] as const)
@@ -1902,6 +1971,21 @@ export class ReservationSupabaseRepository
         } satisfies ReportPaymentAttemptRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  private async fetchReportRowsByIds<T>(
+    table: 'reservations' | 'payment_methods' | 'workspace_instances' | 'workspace_templates' | 'floors' | 'staff_profiles',
+    select: string,
+    ids: Array<string | null>, column: 'id' | 'user_id' = 'id'
+  ): Promise<T[]> {
+    const uniqueIds = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+    const rows: T[] = [];
+    // Match existing repository batch size; bound URL size and concurrency.
+    for (let start = 0; start < uniqueIds.length; start += 60) {
+      const filter = uniqueIds.slice(start, start + 60).map(encodeURIComponent).join(',');
+      rows.push(...await this.request<T[]>(`/${table}?select=${select}&${column}=in.(${filter})`));
+    }
+    return rows;
   }
 
   async findGuestReservationTrackingRecord(input: {
@@ -2120,31 +2204,50 @@ export class ReservationSupabaseRepository
     };
   }
 
+  // MS-35: one request-local hydration per queue, without caching payment state.
+  private async loadReviewHydration(attempts: PaymentAttemptRow[]): Promise<ReviewHydration> {
+    const ids = [...new Set(attempts.map(attempt => attempt.reservation_id))];
+    const [reservations, candidates] = await Promise.all([
+      this.fetchReportRowsByIds<PaymentReviewReservationRow>('reservations', '*', ids),
+      this.fetchCandidatesForReservationIds(ids, true),
+    ]);
+    const instances = await this.fetchReportRowsByIds<CatalogWorkspaceInstance>('workspace_instances',
+      'id,template_id,floor_id,display_name,instance_code', candidates.map(row => row.workspace_instance_id));
+    const [templates, floors] = await Promise.all([
+      this.fetchReportRowsByIds<CatalogWorkspaceTemplate>('workspace_templates', 'id,name', instances.map(row => row.template_id)),
+      this.fetchReportRowsByIds<CatalogFloor>('floors', 'id,name', instances.map(row => row.floor_id)),
+    ]);
+    return { reservations: new Map(reservations.map(row => [row.id, row])), candidates,
+      instancesById: new Map(instances.map(row => [row.id, row])),
+      templatesById: new Map(templates.map(row => [row.id, row])), floorsById: new Map(floors.map(row => [row.id, row])) };
+  }
+
   private async loadPaymentReview(
     paymentAttemptId: string,
-    attemptRow?: any
+    attemptRow?: PaymentReviewAttemptRow,
+    context?: ReviewHydration
   ): Promise<PaymentReviewDetail | null> {
     let attempt = attemptRow;
     if (!attempt) {
-      const attempts = await this.request<any[]>(
+      const attempts = await this.request<PaymentReviewAttemptRow[]>(
         `/payment_attempts?select=*&id=eq.${encodeURIComponent(paymentAttemptId)}&limit=1`
       );
       if (attempts && attempts.length > 0) {
         attempt = attempts[0];
       } else {
         // Fallback: check if identifier is reservation_id
-        const resAttempts = await this.request<any[]>(
+        const resAttempts = await this.request<PaymentReviewAttemptRow[]>(
           `/payment_attempts?select=*&reservation_id=eq.${encodeURIComponent(paymentAttemptId)}&order=created_at.desc&limit=1`
         );
         if (resAttempts && resAttempts.length > 0) {
           attempt = resAttempts[0];
         } else {
           // Fallback: check if identifier is reservation reference_code
-          const res = await this.request<any[]>(
+          const res = await this.request<{ id: string }[]>(
             `/reservations?select=id&reference_code=eq.${encodeURIComponent(paymentAttemptId)}&limit=1`
           );
           if (res && res.length > 0) {
-            const byRefAttempts = await this.request<any[]>(
+            const byRefAttempts = await this.request<PaymentReviewAttemptRow[]>(
               `/payment_attempts?select=*&reservation_id=eq.${encodeURIComponent(res[0].id)}&order=created_at.desc&limit=1`
             );
             if (byRefAttempts && byRefAttempts.length > 0) {
@@ -2163,8 +2266,8 @@ export class ReservationSupabaseRepository
       return null;
     }
 
-    const reservation = (
-      await this.request<any[]>(
+    const reservation = context ? context.reservations.get(attempt.reservation_id) : (
+      await this.request<PaymentReviewReservationRow[]>(
         `/reservations?select=*&id=eq.${encodeURIComponent(attempt.reservation_id)}&limit=1`
       )
     )?.[0];
@@ -2173,53 +2276,53 @@ export class ReservationSupabaseRepository
       return null;
     }
 
-    const candidatesRows = await this.request<any[]>(
+    const candidatesRows = context ? context.candidates.filter(row => row.reservation_id === reservation.id) : await this.request<ReservationCandidateRow[]>(
       `/reservation_candidates?select=*&reservation_id=eq.${encodeURIComponent(reservation.id)}&order=rank.asc`
     );
 
     const instanceIds = candidatesRows
-      .map((c: any) => c.workspace_instance_id)
-      .filter((id: any): id is string => Boolean(id));
+      .map((c) => c.workspace_instance_id)
+      .filter((id): id is string => Boolean(id));
 
-    let instancesById = new Map<string, any>();
-    let templatesById = new Map<string, any>();
-    let floorsById = new Map<string, any>();
+    let instancesById = context?.instancesById ?? new Map<string, CatalogWorkspaceInstance>();
+    let templatesById = context?.templatesById ?? new Map<string, CatalogWorkspaceTemplate>();
+    let floorsById = context?.floorsById ?? new Map<string, CatalogFloor>();
 
-    if (instanceIds.length > 0) {
+    if (!context && instanceIds.length > 0) {
       const uniqueInstanceIds = Array.from(new Set(instanceIds));
-      const instances = await this.request<any[]>(
+      const instances = await this.request<CatalogWorkspaceInstance[]>(
         `/workspace_instances?select=*&id=in.(${uniqueInstanceIds.map(encodeURIComponent).join(",")})`
       );
       if (instances && Array.isArray(instances)) {
-        instancesById = new Map(instances.map((i: any) => [i.id, i]));
+        instancesById = new Map(instances.map((i) => [i.id, i]));
         const templateIds = Array.from(
-          new Set(instances.map((i: any) => i.template_id).filter(Boolean))
+          new Set(instances.map((i) => i.template_id).filter(Boolean))
         );
         const floorIds = Array.from(
-          new Set(instances.map((i: any) => i.floor_id).filter(Boolean))
+          new Set(instances.map((i) => i.floor_id).filter(Boolean))
         );
 
         if (templateIds.length > 0) {
-          const templates = await this.request<any[]>(
+          const templates = await this.request<CatalogWorkspaceTemplate[]>(
             `/workspace_templates?select=*&id=in.(${templateIds.map(encodeURIComponent).join(",")})`
           );
           if (templates && Array.isArray(templates)) {
-            templatesById = new Map(templates.map((t: any) => [t.id, t]));
+            templatesById = new Map(templates.map((t) => [t.id, t]));
           }
         }
 
         if (floorIds.length > 0) {
-          const floors = await this.request<any[]>(
+          const floors = await this.request<CatalogFloor[]>(
             `/floors?select=*&id=in.(${floorIds.map(encodeURIComponent).join(",")})`
           );
           if (floors && Array.isArray(floors)) {
-            floorsById = new Map(floors.map((f: any) => [f.id, f]));
+            floorsById = new Map(floors.map((f) => [f.id, f]));
           }
         }
       }
     }
 
-    const candidates: ReservationCandidate[] = candidatesRows.map((candidate: any) => {
+    const candidates: ReservationCandidate[] = candidatesRows.map((candidate) => {
       const instance = instancesById.get(candidate.workspace_instance_id);
       const template = instance ? templatesById.get(instance.template_id) : null;
       const floor = instance ? floorsById.get(instance.floor_id) : null;
@@ -2525,7 +2628,7 @@ export class ReservationSupabaseRepository
 
   async listAdminReservations(): Promise<AdminReservationSummary[]> {
     const reservations = await this.request<any[]>(
-      "/reservations?select=*&order=created_at.desc&limit=500"
+      "/reservations?select=*,candidates:reservation_candidates(*),attempts:payment_attempts(*)&candidates.order=rank.asc&attempts.order=created_at.desc&order=created_at.desc&limit=500"
     );
 
     if (!reservations || reservations.length === 0) {
@@ -2535,9 +2638,10 @@ export class ReservationSupabaseRepository
     const reservationIds = reservations.map((r) => r.id).filter(Boolean);
     const hasAnyClosureImpacted = reservations.some((r) => Boolean(r.is_closure_impacted));
 
+    const children = this.embeddedChildren(reservations);
     const [candidatesRows, paymentAttemptsRows, catalog, activeClosureBlocks] = await Promise.all([
-      this.fetchCandidatesForReservationIds(reservationIds),
-      this.fetchPaymentAttemptsForReservationIds(reservationIds),
+      children ? Promise.resolve(children.candidates) : this.fetchCandidatesForReservationIds(reservationIds),
+      children ? Promise.resolve(children.attempts) : this.fetchPaymentAttemptsForReservationIds(reservationIds),
       this.getVenueCatalog(),
       hasAnyClosureImpacted
         ? this.request<any[]>("/schedule_blocks?scope=eq.BUSINESS&block_type=eq.CLOSURE&select=id,start_at,end_at").catch(() => [])
@@ -2619,7 +2723,7 @@ export class ReservationSupabaseRepository
           closureExceptionId = null;
 
           const nowIso = new Date().toISOString();
-          this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+          this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}&is_closure_impacted=eq.true&updated_at=eq.${encodeURIComponent(r.updated_at)}`, {
             method: "PATCH",
             body: JSON.stringify({
               is_closure_impacted: false,
@@ -2988,7 +3092,7 @@ export class ReservationSupabaseRepository
           closureExceptionId = null;
 
           const nowIso = new Date().toISOString();
-          this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}`, {
+          this.request(`/reservations?id=eq.${encodeURIComponent(r.id)}&is_closure_impacted=eq.true&updated_at=eq.${encodeURIComponent(r.updated_at)}`, {
             method: "PATCH",
             body: JSON.stringify({
               is_closure_impacted: false,
@@ -4947,7 +5051,7 @@ export class ReservationSupabaseRepository
     }));
 
     const rows = await this.request<any[]>(
-      `/reservations?select=id,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,closure_reason,closure_date,reservation_candidates(id,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(id,display_name,instance_code))&is_closure_impacted=eq.true&closure_impact_status=in.(AFFECTED_PENDING_ACTION,MANUAL_RESOLUTION_REQUIRED)&status=in.(PENDING,CONFIRMED,CHECKED_IN)`
+      `/reservations?select=id,updated_at,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,closure_reason,closure_date,reservation_candidates(id,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(id,display_name,instance_code))&is_closure_impacted=eq.true&closure_impact_status=in.(AFFECTED_PENDING_ACTION,MANUAL_RESOLUTION_REQUIRED)&status=in.(PENDING,CONFIRMED,CHECKED_IN)`
     ).catch(() => []);
 
     if (!rows || rows.length === 0) {
@@ -4987,7 +5091,9 @@ export class ReservationSupabaseRepository
     if (orphanedRowIds.length > 0) {
       const nowIso = new Date().toISOString();
       for (const orphanedId of orphanedRowIds) {
-        this.request(`/reservations?id=eq.${encodeURIComponent(orphanedId)}`, {
+        const observed = rows.find(row => row.id === orphanedId);
+        if (!observed?.updated_at) continue;
+        this.request(`/reservations?id=eq.${encodeURIComponent(orphanedId)}&is_closure_impacted=eq.true&updated_at=eq.${encodeURIComponent(observed.updated_at)}`, {
           method: "PATCH",
           body: JSON.stringify({
             is_closure_impacted: false,

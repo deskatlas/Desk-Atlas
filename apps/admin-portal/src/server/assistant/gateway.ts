@@ -138,7 +138,7 @@ async function rpc(db: SupabaseClient, name: string, args: Record<string, unknow
   return data as unknown;
 }
 // MS-45: one actor-scoped snapshot, without embedding or model inference.
-async function availability(verified: Verified, signal: AbortSignal) {
+async function availability(verified: Verified, signal: AbortSignal, statusOnly = false) {
   if (process.env.RAG_ENABLED !== 'true' || process.env.KB_ENABLED !== 'true') return { enabled: false, knowledge_epoch: 0 };
   validateEvidenceContract(process.env.RAG_EVIDENCE_CONTRACT);
   const base = new URL(config('RAG_SERVICE_URL'));
@@ -147,7 +147,7 @@ async function availability(verified: Verified, signal: AbortSignal) {
   const minimum = Number(config('RAG_MIN_SIMILARITY'));
   if (!Number.isFinite(minimum) || minimum < -1 || minimum > 1) throw new AssistantError('MODEL_UNAVAILABLE', 'Assistant configuration is incomplete.', 503);
   boundedConfig('RAG_CAPACITY',5,1,5); boundedConfig('RAG_REQUEST_DEADLINE_MS',55000,1000,55000);
-  const value = assistantKnowledgeAvailabilitySchema.safeParse(await rpc(verified.client, 'assistant_knowledge_availability', {
+  const value = assistantKnowledgeAvailabilitySchema.safeParse(await rpc(verified.client, statusOnly ? 'assistant_knowledge_status' : 'assistant_knowledge_availability', {
     p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'),
   }, signal));
   if (!value.success) throw new AssistantError('DATA_UNAVAILABLE', 'Assistant availability cannot be verified.', 503);
@@ -719,7 +719,7 @@ export async function assistantStatus(request: Request): Promise<Response> {
   try {
     if (request.headers.get('sec-fetch-site') === 'cross-site') throw new AssistantError('FORBIDDEN', 'Same-origin request required.', 403);
     const verified = await authorizeAssistant(request);
-    const result = await availability(verified, request.signal);
+    const result = await availability(verified, request.signal, true);
     await recheck(verified.client, verified.actor);
     return Response.json({ data: assistantAvailabilitySchema.parse({ ...result, identity: verified.actor }) }, { headers: noStore });
   }

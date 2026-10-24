@@ -35,6 +35,8 @@ export interface BlockingReservationWindow {
 }
 
 export interface AvailabilityRepository {
+  prepareWindow?(instanceIds: string[], startAt: string, endAt: string): Promise<Pick<AvailabilityRepository,
+    'listScheduleBlocks' | 'listBlockingReservations'>>;
   getWorkspaceInstance(instanceId: string): Promise<WorkspaceInstanceDetails | null>;
   getBusinessSettings(): Promise<BusinessAvailabilitySettings>;
   listOperatingHours(dayOfWeek: number): Promise<OperatingHoursInterval[]>;

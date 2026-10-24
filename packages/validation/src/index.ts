@@ -269,3 +269,4 @@ export * from './knowledgeSchema';
 export * from './customerAssistantSchema';
 export * from './customerAssistanceSchema';
 export * from './publicCustomerAssistantSchema';
+export * from './adminBadgeCountsSchema';

@@ -133,7 +133,8 @@ describe('MS-35: database optimization and reference-data caching', () => {
     expect(calls.filter((url) => url.includes('/payment_attempts'))).toHaveLength(2);
     expect(calls.filter((url) => url.includes('/reservations?'))).toHaveLength(2);
     expect(calls.filter((url) => url.includes('/audit_logs?'))).toHaveLength(2);
-    expect(calls.filter((url) => url.includes('/reservation_candidates?'))).toHaveLength(6);
+    // Pending candidates never block inventory; each live probe reads assigned rows only.
+    expect(calls.filter((url) => url.includes('/reservation_candidates?'))).toHaveLength(4);
   });
 
   it('QAD-TC35-03: caches repository reference reads while keeping availability state live', async () => {

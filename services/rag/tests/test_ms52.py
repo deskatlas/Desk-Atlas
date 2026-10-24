@@ -5,6 +5,43 @@ import time
 from knowledge import worker
 
 
+def test_idle_backoff_resets_after_work_and_stays_interruptible(monkeypatch):
+    # QAD-TC45: no wall-clock sleeps; exercise the actual polling loop.
+    class Stop:
+        def __init__(self):
+            self.waits = []
+        def is_set(self):
+            return len(self.waits) >= 8
+        def wait(self, seconds):
+            self.waits.append(seconds)
+    stop = Stop()
+    replies = iter([None] * 5 + [{'job': {'kind': 'INGEST'}}] + [None] * 3)
+    class Gateway:
+        def call(self, path, data):
+            return next(replies)
+    processed = []
+    monkeypatch.setattr(worker, 'process_claim', lambda *_args: processed.append(True))
+    worker.run_lane(Gateway(), 'INGEST', stop=stop)
+    assert stop.waits == [1, 2, 4, 8, 10, 1, 2, 4]
+    assert processed == [True]
+
+
+def test_idle_backoff_handles_gateway_failures():
+    class Stop:
+        def __init__(self):
+            self.waits = []
+        def is_set(self):
+            return len(self.waits) >= 2
+        def wait(self, seconds):
+            self.waits.append(seconds)
+    class Gateway:
+        def call(self, *_args):
+            raise worker.GatewayError('STORAGE_FAILED')
+    stop = Stop()
+    worker.run_lane(Gateway(), 'PURGE', stop=stop)
+    assert stop.waits == [5, 5]
+
+
 def test_ms52_cleanup_progresses_while_ingestion_is_blocked(monkeypatch):
     ingest_started = threading.Event()
     cleanup_finished = threading.Event()
