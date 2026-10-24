@@ -183,17 +183,21 @@ def process_claim(gateway: Gateway, claim: dict, encoder: Encoder, fingerprint: 
 def run_lane(gateway, kind, encoder=None, fingerprint='', stop=None):
     """MS52-TC02: a blocked ingestion lane cannot block eligible cleanup."""
     stop = stop or threading.Event()
+    idle_delay = 1
     while not stop.is_set():
         try:
             claim = gateway.call("claim", {"kind": kind})
             if claim:
+                idle_delay = 1
                 started = time.monotonic()
                 process_claim(gateway, claim, encoder, fingerprint)
                 # Content-free service time; job timestamps carry queue/eligibility.
                 print(json.dumps({"event": "kb_worker_service", "kind": kind,
                                   "duration_ms": round((time.monotonic() - started) * 1000)}), flush=True)
             else:
-                stop.wait(1)
+                # SDD-C24 / QAD-TC45: bounded idle backoff, interruptible shutdown.
+                stop.wait(idle_delay)
+                idle_delay = min(idle_delay * 2, 10)
         except GatewayError:
             stop.wait(5)
 

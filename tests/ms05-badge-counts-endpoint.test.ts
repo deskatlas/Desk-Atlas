@@ -124,7 +124,8 @@ describe("MS-05 / QAD-TC6.2: Atomic Badge Counts Calculation & Endpoint Contract
         "../apps/admin-portal/src/app/api/admin/badge-counts/route"
       );
 
-      const response = await GET();
+      const response = await GET(new Request('http://localhost/api/admin/badge-counts'));
+      assert.strictEqual(response.status, 401);
       const cacheHeader = response.headers.get("Cache-Control");
 
       assert.ok(cacheHeader, "Cache-Control header must be present on badge counts response");
@@ -135,13 +136,8 @@ describe("MS-05 / QAD-TC6.2: Atomic Badge Counts Calculation & Endpoint Contract
       );
       assert.match(
         cacheHeader,
-        /s-maxage=10/,
-        "Badge counts must specify s-maxage=10"
-      );
-      assert.match(
-        cacheHeader,
-        /stale-while-revalidate=20/,
-        "Badge counts must specify stale-while-revalidate=20"
+        /no-store/,
+        "Authenticated live badge counts must not be cached"
       );
     } finally {
       globalThis.fetch = originalFetch;

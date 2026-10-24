@@ -84,7 +84,7 @@ type BlockingReservationRow = {
   end_at: string;
   reservation: {
     id: string;
-    status: string;
+    status: BlockingReservationWindow['reservationStatus'];
     created_at?: string;
   } | null;
 };
@@ -247,37 +247,14 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     rangeStartIso: string,
     rangeEndIso: string
   ): Promise<BlockingReservationWindow[]> {
-    const [assignedRows, pendingRows] = await Promise.all([
-      this.request<BlockingReservationRow[]>(
-        `/reservation_candidates?select=start_at,end_at,reservation:reservations!inner(id,status,created_at)&workspace_instance_id=eq.${encodeURIComponent(
+    // PRD-F4: pending selections and payment reviews never hold inventory.
+    const combined = await this.request<BlockingReservationRow[]>(
+      `/reservation_candidates?select=start_at,end_at,reservation:reservations!inner(id,status,created_at)&workspace_instance_id=eq.${encodeURIComponent(
           workspaceInstanceId
         )}&start_at=lt.${encodeURIComponent(rangeEndIso)}&end_at=gt.${encodeURIComponent(
           rangeStartIso
         )}&is_assigned=eq.true&reservation.status=in.(CONFIRMED,CHECKED_IN)`
-      ),
-      this.request<BlockingReservationRow[]>(
-        `/reservation_candidates?select=start_at,end_at,reservation:reservations!inner(id,status,created_at)&workspace_instance_id=eq.${encodeURIComponent(
-          workspaceInstanceId
-        )}&start_at=lt.${encodeURIComponent(rangeEndIso)}&end_at=gt.${encodeURIComponent(
-          rangeStartIso
-        )}&reservation.status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION)`
-      ).catch(() => []),
-    ]);
-
-    const nowMs = Date.now();
-    const validPendingRows = (pendingRows || []).filter((row) => {
-      if (!row.reservation) return false;
-      if (row.reservation.status === 'PENDING_PAYMENT' && row.reservation.created_at) {
-        const createdAtMs = new Date(row.reservation.created_at).getTime();
-        // 1 hour (60 minutes) payment session window
-        if (nowMs - createdAtMs > 60 * 60 * 1000) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    const combined = [...(assignedRows || []), ...validPendingRows];
+    );
 
     return combined
       .filter((row) => row.reservation)
@@ -287,6 +264,40 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
         startAt: row.start_at,
         endAt: row.end_at,
       }));
+  }
+
+  // Request-local snapshot for one template search. Never retained by the repository.
+  async prepareWindow(instanceIds: string[], startAt: string, endAt: string): Promise<Pick<AvailabilityRepository,
+    'listScheduleBlocks' | 'listBlockingReservations'>> {
+    const ids = [...new Set(instanceIds)];
+    const blocks = new Map<string, ScheduleBlockRow>();
+    const windows: Array<BlockingReservationRow & { workspace_instance_id: string }> = [];
+    for (let i = 0; i < ids.length; i += 60) {
+      const filter = ids.slice(i, i + 60).map(encodeURIComponent).join(',');
+      const range = `start_at=lt.${encodeURIComponent(endAt)}&end_at=gt.${encodeURIComponent(startAt)}`;
+      const [blockRows, candidateRows] = await Promise.all([
+        this.requestWindowRows<ScheduleBlockRow>(`/schedule_blocks?select=id,scope,workspace_instance_id,block_type,start_at,end_at,reason&${range}&or=(scope.eq.BUSINESS,workspace_instance_id.in.(${filter}))`),
+        this.requestWindowRows<BlockingReservationRow & { workspace_instance_id: string }>(`/reservation_candidates?select=workspace_instance_id,start_at,end_at,reservation:reservations!inner(id,status,created_at)&${range}&workspace_instance_id=in.(${filter})&is_assigned=eq.true&reservation.status=in.(CONFIRMED,CHECKED_IN)`),
+      ]);
+      blockRows.forEach(row => blocks.set(row.id, row)); windows.push(...candidateRows);
+    }
+    const overlaps = (start: string, end: string, from: string, to: string) => Date.parse(start) < Date.parse(to) && Date.parse(end) > Date.parse(from);
+    const covered = (from: string, to: string) => Date.parse(from) >= Date.parse(startAt) && Date.parse(to) <= Date.parse(endAt);
+    return {
+      listScheduleBlocks: async (id, from, to) => {
+        if (!ids.includes(id) || !covered(from, to)) return this.listScheduleBlocks(id, from, to);
+        return [...blocks.values()].filter(row => (row.scope === 'BUSINESS' || row.workspace_instance_id === id)
+          && overlaps(row.start_at, row.end_at, from, to)).map(row => ({ id: row.id, scope: row.scope,
+            workspaceInstanceId: row.workspace_instance_id, blockType: row.block_type,
+            startAt: row.start_at, endAt: row.end_at, reason: row.reason }));
+      },
+      listBlockingReservations: async (id, from, to) => {
+        if (!ids.includes(id) || !covered(from, to)) return this.listBlockingReservations(id, from, to);
+        return windows.filter(row => row.workspace_instance_id === id && row.reservation
+          && overlaps(row.start_at, row.end_at, from, to)).map(row => ({ reservationId: row.reservation!.id,
+            reservationStatus: row.reservation!.status, startAt: row.start_at, endAt: row.end_at }));
+      },
+    };
   }
 
   async listOccupiedInstanceDetails(
@@ -342,7 +353,27 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     return details.map((d) => d.workspaceInstanceId);
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private async requestWindowRows<T>(path: string): Promise<T[]> {
+    const rows: T[] = [];
+    let offset = 0;
+    while (true) {
+      let total: number | undefined;
+      const page = await this.request<T[]>(`${path}&order=id.asc&offset=${offset}&limit=500`,
+        { headers: { Prefer: 'count=exact' } }, response => {
+          const match = response.headers.get('content-range')?.match(/\/(\d+)$/);
+          if (match) total = Number(match[1]);
+        });
+      rows.push(...page); offset += page.length;
+      if (total !== undefined && offset >= total) return rows;
+      if (!page.length) {
+        if (total !== undefined && total > offset) throw new Error('Incomplete availability window');
+        return rows;
+      }
+      if (total === undefined && page.length < 500) return rows;
+    }
+  }
+
+  private async request<T>(path: string, options: RequestInit = {}, observe?: (response: Response) => void): Promise<T> {
     const headers = new Headers(options.headers);
     headers.set('apikey', this.serviceRoleKey);
     headers.set('Authorization', `Bearer ${this.serviceRoleKey}`);
@@ -363,6 +394,8 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     if (response.status === 204) {
       return undefined as T;
     }
+
+    observe?.(response);
 
     const text = await response.text();
     return text ? (JSON.parse(text) as T) : (undefined as T);

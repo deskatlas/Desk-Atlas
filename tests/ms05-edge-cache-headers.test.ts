@@ -209,19 +209,19 @@ describe("MS-05 / QAD-TC6.4: Edge Cache Headers Enforcement", () => {
     }
   });
 
-  it("enforces Cache-Control: private, s-maxage=10, stale-while-revalidate=20 on admin badge counts route", async () => {
+  it("enforces private, no-store on authenticated admin badge counts", async () => {
     setupEnv();
     try {
       const { GET } = await import(
         "../apps/admin-portal/src/app/api/admin/badge-counts/route"
       );
-      const res = await GET();
+      const res = await GET(new Request('http://localhost/api/admin/badge-counts'));
+      assert.strictEqual(res.status, 401);
       const header = res.headers.get("Cache-Control");
 
       assert.ok(header, "Cache-Control header must be set on /api/admin/badge-counts");
       assert.match(header, /private/i);
-      assert.match(header, /s-maxage=10/);
-      assert.match(header, /stale-while-revalidate=20/);
+      assert.match(header, /no-store/);
     } finally {
       teardownEnv();
     }

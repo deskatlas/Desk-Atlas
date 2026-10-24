@@ -26,7 +26,7 @@ function request(post = false) {
 beforeEach(() => {
   for (const [key, value] of Object.entries({ SUPABASE_URL: 'https://fixture.invalid', SUPABASE_SERVICE_ROLE_KEY: randomUUID(), RAG_ENABLED: 'true', KB_ENABLED: 'true', RAG_SERVICE_URL: 'http://127.0.0.1:8000', RAG_SERVICE_TOKEN: randomUUID(), RAG_CAPABILITY_SECRET: randomUUID(), RAG_SCOPE_ID: 'fixture-scope', RAG_EMBEDDING_FINGERPRINT: 'fixture', RAG_MIN_SIMILARITY: '0.5' })) vi.stubEnv(key, value);
   fixture.role = 'ADMIN'; fixture.active = true; fixture.eligible = false; fixture.epoch = 1;
-  fixture.rpc.mockImplementation(async (name: string) => ({ data: name === 'assistant_knowledge_availability' ? { enabled: fixture.eligible, knowledge_epoch: fixture.epoch } : { tables: [], interpretation: [], limitations: [] }, error: null }));
+  fixture.rpc.mockImplementation(async (name: string) => ({ data: ['assistant_knowledge_status', 'assistant_knowledge_availability'].includes(name) ? { enabled: fixture.eligible, knowledge_epoch: fixture.epoch } : { tables: [], interpretation: [], limitations: [] }, error: null }));
   vi.stubGlobal('fetch', vi.fn());
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -36,7 +36,7 @@ describe('MS45 actor-scoped availability', () => {
     const response = await assistantStatus(request());
     expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toContain('no-store');
     expect(await response.json()).toEqual({ data: { enabled: true, knowledge_epoch: 1, identity: { id: actor, role } } });
-    expect(fixture.rpc).toHaveBeenCalledWith('assistant_knowledge_availability', { p_actor: actor, p_scope: 'fixture-scope', p_fingerprint: 'fixture' });
+    expect(fixture.rpc).toHaveBeenCalledWith('assistant_knowledge_status', { p_actor: actor, p_scope: 'fixture-scope', p_fingerprint: 'fixture' });
     expect(fetch).not.toHaveBeenCalled();
   });
   it('sees first publication and last withdrawal on fresh reads', async () => {

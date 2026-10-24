@@ -103,6 +103,11 @@ describe("MF-179: Correct Staff Actor Attribution in Kiosk Confirmation & Check-
       }
 
       if (path.startsWith("/reservations?select=")) {
+        const batch = path.match(/id=in\.\(([^)]+)\)/);
+        if (batch) return batch[1].split(',').flatMap(id => {
+          const row = mockReservationData[decodeURIComponent(id)];
+          return row ? [row] : [];
+        });
         const idMatch = path.match(/id=eq\.([^&]+)/);
         if (idMatch) {
           const matchedId = decodeURIComponent(idMatch[1]);

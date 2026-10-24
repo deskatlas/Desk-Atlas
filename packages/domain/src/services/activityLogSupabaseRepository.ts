@@ -159,11 +159,11 @@ export class ActivityLogSupabaseRepository implements ActivityLogRepository {
     }
 
     if (from) {
-      queryParams.set("created_at", `gte.${new Date(from).toISOString()}`);
+      queryParams.append("created_at", `gte.${new Date(from).toISOString()}`);
     }
 
     if (to) {
-      queryParams.set("created_at", `lte.${new Date(to).toISOString()}`);
+      queryParams.append("created_at", `lte.${new Date(to).toISOString()}`);
     }
 
     const { data: rows, count } = await this.request<SupabaseAuditLogRow[]>(

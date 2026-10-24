@@ -52,7 +52,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     if (!user) return;
     try {
       // Endpoint /api/admin/badge-counts aggregates counts for reservations, payments, and kiosk (filter=counter_queue)
-      const res = await fetch('/api/admin/badge-counts', { cache: 'no-store' });
+      const res = await fetch('/api/admin/badge-counts', { cache: 'no-store', headers: { Authorization: `Bearer ${user.token}` } });
       if (res.ok) {
         const data = await res.json();
         setReservationsCount(typeof data.reservationsCount === 'number' ? data.reservationsCount : 0);
