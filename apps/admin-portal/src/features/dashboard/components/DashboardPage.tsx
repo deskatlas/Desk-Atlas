@@ -11,6 +11,7 @@ export function DashboardPage() {
   const [range, setRange] = useState<AdminDashboardRange>("today");
   const [data, setData] = useState<AdminDashboardSnapshot | null>(null);
   const [occupancySummary, setOccupancySummary] = useState<OccupancySummary | null>(null);
+  const [closureAlertsUnavailable, setClosureAlertsUnavailable] = useState(false);
   const [closureAlerts, setClosureAlerts] = useState<{
     impactedCount: number;
     closureDateRange?: string | null;
@@ -84,14 +85,14 @@ export function DashboardPage() {
     const fetchClosureAlerts = async () => {
       try {
         const res = await fetch("/api/operations/closure-alerts", { cache: "no-store" });
-        if (res.ok) {
-          const json = await res.json();
-          if (!isCancelled) {
-            setClosureAlerts(json);
-          }
+        if (!res.ok) throw new Error('CLOSURE_ALERTS_UNAVAILABLE');
+        const json = await res.json();
+        if (!isCancelled) {
+          setClosureAlerts(json);
+          setClosureAlertsUnavailable(false);
         }
       } catch {
-        // silent fail on poll
+        if (!isCancelled) setClosureAlertsUnavailable(true);
       }
     };
 
@@ -249,6 +250,12 @@ export function DashboardPage() {
       {error && (
         <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#FFF1F2", border: "1px solid #FECDD3", color: "#9F1239", fontSize: "13px", fontFamily: "var(--da-font-family)", marginBottom: "18px" }}>
           {error}
+        </div>
+      )}
+
+      {closureAlertsUnavailable && (
+        <div role="alert" style={{ padding: "12px 16px", borderRadius: "10px", background: "#FFF1F2", border: "1px solid #FECDD3", color: "#9F1239", fontSize: "13px", marginBottom: "18px" }}>
+          Closure alerts are unavailable. Retrying automatically. Any displayed alerts are from the last successful check.
         </div>
       )}
 

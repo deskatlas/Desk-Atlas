@@ -1,0 +1,79 @@
+{
+  "records": 1000,
+  "unclassified_records": 163,
+  "classes": {
+    "closure_column": {
+      "inferred_sqlstate": "42703",
+      "count": 771,
+      "first_utc": "2026-10-22T12:54:41.228000+00:00",
+      "last_utc": "2026-10-22T18:18:39.402000+00:00"
+    },
+    "workspace_column": {
+      "inferred_sqlstate": "42703",
+      "count": 2,
+      "first_utc": "2026-10-22T14:03:10.926000+00:00",
+      "last_utc": "2026-10-22T14:10:05.678000+00:00"
+    },
+    "staff_ambiguity": {
+      "inferred_sqlstate": "42702",
+      "count": 3,
+      "first_utc": "2026-10-22T14:31:17.313000+00:00",
+      "last_utc": "2026-10-22T14:36:04.236000+00:00"
+    },
+    "shutdown_rejection": {
+      "inferred_sqlstate": "57P03",
+      "count": 44,
+      "first_utc": "2026-10-22T16:57:39.050000+00:00",
+      "last_utc": "2026-10-22T16:59:06.860000+00:00"
+    },
+    "admin_termination": {
+      "inferred_sqlstate": "57P01",
+      "count": 8,
+      "first_utc": "2026-10-22T16:57:38.214000+00:00",
+      "last_utc": "2026-10-22T16:57:38.222000+00:00"
+    },
+    "client_reset": {
+      "inferred_sqlstate": "08006",
+      "count": 5,
+      "first_utc": "2026-10-22T14:50:22.206000+00:00",
+      "last_utc": "2026-10-22T18:42:21.610000+00:00"
+    },
+    "standby_eof": {
+      "inferred_sqlstate": "08P01",
+      "count": 1,
+      "first_utc": "2026-10-22T19:43:43.691000+00:00",
+      "last_utc": "2026-10-22T19:43:43.691000+00:00"
+    },
+    "statement_timeout": {
+      "inferred_sqlstate": "57014",
+      "count": 1,
+      "first_utc": "2026-10-22T14:23:29.417000+00:00",
+      "last_utc": "2026-10-22T14:23:29.417000+00:00"
+    },
+    "user_cancellation": {
+      "inferred_sqlstate": "57014",
+      "count": 1,
+      "first_utc": "2026-10-22T14:32:26.936000+00:00",
+      "last_utc": "2026-10-22T14:32:26.936000+00:00"
+    },
+    "shutdown_request": {
+      "inferred_sqlstate": "00000",
+      "count": 1,
+      "first_utc": "2026-10-22T16:57:38.196000+00:00",
+      "last_utc": "2026-10-22T16:57:38.196000+00:00"
+    },
+    "readiness": {
+      "inferred_sqlstate": "00000",
+      "count": 0,
+      "first_utc": null,
+      "last_utc": null
+    }
+  },
+  "shutdown_initiator": "unknown",
+  "deployed_revision": "unknown",
+  "applied_migrations": "unknown",
+  "recovery_interval": "unknown",
+  "timeout_query_attribution": "unknown",
+  "cancellation_origin": "unknown",
+  "standby_health": "unknown"
+}

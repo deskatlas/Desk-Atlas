@@ -19,13 +19,17 @@ describe('MS-35 / QAD-TC35: consolidated Supabase baseline', () => {
     expect(read('003_storage.sql')).toBe(read('archive/pre-consolidation/003_storage.sql'));
   });
 
-  it('preserves exactly the latest historical function bodies and all trigger bindings', () => {
+  it('preserves historical functions with reviewed forward replacements and all trigger bindings', () => {
     const expression = /CREATE OR REPLACE FUNCTION\s+(public\.\w+)\s*\([\s\S]*?\$\$;/g;
     const latest = new Map<string, string>();
     for (const name of history) {
       for (const match of read(`archive/pre-consolidation/${name}`).matchAll(expression)) {
         latest.set(match[1], match[0].replace(/\r\n/g, '\n'));
       }
+    }
+    for (const match of read('migrations/041_staff_rpc_ambiguity.sql').matchAll(/EXECUTE \$ms81_replacement\$([\s\S]*?)\$ms81_replacement\$;/g)) {
+      const definition = [...match[1].matchAll(expression)][0];
+      latest.set(definition[1], definition[0]);
     }
     const functions = [...read('002_functions.sql').matchAll(expression)];
     expect(functions).toHaveLength(latest.size);

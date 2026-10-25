@@ -1,0 +1,6 @@
+
+> deskatlas-monorepo@ test:ms81:postgres C:\Users\reyna\Desk-Atlas
+> python tests/ms81-postgres-contracts.py
+
+Reproduced SQLSTATE 42702 in original create and update functions.
+MS81: allowed/denied roles, return contract, atomic failures, ACL/owner/signature preservation, forward/down/forward, drift rejection and baseline parity passed.

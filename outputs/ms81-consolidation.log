@@ -1,0 +1,44 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms35-supabase-consolidation.test.ts (4 tests | 1 failed) 57ms
+   ❯ MS-35 / QAD-TC35: consolidated Supabase baseline (4)
+     × includes every deployment table and column in DrawSQL with resolvable relationships 19ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms35-supabase-consolidation.test.ts > MS-35 / QAD-TC35: consolidated Supabase baseline > includes every deployment table and column in DrawSQL with resolvable relationships
+AssertionError: expected [ 'user_id', …(268) ] to deeply equal [ 'user_id', …(267) ]
+
+- Expected
++ Received
+
+@@ -222,10 +222,11 @@
+    "rejection_reason",
+    "refund_status",
+    "refund_notes",
+    "refund_recorded_by_user_id",
+    "refunded_at",
++   "overdue_notified_at",
+    "created_at",
+    "updated_at",
+    "id",
+    "actor_user_id",
+    "actor_role",
+
+ ❯ tests/ms35-supabase-consolidation.test.ts:58:32
+     56|       .filter((match) => !['CONSTRAINT', 'FOREIGN', 'REFERENCES', 'ON'…
+     57|       .map((match) => match[1]);
+     58|     expect(tableColumns(draw)).toEqual(tableColumns(schema));
+       |                                ^
+     59|     const references = [...draw.matchAll(/REFERENCES (\w+)\s*\(/g)].ma…
+     60|     expect(references).toHaveLength(24);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  23:08:45
+   Duration  554ms (tests 31%, transform 26%, import 25%, worker 19%)
+

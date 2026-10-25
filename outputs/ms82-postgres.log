@@ -1,0 +1,6 @@
+
+> deskatlas-monorepo@ test:ms82:postgres C:\Users\reyna\Desk-Atlas
+> python tests/ms82-postgres-interruption.py
+
+MS82: statement timeout, explicit cancellation, session termination, unavailable read and restart readiness passed.
+Disposable PostgreSQL only; hosted initiator, PostgREST recovery and staging traffic remain pending.

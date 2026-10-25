@@ -151,6 +151,15 @@ def generate():
             else:
                 raise ValueError(f'Unclassified statement in {file.name}: {s[:100]}')
 
+    # MS-81: reviewed forward replacements override history for clean installs.
+    # Read only the replacement tags, never execute guarded migration/down SQL.
+    repair = (DB / 'migrations/041_staff_rpc_ambiguity.sql').read_text(encoding='utf-8')
+    for definition in re.findall(r'EXECUTE \$ms81_replacement\$([\s\S]*?)\$ms81_replacement\$;', repair):
+        key = re.match(r'CREATE OR REPLACE FUNCTION\s+(\S+)\s*\(', definition).group(1)
+        if key not in functions:
+            raise ValueError(f'MS81 unknown function: {key}')
+        functions[key] = definition.rstrip(';')
+
     # The reservation-reference default depends on a function installed in 002.
     tables['reservations'] = [item.replace(' DEFAULT public.generate_reservation_reference()', '') for item in tables['reservations']]
     creates = [f'CREATE TABLE public.{name} (\n  ' + ',\n  '.join(items) + '\n)' for name, items in tables.items()]

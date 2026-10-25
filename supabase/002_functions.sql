@@ -2538,11 +2538,11 @@ BEGIN
     RAISE EXCEPTION 'Creating admin actor is required to create staff accounts';
   END IF;
 
-  SELECT COALESCE(is_super_admin, false) INTO v_actor_is_super_admin
-  FROM public.staff_profiles
-  WHERE user_id = p_actor_user_id
-    AND role = 'ADMIN'
-    AND is_active = true;
+  SELECT COALESCE(actor.is_super_admin, false) INTO v_actor_is_super_admin
+  FROM public.staff_profiles actor
+  WHERE actor.user_id = p_actor_user_id
+    AND actor.role = 'ADMIN'
+    AND actor.is_active = true;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Only active ADMIN profiles may create staff accounts';
@@ -2571,7 +2571,7 @@ BEGIN
     RAISE EXCEPTION 'Role must be either ADMIN or STAFF';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM auth.users WHERE email = v_trimmed_email) THEN
+  IF EXISTS (SELECT 1 FROM auth.users existing_user WHERE existing_user.email = v_trimmed_email) THEN
     RAISE EXCEPTION 'A user with email % already exists', v_trimmed_email;
   END IF;
 
@@ -2744,11 +2744,11 @@ BEGIN
     IF length(p_new_password) < 8 OR p_new_password !~ '[A-Z]' OR p_new_password !~ '[0-9]' OR p_new_password !~ '[^a-zA-Z0-9\s]' THEN
       RAISE EXCEPTION 'Password must be at least 8 characters long, contain at least 1 uppercase letter, 1 number, and 1 special character';
     END IF;
-    UPDATE auth.users
+    UPDATE auth.users target_user
     SET
       encrypted_password = extensions.crypt(p_new_password::text, extensions.gen_salt('bf'::text)),
       updated_at = now()
-    WHERE id = p_target_user_id;
+    WHERE target_user.id = p_target_user_id;
   END IF;
 
   IF p_is_active IS NOT NULL AND p_is_active <> v_current_profile.is_active THEN
@@ -2759,11 +2759,11 @@ BEGIN
     END IF;
   END IF;
 
-  UPDATE public.staff_profiles
+  UPDATE public.staff_profiles target_profile
   SET
-    display_name = COALESCE(btrim(p_display_name), display_name),
-    role = COALESCE(p_role, role),
-    is_active = COALESCE(p_is_active, is_active),
+    display_name = COALESCE(btrim(p_display_name), target_profile.display_name),
+    role = COALESCE(p_role, target_profile.role),
+    is_active = COALESCE(p_is_active, target_profile.is_active),
     updated_at = now()
   WHERE user_id = p_target_user_id;
 

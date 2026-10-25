@@ -1,0 +1,17 @@
+
+> deskatlas-monorepo@ test:ms82 C:\Users\reyna\Desk-Atlas
+> vitest run tests/ms82-database-interruption-recovery.test.ts tests/ms80-reservation-query-contracts.test.ts tests/ms80-closure-routes.test.ts tests/ms81-staff-rpc-ambiguity.test.ts tests/ms35-query-amplification.test.ts tests/t05-payment-session-and-review.test.ts tests/t11-auth-and-security.test.ts
+
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+
+ Test Files  7 passed (7)
+      Tests  84 passed | 1 expected fail (85)
+   Start at  23:39:50
+   Duration  4.53s (import 58%, transform 39%, tests 2%, worker 1%)
+
+  Transform  transforming modules took 9.83s · 39% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

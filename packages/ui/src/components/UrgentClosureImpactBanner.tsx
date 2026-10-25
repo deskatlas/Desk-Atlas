@@ -12,8 +12,8 @@ export interface UrgentClosureImpactBannerProps {
 
 export function UrgentClosureImpactBanner({
   impactedCount,
-  closureDateRange = "Upcoming Dates",
-  closureReason = "Facility Maintenance",
+  closureDateRange = null,
+  closureReason = null,
   onReview,
   reviewUrl,
 }: UrgentClosureImpactBannerProps) {
@@ -49,7 +49,7 @@ export function UrgentClosureImpactBanner({
             Urgent: {impactedCount} Reservation{impactedCount === 1 ? "" : "s"} Impacted by Facility Closure
           </div>
           <div style={{ fontSize: "13px", color: "#B91C1C", marginTop: "2px" }}>
-            Closure scheduled for {closureDateRange || "Upcoming Dates"} ({closureReason || "Facility Maintenance"}). Action required to notify or reallocate customers.
+            Closure scheduled for {closureDateRange || "dates unavailable"} ({closureReason || "reason unavailable"}). Action required to notify or reallocate customers.
           </div>
         </div>
       </div>
