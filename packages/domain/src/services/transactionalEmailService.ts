@@ -515,6 +515,7 @@ export interface PaymentLinkEmailInput extends BaseEmailBusinessFields {
 export type PaymentProofRequestEmailInput = PaymentLinkEmailInput;
 
 export interface BookingConfirmationEmailInput extends BaseEmailBusinessFields {
+  idempotencyKey?: string;
   to?: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -534,6 +535,7 @@ export interface BookingConfirmationEmailInput extends BaseEmailBusinessFields {
 }
 
 export interface ManualResolutionEmailInput extends BaseEmailBusinessFields {
+  idempotencyKey?: string;
   to: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -693,6 +695,7 @@ export interface ReservationExtendedEmailInput extends BaseEmailBusinessFields {
 }
 
 export interface RawEmailInput {
+  idempotencyKey?: string;
   to: string | string[];
   from?: string;
   subject: string;
@@ -1101,7 +1104,7 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
       <p>Thank you for completing your payment for reservation <strong>${escapeHtml(input.referenceCode)}</strong>.</p>
-      <p>Your payment has been successfully recorded. However, due to high demand or scheduling conflicts, your requested workspace spot could not be automatically assigned and is currently queued for manual resolution by our team.</p>
+      <p>Your payment has been received. All your approved workspace choices were unavailable; assignment is pending. Open tracking and verify your registered email to choose Reschedule, Reposition, or Refund. Reschedule preserves template and duration. Reposition preserves the original interval. Refund cancels the booking pending administrator refund processing. Availability can change until confirmation.</p>
       
       <div class="schedule-box" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin: 18px 0;">
         <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -1117,7 +1120,7 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
         </div>
         ${input.workspaceName ? `
         <div style="margin: 6px 0; font-size: 14px;">
-          <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Reserved Spot:</span>
+          <span style="color: #64748b; font-weight: 500; display: inline-block; width: 130px;">Original Template:</span>
           <span style="color: #0f172a; font-weight: 600;">${escapeHtml(input.workspaceName)}</span>
         </div>
         ` : ''}
@@ -1165,13 +1168,13 @@ Reference: ${input.referenceCode}
 Hello ${customerName},
 
 Thank you for your payment for reservation ${input.referenceCode}.
-Your payment has been received, but your requested workspace spot could not be automatically assigned and requires manual resolution.
+Your payment has been received. All your approved workspace choices were unavailable; assignment is pending. Open tracking and verify your registered email to choose Reschedule, Reposition, or Refund. Reschedule preserves template and duration. Reposition preserves the original interval. Refund cancels the booking pending administrator refund processing. Availability can change until confirmation.
 
 SCHEDULED BOOKING DETAILS
 -------------------------
 Date(s): ${resolvedScheduledDate || 'Upcoming Scheduled Date'}
 Scheduled Time: ${resolvedScheduledTime || 'Booked Time Slot'}
-${input.workspaceName ? `Reserved Spot: ${input.workspaceName}\n` : ''}
+${input.workspaceName ? `Original Template: ${input.workspaceName}\n` : ''}
 Please contact ${businessName} directly using the registered business details:
 Business Email: ${businessEmail}
 ${businessPhone ? `Business Phone: ${businessPhone}\n` : ''}Reference Code: ${input.referenceCode}
@@ -2835,6 +2838,7 @@ export class TransactionalEmailService {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
+            ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}),
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -2940,14 +2944,15 @@ export class TransactionalEmailService {
 
     if (!this.apiKey && this.webhookUrl) {
       try {
-        await this.fetcher(this.webhookUrl, {
+        const response = await this.fetcher(this.webhookUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}) },
           body: JSON.stringify({
             template: 'booking-confirmed',
             ...mergedInput,
           }),
         });
+        if (!response.ok) return { success: false, error: `Booking confirmation delivery failed (${response.status})` };
         return { success: true, id: 'webhook-booking-confirmed' };
       } catch (err: any) {
         console.warn('[TransactionalEmail] Booking confirmed webhook dispatch error:', err.message);
@@ -2956,6 +2961,7 @@ export class TransactionalEmailService {
 
     return this.sendEmail({
       to: input.to || '',
+      idempotencyKey: input.idempotencyKey,
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
@@ -2972,14 +2978,15 @@ export class TransactionalEmailService {
 
     if (!this.apiKey && this.webhookUrl) {
       try {
-        await this.fetcher(this.webhookUrl, {
+        const response = await this.fetcher(this.webhookUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}) },
           body: JSON.stringify({
             template: 'manual-resolution',
             ...mergedInput,
           }),
         });
+        if (!response.ok) return { success: false, error: `Manual resolution delivery failed (${response.status})` };
         return { success: true, id: 'webhook-manual-resolution' };
       } catch (err: any) {
         console.warn('[TransactionalEmail] Manual resolution webhook dispatch error:', err.message);
@@ -2988,6 +2995,7 @@ export class TransactionalEmailService {
 
     return this.sendEmail({
       to: input.to,
+      idempotencyKey: input.idempotencyKey,
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,

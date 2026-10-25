@@ -240,7 +240,8 @@ function getBookingAccessState(
   const startAt = new Date(record.assignedStartAt);
   const endAt = new Date(record.assignedEndAt);
 
-  if (now > endAt || record.reservationStatus === "COMPLETED") {
+  // MS83-R05 / PRD-F7: access uses the same half-open interval as allocation.
+  if (now >= endAt || record.reservationStatus === "COMPLETED") {
     return "EXPIRED";
   }
 

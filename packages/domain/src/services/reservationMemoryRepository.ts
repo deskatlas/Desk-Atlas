@@ -1,3 +1,4 @@
+import { requiresClosureAction } from "./reservationTabSegregation";
 import {
   AdminReservationCandidateSummary,
   AdminReservationDetail,
@@ -1543,10 +1544,12 @@ export class ReservationMemoryRepository
     });
   }
 
-  async listAdminReservations(): Promise<AdminReservationSummary[]> {
+  async listAdminReservations(closureOnly = false): Promise<AdminReservationSummary[]> {
     const list = [...this.reservations].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-    return list.map((r) => {
+    return list.filter(r => !closureOnly || requiresClosureAction({
+      isClosureImpacted: r.isClosureImpacted, closureImpactStatus: r.closureImpactStatus, reservationStatus: r.status,
+    })).map((r) => {
       const candidates = r.candidates ?? [];
       const assignedCandidate = candidates.find((c) => c.isAssigned) ?? null;
       const mainCandidate = candidates.find((c) => c.rank === 0) ?? candidates[0] ?? null;
@@ -3530,12 +3533,8 @@ export class ReservationMemoryRepository
       const isClosureImpacted = r.isClosureImpacted || Boolean((r as any).is_closure_impacted);
       const impactStatus = r.closureImpactStatus || (r as any).closure_impact_status;
       const status = r.status || (r as any).status;
-      return (
-        isClosureImpacted &&
-        (impactStatus === "AFFECTED_PENDING_ACTION" || impactStatus === "MANUAL_RESOLUTION_REQUIRED") &&
-        status !== "CANCELLED" &&
-        status !== "EXPIRED"
-      );
+      return requiresClosureAction({ isClosureImpacted, closureImpactStatus: impactStatus,
+        reservationStatus: status });
     });
 
     if (unaddressed.length === 0) {

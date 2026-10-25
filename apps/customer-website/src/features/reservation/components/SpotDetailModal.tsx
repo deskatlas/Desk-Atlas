@@ -21,6 +21,7 @@ interface SpotDetailModalProps {
   onProceed: (workspace: WorkspaceMapViewModel) => void;
   candidateRank?: 0 | 1 | 2;
   mainTemplateName?: string;
+  paidRecovery?: boolean;
 }
 
 export function SpotDetailModal({
@@ -30,6 +31,7 @@ export function SpotDetailModal({
   onProceed,
   candidateRank = 0,
   mainTemplateName,
+  paidRecovery = false,
 }: SpotDetailModalProps) {
   const [imageError, setImageError] = useState(false);
   const assistant = useCustomerAssistant();
@@ -129,11 +131,10 @@ export function SpotDetailModal({
         <div className="mt-4 grid grid-cols-3 gap-3">
           <div className="rounded-[16px] border border-[var(--da-border-light)] bg-[var(--da-canvas)] p-3 text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--da-text-secondary)]">
-              Hourly Rate
+              {paidRecovery ? 'Payment' : 'Hourly Rate'}
             </span>
             <p className="mt-1 text-base font-extrabold text-[var(--da-brand-dark)]">
-              ₱{workspace.rateAmount}
-              <span className="text-xs font-semibold text-[var(--da-text-secondary)]">/hr</span>
+              {paidRecovery ? 'Already paid' : <>₱{workspace.rateAmount}<span className="text-xs font-semibold text-[var(--da-text-secondary)]">/hr</span></>}
             </p>
           </div>
 
@@ -159,11 +160,11 @@ export function SpotDetailModal({
           </div>
         </div>
 
-        {process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
+        {!paidRecovery && process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
           onOpenChange(false);
           setTimeout(() => assistant?.askSpot({ workspace_id: workspace.workspaceInstanceId, template_id: workspace.templateId, floor_id: workspace.floorId }), 0);
         }}>Ask about this spot</button>}
-        {process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
+        {!paidRecovery && process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
           onOpenChange(false);
           setTimeout(() => assistant?.compareSpot({ workspace_id: workspace.workspaceInstanceId }), 0);
         }}>Add to comparison (up to 3 spots)</button>}
@@ -198,7 +199,7 @@ export function SpotDetailModal({
 
         {/* No-Hold Rule Note */}
         <div className="mt-2 rounded-[14px] bg-slate-50 border border-slate-200 p-3 text-[11px] leading-4 text-slate-600">
-          <span className="font-bold text-slate-800">No-Hold Rule:</span> Selecting a spot does not reserve inventory. Spot allocation is finalized upon approved payment confirmation.
+          <span className="font-bold text-slate-800">No-Hold Rule:</span> {paidRecovery ? 'Selecting a spot does not reserve inventory. Confirm your replacement to recheck availability and complete recovery.' : 'Selecting a spot does not reserve inventory. Spot allocation is finalized upon approved payment confirmation.'}
         </div>
 
         {/* Actions Footer */}

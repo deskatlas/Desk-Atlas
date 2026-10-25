@@ -228,72 +228,8 @@ export async function POST(
         );
       }
     } else if (result.reservationStatus === "NEEDS_MANUAL_RESOLUTION") {
-      const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3000$/, ":3001").replace(/\/$/, "");
-      const trackingBaseUrl =
-        process.env.TRACKING_BASE_URL ??
-        process.env.DESKATLAS_PUBLIC_APP_URL ??
-        defaultCustomerOrigin;
-      const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, referenceCode || result.reservationReferenceCode);
+      // MS83: committed database event owns delivery, deduplication and retry.
 
-      let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
-      let businessName = "DeskAtlas";
-      let businessPhone: string | undefined;
-      let businessSettings: Awaited<ReturnType<SupabaseSettingsRepository["getBusinessSettings"]>> | undefined = undefined;
-
-      try {
-        const settingsRepo = new SupabaseSettingsRepository();
-        const settings = await settingsRepo.getBusinessSettings();
-        businessSettings = settings;
-        if (settings.contactEmail) {
-          businessEmail = settings.contactEmail;
-        }
-        if (settings.businessName) {
-          businessName = settings.businessName;
-        }
-        if (settings.contactPhone) {
-          businessPhone = settings.contactPhone;
-        }
-      } catch {
-        // fallback to default/env values
-      }
-
-      if (customerEmail && customerFirstName) {
-        const emailService = createTransactionalEmailService();
-        const reservationRepo = new ReservationSupabaseRepository();
-        const candidates = await reservationRepo.findCandidatesByReservationId(result.reservationId);
-        const mainCandidate = candidates.find((c) => c.rank === 0) || candidates[0];
-        const startAt = mainCandidate?.startAt;
-        const endAt = mainCandidate?.endAt;
-        const workspaceName = mainCandidate?.workspaceDisplayName || mainCandidate?.workspaceTemplateName;
-        const scheduledDate = startAt ? formatEmailBookingDate(startAt, businessSettings?.timezone) : undefined;
-        const scheduledTime = startAt && endAt ? formatEmailBookingTimeRange(startAt, endAt, businessSettings?.timezone) : undefined;
-
-        const emailResult = await emailService.sendManualResolutionEmail({
-          to: customerEmail,
-          customerFirstName,
-          customerLastName: customerLastName || "",
-          referenceCode: referenceCode || result.reservationReferenceCode,
-          startAt,
-          endAt,
-          scheduledDate,
-          scheduledTime,
-          workspaceName,
-          businessName,
-          businessEmail,
-          businessPhone,
-          businessSettings,
-          trackingUrl,
-        });
-
-        emailDispatched = emailResult.success;
-        if (!emailResult.success) {
-          emailError = emailResult.error;
-          console.error(
-            `[AdminPaymentManualResolution] Failed to dispatch manual resolution email to ${customerEmail}:`,
-            emailResult.error
-          );
-        }
-      }
     } else if (body.decision === "REJECT" || result.paymentStatus === "REJECTED") {
       const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3000$/, ":3001").replace(/\/$/, "");
       const trackingBaseUrl =

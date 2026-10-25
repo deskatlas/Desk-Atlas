@@ -264,7 +264,7 @@ export function DashboardPage() {
           impactedCount={closureAlerts.impactedCount}
           closureDateRange={closureAlerts.closureDateRange}
           closureReason={closureAlerts.closureReason}
-          reviewUrl="/admin/reservations?filter=closure_impacted"
+          reviewUrl="/manage/reservations?filter=closure_impacted"
         />
       )}
 

@@ -129,7 +129,7 @@ describe('MF-125: Map Structure Label Title Visibility on All Floor Maps', () =>
 
     it('Customer Reservation Map (ReservationPage.tsx) renders structure titles', () => {
       const content = fs.readFileSync(
-        path.join(rootDir, 'apps/customer-website/src/features/reservation/components/ReservationPage.tsx'),
+        path.join(rootDir, 'apps/customer-website/src/features/reservation/components/ReservationMap.tsx'),
         'utf-8'
       );
       assert.ok(content.includes('function formatStructureLabel'), 'Customer ReservationPage should define formatStructureLabel');

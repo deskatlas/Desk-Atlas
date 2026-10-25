@@ -4,6 +4,7 @@ import {
   AdminReservationFilter,
   DateRangePreset,
 } from "@deskatlas/domain";
+import { AdminAccessError, verifyAdministrator } from "../auth/_lib/verifiedAdmin";
 import { getAdminReservationService } from "./_lib/reservationService";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     let filterParam = (searchParams.get("filter") ?? "active") as AdminReservationFilter;
+    if (filterParam === "closure_impacted") await verifyAdministrator(request);
     const searchParam = searchParams.get("search") ?? undefined;
     const statusParam = searchParams.get("status") ?? searchParams.get("reservationStatus") ?? undefined;
 
@@ -53,8 +55,11 @@ export async function GET(request: NextRequest) {
 
     const service = getAdminReservationService();
     const result = await service.listReservations(filterParam, searchParam, advancedFilters);
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof AdminAccessError) {
+      return NextResponse.json({ error: { code: error.code } }, { status: error.status });
+    }
     const message =
       error instanceof Error ? error.message : "Failed to load admin reservations.";
     return NextResponse.json({ error: message }, { status: 500 });

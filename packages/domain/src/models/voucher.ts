@@ -97,7 +97,7 @@ export interface RewardProcessingJob {
 export interface NotificationOutboxItem {
   id: string;
   dedupeKey: string;
-  kind: 'BOOKING_CONFIRMED' | 'SAVE_CUSTOMER_ID' | 'VOUCHER_EMAIL';
+  kind: 'BOOKING_CONFIRMED' | 'SAVE_CUSTOMER_ID' | 'VOUCHER_EMAIL' | 'PAID_CANDIDATE_EXHAUSTED';
   customerId?: string | null;
   reservationId?: string | null;
   voucherId?: string | null;

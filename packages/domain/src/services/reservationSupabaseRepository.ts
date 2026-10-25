@@ -79,6 +79,9 @@ import { BookingSurveyRepository, EndedReservationForSurvey } from "./bookingSur
 import { zonedDateTimeToUtc } from "./availabilityService";
 import { databaseRequest } from './databaseRequest';
 
+// MS-84 / PRD-F13 / QAD-TC24: use this exact scope for both closure entry points.
+const UNRESOLVED_CLOSURE_QUERY = 'is_closure_impacted=eq.true&closure_impact_status=in.(AFFECTED_PENDING_ACTION,MANUAL_RESOLUTION_REQUIRED)&status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION,CONFIRMED,CHECKED_IN)';
+
 interface CatalogWorkspaceInstance {
   id: string;
   template_id: string;
@@ -2031,6 +2034,19 @@ export class ReservationSupabaseRepository
     return rows;
   }
 
+  // MS83: each command is exactly one RPC. Never fall back to REST writes.
+  async readPaidRecovery(input: import('@deskatlas/validation').PaidRecoveryIdentity): Promise<import('./paidRecoveryService').PaidRecoveryContext | null> {
+    return this.request('/rpc/read_paid_candidate_recovery', { method: 'POST', body: JSON.stringify({ p_reference: input.referenceCode, p_email: input.customerEmail }) });
+  }
+
+  async commitPaidRecovery(input: import('@deskatlas/validation').PaidRecoveryCommand): Promise<import('./paidRecoveryService').PaidRecoveryContext> {
+    return this.request('/rpc/recover_paid_reservation', { method: 'POST', body: JSON.stringify({
+      p_reference: input.referenceCode, p_email: input.customerEmail, p_episode: input.episodeId,
+      p_remedy: input.remedy, p_workspace: input.remedy === 'REFUND' ? null : input.workspaceInstanceId,
+      p_start: input.remedy === 'RESCHEDULE' ? input.startAt : null,
+    }) });
+  }
+
   async findGuestReservationTrackingRecord(input: {
     referenceCode: string;
     customerEmail?: string;
@@ -2675,10 +2691,13 @@ export class ReservationSupabaseRepository
     };
   }
 
-  async listAdminReservations(): Promise<AdminReservationSummary[]> {
-    const reservations = await this.request<any[]>(
-      "/reservations?select=*,candidates:reservation_candidates(*),attempts:payment_attempts(*)&candidates.order=rank.asc&attempts.order=created_at.desc&order=created_at.desc&limit=500"
-    );
+  async listAdminReservations(closureOnly = false): Promise<AdminReservationSummary[]> {
+    const path = "/reservations?select=*,candidates:reservation_candidates(*),attempts:payment_attempts(*)&candidates.order=rank.asc&attempts.order=created_at.desc&order=created_at.desc,id.asc" +
+      (closureOnly ? `&${UNRESOLVED_CLOSURE_QUERY}` : '');
+    const reservations = await this.request<any[]>(`${path}&limit=500`);
+    if (closureOnly && reservations.length === 500) {
+      reservations.push(...await this.readRemainingClosurePages<typeof reservations[number]>(path, 500));
+    }
 
     if (!reservations || reservations.length === 0) {
       return [];
@@ -4951,10 +4970,20 @@ export class ReservationSupabaseRepository
     };
   }
 
+  private async readRemainingClosurePages<T>(path: string, initialOffset = 0): Promise<T[]> {
+    const rows: T[] = [];
+    for (let offset = initialOffset; offset < 50000; offset += 500) {
+      const page = await this.request<T[]>(`${path}&limit=500&offset=${offset}`);
+      rows.push(...page);
+      if (page.length < 500) return rows;
+    }
+    throw new Error('Closure review exceeds the read budget. Please contact support.');
+  }
+
   async getClosureAlerts(): Promise<ClosureAlertsResult> {
     const context = await this.loadClosureContext();
-    const rows = await this.request<ClosureAlertRow[]>(
-      '/reservations?select=id,updated_at,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,closure_exception_id,reservation_candidates(id,reservation_id,rank,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(display_name,instance_code))&is_closure_impacted=eq.true&closure_impact_status=in.(AFFECTED_PENDING_ACTION,MANUAL_RESOLUTION_REQUIRED)&status=in.(PENDING_PAYMENT,PAYMENT_UNDER_REVIEW,PENDING_COUNTER_CONFIRMATION,CONFIRMED,CHECKED_IN)'
+    const rows = await this.readRemainingClosurePages<ClosureAlertRow>(
+      '/reservations?select=id,updated_at,reference_code,customer_first_name,customer_last_name,customer_email,customer_contact_number,amount_due,currency,status,closure_impact_status,closure_exception_id,reservation_candidates(id,reservation_id,rank,workspace_instance_id,is_assigned,start_at,end_at,workspace_instances(display_name,instance_code))&order=created_at.desc,id.asc&' + UNRESOLVED_CLOSURE_QUERY
     );
     const colliding: ClosureImpactedReservationSummary[] = [];
     const reasons = new Set<string>();

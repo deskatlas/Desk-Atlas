@@ -1,0 +1,17 @@
+
+> deskatlas-monorepo@ test:ms84 C:\Users\reyna\Desk-Atlas
+> vitest run tests/ms84-home-and-closure-navigation.test.ts tests/ms84-closure-route-access.test.ts tests/ms80-reservation-query-contracts.test.ts tests/ms26-closure-reconciliation-filter-parity-email.test.ts
+
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+
+ Test Files  4 passed (4)
+      Tests  59 passed (59)
+   Start at  01:38:34
+   Duration  27.23s (transform 64%, import 35%, tests 1%)
+
+  Transform  transforming modules took 50.97s · 64% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

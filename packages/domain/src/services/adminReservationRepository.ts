@@ -86,7 +86,7 @@ export interface ListAvailableRelocationSpotsInput {
 }
 
 export interface AdminReservationRepository {
-  listAdminReservations(): Promise<AdminReservationSummary[]>;
+  listAdminReservations(closureOnly?: boolean): Promise<AdminReservationSummary[]>;
   getAdminReservationDetail(idOrReferenceCode: string): Promise<AdminReservationDetail | null>;
   cancelReservation?(input: CancelReservationInput): Promise<{
     success: boolean;

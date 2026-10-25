@@ -10,6 +10,7 @@ import { CancellationTermsModal } from "./CancellationTermsModal";
 import { mapReservationStatusDisplay } from "../utils/reservationStatusMap";
 import { formatCleanScheduleRange } from "../utils/scheduleFormatter";
 
+import { PaidRecoveryPanel } from "./PaidRecoveryPanel";
 import { RewardsAccessCard } from "./RewardsAccessCard";
 import { AskReservationButton } from '../../assistant/AskReservationButton';
 
@@ -74,6 +75,7 @@ export function TrackingPage({
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Link href="/" className="da-secondary-button">Back to Home</Link>
             <button
               type="button"
               onClick={() => setShowTermsModal(true)}
@@ -160,6 +162,10 @@ export function TrackingPage({
           <RewardsAccessCard />
         </div>
 
+        {data && (data.status === 'NEEDS_MANUAL_RESOLUTION' || (data.status === 'CANCELLED' && data.paymentStatus === 'APPROVED')) && (
+          <PaidRecoveryPanel key={`${data.referenceCode}:${data.status}`} referenceCode={data.referenceCode} customerEmail={customerEmail}
+            onRefresh={() => { void trackReservation({ referenceCode: data.referenceCode, customerEmail }); }} />
+        )}
         {/* Existing reservation search detail view */}
         <div className="mt-8">
 
@@ -167,7 +173,7 @@ export function TrackingPage({
           const isRejected =
             data.status === "REJECTED" ||
             data.paymentStatus === "REJECTED" ||
-            (data.status === "CANCELLED" && (!data.confirmedAt || data.paymentStatus === "REJECTED"));
+            (data.status === "CANCELLED" && data.paymentStatus !== "APPROVED" && (!data.confirmedAt || data.paymentStatus === "REJECTED"));
 
           const isExpired = data.status === "EXPIRED";
           const statusDisplay = mapReservationStatusDisplay(data.status, data.paymentStatus);

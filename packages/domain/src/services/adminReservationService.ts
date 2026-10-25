@@ -34,6 +34,7 @@ import {
   filterReservations,
 } from "./reservationFilters";
 import {
+  requiresClosureAction,
   isReservationCancelled,
   isReservationRejected,
 } from "./reservationTabSegregation";
@@ -76,7 +77,9 @@ export class AdminReservationService {
     advancedFilters?: AdminReservationAdvancedFilters
   ): Promise<{ reservations: AdminReservationSummary[]; total: number }> {
 
-    const list = await this.repository.listAdminReservations();
+    const list = await this.repository.listAdminReservations(filter === "closure_impacted");
+    const closureImpactedIds = list.filter(requiresClosureAction).map(r => r.id);
+    const closureIds = new Set(closureImpactedIds);
     const now = this.nowProvider();
     const nowMs = now.getTime();
 
@@ -254,13 +257,7 @@ export class AdminReservationService {
     } else if (filter === "cancelled") {
       filtered = filtered.filter((r) => isReservationCancelled(r));
     } else if (filter === "closure_impacted") {
-      filtered = filtered.filter(
-        (r) =>
-          r.isClosureImpacted === true ||
-          (Boolean(r.closureImpactStatus) &&
-            r.closureImpactStatus !== "CUSTOMER_RESOLVED" &&
-            r.closureImpactStatus !== "STAFF_RESOLVED")
-      );
+      filtered = filtered.filter(r => closureIds.has(r.id));
     }
     // "all": retains all items in mappedList (both active and expired)
 

@@ -318,14 +318,14 @@ describe("MS-26: Facility Closure Removal Conflict Reconciliation, Filter Parity
     expect(rendered.html).toContain("Oct 15, 2026");
     expect(rendered.html).toContain("Scheduled Time:");
     expect(rendered.html).toContain("09:00 AM to 12:00 PM");
-    expect(rendered.html).toContain("Reserved Spot:");
+    expect(rendered.html).toContain("Original Template:");
     expect(rendered.html).toContain("Hot Desk #12");
 
     // Verify Plain-Text contains scheduled booking details
     expect(rendered.text).toContain("SCHEDULED BOOKING DETAILS");
     expect(rendered.text).toContain("Date(s): Oct 15, 2026");
     expect(rendered.text).toContain("Scheduled Time: 09:00 AM to 12:00 PM");
-    expect(rendered.text).toContain("Reserved Spot: Hot Desk #12");
+    expect(rendered.text).toContain("Original Template: Hot Desk #12");
   });
 
   it("QAD-TC26-06: Render manual resolution email without explicit date (graceful fallback test)", () => {

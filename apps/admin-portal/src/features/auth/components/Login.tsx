@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { closureReturnDestination } from '../closureReturnDestination';
 import { useAuth } from './AuthProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -33,6 +34,7 @@ export function Login() {
   const { user, login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const returnDestination = closureReturnDestination(searchParams.get('returnTo'));
   const resetSuccess = searchParams.get('reset') === 'success';
 
   useEffect(() => {
@@ -125,9 +127,9 @@ export function Login() {
 
   useEffect(() => {
     if (user && user.role === 'admin') {
-      router.push('/manage');
+      router.push(returnDestination);
     }
-  }, [user, router]);
+  }, [user, router, returnDestination]);
 
   const doLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -195,7 +197,7 @@ export function Login() {
         isSuperAdmin: Boolean(data.user.isSuperAdmin),
       });
 
-      router.push('/manage');
+      router.push(returnDestination);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Network error occurred. Please try again.';
       setErrorMsg(msg);
