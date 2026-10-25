@@ -1,0 +1,6 @@
+
+> deskatlas-monorepo@ test:ms80:postgres C:\Users\reyna\Desk-Atlas
+> python tests/ms80-postgres-contracts.py
+
+MS80: original 42703 reproduced; repaired embedded SQL projections, enum filters, closure FK and clean/upgrade contract parity passed.
+Hosted PostgREST, deployed revision/migration inventory and staging traffic remain pending.

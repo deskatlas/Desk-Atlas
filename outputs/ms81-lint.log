@@ -1,0 +1,6 @@
+
+> deskatlas-monorepo@ lint C:\Users\reyna\Desk-Atlas
+> node scripts/lint-rag.cjs
+
+RAG Python boundary lint: 36 files, 0 failures.
+RAG boundary lint: 56 TypeScript files, 0 failures.

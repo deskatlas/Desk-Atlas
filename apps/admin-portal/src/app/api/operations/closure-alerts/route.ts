@@ -8,8 +8,13 @@ export async function GET() {
     const service = getAdminReservationService();
     const result = await service.getClosureAlerts();
     return NextResponse.json(result);
-  } catch (error: any) {
-    const message = error instanceof Error ? error.message : "Failed to load closure alerts.";
+  } catch (error: unknown) {
+    const structuredCode = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+    const sqlstate = typeof structuredCode === 'string' && /^[A-Z0-9]{5}$/.test(structuredCode)
+      ? structuredCode
+      : error instanceof Error ? /"code"\s*:\s*"([A-Z0-9]{5})"/.exec(error.message)?.[1] : undefined;
+    console.error('CLOSURE_ALERTS_READ_FAILED', { sqlstate: sqlstate ?? 'UNAVAILABLE' });
+    const message = "Closure alerts are unavailable. Please try again.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

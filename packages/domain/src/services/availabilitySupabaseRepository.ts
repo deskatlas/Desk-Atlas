@@ -5,6 +5,7 @@ import type {
   OperatingHoursInterval,
   ScheduleBlock,
 } from '../models/availability';
+import { databaseRequest } from './databaseRequest';
 import type {
   Floor,
   WorkspaceInstanceDetails,
@@ -179,11 +180,7 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
   private async loadBusinessSettings(): Promise<BusinessAvailabilitySettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
       '/business_settings?select=timezone,booking_interval_minutes,max_advance_booking_days&id=eq.1&limit=1'
-    ).catch(async () => {
-      return this.request<BusinessSettingsRow[]>(
-        '/business_settings?select=timezone,booking_interval_minutes&id=eq.1&limit=1'
-      );
-    });
+    );
     const row = rows[0];
     if (!row) {
       return {
@@ -318,7 +315,7 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
         )}&end_at=gte.${encodeURIComponent(
           rangeStartIso
         )}`
-      ).catch(() => []),
+      ),
     ]);
 
     const detailsMap = new Map<string, string | null>();
@@ -379,26 +376,26 @@ export class SupabaseAvailabilityRepository implements AvailabilityRepository {
     headers.set('Authorization', `Bearer ${this.serviceRoleKey}`);
     headers.set('Content-Type', 'application/json');
 
-    const response = await fetch(`${this.restUrl}${path}`, {
+    return databaseRequest(fetch, `${this.restUrl}${path}`, {
       ...options,
       headers,
       cache: 'no-store',
-      ...(this.requestSignal ? { signal: AbortSignal.any([this.requestSignal, AbortSignal.timeout(10000), ...(options.signal ? [options.signal] : [])]) } : {}),
+      ...(this.requestSignal ? { signal: AbortSignal.any([this.requestSignal, ...(options.signal ? [options.signal] : [])]) } : {}),
+    }, async (response) => {
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`Supabase availability request failed (${response.status}): ${detail}`);
+      }
+
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      observe?.(response);
+
+      const text = await response.text();
+      return text ? (JSON.parse(text) as T) : (undefined as T);
     });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`Supabase availability request failed (${response.status}): ${detail}`);
-    }
-
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    observe?.(response);
-
-    const text = await response.text();
-    return text ? (JSON.parse(text) as T) : (undefined as T);
   }
 
   private cacheKey(category: string): string {
