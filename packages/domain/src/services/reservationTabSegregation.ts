@@ -4,6 +4,16 @@ import {
   ReservationStatus,
 } from "../models/reservation";
 
+// MS-84 / PRD-F13 / QAD-TC24: same unresolved scope as closure alerts.
+export function requiresClosureAction(reservation: Pick<AdminReservationSummary,
+  "isClosureImpacted" | "closureImpactStatus" | "reservationStatus">): boolean {
+  return reservation.isClosureImpacted === true &&
+    (reservation.closureImpactStatus === "AFFECTED_PENDING_ACTION" ||
+      reservation.closureImpactStatus === "MANUAL_RESOLUTION_REQUIRED") &&
+    ["PENDING_PAYMENT", "PAYMENT_UNDER_REVIEW", "PENDING_COUNTER_CONFIRMATION", "CONFIRMED", "CHECKED_IN"]
+      .includes(reservation.reservationStatus);
+}
+
 export type ReservationTabType =
   | "reservations"
   | "operations"

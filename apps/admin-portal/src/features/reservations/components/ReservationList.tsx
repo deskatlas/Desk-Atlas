@@ -26,30 +26,23 @@ import {
   type AdminOperationsSubFilter,
   type AdminExpiredSubFilter,
 } from '@deskatlas/domain';
+import { useAuth } from '@/features/auth';
+import { parseReservationNavigation } from '../reservationNavigation';
 import { ReservationFilterModal } from './ReservationFilterModal';
 import { ProcessCancellationRefundModal } from './ProcessCancellationRefundModal';
 
 export function ReservationList() {
   const router = useRouter();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const currentTick = useLiveCountdownClock(1000);
   const [, startTransition] = useTransition();
 
-  const tabParam = searchParams.get('tab');
-  const initialTab: ReservationTabType =
-    tabParam === 'operations'
-      ? 'operations'
-      : tabParam === 'completed'
-      ? 'completed'
-      : tabParam === 'expired'
-      ? 'expired'
-      : tabParam === 'cancelled_refund_eligible'
-      ? 'cancelled_refund_eligible'
-      : tabParam === 'refunded'
-      ? 'refunded'
-      : 'reservations';
-
-  const [activeTab, setActiveTab] = useState<ReservationTabType>(initialTab);
+  const navigation = parseReservationNavigation(searchParams);
+  const activeTab = navigation.tab;
+  const closureOnly = navigation.filter === 'closure_impacted';
+  const requestVersion = React.useRef(0);
+  const [loadedScope, setLoadedScope] = useState<boolean | null>(null);
   const [reservationsSubFilter, setReservationsSubFilter] = useState<AdminReservationsSubFilter>('all');
   const [operationsSubFilter, setOperationsSubFilter] = useState<AdminOperationsSubFilter>('all');
   const [expiredSubFilter, setExpiredSubFilter] = useState<AdminExpiredSubFilter>('all');
@@ -63,27 +56,9 @@ export function ReservationList() {
   const [advancedFilters, setAdvancedFilters] = useState<AdminReservationAdvancedFilters>({});
   const [exporting, setExporting] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const { searchQuery } = useSearch();
-
-  // Sync tab state from URL search params if changed externally
-  useEffect(() => {
-    if (tabParam === 'operations' && activeTab !== 'operations') {
-      setActiveTab('operations');
-    } else if (tabParam === 'completed' && activeTab !== 'completed') {
-      setActiveTab('completed');
-    } else if (tabParam === 'expired' && activeTab !== 'expired') {
-      setActiveTab('expired');
-    } else if (tabParam === 'cancelled_refund_eligible' && activeTab !== 'cancelled_refund_eligible') {
-      setActiveTab('cancelled_refund_eligible');
-    } else if (tabParam === 'refunded' && activeTab !== 'refunded') {
-      setActiveTab('refunded');
-    } else if ((!tabParam || tabParam === 'reservations') && activeTab !== 'reservations') {
-      setActiveTab('reservations');
-    }
-  }, [tabParam, activeTab]);
+  const { searchQuery, clearSearch } = useSearch();
 
   const handleTabChange = (newTab: ReservationTabType) => {
-    setActiveTab(newTab);
     setCurrentPage(1);
     startTransition(() => {
       const url =
@@ -98,7 +73,7 @@ export function ReservationList() {
           : newTab === 'refunded'
           ? '/manage/reservations?tab=refunded'
           : '/manage/reservations?tab=reservations';
-      router.replace(url);
+      router.push(url);
     });
   };
 
@@ -130,16 +105,20 @@ export function ReservationList() {
       ? 'all'
       : expiredSubFilter;
 
-  const tabFiltered = filterAdminReservationsByTab(reservations, activeTab, currentSubFilter, currentTick);
+  const isClosureView = closureOnly;
+  const tabFiltered = isClosureView
+    ? reservations
+    : filterAdminReservationsByTab(reservations, activeTab, currentSubFilter, currentTick);
   const searchFiltered = filterReservationsBySearch(tabFiltered, searchQuery);
   const filtered = filterReservations(searchFiltered, advancedFilters, new Date(currentTick));
+  const scopedReservations = loadedScope === closureOnly ? filtered : [];
   const displayedReservations = scheduleSort !== 'none'
-    ? sortAdminReservationsBySchedule(filtered, scheduleSort)
-    : filtered;
+    ? sortAdminReservationsBySchedule(scopedReservations, scheduleSort)
+    : scopedReservations;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, reservationsSubFilter, operationsSubFilter, expiredSubFilter, searchQuery, advancedFilters, scheduleSort]);
+  }, [closureOnly, activeTab, reservationsSubFilter, operationsSubFilter, expiredSubFilter, searchQuery, advancedFilters, scheduleSort]);
 
   const pagination = paginateList(displayedReservations, currentPage, 15);
   const paginatedReservations = pagination.items;
@@ -155,25 +134,37 @@ export function ReservationList() {
   );
 
   const loadReservations = React.useCallback(async () => {
+    const version = ++requestVersion.current;
     try {
-      const response = await fetch(`/api/admin/reservations?filter=all`, {
+      const response = await fetch(`/api/admin/reservations?filter=${closureOnly ? 'closure_impacted' : 'all'}`, {
         cache: 'no-store',
+        headers: user?.token ? { Authorization: `Bearer ${user.token}` } : {},
       });
       if (!response.ok) {
         throw new Error(`Failed to load reservations (${response.status})`);
       }
       const data = await response.json();
+      if (version !== requestVersion.current) return;
       setReservations(data.reservations ?? []);
+      setLoadedScope(closureOnly);
       setTotalCount(data.total ?? 0);
       setError(null);
     } catch (err: unknown) {
+      if (version !== requestVersion.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load reservations');
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, []);
+  }, [closureOnly, user?.token]);
 
-  useActiveTabPolling(loadReservations, 30000, { immediate: true });
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    void loadReservations();
+    return () => { requestVersion.current += 1; };
+  }, [loadReservations]);
+
+  useActiveTabPolling(loadReservations, 30000, { immediate: false });
   useRealtimeTable('reservations', loadReservations);
 
   const handleExport = () => {
@@ -190,7 +181,7 @@ export function ReservationList() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Export failed:', err);
     } finally {
       setExporting(false);
@@ -201,7 +192,7 @@ export function ReservationList() {
     <main data-screen-label="Reservations" style={{ padding: '26px 28px 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
         <div>
-          <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Reservations</h1>
+          <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>{isClosureView ? 'Closure Impacted' : 'Reservations'}</h1>
           <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
             All bookings, operational activity, completed sessions, and historical records across floors
           </div>
@@ -232,7 +223,7 @@ export function ReservationList() {
           <button
             type="button"
             onClick={handleExport}
-            disabled={exporting || displayedReservations.length === 0}
+            disabled={exporting || loading || Boolean(error) || displayedReservations.length === 0}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -254,8 +245,21 @@ export function ReservationList() {
         </div>
       </div>
 
+      {isClosureView && (
+        <div style={{ padding: '14px 20px', marginBottom: '16px', border: '1px solid var(--da-border)', borderRadius: '14px', background: '#fff' }} role="status">
+          <p>Closure Impacted: all current unresolved facility closure impacts across floors.</p>
+          <p>Search and advanced filters may narrow these results.</p>
+          <button type="button" className="da-secondary-button" onClick={() => {
+            clearSearch();
+            setAdvancedFilters({});
+            setReservationsSubFilter('all');
+            handleTabChange('reservations');
+          }}>View ordinary reservations</button>
+        </div>
+      )}
+
       {/* Tabs Selector: 6 Tabs (Reservations, Active Operations, Cancelled (Refund Eligible), Refunded, Completed, Expired) */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+      {!isClosureView && loadedScope === false && <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           type="button"
           data-testid="tab-reservations"
@@ -535,14 +539,14 @@ export function ReservationList() {
             {tabCounts.expiredBadgeCount}
           </span>
         </button>
-      </div>
+      </div>}
 
       <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', boxShadow: 'var(--da-shadow-sm)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '14px 20px', borderBottom: '1px solid var(--da-border-light)', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{displayedReservations.length}</span>
+            <span style={{ fontSize: '19px', fontWeight: 800, color: 'var(--da-brand-dark)' }}>{error ? 'Unavailable' : loading || loadedScope !== closureOnly ? 'Loading...' : displayedReservations.length}</span>
             <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
-              {activeTab === 'reservations'
+              {isClosureView ? 'unresolved closure records' : activeTab === 'reservations'
                 ? 'reservation records'
                 : activeTab === 'operations'
                 ? 'active operational records'
@@ -556,7 +560,7 @@ export function ReservationList() {
             </span>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {activeTab === 'reservations'
+            {isClosureView ? null : activeTab === 'reservations'
               ? ADMIN_RESERVATIONS_TAB_FILTERS.map((f, i) => {
                   const isActive = reservationsSubFilter === f.filter;
                   const isRefundEligible = f.filter === 'cancelled_refund_eligible';
@@ -585,7 +589,10 @@ export function ReservationList() {
                       key={i}
                       type="button"
                       data-testid={`filter-pill-${f.filter}`}
-                      onClick={() => setReservationsSubFilter(f.filter)}
+                      onClick={() => {
+                        if (f.filter === 'closure_impacted') router.push('/manage/reservations?filter=closure_impacted');
+                        else setReservationsSubFilter(f.filter);
+                      }}
                       style={{
                         padding: '7px 14px',
                         borderRadius: '9999px',
@@ -601,7 +608,7 @@ export function ReservationList() {
                       }}
                     >
                       <span>{f.label}</span>
-                      {count > 0 && (
+                      {f.filter !== 'closure_impacted' && count > 0 && (
                         <span
                           data-testid={`badge-count-${f.filter}`}
                           style={{
@@ -727,17 +734,20 @@ export function ReservationList() {
           <span style={{ textAlign: 'right' }}>ACTIONS</span>
         </div>
 
-        {loading && reservations.length === 0 ? (
+        {loading || (loadedScope !== closureOnly && !error) ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             Loading reservations...
           </div>
         ) : error ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-danger)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             {error}
+            <button type="button" className="da-secondary-button" onClick={loadReservations}>Retry</button>
           </div>
         ) : displayedReservations.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
-            No {activeTab === 'reservations' ? 'reservation' : activeTab === 'operations' ? 'active operational' : activeTab === 'completed' ? 'completed' : activeTab === 'cancelled_refund_eligible' ? 'cancellation refund eligible' : activeTab === 'refunded' ? 'refunded' : 'expired'} records match your filters.
+            {isClosureView ? (totalCount === 0
+              ? 'No reservations currently require closure action.'
+              : 'No closure impacted reservations match your search and filters.') : <>No {activeTab === 'reservations' ? 'reservation' : activeTab === 'operations' ? 'active operational' : activeTab === 'completed' ? 'completed' : activeTab === 'cancelled_refund_eligible' ? 'cancellation refund eligible' : activeTab === 'refunded' ? 'refunded' : 'expired'} records match your filters.</>}
           </div>
         ) : (
           paginatedReservations.map((r, i) => {

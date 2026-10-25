@@ -15,7 +15,7 @@ export interface Customer {
   updatedAt: string;
 }
 
-export type NotificationOutboxKind = "BOOKING_CONFIRMED" | "SAVE_CUSTOMER_ID" | "VOUCHER_EMAIL";
+export type NotificationOutboxKind = "BOOKING_CONFIRMED" | "SAVE_CUSTOMER_ID" | "VOUCHER_EMAIL" | "PAID_CANDIDATE_EXHAUSTED";
 export type NotificationOutboxStatus = "PENDING" | "PROCESSING" | "SENT" | "RETRY" | "FAILED";
 
 export type RateLimitScope =

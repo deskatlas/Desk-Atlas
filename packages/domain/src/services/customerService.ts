@@ -216,9 +216,28 @@ export class CustomerService {
 
         let sendResult: { success: boolean; id?: string; error?: string };
 
-        if (job.kind === 'BOOKING_CONFIRMED') {
+        if (job.kind === 'PAID_CANDIDATE_EXHAUSTED') {
+          const { buildReservationTrackingUrl } = await import('./transactionalEmailService');
+          const base = process.env.TRACKING_BASE_URL || process.env.DESKATLAS_PUBLIC_APP_URL;
+          if (!base) throw new Error('Customer tracking URL is not configured');
+          sendResult = await this.emailService.sendManualResolutionEmail({
+            to: job.recipientEmail,
+            idempotencyKey: job.dedupeKey,
+            referenceCode: String(job.payload.referenceCode || ''),
+            customerFirstName: String(job.payload.customerFirstName || ''),
+            customerLastName: String(job.payload.customerLastName || ''),
+            startAt: typeof job.payload.startAt === 'string' ? job.payload.startAt : undefined,
+            endAt: typeof job.payload.endAt === 'string' ? job.payload.endAt : undefined,
+            workspaceName: typeof job.payload.workspaceName === 'string' ? job.payload.workspaceName : undefined,
+            trackingUrl: buildReservationTrackingUrl(base, String(job.payload.referenceCode || '')),
+          });
+        } else if (job.kind === 'BOOKING_CONFIRMED') {
+          const recoveryBase = process.env.DESKATLAS_PUBLIC_APP_URL || process.env.TRACKING_BASE_URL;
+          if (job.payload.paidRecovery && !recoveryBase) throw new Error('Customer booking URL is not configured');
+          const { buildReservationTrackingUrl } = await import('./transactionalEmailService');
           sendResult = await this.emailService.sendBookingConfirmationEmail({
             to: job.recipientEmail,
+            idempotencyKey: job.dedupeKey,
             referenceCode: (job.payload.referenceCode as string) || '',
             customerFirstName: (job.payload.customerFirstName as string) || '',
             customerLastName: (job.payload.customerLastName as string) || '',
@@ -227,8 +246,8 @@ export class CustomerService {
             floorName: (job.payload.floorName as string) || 'Main Floor',
             bookingStartAt: (job.payload.bookingStartAt as string) || (job.payload.startAt as string) || '',
             bookingEndAt: (job.payload.bookingEndAt as string) || (job.payload.endAt as string) || '',
-            bookingAccessUrl: (job.payload.bookingAccessUrl as string) || '',
-            trackingUrl: (job.payload.trackingUrl as string) || '',
+            bookingAccessUrl: job.payload.paidRecovery ? `${process.env.BOOKING_ACCESS_BASE_URL || recoveryBase!.replace(/\/$/, '') + '/api/booking'}/${encodeURIComponent(String(job.payload.bookingToken))}` : (job.payload.bookingAccessUrl as string) || '',
+            trackingUrl: job.payload.paidRecovery ? buildReservationTrackingUrl(recoveryBase!, String(job.payload.referenceCode)) : (job.payload.trackingUrl as string) || '',
             termsUrl: (job.payload.termsUrl as string) || '',
           });
         } else if (job.kind === 'SAVE_CUSTOMER_ID') {

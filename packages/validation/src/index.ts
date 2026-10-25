@@ -151,7 +151,7 @@ export function validateCustomer(input: unknown): ValidationResult<CustomerValid
   };
 }
 
-export type OutboxKind = "BOOKING_CONFIRMED" | "SAVE_CUSTOMER_ID" | "VOUCHER_EMAIL";
+export type OutboxKind = "BOOKING_CONFIRMED" | "SAVE_CUSTOMER_ID" | "VOUCHER_EMAIL" | "PAID_CANDIDATE_EXHAUSTED";
 export type OutboxStatus = "PENDING" | "PROCESSING" | "SENT" | "RETRY" | "FAILED";
 
 export interface OutboxJobValidationInput {
@@ -176,7 +176,7 @@ export function validateOutboxJob(input: unknown): ValidationResult<OutboxJobVal
     return { success: false, error: "dedupeKey must be a non-blank string" };
   }
 
-  const validKinds: OutboxKind[] = ["BOOKING_CONFIRMED", "SAVE_CUSTOMER_ID", "VOUCHER_EMAIL"];
+  const validKinds: OutboxKind[] = ["BOOKING_CONFIRMED", "SAVE_CUSTOMER_ID", "VOUCHER_EMAIL", "PAID_CANDIDATE_EXHAUSTED"];
   if (typeof obj.kind !== "string" || !validKinds.includes(obj.kind as OutboxKind)) {
     return { success: false, error: `Invalid outbox kind: ${obj.kind}` };
   }
@@ -196,7 +196,7 @@ export function validateOutboxJob(input: unknown): ValidationResult<OutboxJobVal
   }
 
   // Kind-specific checks
-  if (obj.kind === "BOOKING_CONFIRMED" && (!obj.reservationId || typeof obj.reservationId !== "string")) {
+  if ((obj.kind === "BOOKING_CONFIRMED" || obj.kind === "PAID_CANDIDATE_EXHAUSTED") && (!obj.reservationId || typeof obj.reservationId !== "string")) {
     return { success: false, error: "BOOKING_CONFIRMED requires reservationId" };
   }
 
@@ -270,3 +270,5 @@ export * from './customerAssistantSchema';
 export * from './customerAssistanceSchema';
 export * from './publicCustomerAssistantSchema';
 export * from './adminBadgeCountsSchema';
+
+export * from './paidRecoverySchema';

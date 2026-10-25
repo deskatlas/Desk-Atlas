@@ -143,60 +143,8 @@ export async function POST(
         }
       }
     } else if (result.reservationStatus === "NEEDS_MANUAL_RESOLUTION") {
-      const defaultCustomerOrigin = request.nextUrl.origin.replace(/:3000$/, ":3001").replace(/\/$/, "");
-      const trackingBaseUrl =
-        process.env.TRACKING_BASE_URL ??
-        process.env.DESKATLAS_PUBLIC_APP_URL ??
-        defaultCustomerOrigin;
-      const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, result.reservationReferenceCode);
+      // MS83: committed database event owns delivery, deduplication and retry.
 
-      let businessEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@deskatlas.com";
-      let businessName = "DeskAtlas";
-      let businessPhone: string | undefined;
-      let businessSettings: any = undefined;
-
-      try {
-        const settingsRepo = new SupabaseSettingsRepository();
-        const settings = await settingsRepo.getBusinessSettings();
-        businessSettings = settings;
-        if (settings.contactEmail) {
-          businessEmail = settings.contactEmail;
-        }
-        if (settings.businessName) {
-          businessName = settings.businessName;
-        }
-        if (settings.contactPhone) {
-          businessPhone = settings.contactPhone;
-        }
-      } catch {
-        // fallback
-      }
-
-      const emailService = createTransactionalEmailService();
-      const candidates = await reservationRepository.findCandidatesByReservationId(result.reservationId);
-      const mainCandidate = candidates.find((c) => c.rank === 0) || candidates[0];
-      const startAt = mainCandidate?.startAt;
-      const endAt = mainCandidate?.endAt;
-      const workspaceName = mainCandidate?.workspaceDisplayName || mainCandidate?.workspaceTemplateName;
-      const scheduledDate = startAt ? formatEmailBookingDate(startAt, businessSettings?.timezone) : undefined;
-      const scheduledTime = startAt && endAt ? formatEmailBookingTimeRange(startAt, endAt, businessSettings?.timezone) : undefined;
-
-      await emailService.sendManualResolutionEmail({
-        to: counterPaymentRecord.customerEmail,
-        customerFirstName: counterPaymentRecord.customerFirstName,
-        customerLastName: counterPaymentRecord.customerLastName,
-        referenceCode: result.reservationReferenceCode,
-        startAt,
-        endAt,
-        scheduledDate,
-        scheduledTime,
-        workspaceName,
-        businessName,
-        businessEmail,
-        businessPhone,
-        businessSettings,
-        trackingUrl,
-      });
     }
 
     return NextResponse.json(result);

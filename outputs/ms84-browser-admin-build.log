@@ -1,0 +1,146 @@
+
+> @deskatlas/admin-portal@0.0.1 build C:\Users\reyna\Desk-Atlas\apps\admin-portal
+> next build
+
+▲ Next.js 16.3.2 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.mjs took 68ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 6.1s
+  Running TypeScript ...
+  Finished TypeScript in 6.3s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/80) ...
+  Generating static pages using 11 workers (20/80) 
+  Generating static pages using 11 workers (40/80) 
+  Generating static pages using 11 workers (60/80) 
+✓ Generating static pages using 11 workers (80/80) in 1635ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/admin/activity-log
+├ ƒ /api/admin/auth/forgot-password
+├ ƒ /api/admin/auth/google
+├ ƒ /api/admin/auth/login
+├ ƒ /api/admin/auth/reset-password
+├ ƒ /api/admin/auth/reset-password/verify
+├ ƒ /api/admin/auth/session
+├ ƒ /api/admin/auth/setup
+├ ƒ /api/admin/auth/setup/password
+├ ƒ /api/admin/auth/setup/status
+├ ƒ /api/admin/badge-counts
+├ ƒ /api/admin/campaigns
+├ ƒ /api/admin/campaigns/[id]
+├ ƒ /api/admin/campaigns/[id]/rules
+├ ƒ /api/admin/campaigns/[id]/status
+├ ƒ /api/admin/campaigns/analytics
+├ ƒ /api/admin/campaigns/analytics/export
+├ ƒ /api/admin/dashboard
+├ ƒ /api/admin/dashboard/occupancy
+├ ƒ /api/admin/knowledge/[...path]
+├ ƒ /api/admin/maps/draft
+├ ƒ /api/admin/maps/publish
+├ ƒ /api/admin/maps/published
+├ ƒ /api/admin/notifications
+├ ƒ /api/admin/occupancy
+├ ƒ /api/admin/payments/reviews
+├ ƒ /api/admin/payments/reviews/[paymentAttemptId]
+├ ƒ /api/admin/payments/reviews/[paymentAttemptId]/decision
+├ ƒ /api/admin/payments/reviews/[paymentAttemptId]/proof
+├ ƒ /api/admin/payments/reviews/[paymentAttemptId]/refund
+├ ƒ /api/admin/payments/urgent
+├ ƒ /api/admin/promotions
+├ ƒ /api/admin/promotions/analytics
+├ ƒ /api/admin/promotions/analytics/export
+├ ƒ /api/admin/reports
+├ ƒ /api/admin/reports/export
+├ ƒ /api/admin/reservations
+├ ƒ /api/admin/reservations/[id]
+├ ƒ /api/admin/reservations/[id]/available-relocation-spots
+├ ƒ /api/admin/reservations/[id]/cancel
+├ ƒ /api/admin/reservations/[id]/closure/flag-manual
+├ ƒ /api/admin/reservations/[id]/closure/log-call
+├ ƒ /api/admin/reservations/[id]/extend
+├ ƒ /api/admin/reservations/[id]/extend/availability
+├ ƒ /api/admin/reservations/[id]/flag-manual
+├ ƒ /api/admin/reservations/[id]/refund
+├ ƒ /api/admin/reservations/[id]/relocate
+├ ƒ /api/admin/reservations/[id]/relocate/decision
+├ ƒ /api/admin/reservations/[id]/reschedule
+├ ƒ /api/admin/reservations/[id]/reschedule/availability
+├ ƒ /api/admin/reservations/closure-impacts
+├ ƒ /api/admin/reservations/export
+├ ƒ /api/admin/reservations/near-checkout
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/settings/closures
+├ ƒ /api/admin/settings/closures/preview-impact
+├ ƒ /api/admin/settings/operating-hours
+├ ƒ /api/admin/settings/payment-methods
+├ ƒ /api/admin/settings/payment-methods/upload-qr
+├ ƒ /api/admin/settings/policy-pdf
+├ ƒ /api/admin/staff
+├ ƒ /api/admin/staff/[id]
+├ ƒ /api/admin/staff/invitations
+├ ƒ /api/admin/staff/invitations/[id]
+├ ƒ /api/admin/structures
+├ ƒ /api/admin/structures/[id]
+├ ƒ /api/admin/workspace-instances/maintenance
+├ ƒ /api/admin/workspace-usage
+├ ƒ /api/admin/workspaces
+├ ƒ /api/admin/workspaces/floors
+├ ƒ /api/admin/workspaces/floors/[floorId]
+├ ƒ /api/admin/workspaces/instances
+├ ƒ /api/admin/workspaces/instances/[instanceId]
+├ ƒ /api/admin/workspaces/instances/[instanceId]/duplicate
+├ ƒ /api/admin/workspaces/instances/from-template
+├ ƒ /api/admin/workspaces/maintenance
+├ ƒ /api/admin/workspaces/templates
+├ ƒ /api/admin/workspaces/templates/[templateId]
+├ ƒ /api/admin/workspaces/upload-image
+├ ƒ /api/assistant/cancel
+├ ƒ /api/assistant/progress
+├ ƒ /api/assistant/query
+├ ƒ /api/assistant/sources/[versionId]/[chunkId]
+├ ƒ /api/booking/[token]
+├ ƒ /api/internal/assistant/search
+├ ƒ /api/internal/assistant/tools
+├ ƒ /api/internal/knowledge/jobs/[[...path]]
+├ ƒ /api/internal/rewards/process
+├ ƒ /api/operations/closure-alerts
+├ ƒ /api/operations/reservations/[reservationId]/check-in
+├ ƒ /api/operations/reservations/[reservationId]/check-out
+├ ƒ /api/payments/[paymentAttemptId]
+├ ƒ /api/payments/[paymentAttemptId]/confirm
+├ ƒ /api/published-map
+├ ○ /manage
+├ ○ /manage/activity-log
+├ ○ /manage/auth/callback
+├ ○ /manage/campaign-analytics
+├ ○ /manage/forgot-password
+├ ○ /manage/kiosk-confirm
+├ ○ /manage/login
+├ ○ /manage/map
+├ ○ /manage/payments
+├ ƒ /manage/payments/[id]
+├ ƒ /manage/payments/review/[id]
+├ ○ /manage/promo-analytics
+├ ○ /manage/promotions
+├ ○ /manage/reports
+├ ○ /manage/reservations
+├ ƒ /manage/reservations/[id]
+├ ○ /manage/reset-password
+├ ○ /manage/scan
+├ ○ /manage/settings
+├ ƒ /manage/setup
+├ ƒ /manage/setup/password
+├ ○ /manage/staff
+├ ○ /manage/workspace-map
+└ ○ /manage/workspaces
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

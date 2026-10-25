@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { CLOSURE_REVIEW_DESTINATION } from '@/features/auth/closureReturnDestination';
 import { AuthProvider, useAuth } from '@/features/auth';
 import { AssistantLauncher } from '@/features/assistant/AssistantLauncher';
 import { NotificationCenter, UrgentPaymentModal } from '@/features/notifications';
@@ -81,7 +82,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'admin')) {
-      router.push('/manage/login');
+      const returnTo = window.location.pathname === '/manage/reservations' &&
+        new URLSearchParams(window.location.search).get('filter') === 'closure_impacted'
+        ? `?returnTo=${encodeURIComponent(CLOSURE_REVIEW_DESTINATION)}` : '';
+      router.push(`/manage/login${returnTo}`);
     }
   }, [user, loading, router]);
 

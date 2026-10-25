@@ -294,7 +294,7 @@ describe('MF-139: Default Map Structures: Window and Stairs in Map Builder', () 
         'apps/admin-portal/src/features/map-builder/components/MapEditor.tsx',
         'apps/admin-portal/src/app/manage/workspace-map/page.tsx',
         'apps/staff-dashboard/src/app/manage/workspace-map/page.tsx',
-        'apps/customer-website/src/features/reservation/components/ReservationPage.tsx',
+        'apps/customer-website/src/features/reservation/components/ReservationMap.tsx',
         'apps/kiosk/src/app/kiosk/reserve/page.tsx',
       ];
 

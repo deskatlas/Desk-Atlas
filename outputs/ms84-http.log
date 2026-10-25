@@ -1,0 +1,11 @@
+
+> deskatlas-monorepo@ test:ms84:http C:\Users\reyna\Desk-Atlas
+> node tests/ms84-http-navigation.cjs
+
+PASS /reserve: real SSR Home link targets /
+PASS /track: real SSR Home link targets /
+PASS /track/DA-MS84?email=synthetic%40example.invalid: real SSR Home link targets /
+PASS known stale closure URL redirects to canonical filtered route
+PASS canonical page exists
+PASS API namespace stays separate and denies unauthenticated closure reads
+PASS compatibility redirect is limited to the specified query/path

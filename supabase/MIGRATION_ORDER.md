@@ -31,3 +31,9 @@ only and restores the known 42702 defect. See
 Clean-install source generation is `python scripts/consolidate-supabase.py`.
 It uses preserved history plus the explicit 041 replacement definitions and
 never opens a database connection. Review generated differences before use.
+
+MS-83 adds forward migration `042_paid_candidate_recovery.sql` after the reconciled
+inventory through 041. Deploy compatible outbox readers before enabling new jobs.
+The paired down migration refuses retained paid recovery history or notice jobs;
+prefer application rollback with schema and worker compatibility preserved.
+See [MS-83 deployment and evidence](../MS83-IMPLEMENTATION.md).

@@ -274,3 +274,7 @@ export * from './services/customerAssistanceSupabaseRepository';
 export * from './services/customerManagementEligibility';
 export * from './services/publicSpotDecisionService';
 export { validateDocumentSupport } from './services/assistantDocumentSupport';
+
+export * from './services/paidRecoveryService';
+
+export { DatabaseInterruptionError } from './services/databaseRequest';
