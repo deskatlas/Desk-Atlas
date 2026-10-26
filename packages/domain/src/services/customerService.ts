@@ -229,7 +229,7 @@ export class CustomerService {
             startAt: typeof job.payload.startAt === 'string' ? job.payload.startAt : undefined,
             endAt: typeof job.payload.endAt === 'string' ? job.payload.endAt : undefined,
             workspaceName: typeof job.payload.workspaceName === 'string' ? job.payload.workspaceName : undefined,
-            trackingUrl: buildReservationTrackingUrl(base, String(job.payload.referenceCode || '')),
+            trackingUrl: buildReservationTrackingUrl(base, String(job.payload.referenceCode || ''), job.recipientEmail),
           });
         } else if (job.kind === 'BOOKING_CONFIRMED') {
           const recoveryBase = process.env.DESKATLAS_PUBLIC_APP_URL || process.env.TRACKING_BASE_URL;
@@ -247,7 +247,7 @@ export class CustomerService {
             bookingStartAt: (job.payload.bookingStartAt as string) || (job.payload.startAt as string) || '',
             bookingEndAt: (job.payload.bookingEndAt as string) || (job.payload.endAt as string) || '',
             bookingAccessUrl: job.payload.paidRecovery ? `${process.env.BOOKING_ACCESS_BASE_URL || recoveryBase!.replace(/\/$/, '') + '/api/booking'}/${encodeURIComponent(String(job.payload.bookingToken))}` : (job.payload.bookingAccessUrl as string) || '',
-            trackingUrl: job.payload.paidRecovery ? buildReservationTrackingUrl(recoveryBase!, String(job.payload.referenceCode)) : (job.payload.trackingUrl as string) || '',
+            trackingUrl: job.payload.paidRecovery ? buildReservationTrackingUrl(recoveryBase!, String(job.payload.referenceCode), job.recipientEmail) : (job.payload.trackingUrl as string) || '',
             termsUrl: (job.payload.termsUrl as string) || '',
           });
         } else if (job.kind === 'SAVE_CUSTOMER_ID') {

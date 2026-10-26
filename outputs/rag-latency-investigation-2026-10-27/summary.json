@@ -1,0 +1,20 @@
+{
+  "observed_utc": "2026-10-26T17:12:13.241907+00:00",
+  "user_timezone": "Asia/Irkutsk",
+  "local_head": "65f71e476a7b7ef0110642aed3054f18363232e1",
+  "samples": 3,
+  "successful_with_citations_ms": [
+    44868.159,
+    42804.214,
+    40419.071
+  ],
+  "median_ms": 42804.214,
+  "min_ms": 40419.071,
+  "max_ms": 44868.159,
+  "under_1000ms": 0,
+  "under_500ms": 0,
+  "p95_claim": false,
+  "browser_render_measured": false,
+  "semantic_correctness_certified": false,
+  "production_load_test": false
+}

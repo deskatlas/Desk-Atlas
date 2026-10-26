@@ -6,6 +6,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
+  plugins: [{
+    name: 'deskatlas-app-source-alias',
+    async resolveId(source, importer) {
+      if (!source.startsWith('@/') || !importer) return null;
+      const app = importer.replace(/\\/g, '/').match(/\/apps\/([^/]+)\/src\//)?.[1];
+      return app ? this.resolve(path.resolve(__dirname, 'apps', app, 'src', source.slice(2))) : null;
+    },
+  }],
   test: {
     include: ["tests/t*.test.ts", "tests/mf*.test.ts", "tests/ms*.test.ts", "tests/spec*.test.ts"],
     passWithNoTests: true,

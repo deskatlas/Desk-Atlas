@@ -1,0 +1,30 @@
+[
+  {
+    "path": "apps/customer-website/src/server/customer-assistant/gateway.ts",
+    "sha256": "4cf0c2c9458bc6297ebb6d37cc644a30f853d9f2e7ca5fa3aa937e5643b4801b"
+  },
+  {
+    "path": "packages/server/src/assistant.ts",
+    "sha256": "9a0f5d3fed17faf7b9b689eb72a598d54aee574cd9e8a5d5bf5c6f482073556b"
+  },
+  {
+    "path": "packages/server/src/cloudRun.ts",
+    "sha256": "0c4afcaeaf5686f8051319a6593849cae88a8af2f28ed5fb869283b3aabc3013"
+  },
+  {
+    "path": "services/rag/rag/document_support.py",
+    "sha256": "72dd289b41846e59adb7f17889fddf199101eb414a26819aa22292ed29467797"
+  },
+  {
+    "path": "services/rag/rag/embedding_provider.py",
+    "sha256": "236aad14937869ad36f92f64600ab5aa226a9f4bebef4b46887afd8a98085bb1"
+  },
+  {
+    "path": "services/rag/rag/answer_provider.py",
+    "sha256": "6108b6e0e7b96cb9cf8e6bfcde7896451c77afa980d9ff78f164730aa3351697"
+  },
+  {
+    "path": "services/rag/app.py",
+    "sha256": "d7d0e7f8fe0fec0370a16651c46641824aeb5bfb38a87867e0bf85296671a418"
+  }
+]

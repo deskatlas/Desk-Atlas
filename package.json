@@ -22,7 +22,7 @@
     "test:ms81:postgres": "python tests/ms81-postgres-contracts.py",
     "test:ms84": "vitest run tests/ms84-home-and-closure-navigation.test.ts tests/ms84-closure-route-access.test.ts tests/ms80-reservation-query-contracts.test.ts tests/ms26-closure-reconciliation-filter-parity-email.test.ts",
     "test:ms84:http": "node tests/ms84-http-navigation.cjs",
-    "test:ms83": "vitest run tests/ms83-paid-recovery.test.ts tests/ms83-recovery-route.test.ts",
+    "test:ms83": "vitest run tests/ms83-paid-recovery.test.ts tests/ms83-recovery-route.test.ts tests/ms83-worker-schedule.test.ts tests/ms83-schedule-ui.test.ts tests/ms83-recovery-desk-selection.test.ts",
     "test:ms83:postgres": "python tests/ms83-postgres-recovery.py",
     "test:ms80": "vitest run tests/ms80-reservation-query-contracts.test.ts tests/ms80-closure-routes.test.ts tests/ms35-query-amplification.test.ts tests/ms09-closure-impact-lifecycle.test.ts tests/ms19-closure-lifecycle-kiosk-guarding.test.ts tests/ms26-closure-reconciliation-filter-parity-email.test.ts",
     "test:ms80:postgres": "python tests/ms80-postgres-contracts.py",

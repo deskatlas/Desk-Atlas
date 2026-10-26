@@ -1,0 +1,86 @@
+[
+  {
+    "utc": "2026-10-26T17:11:08.826641Z",
+    "path": "/v1/customer/document-support",
+    "status": 200,
+    "latency_ms": 16671.313,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:11:04.673553Z",
+    "path": "/v1/customer/knowledge-selection",
+    "status": 200,
+    "latency_ms": 2637.42,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:10:59.474414Z",
+    "path": "/v1/customer/embed",
+    "status": 200,
+    "latency_ms": 4119.871,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:10:56.535185Z",
+    "path": "/v1/customer/plan",
+    "status": 200,
+    "latency_ms": 2187.325,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:10:35.171098Z",
+    "path": "/v1/customer/document-support",
+    "status": 200,
+    "latency_ms": 13157.039,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:10:25.776105Z",
+    "path": "/v1/customer/knowledge-selection",
+    "status": 200,
+    "latency_ms": 6683.322,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:10:17.698432Z",
+    "path": "/v1/customer/embed",
+    "status": 200,
+    "latency_ms": 6575.977,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:10:14.249842Z",
+    "path": "/v1/customer/plan",
+    "status": 200,
+    "latency_ms": 2263.378,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:09:51.214320Z",
+    "path": "/v1/customer/document-support",
+    "status": 200,
+    "latency_ms": 16000.192,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:09:39.981305Z",
+    "path": "/v1/customer/knowledge-selection",
+    "status": 200,
+    "latency_ms": 9331.432,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:09:38.477580Z",
+    "path": "/v1/customer/embed",
+    "status": 200,
+    "latency_ms": 392.86,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  },
+  {
+    "utc": "2026-10-26T17:09:28.652421Z",
+    "path": "/v1/customer/plan",
+    "status": 200,
+    "latency_ms": 8858.044,
+    "revision": "deskatlas-rag-chat-production-00006-cw6"
+  }
+]

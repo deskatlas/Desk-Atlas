@@ -98,3 +98,206 @@ and deployment contract independently.
 
 No hosted schema application, live email delivery, refund disbursement or deployment
 has been performed as part of this implementation.
+
+## Notification scheduling completion (October 26, 2026)
+
+The subsequent maintainer request to complete delivery authorizes configuring the
+existing admin production worker. The production queue was inspected read-only:
+exhaustion jobs were PENDING with zero attempts. Sender credentials and the manual
+worker secret existed, but no schedule was registered. Vercel's automatic cron
+credential is `CRON_SECRET`, which the old route did not accept.
+
+`apps/admin-portal/vercel.json` now schedules the existing worker every minute.
+This requires Vercel Pro/Enterprise, confirmed for the connected admin project.
+The route accepts `CRON_SECRET` for Vercel GET invocations and retains the independent
+`REWARDS_WORKER_SECRET` for manual POST callers. Missing/wrong credentials fail
+before queue access. Responses are uncached and unexpected failures expose no
+provider, recipient or credential details. The outbox batch is ten jobs with a
+120-second lease and a 60-second function budget, preserving leased retries and
+provider idempotency. No customer project cron is registered.
+
+Production configuration: set `CRON_SECRET` on the admin Vercel project, deploy
+from the repository root with the linked project's Root Directory set to
+`apps/admin-portal`, and retain sender/database/customer URL configuration.
+Vercel automatically supplies `Authorization: Bearer <CRON_SECRET>` on scheduled
+requests; no custom header configuration is needed. Manual callers continue to
+use `REWARDS_WORKER_SECRET`. Never publish either secret to browser code.
+
+Regression command: `pnpm test:ms83` includes the worker schedule/authentication
+suite. Its initial run reproduced a missing cron file and HTTP 401 for the Vercel
+credential; the fixed run passes all 17 MS-83 tests. Required monorepo checks and
+actual deployment/queue observations are recorded in the completion result.
+
+References: [Vercel cron authentication](https://vercel.com/docs/cron-jobs/manage-cron-jobs)
+and [plan scheduling limits](https://vercel.com/docs/cron-jobs/usage-and-pricing).
+
+Local scheduling completion checks: `pnpm typecheck`, `pnpm lint` and `pnpm build`
+passed. `pnpm test:ms83` passed 17 tests. The full suite reported 2,650 passing,
+four failing, one expected failure and 43 skipped tests. The failures remain
+MF-71/MF-78 survey expectations, MF-79 queue copy and MS-35 DrawSQL parity.
+The CLI source bundle now excludes private Python runtime/artifact folders through
+`.vercelignore`; this is separate from Git ignore behavior.
+
+Production rollout: configured encrypted admin Production CRON_SECRET using the
+connected Vercel account and deployed dpl_6Qt97F9fvWDVHarL31Vz1oGAzhGy to
+https://admin.thedeskatlas.com. Vercel reports READY and registers the every-minute
+worker definition on that deployment. Unauthenticated production invocation returns
+401. The first workspace upload exceeded the CLI file count limit; the final
+deployment used a clean 1,823-file source snapshot with archive mode.
+
+Production acceptance: Vercel's scheduled invocation claimed all six pending
+PAID_CANDIDATE_EXHAUSTED jobs. All six reached SENT after one attempt with no
+recorded delivery error at 2026-10-25T18:22:40.843Z (October 26, 02:22 client time).
+No manual bulk replay was performed. The actual cron registration and automatic
+queue processing are now verified against production. SENT records provider
+acceptance; recipient inbox placement is a separate provider event.
+
+Read-only Resend verification after the scheduled run reports `last_event=delivered`
+for the two newest exhaustion notifications, including the previously inspected
+zero-attempt booking. This confirms provider-reported delivery beyond outbox SENT.
+
+## Email CTA prefill amendment (October 26, 2026)
+
+The maintainer requested that the email CTA prefill the registered email as well
+as the booking reference and authorized another production deployment. The existing
+tracking page already reads the `email` query parameter and submits reference/email
+together. `buildReservationTrackingUrl` now accepts an optional recipient email,
+normalizes and percent-encodes it, and the exhaustion/recovery-confirmation outbox
+callers supply the persisted recipient. HTML escapes the query separator; text
+preserves the working URL. This is prefill only, not an access token or mutation.
+Tests exercise plus-address encoding, unchanged reference-only callers and the
+actual rendered HTML/text produced through outbox retry. All 18 focused MS-83
+tests pass. Already delivered messages retain their original links. No resend
+or duplicate notification was requested or performed. Interactive browser checking
+was unavailable because browser use is disabled in Work settings for this turn.
+
+Email prefill deployed successfully to admin.thedeskatlas.com as
+`dpl_5w1DTCspQMAGzggjcXWY8NdPAkxW` (READY). The active every-minute cron
+remains registered on the new release. Typecheck, lint and all app builds passed.
+All 18 MS-83 tests passed. The full suite reported 2,651 passing tests and the
+same four existing failures (MF-71/MF-78, MF-79 and MS-35), with one expected
+failure and 43 skipped. No live email was resent for this prefill change.
+
+## Reservation-style rescheduling amendment (October 26, 2026)
+
+The maintainer requested reservation-style clickable date/time selection in both
+ordinary rescheduling and paid manual-resolution recovery. Both now reuse
+ScheduleCalendarStep and its extracted ReservationTimeSlots presentation. Recovery
+selects a desk of the original template on the shared map, chooses a day/time in
+the reservation calendar, reviews the exact locked interval, then explicitly
+confirms through the existing atomic recovery RPC. No guest/payment steps or
+current price changes are introduced. The original duration is displayed as locked
+and rate/package editing is hidden. Reposition retains its original interval.
+
+Ordinary rescheduling loads the actual assigned workspace from published maps,
+reuses the same calendar and time cards, and loads times from the protected
+reschedule-availability route. That existing route excludes this reservation's
+assignment when checking conflicts. Cutoff, single-use and advance-horizon rules
+remain on existing server routes. A fresh availability check precedes review and
+the original POST confirms the selected exact interval. Missing persisted schedule
+or published workspace facts produce a support state rather than invented facts.
+
+The shared time-card tests render real React markup, verify available-only buttons,
+selected state, overnight end display, calendar navigation, exact duration and no
+price/dropdown in reschedule mode. Ordinary reservation tier controls remain
+covered. Tests resolve application aliases against the importing app so the real
+shared presentation can be exercised without introducing a UI test dependency.
+
+Reschedule UI verification: the final focused run passed 54 tests across seven
+files. Typecheck, lint and the monorepo production build passed. The customer app
+was built again after the final disabled-state and loading-state refinements and
+passed. The full suite reported 2,654 passing tests, four existing failures
+(MF-71/MF-78 survey expectations, MF-79 queue copy, MS-35 DrawSQL parity), one
+expected failure and 43 skipped. Interactive browser use remains disabled in
+Work settings; real React markup and domain regressions were tested locally.
+The customer project deployment is separate from the admin scheduler deployment.
+
+Customer scheduling UI deployed READY as `dpl_5ZPAbeWGFx91nMg4Uhv5Rn3efmX5`
+and aliased to https://www.thedeskatlas.com. The public tracking page returns 200
+and its served JavaScript includes the new locked-duration, Cancel reschedule
+and Review reschedule controls. This is HTTP deployment evidence; it is not a
+claim of an interactive live booking mutation. No booking was changed during QA.
+
+## Unified recovery CTA amendment (October 26, 2026)
+
+The maintainer requested combining the separate Reschedule and Reposition customer
+actions. Tracking now presents one primary action, **Choose a new desk or time**,
+with a separate **Request a refund** action. Supporting copy explains that the
+customer may keep the original time or choose another available slot while keeping
+the workspace type, duration and payment unchanged. The unified dialog groups the
+booking-time preference inside the same map/calendar/review flow. Original-time
+availability, past-start guards, atomic commands and audit classifications are
+retained. Public buttons no longer expose the internal Reschedule/Reposition terms.
+
+The exhaustion email uses the same unified CTA and two-option explanation in both
+HTML and plain text. Already sent emails remain unchanged and no resend is made.
+The maintainer amendment supersedes MS-83's original requirement to display three
+separate remedies; it does not change allocation, payment or refund invariants.
+
+Unified recovery validation: all 21 focused MS-83 tests passed. Monorepo typecheck,
+lint and all four production builds passed. The full-suite run retains the four
+known failures in MF-71/MF-78, MF-79 and MS-35. The primary CTA and helper copy
+are aligned with the exhaustion email; no schema or business-policy change is
+required. Original-time recovery remains governed by original-window checks, and
+choosing a different slot retains the existing reschedule command.
+
+Unified recovery deployed READY on both production projects: customer
+`dpl_FXEfPLPW28qqTSdc1FxsAU8W3shW` at www.thedeskatlas.com and admin
+`dpl_3iVqSoZipBszoFb5RJXdZDhExL3Z` at admin.thedeskatlas.com. The public
+tracking page returns 200 and serves the unified CTA, original-time choice and
+confirmation copy. The admin project retains its active every-minute cron on
+the new release. The full suite finished with 2,654 passes and the same four
+existing failures, one expected failure and 43 skipped. No email was resent and
+no booking was changed during verification.
+
+## Same-desk selection correction (October 26, 2026)
+
+The maintainer clarified that an occupied original interval must disable that
+time, not the physical desk. A regression reproduced the issue in the actual
+recovery map selection predicate: original-time preference coupled desk selection
+to interval availability. Recovery now keeps every active, published desk of the
+original workspace type selectable in either time preference. Choosing a desk
+whose original interval is unavailable opens its shared scheduling calendar.
+Maintenance, inactive desks and other workspace types remain unavailable.
+
+Reschedule time cards display reservation-conflicting slots as disabled and retain
+selectable free slots on that same desk. Selection, review and SQL confirmation
+still reject overlaps. The original-time command remains available only for a
+free original interval. Loading original availability never produces a claim that
+a time is taken; the calendar performs its own interval availability query.
+
+Tests reproduce the previously disabled same desk, check maintenance/template
+restrictions, verify occupied-time button disabling, and exercise real PostgreSQL
+recovery on the same original desk at a new time while rejecting the taken time.
+
+Same-desk validation passed: 25 focused tests, real PostgreSQL acceptance,
+`pnpm typecheck`, `pnpm lint`, `pnpm build`, and `git diff --check`. The full
+suite completed with 2,658 passing tests and the same four existing failures
+(MF71/MF78 survey copy, MF79 admin payment notice, MS35 DrawSQL parity), one
+expected failure and 43 skipped.
+
+Customer production deployment `dpl_9BbAUip8SHTa7bhtUH5W9iWZtc5i` is READY at
+https://www.thedeskatlas.com. Public `/track` returns 200 and its served JavaScript
+includes the same-desk calendar guidance and desk-selection copy. Interactive
+browser QA remains unavailable in this Work session. Verification did not change
+a live booking or resend email. No admin deployment or database migration was
+needed for this correction.
+
+## Available times only (October 26, 2026)
+
+The maintainer clarified PRD-F14 / MS83-R03/R04: both reschedule flows must
+match reservation time selection exactly. Unavailable times are now omitted
+from the shared calendar and time-card component. The same active desk remains
+selectable and can be booked at another available time. Removed the temporary
+unavailable-card option and updated the customer guidance and rendering test.
+
+Available-only validation: all 25 focused MS83 tests, typecheck, lint, production
+build and diff whitespace checks passed. The full suite had 2,657 passes and
+five failures: the same four existing failures plus an MS05 cache-header test
+timeout under concurrent checks. The separate MS05 rerun passed all five tests.
+
+Customer deployment `dpl_9h2qP26EVHmnNtAisLGwWTEorqSZ` is READY at
+https://www.thedeskatlas.com. Public tracking returns 200 and serves the updated
+available-time guidance with the old occupied-time guidance removed. No live
+booking was changed during verification. Interactive browser QA remains
+unavailable in this Work session.

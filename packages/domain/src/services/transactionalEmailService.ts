@@ -286,7 +286,7 @@ export function normalizeCustomerTrackingUrl(trackingUrl?: string): string | und
   return trimmed;
 }
 
-export function buildReservationTrackingUrl(baseUrl: string, referenceCode: string): string {
+export function buildReservationTrackingUrl(baseUrl: string, referenceCode: string, customerEmail?: string): string {
   let cleanBase = (baseUrl || '').trim().replace(/\/$/, '');
   try {
     const url = new URL(cleanBase);
@@ -298,7 +298,9 @@ export function buildReservationTrackingUrl(baseUrl: string, referenceCode: stri
     cleanBase = cleanBase.replace(/:(?:3000|3002|3003)(?=\/|$)/, ':3001');
   }
   const encodedRef = encodeURIComponent(referenceCode.trim().toUpperCase());
-  return `${cleanBase}/track?code=${encodedRef}`;
+  // MS83-R02 / PRD-F14: prefill only; tracking still verifies persisted ownership.
+  const email = customerEmail?.trim().toLowerCase();
+  return `${cleanBase}/track?code=${encodedRef}${email ? `&email=${encodeURIComponent(email)}` : ''}`;
 }
 
 const DEFAULT_TIMEZONE = 'Asia/Manila';
@@ -1104,7 +1106,7 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
       <p>Thank you for completing your payment for reservation <strong>${escapeHtml(input.referenceCode)}</strong>.</p>
-      <p>Your payment has been received. All your approved workspace choices were unavailable; assignment is pending. Open tracking and verify your registered email to choose Reschedule, Reposition, or Refund. Reschedule preserves template and duration. Reposition preserves the original interval. Refund cancels the booking pending administrator refund processing. Availability can change until confirmation.</p>
+      <p>Your payment has been received, but none of your selected desks were available. Choose a new desk or time: keep your original time or pick another available slot. Your workspace type, booked duration and payment stay the same. You can also request a refund, which cancels the booking while our team processes your refund. Open tracking to review your options. Availability can change until you confirm.</p>
       
       <div class="schedule-box" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin: 18px 0;">
         <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -1126,7 +1128,7 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
         ` : ''}
       </div>
 
-      <p>Please reach out to the business using the registered contact details below to confirm or select an alternate workspace:</p>
+      <p>Use the link below to update your booking or request a refund. If you need help, contact our team:</p>
 
       <div class="contact-box">
         <div class="contact-title">${escapeHtml(businessName)} Contact Details</div>
@@ -1148,7 +1150,7 @@ export function renderManualResolutionEmail(input: ManualResolutionEmailInput): 
 
       ${input.trackingUrl ? `
       <div style="text-align: center;">
-        <a href="${escapeHtml(input.trackingUrl)}" class="btn">Track Reservation Status</a>
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">Choose a new desk or time</a>
       </div>
       <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
         Live Tracking Link: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7; word-break: break-all;">${escapeHtml(input.trackingUrl)}</a>
@@ -1168,7 +1170,7 @@ Reference: ${input.referenceCode}
 Hello ${customerName},
 
 Thank you for your payment for reservation ${input.referenceCode}.
-Your payment has been received. All your approved workspace choices were unavailable; assignment is pending. Open tracking and verify your registered email to choose Reschedule, Reposition, or Refund. Reschedule preserves template and duration. Reposition preserves the original interval. Refund cancels the booking pending administrator refund processing. Availability can change until confirmation.
+Your payment has been received, but none of your selected desks were available. Choose a new desk or time: keep your original time or pick another available slot. Your workspace type, booked duration and payment stay the same. You can also request a refund, which cancels the booking while our team processes your refund. Open tracking to review your options. Availability can change until you confirm.
 
 SCHEDULED BOOKING DETAILS
 -------------------------
@@ -1179,7 +1181,7 @@ Please contact ${businessName} directly using the registered business details:
 Business Email: ${businessEmail}
 ${businessPhone ? `Business Phone: ${businessPhone}\n` : ''}Reference Code: ${input.referenceCode}
 
-${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
+${input.trackingUrl ? `Choose a new desk or time: ${input.trackingUrl}\n` : ''}
 ${renderBusinessFooterText(profile)}
   `.trim();
 

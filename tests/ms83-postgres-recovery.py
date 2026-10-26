@@ -132,6 +132,10 @@ def acceptance():
     sql("SELECT * FROM approve_online_payment_and_allocate((SELECT p.id FROM payment_attempts p JOIN reservations r ON r.id=p.reservation_id WHERE r.reference_code='EXHAUST'),'00000000-0000-4000-8000-000000000099',now());")
     assert read('EXHAUST')['eligible']
     assert sql("SELECT booking_token IS NULL FROM reservations WHERE reference_code='EXHAUST';").stdout.strip()=='t'
+    # The same paid candidate desk remains valid at a different, unoccupied time.
+    fails(command('EXHAUST',workspace=2),'conflicting key')
+    sql(command('EXHAUST','RESCHEDULE',workspace=2,start="date_trunc('day',now())+interval '9 days 10 hours'"))
+    assert sql("SELECT c.workspace_instance_id='00000000-0000-4000-8000-000000000002' AND c.end_at-c.start_at=interval '2 hours' FROM reservation_candidates c JOIN reservations r ON r.id=c.reservation_id WHERE r.reference_code='EXHAUST' AND c.is_assigned;").stdout.strip()=='t'
     fails((ROOT/'supabase/migrations/042_paid_candidate_recovery_down.sql').read_text(encoding='utf-8'),'Retained recovery history')
     print('MS83 real PostgreSQL: ownership, grants, dedupe, same-template restriction, recovery races, overlap exclusion, refund pending, audit rollback and guarded rollback passed.')
 
