@@ -19,6 +19,7 @@ import {
   MANILA_TIMEZONE,
 } from "@deskatlas/domain";
 import { fetchDateAvailability, fetchTimeAvailability } from "@/app/lib/availabilityApi";
+import { ReservationTimeSlots } from "./ReservationTimeSlots";
 import { handleNumericKeyDown } from "@deskatlas/ui";
 
 interface ScheduleCalendarStepProps {
@@ -40,6 +41,10 @@ interface ScheduleCalendarStepProps {
     rateType?: RateType;
   };
   maxAdvanceBookingDays?: number;
+  // MS83-R03 / PRD-F14: change date/time using the reservation UI without repricing.
+  reschedule?: { durationHours: number; initialDate?: string; busy?: boolean; backLabel?: string };
+  loadTimeSlots?: (date: string) => Promise<AvailableTimeSlot[]>;
+
 }
 
 // Format 24-hour HH:mm to friendly 12-hour (e.g. "09:00" -> "9:00 AM", "13:00" -> "1:00 PM")
@@ -78,6 +83,8 @@ export function ScheduleCalendarStep({
   candidateRank = 0,
   lockedSchedule,
   maxAdvanceBookingDays = 90,
+  reschedule,
+  loadTimeSlots,
 }: ScheduleCalendarStepProps) {
   // Synchronize with server PHT time on mount
   const [todayStr, setTodayStr] = useState(() => getPhtDateString());
@@ -95,7 +102,7 @@ export function ScheduleCalendarStep({
   }, []);
 
   const [todayYear, todayMonth] = useMemo(() => todayStr.split("-").map(Number), [todayStr]);
-  const initialDate = lockedSchedule?.date || todayStr;
+  const initialDate = lockedSchedule?.date || (reschedule?.initialDate && reschedule.initialDate > todayStr ? reschedule.initialDate : todayStr);
   const [initialYear, initialMonth] = initialDate.split("-").map(Number);
 
   // Rate Tier state: default HOURLY, or 12h / 24h pass if configured and locked
@@ -166,10 +173,10 @@ export function ScheduleCalendarStep({
 
   const isCurrentOrPastMonth = useMemo(() => {
     return (
-      viewYear < initialYear ||
-      (viewYear === initialYear && viewMonth <= initialMonth)
+      viewYear < todayYear ||
+      (viewYear === todayYear && viewMonth <= todayMonth)
     );
-  }, [viewYear, viewMonth, initialYear, initialMonth]);
+  }, [viewYear, viewMonth, todayYear, todayMonth]);
 
   const isAtOrPastMaxMonth = useMemo(() => {
     return (
@@ -212,10 +219,10 @@ export function ScheduleCalendarStep({
 
   const [selectedDate, setSelectedDate] = useState<string>(initialDate);
   const [selectedDurationHours, setSelectedDurationHours] = useState<number>(
-    lockedSchedule?.durationHours || 2
+    reschedule?.durationHours || lockedSchedule?.durationHours || 2
   );
   const [durationInputStr, setDurationInputStr] = useState<string>(
-    String(lockedSchedule?.durationHours || 2)
+    String(reschedule?.durationHours || lockedSchedule?.durationHours || 2)
   );
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(initialStartTimeVal);
 
@@ -226,11 +233,12 @@ export function ScheduleCalendarStep({
   }, [lockedSchedule?.rateType]);
 
   useEffect(() => {
-    if (lockedSchedule?.durationHours) {
-      setSelectedDurationHours(lockedSchedule.durationHours);
-      setDurationInputStr(String(lockedSchedule.durationHours));
+    const fixedDuration = reschedule?.durationHours || lockedSchedule?.durationHours;
+    if (fixedDuration) {
+      setSelectedDurationHours(fixedDuration);
+      setDurationInputStr(String(fixedDuration));
     }
-  }, [lockedSchedule?.durationHours]);
+  }, [lockedSchedule?.durationHours, reschedule?.durationHours]);
 
   useEffect(() => {
     if (lockedSchedule?.date) {
@@ -296,11 +304,12 @@ export function ScheduleCalendarStep({
     setLoadingTimes(true);
     setTimeError(null);
 
-    fetchTimeAvailability({
+    const request = loadTimeSlots ? loadTimeSlots(selectedDate).then(slots => ({ slots })) : fetchTimeAvailability({
       workspaceInstanceId: workspace.workspaceInstanceId,
       date: selectedDate,
       durationMinutes: selectedDurationHours * 60,
-    })
+    });
+    request
       .then((res) => {
         if (cancelled) return;
         const slots = res.slots || [];
@@ -332,6 +341,7 @@ export function ScheduleCalendarStep({
     selectedDate,
     selectedDurationHours,
     excludedKey,
+    loadTimeSlots,
   ]);
 
   // Sync duration when rate type changes for fixed passes
@@ -388,8 +398,9 @@ export function ScheduleCalendarStep({
   const selectedSlot = useMemo(() => {
     if (!selectedStartTime) return null;
     const found = timeSlots.find((s) => s.startTime === selectedStartTime);
-    if (found) return found;
+    if (found) return reschedule && !found.isAvailable ? null : found;
 
+    if (reschedule) return null;
     // Fallback calculation
     const [h, m] = selectedStartTime.split(":").map(Number);
     const endMinutes = h * 60 + m + selectedDurationHours * 60;
@@ -402,7 +413,7 @@ export function ScheduleCalendarStep({
       isAvailable: true,
       blockingReason: null,
     };
-  }, [timeSlots, selectedStartTime, selectedDurationHours]);
+  }, [timeSlots, selectedStartTime, selectedDurationHours, reschedule]);
 
   const [activePromotions, setActivePromotions] = useState<PromotionalRate[]>([]);
   useEffect(() => {
@@ -686,7 +697,7 @@ export function ScheduleCalendarStep({
   const isPassPackage = selectedRateType !== 'HOURLY';
 
   const canProceed = useMemo(() => {
-    if (!selectedDate) return false;
+    if (!selectedDate || (reschedule && (loadingTimes || timeError || reschedule.busy))) return false;
     if (selectedRateType === 'DAY_PASS') {
       return dayPassAvailable;
     }
@@ -700,10 +711,10 @@ export function ScheduleCalendarStep({
       return Boolean(selectedSlot);
     }
     return Boolean(selectedSlot && selectedDurationHours && selectedDurationHours > 0);
-  }, [selectedDate, selectedRateType, dayPassAvailable, nightPassAvailable, wholeDayPassAvailable, selectedSlot, selectedDurationHours]);
+  }, [selectedDate, selectedRateType, dayPassAvailable, nightPassAvailable, wholeDayPassAvailable, selectedSlot, selectedDurationHours, reschedule, loadingTimes, timeError]);
 
   const handleContinue = () => {
-    if (!selectedDate) return;
+    if (!selectedDate || !canProceed) return;
 
     if (selectedRateType === 'DAY_PASS') {
       onContinue({
@@ -788,7 +799,7 @@ export function ScheduleCalendarStep({
               {workspace.templateName} • {workspace.floorName} • Capacity: {workspace.capacity} seat
               {workspace.capacity > 1 ? "s" : ""} •{" "}
               <span className="font-bold text-[var(--da-brand-dark)]">
-                ₱{workspace.rateAmount}/hr
+                {reschedule ? "Already paid" : <>₱{workspace.rateAmount}/hr</>}
               </span>
             </p>
           </div>
@@ -797,9 +808,10 @@ export function ScheduleCalendarStep({
         <button
           type="button"
           onClick={onBackToMap}
+          disabled={reschedule?.busy}
           className="da-secondary-button px-4 py-2 text-xs font-bold shrink-0"
         >
-          ← Change Spot
+          {reschedule?.backLabel || "← Change Spot"}
         </button>
       </div>
 
@@ -832,7 +844,7 @@ export function ScheduleCalendarStep({
                   <button
                     type="button"
                     onClick={handlePrevMonth}
-                    disabled={isCurrentOrPastMonth}
+                    disabled={isCurrentOrPastMonth || reschedule?.busy}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--da-border)] bg-white text-sm font-bold transition ${
                       isCurrentOrPastMonth
                         ? "opacity-30 cursor-not-allowed bg-slate-50"
@@ -848,7 +860,7 @@ export function ScheduleCalendarStep({
                   <button
                     type="button"
                     onClick={handleNextMonth}
-                    disabled={isAtOrPastMaxMonth}
+                    disabled={isAtOrPastMaxMonth || reschedule?.busy}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--da-border)] bg-white text-sm font-bold transition ${
                       isAtOrPastMaxMonth
                         ? "opacity-30 cursor-not-allowed bg-slate-50 text-slate-300"
@@ -905,7 +917,8 @@ export function ScheduleCalendarStep({
                   <button
                     key={dateStr}
                     type="button"
-                    disabled={isUnavailable}
+                    aria-label={formatDateDisplay(dateStr)}
+                    disabled={isUnavailable || reschedule?.busy}
                     title={
                       isBeyondHorizon
                         ? `Bookings open only up to ${maxAdvanceBookingDays} days in advance (until ${formatDateDisplay(maxAllowedDateStr)})`
@@ -916,6 +929,7 @@ export function ScheduleCalendarStep({
                     onClick={() => {
                       if (!lockedSchedule) {
                         setSelectedDate(dateStr);
+                        setSelectedStartTime(null);
                       }
                     }}
                     className={`group relative flex h-10 sm:h-12 flex-col items-center justify-center rounded-xl text-xs font-bold transition-all ${
@@ -947,6 +961,12 @@ export function ScheduleCalendarStep({
             ) : null}
           </div>
 
+          {reschedule ? (
+            <div className="rounded-[24px] border border-[var(--da-border)] bg-white p-5 sm:p-6 shadow-[var(--da-shadow-md)]">
+              <h3 className="text-base font-extrabold text-[var(--da-brand-dark)]">2. Booked duration (Locked)</h3>
+              <p className="mt-2 text-sm">{reschedule.durationHours} hours. Your original template and paid amount are preserved. Select an available start time.</p>
+            </div>
+          ) : (<>
           {/* Pass / Rate Tier Selector Card */}
           <div className="rounded-[24px] border border-[var(--da-border)] bg-white p-5 sm:p-6 shadow-[var(--da-shadow-md)]">
             <div className="flex items-center justify-between border-b border-[var(--da-border-light)] pb-3 mb-4">
@@ -1219,6 +1239,7 @@ export function ScheduleCalendarStep({
               </div>
             )}
           </div>
+          </>)}
         </div>
 
         {/* Right Column: Start Time & Summary Box (5 Cols) */}
@@ -1353,40 +1374,8 @@ export function ScheduleCalendarStep({
                   <span className="shrink-0 text-sm">💡</span>
                   <span>For immediate bookings (within 30 minutes), please proceed to walk in using our in-house kiosk.</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 max-h-[260px] overflow-y-auto pr-1">
-                  {visibleTimeSlots.map((slot) => {
-                    const isSelected = selectedStartTime === slot.startTime;
-
-                    return (
-                      <button
-                        key={slot.startTime}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStartTime(slot.startTime);
-                        }}
-                        className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? "bg-[var(--da-primary,#009689)] text-white border-[var(--da-accent,#007A70)] shadow-sm ring-2 ring-[var(--da-accent,#007A70)]"
-                            : "bg-white text-[var(--da-brand-dark,#009689)] border-[var(--da-border-light,#E2E8F0)] hover:border-[var(--da-primary,#009689)] hover:bg-[var(--da-canvas,#F8FAFC)]"
-                        }`}
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="text-xs font-bold">
-                            {formatTime12Hour(slot.startTime)}
-                          </span>
-                          <span className="text-[10px] font-semibold opacity-80">Available</span>
-                        </div>
-                        <span className="text-[10px] opacity-75 mt-0.5">
-                          to {formatTime12Hour(slot.endTime)}
-                          {(() => {
-                            const [sh, sm] = slot.startTime.split(":").map(Number);
-                            return sh * 60 + sm + selectedDurationHours * 60 >= 1440 ? " (Next Day)" : "";
-                          })()}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <ReservationTimeSlots slots={visibleTimeSlots} selectedTime={selectedStartTime}
+                  durationHours={selectedDurationHours} onSelect={setSelectedStartTime} disabled={reschedule?.busy} />
               </div>
             )}
           </div>
@@ -1425,7 +1414,7 @@ export function ScheduleCalendarStep({
                     : "Please select start time"}
                 </span>
               </div>
-              {resolvedPricing.isPromotional ? (
+              {reschedule ? <p className="font-bold text-[var(--da-brand-dark)]">Already paid. No additional payment.</p> : resolvedPricing.isPromotional ? (
                 <>
                   <div className="flex justify-between items-center">
                     <span>Rate ({selectedRateType === 'HOURLY' ? 'Hourly' : 'Pass Package'}):</span>
@@ -1474,7 +1463,7 @@ export function ScheduleCalendarStep({
               <span className="font-bold text-slate-800">
                 {candidateRank > 0 ? "Atomic Allocation Rule:" : "No-Hold Rule:"}
               </span>{" "}
-              {candidateRank > 0
+              {reschedule ? "Selecting a time does not hold inventory. Availability is checked again when you confirm the reschedule." : candidateRank > 0
                 ? "This backup spot is an alternative candidate. DeskAtlas attempts to assign Main first; if Main is taken at payment review, Backup 1 is allocated, then Backup 2."
                 : "Guest reservations do not reserve inventory until payment is reviewed and allocated."}
             </div>
@@ -1489,7 +1478,7 @@ export function ScheduleCalendarStep({
               }`}
             >
               {canProceed
-                ? candidateRank > 0
+                ? reschedule ? "Review reschedule ->" : candidateRank > 0
                   ? `Confirm Backup Spot ${candidateRank} Schedule ->`
                   : "Proceed with this Schedule ->"
                 : isPassPackage

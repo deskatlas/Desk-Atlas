@@ -1,0 +1,14 @@
+# MS83 / SDD-C11: CLI deploys source, never local runtime data or credentials.
+**/.env
+**/.env.*
+**/.venv-service/**
+**/.pytest_cache/**
+services/rag/models/**
+**/*.pyc
+services/rag/artifacts/**
+services/rag/benchmark-results/**
+services/rag/.deepinfra-deploy*.json
+coverage/**
+outputs/**
+docs/**
+.vscode/**

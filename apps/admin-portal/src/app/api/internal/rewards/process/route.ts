@@ -3,7 +3,8 @@
  * Traceability: SPEC-1 Section 3.3, SDD-C13, PRD-F22
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   CustomerSupabaseRepository,
   createCustomerService,
@@ -11,15 +12,23 @@ import {
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+const headers = { "Cache-Control": "no-store, private" };
 
-async function handleWorker(request: NextRequest) {
+// MS83-R02 / SDD-C11: Vercel injects CRON_SECRET; manual callers keep their key.
+function authorized(token: string): boolean {
+  if (!token) return false;
+  const supplied = createHash('sha256').update(token).digest();
+  return [process.env.CRON_SECRET, process.env.REWARDS_WORKER_SECRET].some(secret =>
+    Boolean(secret) && timingSafeEqual(supplied, createHash('sha256').update(secret!).digest()));
+}
+
+async function handleWorker(request: Request) {
   try {
     const authHeader = request.headers.get("authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    const expectedSecret = process.env.REWARDS_WORKER_SECRET;
-
-    if (!expectedSecret || token !== expectedSecret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!authorized(token)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers });
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -28,7 +37,7 @@ async function handleWorker(request: NextRequest) {
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json(
         { error: "Supabase configuration is missing." },
-        { status: 500 }
+        { status: 503, headers }
       );
     }
 
@@ -46,8 +55,8 @@ async function handleWorker(request: NextRequest) {
     const customerService = createCustomerService(repository, emailService);
 
     const outboxResult = await customerService.processOutboxBatch({
-      limit: 50,
-      leaseSeconds: 60,
+      limit: 10,
+      leaseSeconds: 120,
       requireSenderConfig: true,
     });
 
@@ -59,18 +68,17 @@ async function handleWorker(request: NextRequest) {
     return NextResponse.json({
       outbox: outboxResult,
       campaigns: campaignResult,
-    }, { status: 200 });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal Server Error";
-    console.error("[RewardsWorker] Processing error:", err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    }, { status: 200, headers });
+  } catch {
+    console.error("[RewardsWorker] Processing failed; pending jobs remain retryable.");
+    return NextResponse.json({ error: "Notification worker unavailable. Retry on the next scheduled invocation." }, { status: 503, headers });
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   return handleWorker(request);
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   return handleWorker(request);
 }
