@@ -154,7 +154,7 @@ describe("MF-71: Transactional Email Lifecycle & Booking-Ended Survey", () => {
 
       assert.equal(
         email.subject,
-        "Your DeskAtlas Booking Has Ended — We Value Your Feedback!"
+        "Your DeskAtlas Booking Has Ended - We Value Your Feedback!"
       );
       assert.ok(email.html.includes("Thank you for visiting DeskAtlas!"));
       assert.ok(email.html.includes("DA-20260911-END5"));

@@ -696,6 +696,12 @@ export interface ReservationExtendedEmailInput extends BaseEmailBusinessFields {
   qrImageUrl?: string;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | string;
+  contentType?: string;
+}
+
 export interface RawEmailInput {
   idempotencyKey?: string;
   to: string | string[];
@@ -703,6 +709,22 @@ export interface RawEmailInput {
   subject: string;
   html: string;
   text?: string;
+  attachments?: EmailAttachment[];
+}
+
+export interface QuarterlyRetentionBackupEmailInput extends BaseEmailBusinessFields {
+  to: string | string[];
+  quarter: string;
+  year: number;
+  purgedReservationsCount: number;
+  totalRevenueArchived: number;
+  currency?: string;
+  purgedStorageFilesCount: number;
+  excelReportBuffer?: Buffer;
+  excelFilename?: string;
+  jsonBackupBuffer?: Buffer;
+  jsonFilename?: string;
+  cutoffDate?: string;
 }
 
 export interface TeamMemberJoinedEmailInput extends BaseEmailBusinessFields {
@@ -2849,6 +2871,15 @@ export class TransactionalEmailService {
             subject: input.subject,
             html: input.html,
             text: input.text,
+            ...(input.attachments && input.attachments.length > 0
+              ? {
+                  attachments: input.attachments.map((att) => ({
+                    filename: att.filename,
+                    content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+                    ...(att.contentType ? { contentType: att.contentType } : {}),
+                  })),
+                }
+              : {}),
           }),
         });
 
@@ -2879,6 +2910,15 @@ export class TransactionalEmailService {
             subject: input.subject,
             html: input.html,
             text: input.text,
+            ...(input.attachments && input.attachments.length > 0
+              ? {
+                  attachments: input.attachments.map((att) => ({
+                    filename: att.filename,
+                    content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+                    ...(att.contentType ? { contentType: att.contentType } : {}),
+                  })),
+                }
+              : {}),
           }),
         });
 
@@ -3572,6 +3612,41 @@ export class TransactionalEmailService {
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
+    });
+  }
+
+  async sendQuarterlyRetentionBackupEmail(
+    input: QuarterlyRetentionBackupEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: QuarterlyRetentionBackupEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderQuarterlyRetentionBackupEmail(mergedInput);
+
+    const attachments: EmailAttachment[] = [];
+    if (input.excelReportBuffer && input.excelFilename) {
+      attachments.push({
+        filename: input.excelFilename,
+        content: input.excelReportBuffer,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+    }
+    if (input.jsonBackupBuffer && input.jsonFilename) {
+      attachments.push({
+        filename: input.jsonFilename,
+        content: input.jsonBackupBuffer,
+        contentType: 'application/json',
+      });
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
   }
 
@@ -5024,6 +5099,110 @@ Please navigate to the Admin Portal to review original payment proof and process
 Link: ${triageLink}
 
 DeskAtlas Automated Operations Dispatch
+Timestamp: ${nowIso}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderQuarterlyRetentionBackupEmail(
+  input: QuarterlyRetentionBackupEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const currency = input.currency || 'PHP';
+  const formattedRevenue = Number(input.totalRevenueArchived || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const quarterStr = (input.quarter || 'Q1').toUpperCase();
+  const subject = `[DeskAtlas] Quarterly Data Retention Backup and 3-Month Operations Report (${quarterStr} ${input.year})`;
+  const nowIso = new Date().toISOString();
+  const cutoffDisplay = input.cutoffDate || nowIso;
+  const excelName = input.excelFilename || `deskatlas-operations-summary-${quarterStr}-${input.year}.xlsx`;
+  const jsonName = input.jsonFilename || `deskatlas-backup-${quarterStr}-${input.year}.json`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 600px; margin: 0 auto; padding: 32px; }
+    .header { margin-bottom: 20px; border-bottom: 2px solid #0f766e; padding-bottom: 14px; }
+    .title { font-size: 16px; font-weight: 800; color: #0f766e; letter-spacing: 0.04em; margin: 0; text-transform: uppercase; }
+    .content { font-size: 14px; line-height: 1.6; color: #334155; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .summary-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; margin-bottom: 10px; }
+    .summary-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+    .advisory-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0; color: #166534; font-size: 13px; }
+    .attachment-box { background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">${escapeHtml(businessName)} - QUARTERLY DATA RETENTION & OPERATIONS BACKUP</div>
+    </div>
+    <div class="content">
+      <p>This automated executive dispatch delivers the quarterly operations summary report and relational archival backup for <strong>${escapeHtml(quarterStr)} ${escapeHtml(String(input.year))}</strong>.</p>
+
+      <div class="summary-box">
+        <div class="summary-title">Retention Purge & Operations Summary</div>
+        <div class="summary-row"><span>Quarter Window:</span> <strong>${escapeHtml(quarterStr)} ${escapeHtml(String(input.year))}</strong></div>
+        <div class="summary-row"><span>Cutoff Timestamp:</span> <span>${escapeHtml(cutoffDisplay)}</span></div>
+        <div class="summary-row"><span>Purged Reservations:</span> <strong>${escapeHtml(String(input.purgedReservationsCount))}</strong></div>
+        <div class="summary-row"><span>Total Revenue Archived:</span> <strong>${escapeHtml(currency)} ${escapeHtml(formattedRevenue)}</strong></div>
+        <div class="summary-row"><span>Storage Receipt Files Purged:</span> <span>${escapeHtml(String(input.purgedStorageFilesCount))}</span></div>
+      </div>
+
+      <div class="advisory-box">
+        <strong>Important Retention Advisory:</strong><br>
+        In accordance with DeskAtlas quarterly data retention policies, historical booking records and customer-uploaded receipts for the past 3 months have been archived. Customer profiles and loyalty identities remain intact.
+      </div>
+
+      <div class="attachment-box">
+        <div class="summary-title">Attached Archival Files</div>
+        <div class="summary-row"><span>1. Operations Summary Report:</span> <code>${escapeHtml(excelName)}</code></div>
+        <div class="summary-row"><span>2. Relational Raw Backup:</span> <code>${escapeHtml(jsonName)}</code></div>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b;">
+        Please store these attachments in your offsite compliance archives. Deletion of historical operational records was executed only after this backup package was verified and dispatched.
+      </p>
+    </div>
+    <div class="footer">
+      ${escapeHtml(businessName)} Automated Operations Worker &bull; ${escapeHtml(nowIso)}
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+${businessName.toUpperCase()} - QUARTERLY DATA RETENTION & OPERATIONS BACKUP
+
+This automated executive dispatch delivers the quarterly operations summary report and relational archival backup for ${quarterStr} ${input.year}.
+
+RETENTION PURGE & OPERATIONS SUMMARY:
+- Quarter Window: ${quarterStr} ${input.year}
+- Cutoff Timestamp: ${cutoffDisplay}
+- Purged Reservations: ${input.purgedReservationsCount}
+- Total Revenue Archived: ${currency} ${formattedRevenue}
+- Storage Receipt Files Purged: ${input.purgedStorageFilesCount}
+
+IMPORTANT RETENTION ADVISORY:
+In accordance with DeskAtlas quarterly data retention policies, historical booking records and customer-uploaded receipts for the past 3 months have been archived. Customer profiles and loyalty identities remain intact.
+
+ATTACHED ARCHIVAL FILES:
+1. Operations Summary Report: ${excelName} (.xlsx)
+2. Relational Raw Backup: ${jsonName} (.json)
+
+Please store these attachments in your offsite compliance archives. Deletion of historical operational records was executed only after this backup package was verified and dispatched.
+
+${businessName} Automated Operations Worker
 Timestamp: ${nowIso}
   `.trim();
 

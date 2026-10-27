@@ -119,6 +119,13 @@ export function PaymentQueue() {
   }, []);
 
   const displayedQueue = useMemo(() => {
+    // Defensive sort fallback ensuring earliest proof upload appears first
+    const defensiveSort = (a: PaymentReviewQueueItem, b: PaymentReviewQueueItem) => {
+      const timeA = a.proofSubmittedAt ? new Date(a.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+      const timeB = b.proofSubmittedAt ? new Date(b.proofSubmittedAt).getTime() : Number.POSITIVE_INFINITY;
+      return timeA - timeB;
+    };
+    if (!reviewQueue || reviewQueue.length === 0) return [];
     return sortPaymentReviewQueue(reviewQueue, sortMode);
   }, [reviewQueue, sortMode]);
 

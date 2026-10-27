@@ -219,7 +219,7 @@ describe("MF-78: Transactional Email Refinements & Direct Tracking Result", () =
         trackingUrl: "http://0.0.0.0:3001/track?code=421960",
       });
 
-      assert.equal(email.subject, "Your DeskAtlas Booking Has Ended — We Value Your Feedback!");
+      assert.equal(email.subject, "Your DeskAtlas Booking Has Ended - We Value Your Feedback!");
       // CTA button exists
       assert.ok(email.html.includes("Share Your Feedback (1-Min Survey)"));
       // Item 5: Fallback link rendered

@@ -191,12 +191,12 @@ export function RewardsAccessCard({
           }
           setVerifyError(
             json?.error?.message ||
-              "Too many failed verification attempts. Please try again in 5 minutes."
+            "Too many failed verification attempts. Please try again in 5 minutes."
           );
         } else {
           setVerifyError(
             json?.error?.message ||
-              "Customer ID and email do not match our records. Please check and try again."
+            "Customer ID and email do not match our records. Please check and try again."
           );
         }
         setIsVerifying(false);
@@ -235,9 +235,8 @@ export function RewardsAccessCard({
 
   return (
     <div
-      className={`rounded-[28px] border border-[var(--da-border)] bg-white p-8 shadow-[var(--da-shadow-lg)] flex flex-col justify-between h-full ${
-        standalone ? "mx-auto max-w-xl" : "w-full"
-      }`}
+      className={`rounded-[28px] border border-[var(--da-border)] bg-white p-8 shadow-[var(--da-shadow-lg)] flex flex-col justify-between h-full ${standalone ? "mx-auto max-w-xl" : "w-full"
+        }`}
       data-testid="my-bookings-rewards-card"
       data-compact={compact || undefined}
     >
@@ -303,8 +302,8 @@ export function RewardsAccessCard({
           {isLocked
             ? `Try again in ${formatLockoutTime(remainingSeconds)}`
             : isVerifying
-            ? "Verifying..."
-            : accessIntent === 'REWARDS_AND_ASSISTANT' ? 'Enable private assistance' : "View My Bookings & Rewards"}
+              ? "Verifying..."
+              : accessIntent === 'REWARDS_AND_ASSISTANT' ? 'Enable private assistance' : "View My Bookings & Rewards"}
         </button>
 
         {verifyError && (
@@ -326,9 +325,8 @@ export function RewardsAccessCard({
             >
               <div className="flex items-center gap-3">
                 <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold ${
-                    isLocked ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"
-                  }`}
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold ${isLocked ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"
+                    }`}
                 >
                   {isLocked ? "⏳" : "⚠️"}
                 </div>

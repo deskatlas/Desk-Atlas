@@ -278,3 +278,9 @@ export { validateDocumentSupport } from './services/assistantDocumentSupport';
 export * from './services/paidRecoveryService';
 
 export { DatabaseInterruptionError } from './services/databaseRequest';
+
+export * from './models/retention';
+export * from './services/retentionPurgeRepository';
+export * from './services/retentionPurgeMemoryRepository';
+export * from './services/retentionPurgeSupabaseRepository';
+export * from './services/retentionPurgeService';

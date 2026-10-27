@@ -610,6 +610,7 @@ CREATE TABLE public.payment_attempts (
   refund_notes text,
   refund_recorded_by_user_id uuid,
   refunded_at timestamptz,
+  overdue_notified_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT payment_attempts_reservation_fk
