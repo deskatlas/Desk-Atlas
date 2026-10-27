@@ -364,8 +364,8 @@ export function ReservationDetail({ id }: { id: string }) {
   const scheduleText = reservation.schedule || (
     reservation.bookingStartAt && reservation.bookingEndAt
       ? (format(new Date(reservation.bookingStartAt), 'yyyy-MM-dd') === format(new Date(reservation.bookingEndAt), 'yyyy-MM-dd')
-          ? `${format(new Date(reservation.bookingStartAt), 'MMM d, yyyy, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'h:mm a')}`
-          : `${format(new Date(reservation.bookingStartAt), 'MMM d, yyyy, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'MMM d, yyyy, h:mm a')}`)
+        ? `${format(new Date(reservation.bookingStartAt), 'MMM d, yyyy, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'h:mm a')}`
+        : `${format(new Date(reservation.bookingStartAt), 'MMM d, yyyy, h:mm a')} to ${format(new Date(reservation.bookingEndAt), 'MMM d, yyyy, h:mm a')}`)
       : '-'
   );
   const durationText = reservation.duration || '-';
@@ -387,6 +387,14 @@ export function ReservationDetail({ id }: { id: string }) {
     { label: 'Customer Name', value: customerFullName },
     { label: 'Email', value: customerEmail },
     ...(contactNumber ? [{ label: 'Contact Number', value: contactNumber }] : []),
+    ...(reservation.companionNames && reservation.companionNames.length > 0
+      ? [
+        {
+          label: `Expected Companions (${reservation.companionNames.length})`,
+          value: reservation.companionNames.join(', '),
+        },
+      ]
+      : []),
     { label: 'Schedule', value: scheduleText },
     { label: 'Duration', value: durationText },
     ...(rateSnapshotText ? [{ label: 'Hourly Rate', value: rateSnapshotText }] : []),
@@ -396,54 +404,54 @@ export function ReservationDetail({ id }: { id: string }) {
     { label: 'Payment Status', value: paymentStatusText },
     ...(reservation.reservationStatus === 'CANCELLED'
       ? [
-          {
-            label: 'Cancellation Reason',
-            value: reservation.cancellationReason || 'Administrative Cancellation',
-          },
-          {
-            label: 'Cancelled At',
-            value: reservation.cancelledAt
-              ? formatTimelineDate(reservation.cancelledAt)
-              : formatTimelineDate(reservation.updatedAt || new Date().toISOString()),
-          },
-        ]
+        {
+          label: 'Cancellation Reason',
+          value: reservation.cancellationReason || 'Administrative Cancellation',
+        },
+        {
+          label: 'Cancelled At',
+          value: reservation.cancelledAt
+            ? formatTimelineDate(reservation.cancelledAt)
+            : formatTimelineDate(reservation.updatedAt || new Date().toISOString()),
+        },
+      ]
       : []),
     ...(reservation.reservationStatus === 'EXPIRED' || (reservation.paymentAttempts && reservation.paymentAttempts.length > 0)
       ? [
-          {
-            label: 'Payment Attempt',
-            value: reservation.paymentAttempts && reservation.paymentAttempts.length > 0
-              ? `${reservation.paymentAttempts[0].channel} (${reservation.paymentAttempts[0].status})`
-              : 'None',
-          },
-          {
-            label: 'Proof Uploaded',
-            value: reservation.proofSubmittedAt
-              ? `Yes (${formatTimelineDate(reservation.proofSubmittedAt)})`
-              : 'No proof uploaded',
-          },
-          ...(reservation.expiryReason
-            ? [{ label: 'Expiry Reason', value: reservation.expiryReason }]
-            : []),
-        ]
+        {
+          label: 'Payment Attempt',
+          value: reservation.paymentAttempts && reservation.paymentAttempts.length > 0
+            ? `${reservation.paymentAttempts[0].channel} (${reservation.paymentAttempts[0].status})`
+            : 'None',
+        },
+        {
+          label: 'Proof Uploaded',
+          value: reservation.proofSubmittedAt
+            ? `Yes (${formatTimelineDate(reservation.proofSubmittedAt)})`
+            : 'No proof uploaded',
+        },
+        ...(reservation.expiryReason
+          ? [{ label: 'Expiry Reason', value: reservation.expiryReason }]
+          : []),
+      ]
       : []),
   ];
 
   const detailCandidates = reservation.candidates && reservation.candidates.length > 0
     ? reservation.candidates.map((c: any) => ({
-        tier: (c.tier || `Rank ${c.rank ?? 0}`) + (c.isAssigned ? ' • ALLOCATED' : ''),
-        name: c.workspaceDisplayName || c.workspaceInstanceCode || 'Spot',
-        color: c.isAssigned ? 'var(--da-brand-dark)' : (c.color || '#64748B'),
-      }))
+      tier: (c.tier || `Rank ${c.rank ?? 0}`) + (c.isAssigned ? ' • ALLOCATED' : ''),
+      name: c.workspaceDisplayName || c.workspaceInstanceCode || 'Spot',
+      color: c.isAssigned ? 'var(--da-brand-dark)' : (c.color || '#64748B'),
+    }))
     : reservation.workspaceDisplayName
-    ? [
+      ? [
         {
           tier: (reservation.workspaceTemplateName || 'Standard') + ' • ALLOCATED',
           name: reservation.workspaceDisplayName + (reservation.workspaceInstanceCode ? ` (${reservation.workspaceInstanceCode})` : ''),
           color: 'var(--da-brand-dark)',
         },
       ]
-    : [];
+      : [];
 
   const detailTimeline: string[] = reservation.timeline && reservation.timeline.length > 0
     ? reservation.timeline
@@ -547,10 +555,10 @@ export function ReservationDetail({ id }: { id: string }) {
                   {reservation.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED'
                     ? 'Manual Resolution Required'
                     : reservation.closureImpactStatus === 'CUSTOMER_RESOLVED'
-                    ? 'Customer Resolved'
-                    : reservation.closureImpactStatus === 'STAFF_RESOLVED'
-                    ? 'Staff Resolved'
-                    : 'Action Pending'}
+                      ? 'Customer Resolved'
+                      : reservation.closureImpactStatus === 'STAFF_RESOLVED'
+                        ? 'Staff Resolved'
+                        : 'Action Pending'}
                 </span>
               </div>
               <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#78350F' }}>
@@ -889,6 +897,7 @@ export function ReservationDetail({ id }: { id: string }) {
         workspaceName={reservation.workspaceDisplayName || reservation.workspaceInstanceCode || undefined}
         bookingStartAt={reservation.bookingStartAt}
         bookingEndAt={reservation.bookingEndAt}
+        companionNames={reservation.companionNames}
       />
 
       <ExtendReservationModal

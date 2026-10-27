@@ -40,7 +40,9 @@ import {
   type PromotionalRate,
   resolveEffectivePrice,
 } from "@deskatlas/domain";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useRewardsSession } from "@/features/tracking";
+import { validateCompanionName } from "@deskatlas/validation";
 import { ReservationMap } from "./ReservationMap";
 import { SpotDetailModal } from "./SpotDetailModal";
 import { ScheduleCalendarStep } from "./ScheduleCalendarStep";
@@ -180,6 +182,25 @@ export function ReservationPage() {
   const [step, setStep] = useState<
     "map" | "schedule" | "category-schedule" | "category-instances" | "backup-prompt" | "summary" | "email-handoff"
   >("map");
+
+  const searchParams = useSearchParams();
+  const paramWorkspaceId = searchParams?.get("workspaceId") || null;
+  const paramTemplateId = searchParams?.get("templateId") || null;
+  const paramFloorId = searchParams?.get("floorId") || null;
+  const paramRebookFrom = searchParams?.get("rebookFrom") || null;
+
+  const [rebookFallbackNotice, setRebookFallbackNotice] = useState<string | null>(null);
+  const [companionNames, setCompanionNames] = useState<string[]>([]);
+  const [companionErrors, setCompanionErrors] = useState<Record<number, string>>({});
+
+  const { session: rewardsSession } = useRewardsSession();
+  useEffect(() => {
+    if (rewardsSession?.customer) {
+      setCustomerFirstName((prev) => prev || rewardsSession.customer.firstName || "");
+      setCustomerLastName((prev) => prev || rewardsSession.customer.lastName || "");
+      setCustomerEmail((prev) => prev || rewardsSession.customer.email || "");
+    }
+  }, [rewardsSession]);
 
   const [activeRank, setActiveRank] = useState<0 | 1 | 2>(0);
   const [candidates, setCandidates] = useState<SelectedCandidate[]>([]);
@@ -423,7 +444,7 @@ export function ReservationPage() {
           setActivePromotions(data.data);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       isMounted = false;
@@ -544,6 +565,33 @@ export function ReservationPage() {
     [published]
   );
 
+  const rebookProcessedRef = useRef(false);
+  useEffect(() => {
+    if (rebookProcessedRef.current) return;
+    if (!mapLoading && published) {
+      if (paramWorkspaceId || paramRebookFrom) {
+        rebookProcessedRef.current = true;
+        if (paramFloorId && floorId !== paramFloorId) {
+          setFloorId(paramFloorId);
+        }
+        const target = paramWorkspaceId
+          ? workspaces.find((w) => w.workspaceInstanceId === paramWorkspaceId)
+          : null;
+
+        if (target && target.status !== "maintenance" && target.status !== "broken" && target.status !== "inactive") {
+          setSelectedWorkspaceId(target.workspaceInstanceId);
+          setModalWorkspace(target);
+          setStep("schedule");
+        } else {
+          setRebookFallbackNotice(
+            "Your previously booked desk is currently unavailable. Please select an alternate spot from the floorplan."
+          );
+          setStep("map");
+        }
+      }
+    }
+  }, [mapLoading, published, paramWorkspaceId, paramFloorId, paramRebookFrom, workspaces, floorId, setFloorId]);
+
   const [passWindows, setPassWindows] = useState({
     dayPassStartTime: '07:00',
     dayPassEndTime: '23:30',
@@ -564,7 +612,7 @@ export function ReservationPage() {
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const mainCandidate = useMemo(
@@ -582,6 +630,14 @@ export function ReservationPage() {
     [candidates]
   );
 
+  const spotCapacity = useMemo(() => {
+    return mainCandidate?.workspace?.capacity ?? selectedTemplate?.capacity ?? 1;
+  }, [mainCandidate, selectedTemplate]);
+
+  const maxCompanions = useMemo(() => {
+    return Math.max(0, spotCapacity - 1);
+  }, [spotCapacity]);
+
   const mainPricing = useMemo(() => {
     if (!mainCandidate) return null;
     const targetBookingTime = new Date(`${mainCandidate.date}T${mainCandidate.startTime || "09:00"}:00`);
@@ -589,12 +645,12 @@ export function ReservationPage() {
     const baseRate = rateType === "DAY_PASS"
       ? (mainCandidate.workspace.dayPassPrice ?? mainCandidate.workspace.rateAmount)
       : rateType === "NIGHT_PASS"
-      ? (mainCandidate.workspace.nightPassPrice ?? mainCandidate.workspace.rateAmount)
-      : rateType === "WHOLE_DAY_PASS"
-      ? (mainCandidate.workspace.wholeDayPassPrice ?? mainCandidate.workspace.rateAmount * 24)
-      : rateType === "HALF_DAY_PASS"
-      ? (mainCandidate.workspace.halfDayPassPrice ?? mainCandidate.workspace.rateAmount * 12)
-      : mainCandidate.workspace.rateAmount;
+        ? (mainCandidate.workspace.nightPassPrice ?? mainCandidate.workspace.rateAmount)
+        : rateType === "WHOLE_DAY_PASS"
+          ? (mainCandidate.workspace.wholeDayPassPrice ?? mainCandidate.workspace.rateAmount * 24)
+          : rateType === "HALF_DAY_PASS"
+            ? (mainCandidate.workspace.halfDayPassPrice ?? mainCandidate.workspace.rateAmount * 12)
+            : mainCandidate.workspace.rateAmount;
 
     return resolveEffectivePrice(
       mainCandidate.workspace.templateId,
@@ -908,8 +964,10 @@ export function ReservationPage() {
     let stopped = false;
     const controller = new AbortController();
     const consume = assistant?.consumeHandoff;
-    void fetch(`/api/customer-assistant/spot`, { method: 'POST', cache: 'no-store', signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(handoff) }).then(async result => {
+    void fetch(`/api/customer-assistant/spot`, {
+      method: 'POST', cache: 'no-store', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(handoff)
+    }).then(async result => {
       if (!result.ok) throw new Error('The spot or published map changed. Please select a spot from the current map.');
       const data: { published: PublishedFloorMap } = await result.json();
       const workspace = mapPublishedFloorToWorkspaceCards(data.published).find(w => w.workspaceInstanceId === handoff.workspace_id);
@@ -922,8 +980,10 @@ export function ReservationPage() {
     if (!assistant) return;
     assistant.setDiscovery({
       ...(selectedWorkspace ? { workspace_id: selectedWorkspace.workspaceInstanceId, template_id: selectedWorkspace.templateId, floor_id: selectedWorkspace.floorId } : floorId ? { floor_id: floorId } : {}),
-      ...(discoveryMode === 'category' && selectedTemplate ? { template_id: selectedTemplate.id, date: catDate, duration_minutes: catDurationHours * 60,
-        ...(catStartTime ? { start_time: catStartTime } : {}) } : {}),
+      ...(discoveryMode === 'category' && selectedTemplate ? {
+        template_id: selectedTemplate.id, date: catDate, duration_minutes: catDurationHours * 60,
+        ...(catStartTime ? { start_time: catStartTime } : {})
+      } : {}),
     });
     return () => { assistant.setDiscovery({}); };
   }, [selectedWorkspace?.workspaceInstanceId, floorId, discoveryMode, selectedTemplate?.id, catDate, catStartTime, catDurationHours]);
@@ -1145,12 +1205,25 @@ export function ReservationPage() {
       errors.contactNumber = "Please enter the remaining digits of your 11-digit mobile number.";
     }
 
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
+    const compErrors: Record<number, string> = {};
+    for (let i = 0; i < maxCompanions; i++) {
+      const val = companionNames[i];
+      if (val && val.trim().length > 0) {
+        const validation = validateCompanionName(val);
+        if (!validation.isValid) {
+          compErrors[i] = validation.error || "Invalid companion name";
+        }
+      }
+    }
+
+    if (Object.keys(errors).length > 0 || Object.keys(compErrors).length > 0) {
+      if (Object.keys(errors).length > 0) setFormErrors(errors);
+      if (Object.keys(compErrors).length > 0) setCompanionErrors(compErrors);
       return;
     }
 
     setFormErrors({});
+    setCompanionErrors({});
     setSubmitErrorMessage(null);
 
     // MF-155: Revalidate price immediately before confirmation modal
@@ -1188,6 +1261,11 @@ export function ReservationPage() {
 
       const effectiveRateSnapshot = mainPricing ? mainPricing.effectivePrice : calculateDisplayRate(mainCandidate);
 
+      const cleanedCompanions = companionNames
+        .map((n) => (n || "").trim())
+        .filter((n) => n.length > 0)
+        .slice(0, maxCompanions);
+
       const response = await fetch("/api/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1198,6 +1276,7 @@ export function ReservationPage() {
           customerEmail: customerEmail.trim().toLowerCase(),
           customerContactNumber: contactNumberDigits.length === 9 ? `09${contactNumberDigits}` : undefined,
           promoCode: appliedPromo?.code || undefined,
+          companionNames: cleanedCompanions,
           rateType: mainCandidate?.rateType || "HOURLY",
           bookedRatePerHour: effectiveRateSnapshot,
           rateSnapshot: effectiveRateSnapshot,
@@ -1289,6 +1368,32 @@ export function ReservationPage() {
               >
                 3. Review & Details
               </button>
+              {rebookFallbackNotice && (
+                <div
+                  data-testid="rebook-fallback-banner"
+                  className="flex items-center justify-between gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">⚠️</span>
+                    <div>
+                      <p className="font-extrabold text-sm sm:text-base">
+                        Spot Unavailable
+                      </p>
+                      <p className="text-xs sm:text-sm text-amber-900 mt-0.5">
+                        {rebookFallbackNotice}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRebookFallbackNotice(null)}
+                    className="text-amber-800 hover:text-amber-950 text-xs font-bold px-2 py-1"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               {step === "email-handoff" ? (
                 <>
                   <span className="text-[var(--da-text-secondary)]">/</span>
@@ -1344,8 +1449,8 @@ export function ReservationPage() {
           {step !== "email-handoff" && sessionSecondsLeft !== null && !isSessionTimedOut && (
             <div
               className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm ${sessionSecondsLeft <= 120
-                  ? "border-2 border-amber-500 bg-amber-50 text-amber-900 animate-pulse"
-                  : "border border-[var(--da-border)] bg-white text-[var(--da-text-secondary)]"
+                ? "border-2 border-amber-500 bg-amber-50 text-amber-900 animate-pulse"
+                : "border border-[var(--da-border)] bg-white text-[var(--da-text-secondary)]"
                 }`}
               title={`Your reservation session lasts ${Math.round(configuredTimeoutSeconds / 60)} minutes to ensure real-time inventory availability.`}
             >
@@ -1583,7 +1688,7 @@ export function ReservationPage() {
                   </div>
                 ) : null}
 
-<ReservationMap
+                <ReservationMap
                   floors={floors}
                   floorId={floorId}
                   handleFloorChange={handleFloorChange}
@@ -1722,45 +1827,45 @@ export function ReservationPage() {
                             </div>
                           </div>
 
-                        {/* Info Area */}
-                        <div className="flex flex-col flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="text-lg font-extrabold text-[var(--da-brand-dark)] group-hover:text-[var(--da-primary)] transition">
-                              {tpl.name}
-                            </h3>
-                            <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 shrink-0">
-                              👤 {tpl.capacity} {tpl.capacity === 1 ? "seat" : "seats"}
-                            </span>
+                          {/* Info Area */}
+                          <div className="flex flex-col flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="text-lg font-extrabold text-[var(--da-brand-dark)] group-hover:text-[var(--da-primary)] transition">
+                                {tpl.name}
+                              </h3>
+                              <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 shrink-0">
+                                👤 {tpl.capacity} {tpl.capacity === 1 ? "seat" : "seats"}
+                              </span>
+                            </div>
+
+                            <p className="mt-2 text-xs text-[var(--da-text-secondary)] line-clamp-2 leading-relaxed">
+                              {tpl.description || "Fully equipped workspace with high-speed WiFi, power outlets, and ergonomic seating."}
+                            </p>
+
+                            <div className="mt-4 pt-3 border-t border-[var(--da-border-light)] flex items-center justify-between text-xs text-[var(--da-text-secondary)]">
+                              <span className="font-semibold text-slate-600">
+                                📍 {tpl.floors.join(", ")}
+                              </span>
+                              <span className="font-bold text-[var(--da-brand-dark)]">
+                                {tpl.instanceCount} {tpl.instanceCount === 1 ? "spot" : "spots"}
+                              </span>
+                            </div>
                           </div>
 
-                          <p className="mt-2 text-xs text-[var(--da-text-secondary)] line-clamp-2 leading-relaxed">
-                            {tpl.description || "Fully equipped workspace with high-speed WiFi, power outlets, and ergonomic seating."}
-                          </p>
-
-                          <div className="mt-4 pt-3 border-t border-[var(--da-border-light)] flex items-center justify-between text-xs text-[var(--da-text-secondary)]">
-                            <span className="font-semibold text-slate-600">
-                              📍 {tpl.floors.join(", ")}
-                            </span>
-                            <span className="font-bold text-[var(--da-brand-dark)]">
-                              {tpl.instanceCount} {tpl.instanceCount === 1 ? "spot" : "spots"}
-                            </span>
-                          </div>
+                          {/* CTA Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectTemplate(tpl);
+                            }}
+                            className="mt-4 da-primary-button w-full justify-center py-2.5 text-xs font-extrabold"
+                          >
+                            Select {tpl.name} →
+                          </button>
                         </div>
-
-                        {/* CTA Button */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectTemplate(tpl);
-                          }}
-                          className="mt-4 da-primary-button w-full justify-center py-2.5 text-xs font-extrabold"
-                        >
-                          Select {tpl.name} →
-                        </button>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -2767,12 +2872,12 @@ export function ReservationPage() {
                             mainCandidate.rateType === "DAY_PASS"
                               ? "Day Pass"
                               : mainCandidate.rateType === "NIGHT_PASS"
-                              ? "Night Pass"
-                              : mainCandidate.rateType === "WHOLE_DAY_PASS"
-                              ? "24h Pass"
-                              : mainCandidate.rateType === "HALF_DAY_PASS"
-                              ? "12h Pass"
-                              : "Hourly"
+                                ? "Night Pass"
+                                : mainCandidate.rateType === "WHOLE_DAY_PASS"
+                                  ? "24h Pass"
+                                  : mainCandidate.rateType === "HALF_DAY_PASS"
+                                    ? "12h Pass"
+                                    : "Hourly"
                           }):</span>
                           <span className="font-bold text-[var(--da-brand-dark)] flex items-center gap-1.5">
                             <span className="line-through text-slate-400 font-normal">₱{mainPricing.regularPrice.toFixed(2)}</span>
@@ -2792,12 +2897,12 @@ export function ReservationPage() {
                           mainCandidate.rateType === "DAY_PASS"
                             ? "Day Pass"
                             : mainCandidate.rateType === "NIGHT_PASS"
-                            ? "Night Pass"
-                            : mainCandidate.rateType === "WHOLE_DAY_PASS"
-                            ? "24h Pass"
-                            : mainCandidate.rateType === "HALF_DAY_PASS"
-                            ? "12h Pass"
-                            : "Hourly"
+                              ? "Night Pass"
+                              : mainCandidate.rateType === "WHOLE_DAY_PASS"
+                                ? "24h Pass"
+                                : mainCandidate.rateType === "HALF_DAY_PASS"
+                                  ? "12h Pass"
+                                  : "Hourly"
                         }):</span>
                         <span className="font-bold text-[var(--da-brand-dark)]">
                           ₱{(() => {
@@ -2956,11 +3061,10 @@ export function ReservationPage() {
                       Contact Number <span className="text-gray-400 font-normal">(Optional)</span>
                     </label>
                     <div
-                      className={`flex items-center overflow-hidden rounded-[14px] border bg-white transition-all shadow-sm ${
-                        formErrors.contactNumber
+                      className={`flex items-center overflow-hidden rounded-[14px] border bg-white transition-all shadow-sm ${formErrors.contactNumber
                           ? "border-red-500 ring-2 ring-red-100"
                           : "border-[var(--da-border)] focus-within:border-[var(--da-primary)] focus-within:ring-2 focus-within:ring-[var(--da-primary)]/20"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 border-r border-[var(--da-border-light)] bg-slate-50 px-3.5 py-3 text-slate-700 select-none flex-shrink-0">
                         <span className="text-sm">🇵🇭</span>
@@ -3067,6 +3171,59 @@ export function ReservationPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Dynamic Companion Names (MS-85 Multi-Capacity Companion Registration) */}
+                  {maxCompanions > 0 && (
+                    <div className="mt-4 pt-4 border-t border-[var(--da-border-light)]" data-testid="companion-names-container">
+                      <div className="mb-3">
+                        <label className="block text-xs font-bold text-[var(--da-brand-dark)]">
+                          Expected Companions <span className="text-gray-400 font-normal">(Optional, up to {maxCompanions})</span>
+                        </label>
+                        <p className="text-[11px] text-[var(--da-text-secondary)] mt-0.5">
+                          Provide the names of companions who will be accompanying you for visitor verification.
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        {Array.from({ length: maxCompanions }).map((_, idx) => (
+                          <div key={idx}>
+                            <label
+                              htmlFor={`companion-name-${idx}`}
+                              className="block text-[11px] font-semibold text-[var(--da-text-secondary)] mb-1"
+                            >
+                              Companion {idx + 1} Full Name
+                            </label>
+                            <input
+                              id={`companion-name-${idx}`}
+                              data-testid={`companion-name-input-${idx}`}
+                              type="text"
+                              value={companionNames[idx] || ""}
+                              onChange={(e) => {
+                                const newNames = [...companionNames];
+                                newNames[idx] = e.target.value;
+                                setCompanionNames(newNames);
+                                if (companionErrors[idx]) {
+                                  setCompanionErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[idx];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              placeholder="e.g. Companion Full Name"
+                              disabled={isSubmitting}
+                              className={`da-input w-full text-sm font-medium ${companionErrors[idx] ? "border-red-500 focus:border-red-500 ring-red-200" : ""
+                                }`}
+                            />
+                            {companionErrors[idx] && (
+                              <p className="mt-1 text-[11px] font-bold text-red-600" data-testid={`companion-name-error-${idx}`}>
+                                {companionErrors[idx]}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[11px] leading-relaxed text-slate-600">
                     <span className="font-bold text-slate-800">Please Note:</span> Submitting creates a pending reservation and opens a 1-hour online payment session. The selected workspace is not guaranteed until payment proof is approved and the reservation is confirmed.

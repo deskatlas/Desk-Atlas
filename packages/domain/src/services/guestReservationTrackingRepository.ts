@@ -30,6 +30,7 @@ export interface GuestReservationTrackingRecord {
   manualResolutionNotes?: string | null;
   reminderSentAt?: string | null;
   attendanceReconfirmedAt?: string | null;
+  companionNames?: string[];
 }
 
 export interface GuestReservationTrackingRepository {

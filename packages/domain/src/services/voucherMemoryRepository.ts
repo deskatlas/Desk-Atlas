@@ -58,8 +58,8 @@ export class VoucherMemoryRepository implements VoucherRepository {
     const milestone_index = typeof payload.milestone_index === 'number'
       ? payload.milestone_index
       : typeof payload.milestoneIndex === 'number'
-      ? payload.milestoneIndex
-      : 0;
+        ? payload.milestoneIndex
+        : 0;
     const campaign_name_snapshot = String(payload.campaign_name_snapshot || payload.campaignNameSnapshot || '');
     let reward_snapshot = (payload.reward_snapshot || payload.rewardSnapshot) as Voucher['rewardSnapshot'] | undefined;
     if (!reward_snapshot) {
@@ -68,25 +68,25 @@ export class VoucherMemoryRepository implements VoucherRepository {
         rewardValue: typeof payload.rewardValue === 'number'
           ? payload.rewardValue
           : typeof payload.reward_value === 'number'
-          ? payload.reward_value
-          : 0,
+            ? payload.reward_value
+            : 0,
         maxDiscountAmount: typeof payload.maxDiscountAmount === 'number'
           ? payload.maxDiscountAmount
           : typeof payload.max_discount_amount === 'number'
-          ? payload.max_discount_amount
-          : null,
+            ? payload.max_discount_amount
+            : null,
         voucherValidityDays: typeof payload.voucherValidityDays === 'number'
           ? payload.voucherValidityDays
           : typeof payload.voucher_validity_days === 'number'
-          ? payload.voucher_validity_days
-          : 30,
+            ? payload.voucher_validity_days
+            : 30,
         redemptionChannels: (payload.redemptionChannels || payload.redemption_channels) as Voucher['rewardSnapshot']['redemptionChannels'],
         redemptionWorkspaceTypeIds: (payload.redemptionWorkspaceTypeIds || payload.redemption_workspace_type_ids) as Voucher['rewardSnapshot']['redemptionWorkspaceTypeIds'],
         minimumBookingAmount: typeof payload.minimumBookingAmount === 'number'
           ? payload.minimumBookingAmount
           : typeof payload.minimum_booking_amount === 'number'
-          ? payload.minimum_booking_amount
-          : undefined,
+            ? payload.minimum_booking_amount
+            : undefined,
       };
     }
     const issued_at = String(payload.issued_at || payload.issuedAt || now);
@@ -463,6 +463,9 @@ export class VoucherMemoryRepository implements VoucherRepository {
       start_at: string;
       end_at: string;
       workspace_name: string | null;
+      workspace_instance_id?: string | null;
+      workspace_template_id?: string | null;
+      floor_id?: string | null;
       amount_due: number;
       currency: string;
       created_at: string;

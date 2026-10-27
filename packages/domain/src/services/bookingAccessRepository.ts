@@ -23,6 +23,7 @@ export interface BookingAccessRecord {
   assignedFloorName: string;
   assignedStartAt: string;
   assignedEndAt: string;
+  companionNames?: string[];
 }
 
 export interface BookingAccessRepository {

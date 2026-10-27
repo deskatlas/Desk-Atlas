@@ -16,6 +16,7 @@ export const RATE_LIMIT_RULES: Record<RateLimitScope, RateLimitRule> = {
   PROMO_EMAIL: { limit: 10, windowSeconds: 60 },
   EMAIL_CUSTOMER: { limit: 10, windowSeconds: 60 * 60 },
   EMAIL_VOUCHER: { limit: 1, windowSeconds: 5 * 60 },
+  CUSTOMER_ID_RECOVERY: { limit: 2, windowSeconds: 24 * 60 * 60 },
 };
 
 export class RateLimitedError extends Error {

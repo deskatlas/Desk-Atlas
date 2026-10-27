@@ -49,6 +49,9 @@ export async function POST(request: NextRequest) {
       start_at: string;
       end_at: string;
       workspace_name?: string | null;
+      workspace_instance_id?: string | null;
+      workspace_template_id?: string | null;
+      floor_id?: string | null;
       amount_due: number;
       currency: string;
       created_at: string;

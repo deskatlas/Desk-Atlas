@@ -2,7 +2,7 @@ import type { RateType } from "../services/pricingService";
 
 export type ReservationSource = "WEB" | "KIOSK";
 
-export type ReservationStatus = 
+export type ReservationStatus =
   | "PENDING_PAYMENT"
   | "PAYMENT_UNDER_REVIEW"
   | "PENDING_COUNTER_CONFIRMATION"
@@ -62,6 +62,7 @@ export interface Reservation {
   pricingRevision?: number;
   reminderSentAt?: string | null;
   attendanceReconfirmedAt?: string | null;
+  companionNames?: string[];
 }
 
 export type CandidateRank = 0 | 1 | 2;
@@ -108,6 +109,7 @@ export interface CreateReservationRequest {
   discountAmount?: number | null;
   requestedVoucherId?: string | null;
   promoQuoteSnapshot?: Record<string, unknown> | null;
+  companionNames?: string[];
 }
 
 export type PaymentChannel = "WEB" | "KIOSK";
@@ -165,6 +167,7 @@ export interface PaymentSessionRecord {
   grossAmountDue?: number | null;
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
+  companionNames?: string[];
 }
 
 export interface PaymentSessionView {
@@ -187,6 +190,7 @@ export interface PaymentSessionView {
   grossAmountDue?: number | null;
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
+  companionNames?: string[];
 }
 
 export interface PaymentSessionStatusView {
@@ -217,6 +221,7 @@ export interface CounterPaymentRecord {
   submittedCandidates: ReservationCandidate[];
   processedAt: string | null;
   processedByUserId: string | null;
+  companionNames?: string[];
 }
 
 export interface PaymentProofSubmissionResult {
@@ -254,6 +259,7 @@ export interface PaymentReviewQueueItem {
   refundedAt?: string | null;
   overdueNotifiedAt?: string | null;
   isOverdue?: boolean;
+  companionNames?: string[];
 }
 
 export type PaymentQueueSortMode =
@@ -354,6 +360,7 @@ export interface BookingScanResult {
   qrIssuedAt: string;
   timeRemainingSeconds: number;
   reentry?: boolean;
+  companionNames?: string[];
 }
 
 export interface StaffOperationalReservation {
@@ -400,6 +407,7 @@ export interface StaffOperationalReservation {
   manualResolutionNotes?: string | null;
   closureReason?: string | null;
   closureDate?: string | null;
+  companionNames?: string[];
   paymentAttempts?: Array<{
     id?: string;
     channel?: string;
@@ -508,6 +516,7 @@ export interface GuestReservationTrackingResult {
   discountAmount?: number | null;
   promoCodeUsed?: string | null;
   attendanceReconfirmedAt?: string | null;
+  companionNames?: string[];
 }
 
 export type AdminReservationFilter = "all" | "active" | "checked_in" | "upcoming" | "awaiting_proof" | "expired" | "rejected" | "counter_queue" | "cancelled" | "closure_impacted";
@@ -566,6 +575,7 @@ export interface AdminReservationSummary {
   cancellationRefundNotifiedAt?: string | null;
   reminderSentAt?: string | null;
   attendanceReconfirmedAt?: string | null;
+  companionNames?: string[];
 }
 
 export interface AdminReservationCandidateSummary {
@@ -661,6 +671,7 @@ export interface AdminReservationDetail {
   promoCodeUsed?: string | null;
   reminderSentAt?: string | null;
   attendanceReconfirmedAt?: string | null;
+  companionNames?: string[];
 }
 
 export interface ClosureImpactedReservationSummary {

@@ -580,6 +580,7 @@ export function ScannerPage() {
           workspaceName={result.workspaceDisplayName || result.workspaceTemplateName}
           bookingStartAt={result.bookingStartAt}
           bookingEndAt={result.bookingEndAt}
+          companionNames={result.companionNames}
         />
       )}
     </main>

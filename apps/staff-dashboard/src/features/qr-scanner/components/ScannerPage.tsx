@@ -502,6 +502,12 @@ export function ScannerPage() {
                     {result.customerEmail && (
                       <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>{result.customerEmail}</div>
                     )}
+                    {result.companionNames && result.companionNames.length > 0 && (
+                      <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--da-brand-dark)' }}>Expected Companions ({result.companionNames.length}):</span>{' '}
+                        {result.companionNames.join(', ')}
+                      </div>
+                    )}
                   </div>
 
                   {/* Spot & Time Grid */}
@@ -580,6 +586,7 @@ export function ScannerPage() {
           workspaceName={result.workspaceDisplayName || result.workspaceTemplateName}
           bookingStartAt={result.bookingStartAt}
           bookingEndAt={result.bookingEndAt}
+          companionNames={result.companionNames}
         />
       )}
     </main>

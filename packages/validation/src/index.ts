@@ -272,3 +272,5 @@ export * from './publicCustomerAssistantSchema';
 export * from './adminBadgeCountsSchema';
 
 export * from './paidRecoverySchema';
+export * from './companionNamesSchema';
+export * from './customerSchemas';

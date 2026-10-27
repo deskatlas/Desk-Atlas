@@ -417,6 +417,23 @@ export function PaymentSessionPage({ token }: { token: string }) {
                         </span>
                       ) : null}
                     </div>
+                    {data.companionNames && data.companionNames.length > 0 ? (
+                      <div className="rounded-2xl bg-[var(--da-canvas)] p-4 sm:col-span-2" data-testid="under-review-companions">
+                        <p className="text-xs font-bold text-[var(--da-text-secondary)] uppercase">
+                          Registered Companions ({data.companionNames.length})
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {data.companionNames.map((name, index) => (
+                            <span
+                              key={index}
+                              className="inline-flex items-center rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 border border-blue-200"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-6 rounded-2xl bg-[var(--da-soft)] p-4 text-xs text-[var(--da-text-secondary)] leading-relaxed">
@@ -468,6 +485,12 @@ export function PaymentSessionPage({ token }: { token: string }) {
                   <Panel label="Reference" value={data.reservationReferenceCode} />
                   <Panel label="Guest" value={`${data.customerFirstName} ${data.customerLastName}`} />
                   <Panel label="Status" value="Payment confirmed" />
+                  {data.companionNames && data.companionNames.length > 0 ? (
+                    <Panel
+                      label={`Registered Companions (${data.companionNames.length})`}
+                      value={data.companionNames.join(", ")}
+                    />
+                  ) : null}
                 </div>
                 <StateBox
                   tone="success"
@@ -498,6 +521,23 @@ export function PaymentSessionPage({ token }: { token: string }) {
                     }
                   />
                   <Panel label="Status" value="Awaiting proof submission" />
+                  {data.companionNames && data.companionNames.length > 0 ? (
+                    <div className="md:col-span-2 rounded-[20px] border border-[var(--da-border)] bg-[var(--da-card)] p-4" data-testid="active-payment-companions">
+                      <p className="text-xs font-bold uppercase tracking-wider text-[var(--da-text-secondary)]">
+                        Registered Companions ({data.companionNames.length})
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {data.companionNames.map((name, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex items-center rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 border border-blue-200"
+                          >
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <StateBox

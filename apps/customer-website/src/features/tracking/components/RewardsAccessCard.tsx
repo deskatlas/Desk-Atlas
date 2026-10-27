@@ -6,6 +6,7 @@ import {
   useRewardsSession,
   type RewardsSession,
 } from "../context/RewardsSessionContext";
+import { ForgotCustomerIdModal } from "./ForgotCustomerIdModal";
 
 export const STORAGE_KEY_VERIFY_LOCKOUT = "deskatlas_customer_verify_lockout";
 
@@ -34,6 +35,8 @@ export function RewardsAccessCard({
   const { setSession } = useRewardsSession();
   const [customerCode, setCustomerCode] = useState("");
   const [email, setEmail] = useState("");
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const customerCodeInputRef = useRef<HTMLInputElement>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(initialError);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
@@ -252,8 +255,19 @@ export function RewardsAccessCard({
 
       <form onSubmit={handleVerify} className={`${compact ? 'mt-3 gap-3' : 'mt-6 gap-4'} grid w-full`}>
         <label className="grid gap-2 text-xs font-bold text-[var(--da-brand-dark)]">
-          Customer ID
+          <div className="flex items-center justify-between">
+            <span>Customer ID</span>
+            <button
+              type="button"
+              onClick={() => setIsForgotModalOpen(true)}
+              className="text-xs font-semibold text-[var(--da-primary)] hover:underline focus:outline-none transition-colors"
+              data-testid="forgot-customer-id-trigger"
+            >
+              Forgot your Customer ID?
+            </button>
+          </div>
           <input
+            ref={customerCodeInputRef}
             type="text"
             maxLength={6}
             value={customerCode}
@@ -379,6 +393,15 @@ export function RewardsAccessCard({
           </div>
         )}
       </form>
+      <ForgotCustomerIdModal
+        isOpen={isForgotModalOpen}
+        onClose={() => setIsForgotModalOpen(false)}
+        initialEmail={email}
+        onSuccessReturn={() => {
+          setIsForgotModalOpen(false);
+          setTimeout(() => customerCodeInputRef.current?.focus(), 50);
+        }}
+      />
     </div>
   );
 }

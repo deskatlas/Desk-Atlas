@@ -445,108 +445,132 @@ export function ReservationList() {
           </div>
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-          <thead>
-            <tr style={{ background: 'var(--da-canvas)', borderBottom: '1px solid var(--da-border)' }}>
-              <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>Guest</th>
-              <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>
-                {activeTab === 'reservations' ? 'Workspace' : activeTab === 'operations' ? 'Workspace / Spot' : 'Workspace'}
-              </th>
-              <th
-                data-testid="sort-time-header"
-                onClick={() => {
-                  setTimeSort((prev) => (prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none'));
-                }}
-                style={{
-                  padding: '12px 16px',
-                  fontWeight: timeSort !== 'none' ? 800 : 700,
-                  color: timeSort !== 'none' ? 'var(--da-brand-dark)' : 'var(--da-text-secondary)',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                }}
-                title="Sort by time (Ascending / Descending)"
+        <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.5fr 1.2fr 1.8fr 0.7fr 1.2fr 0.8fr', columnGap: '16px', padding: '12px 20px', background: '#F1F8F3', fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: "var(--da-font-family, 'Inter', sans-serif)", letterSpacing: '.06em', alignItems: 'center' }}>
+          <span>REFERENCE</span>
+          <span>CUSTOMER</span>
+          <span>{activeTab === 'reservations' ? 'WORKSPACE' : activeTab === 'operations' ? 'WORKSPACE / SPOT' : 'WORKSPACE'}</span>
+          <span
+            data-testid="sort-time-header"
+            onClick={() => {
+              setTimeSort((prev) => (prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none'));
+            }}
+            style={{
+              cursor: 'pointer',
+              userSelect: 'none',
+              color: timeSort !== 'none' ? 'var(--da-brand-dark)' : undefined,
+              fontWeight: timeSort !== 'none' ? 900 : undefined,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '3px',
+              width: 'fit-content',
+            }}
+            title="Sort by schedule/time (Ascending / Descending)"
+          >
+            {activeTab === 'reservations' ? 'SCHEDULE' : activeTab === 'operations' ? 'SCHEDULE / TIME' : 'SCHEDULE'}{timeSort === 'asc' ? ' ↑' : timeSort === 'desc' ? ' ↓' : ''}
+          </span>
+          <span>PAYMENT</span>
+          <span>{activeTab === 'reservations' ? 'STATUS' : activeTab === 'operations' ? 'OPERATIONAL STATUS' : 'STATUS'}</span>
+          <span style={{ textAlign: 'right' }}>ACTIONS</span>
+        </div>
+
+        {displayedReservations.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: "var(--da-font-family, 'Inter', sans-serif)" }}>
+            {getEmptyMessage()}
+          </div>
+        ) : (
+          paginatedReservations.map((res: StaffOperationalReservation) => {
+            const statusDisp = getStatusDisplay(res.reservationStatus);
+            const isCheckedInOrActive =
+              (res.reservationStatus === 'CHECKED_IN' ||
+                res.checkInState === 'CHECKED_IN' ||
+                res.reservationStatus === 'CONFIRMED') &&
+              res.checkInState !== 'CHECKED_OUT';
+
+            const isPaid = res.reservationStatus === 'CONFIRMED' || res.reservationStatus === 'CHECKED_IN' || res.reservationStatus === 'COMPLETED' || (res.paymentStatus && res.paymentStatus.toLowerCase().includes('paid'));
+            const isRejected = res.reservationStatus === 'REJECTED' || (res.paymentStatus && res.paymentStatus.toLowerCase().includes('rejected'));
+            const paymentText = res.paymentStatus || (isPaid ? 'Paid' : res.reservationStatus === 'PENDING_COUNTER_CONFIRMATION' ? 'Counter' : isRejected ? 'Rejected' : res.reservationStatus === 'CANCELLED' ? 'Cancelled' : res.reservationStatus === 'EXPIRED' ? 'Expired' : 'Pending');
+            const paymentColor = isPaid ? 'var(--da-primary)' : isRejected ? 'var(--da-danger)' : res.reservationStatus === 'PENDING_COUNTER_CONFIRMATION' ? '#D97706' : 'var(--da-text-secondary)';
+
+            return (
+              <div
+                key={res.reservationId}
+                onClick={() => router.push(`/manage/reservations/${res.reservationId}`)}
+                style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.5fr 1.2fr 1.8fr 0.7fr 1.2fr 0.8fr', columnGap: '16px', padding: '14px 20px', borderTop: '1px solid var(--da-border-light, var(--da-border))', fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: "var(--da-font-family, 'Inter', sans-serif)", cursor: 'pointer', alignItems: 'center' }}
               >
-                {activeTab === 'reservations' ? 'Time' : activeTab === 'operations' ? 'Time / Session' : 'Time'} {timeSort === 'asc' ? '↑' : timeSort === 'desc' ? '↓' : '⇅'}
-              </th>
-              <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)' }}>Status</th>
-              <th style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--da-text-secondary)', textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayedReservations.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px' }}>{getEmptyMessage()}</td></tr>
-            ) : (
-              paginatedReservations.map((res: StaffOperationalReservation) => {
-                const statusDisp = getStatusDisplay(res.reservationStatus);
-                const isCheckedInOrActive =
-                  (res.reservationStatus === 'CHECKED_IN' ||
-                    res.checkInState === 'CHECKED_IN' ||
-                    res.reservationStatus === 'CONFIRMED') &&
-                  res.checkInState !== 'CHECKED_OUT';
-
-                return (
-                  <tr key={res.reservationId} style={{ borderBottom: '1px solid var(--da-border)' }}>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--da-brand-dark)' }}>{res.customerFirstName} {res.customerLastName}</div>
-                      <div style={{ color: 'var(--da-text-secondary)', fontSize: '12px' }}>{res.referenceCode}</div>
-                    </td>
-                    <td style={{ padding: '12px 16px', color: 'var(--da-brand-dark)' }}>
-                      {res.workspaceDisplayName || 'Pending'}
-                      {res.workspaceInstanceCode && <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)' }}>{res.workspaceInstanceCode}</div>}
-                    </td>
-                    <td style={{ padding: '12px 16px', color: 'var(--da-text-secondary)' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--da-text-primary)' }}>
-                        {res.bookingStartAt ? format(new Date(res.bookingStartAt), 'h:mm a') : '-'} to {res.bookingEndAt ? format(new Date(res.bookingEndAt), 'h:mm a') : '-'}
-                      </div>
-                      {res.bookingStartAt && (
-                        <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)' }}>
-                          {format(new Date(res.bookingStartAt), 'MMM d, yyyy')}
-                        </div>
-                      )}
-                      {isCheckedInOrActive && res.bookingEndAt && (
-                        <div style={{ marginTop: '4px' }}>
-                          <WorkspaceCountdownBadge bookingEndAt={res.bookingEndAt} nowMs={currentTick} />
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: statusDisp.bg, color: statusDisp.color, padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>
-                        {statusDisp.label}
-                      </span>
-                      {res.isClosureImpacted && (
-                        <div style={{ marginTop: '4px' }}>
-                          <span
-                            style={{
-                              background: res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#FEE2E2' : '#FEF3C7',
-                              color: res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#991B1B' : '#92400E',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10px',
-                              fontWeight: 800,
-                              display: 'inline-block',
-                            }}
-                          >
-                            {res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? 'Manual Resolution Required' : 'Closure Impacted'}
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <button
-                        onClick={() => router.push(`/manage/reservations/${res.reservationId}`)}
-                        style={{ padding: '6px 12px', background: 'var(--da-canvas)', color: 'var(--da-brand-dark)', border: '1px solid var(--da-border)', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)' }}>{res.referenceCode}</span>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--da-brand-dark)' }}>{res.customerFirstName} {res.customerLastName}</div>
+                  {res.companionNames && res.companionNames.length > 0 && (
+                    <div style={{ fontSize: '11px', color: '#1D4ED8', marginTop: '2px' }} title={`Companions: ${res.companionNames.join(', ')}`}>
+                      +{res.companionNames.length} companion{res.companionNames.length > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: 'var(--da-brand-dark)', fontWeight: 600 }}>{res.workspaceDisplayName || 'Pending'}</span>
+                  {res.workspaceInstanceCode && (
+                    <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', marginTop: '2px' }}>
+                      {res.workspaceInstanceCode}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ color: 'var(--da-text-primary)' }}>
+                    {res.bookingStartAt && res.bookingEndAt
+                      ? `${format(new Date(res.bookingStartAt), 'MMM d, yyyy, h:mm a')} - ${format(new Date(res.bookingEndAt), 'h:mm a')}`
+                      : res.bookingStartAt
+                      ? format(new Date(res.bookingStartAt), 'MMM d, yyyy, h:mm a')
+                      : '-'}
+                  </span>
+                  {isCheckedInOrActive && res.bookingEndAt && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <WorkspaceCountdownBadge bookingEndAt={res.bookingEndAt} nowMs={currentTick} showIcon={false} />
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: paymentColor }}>
+                  {paymentText}
+                </span>
+                <div>
+                  <span style={{ background: statusDisp.bg, color: statusDisp.color, padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, display: 'inline-block' }}>
+                    {statusDisp.label}
+                  </span>
+                  {res.isClosureImpacted && (
+                    <div style={{ marginTop: '4px' }}>
+                      <span
+                        style={{
+                          background: res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#FEE2E2' : '#FEF3C7',
+                          color: res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? '#991B1B' : '#92400E',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          display: 'inline-block',
+                        }}
                       >
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                        {res.closureImpactStatus === 'MANUAL_RESOLUTION_REQUIRED' ? 'Manual Resolution Required' : 'Closure Impacted'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/manage/reservations/${res.reservationId}`);
+                    }}
+                    style={{ padding: '7px 16px', background: 'var(--da-canvas)', color: 'var(--da-brand-dark)', border: '1px solid var(--da-border)', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap' }}
+                  >
+                    View
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light, var(--da-border))', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderTop: '1px solid var(--da-border-light, var(--da-border))', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: "var(--da-font-family, 'Inter', sans-serif)" }}>
             Showing {pagination.startIndex} to {pagination.endIndex} of {pagination.totalItems} entries
           </span>

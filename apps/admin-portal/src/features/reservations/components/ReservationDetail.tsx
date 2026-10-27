@@ -712,6 +712,14 @@ export function ReservationDetail({ id }: { id: string }) {
         { label: 'Customer Name', value: detail.customerName },
         { label: 'Email', value: detail.customerEmail },
         { label: 'Contact Number', value: detail.customerContactNumber || '-' },
+        ...(detail.companionNames && detail.companionNames.length > 0
+          ? [
+              {
+                label: `Expected Companions (${detail.companionNames.length})`,
+                value: detail.companionNames.join(', '),
+              },
+            ]
+          : []),
         { label: 'Schedule', value: detail.schedule },
         { label: 'Duration', value: detail.duration },
         { label: 'Booked Rate (at time of booking)', value: `₱${(detail.rateSnapshot ?? 0).toFixed(2)}/hr` },

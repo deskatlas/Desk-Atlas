@@ -24,7 +24,7 @@ export class ReservationService {
     private readonly workspaceRepository: WorkspaceRepository,
     private readonly paymentRepository?: ReservationPaymentRepository,
     private readonly paymentSessionService?: PaymentSessionService
-  ) {}
+  ) { }
 
   async createReservation(
     request: CreateReservationRequest,
@@ -70,7 +70,7 @@ export class ReservationService {
     const catalog = await this.workspaceRepository.listCatalog();
     const instances = catalog.instances;
     const templates = catalog.templates;
-    
+
     const context: CandidateValidationContext = {
       instances,
       templates,
@@ -103,6 +103,47 @@ export class ReservationService {
 
     if (!mainTemplate) {
       throw new ReservationError("Template for main candidate not found.");
+    }
+
+    if (request.companionNames) {
+      if (!Array.isArray(request.companionNames)) {
+        throw new ReservationError("Companion names must be an array.");
+      }
+      const capacity = mainTemplate.capacity || 1;
+      const maxCompanions = Math.max(0, capacity - 1);
+      const cleanedCompanions: string[] = [];
+
+      for (const name of request.companionNames) {
+        if (typeof name !== "string") {
+          throw new ReservationError("Companion names must be strings.");
+        }
+        const trimmed = name.trim();
+        if (trimmed.length > 0) {
+          if (trimmed.length > 100) {
+            throw new ReservationError("Companion name cannot exceed 100 characters.");
+          }
+          if (/[<>\0-\x1F\x7F]/.test(trimmed)) {
+            throw new ReservationError("Companion name contains invalid characters or markup.");
+          }
+          const COMPANION_NAME_REGEX = /^[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s.'’-]+$/;
+          const COMPANION_NAME_HAS_LETTER_REGEX = /[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/;
+          if (!COMPANION_NAME_REGEX.test(trimmed)) {
+            throw new ReservationError("Companion name contains invalid characters.");
+          }
+          if (!COMPANION_NAME_HAS_LETTER_REGEX.test(trimmed)) {
+            throw new ReservationError("Companion name must contain at least one letter.");
+          }
+          cleanedCompanions.push(trimmed);
+        }
+      }
+
+      if (cleanedCompanions.length > maxCompanions) {
+        throw new ReservationError(
+          `Companion names count (${cleanedCompanions.length}) exceeds maximum allowance of ${maxCompanions} for spot capacity ${capacity}.`
+        );
+      }
+
+      request.companionNames = cleanedCompanions;
     }
 
     const rateType: RateType = mainCandidate.rateType || request.rateType || "HOURLY";

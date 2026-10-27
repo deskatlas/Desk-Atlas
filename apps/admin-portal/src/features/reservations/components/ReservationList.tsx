@@ -706,9 +706,9 @@ export function ReservationList() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '11px 20px', background: '#F1F8F3', fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.06em', alignItems: 'center' }}>
-          <span>REFERENCE ⇅</span>
-          <span>CUSTOMER ⇅</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.5fr 1.2fr 1.8fr 0.7fr 1.2fr 0.8fr', columnGap: '16px', padding: '12px 20px', background: '#F1F8F3', fontSize: '10px', fontWeight: 800, color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', letterSpacing: '.06em', alignItems: 'center' }}>
+          <span>REFERENCE</span>
+          <span>CUSTOMER</span>
           <span>{activeTab === 'reservations' ? 'WORKSPACE' : activeTab === 'operations' ? 'WORKSPACE / SPOT' : 'WORKSPACE'}</span>
           <span
             data-testid="sort-schedule-header"
@@ -727,7 +727,7 @@ export function ReservationList() {
             }}
             title="Sort by schedule/time (Ascending / Descending)"
           >
-            {activeTab === 'reservations' ? 'SCHEDULE' : activeTab === 'operations' ? 'SCHEDULE / TIME' : 'SCHEDULE'} {scheduleSort === 'asc' ? '↑' : scheduleSort === 'desc' ? '↓' : '⇅'}
+            {activeTab === 'reservations' ? 'SCHEDULE' : activeTab === 'operations' ? 'SCHEDULE / TIME' : 'SCHEDULE'}{scheduleSort === 'asc' ? ' ↑' : scheduleSort === 'desc' ? ' ↓' : ''}
           </span>
           <span>PAYMENT</span>
           <span>{activeTab === 'reservations' ? 'STATUS' : activeTab === 'operations' ? 'OPERATIONAL STATUS' : 'STATUS'}</span>
@@ -735,16 +735,16 @@ export function ReservationList() {
         </div>
 
         {loading || (loadedScope !== closureOnly && !error) ? (
-          <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             Loading reservations...
           </div>
         ) : error ? (
-          <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-danger)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--da-danger)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             {error}
             <button type="button" className="da-secondary-button" onClick={loadReservations}>Retry</button>
           </div>
         ) : displayedReservations.length === 0 ? (
-          <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--da-text-secondary)', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}>
             {isClosureView ? (totalCount === 0
               ? 'No reservations currently require closure action.'
               : 'No closure impacted reservations match your search and filters.') : <>No {activeTab === 'reservations' ? 'reservation' : activeTab === 'operations' ? 'active operational' : activeTab === 'completed' ? 'completed' : activeTab === 'cancelled_refund_eligible' ? 'cancellation refund eligible' : activeTab === 'refunded' ? 'refunded' : 'expired'} records match your filters.</>}
@@ -763,19 +763,23 @@ export function ReservationList() {
               <div
                 key={r.id || i}
                 onClick={() => router.push(`/manage/reservations/${r.referenceCode}`)}
-                style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.4fr 1.1fr 1.4fr .9fr 1.1fr .5fr', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', cursor: 'pointer', alignItems: 'center' }}
+                style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.5fr 1.2fr 1.8fr 0.7fr 1.2fr 0.8fr', columnGap: '16px', padding: '14px 20px', borderTop: '1px solid var(--da-border-light)', fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)', cursor: 'pointer', alignItems: 'center' }}
               >
                 <span style={{ fontWeight: 800, color: 'var(--da-brand-dark)' }}>{r.referenceCode}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--da-canvas)', color: 'var(--da-text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, flexShrink: 0 }}>{r.customerInitials}</div>
-                  <span style={{ fontWeight: 600 }}>{r.customerName}</span>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{r.customerName}</div>
+                  {r.companionNames && r.companionNames.length > 0 && (
+                    <div style={{ fontSize: '11px', color: '#1D4ED8', marginTop: '2px' }} title={`Companions: ${r.companionNames.join(', ')}`}>
+                      +{r.companionNames.length} companion{r.companionNames.length > 1 ? 's' : ''}
+                    </div>
+                  )}
                 </div>
                 <span>{r.workspaceDisplayName}</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <span style={{ color: 'var(--da-text-primary)' }}>{r.schedule}</span>
                   {isCheckedInOrActive && r.endAt && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <WorkspaceCountdownBadge bookingEndAt={r.endAt} nowMs={currentTick} />
+                      <WorkspaceCountdownBadge bookingEndAt={r.endAt} nowMs={currentTick} showIcon={false} />
                     </div>
                   )}
                 </div>
@@ -843,7 +847,7 @@ export function ReservationList() {
                         background: '#B45309',
                         color: '#fff',
                         border: 'none',
-                        padding: '4px 10px',
+                        padding: '6px 12px',
                         borderRadius: '6px',
                         fontSize: '11px',
                         fontWeight: 700,
@@ -854,17 +858,37 @@ export function ReservationList() {
                     >
                       Process Refund
                     </button>
-                    <span style={{ color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/manage/reservations/${r.referenceCode}`);
+                      }}
+                      style={{ padding: '7px 16px', background: 'var(--da-canvas)', color: 'var(--da-brand-dark)', border: '1px solid var(--da-border)', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap' }}
+                    >
+                      View
+                    </button>
                   </div>
                 ) : (
-                  <span style={{ textAlign: 'right', color: 'var(--da-text-secondary)', fontWeight: 800, letterSpacing: '1px' }}>⋯</span>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/manage/reservations/${r.referenceCode}`);
+                      }}
+                      style={{ padding: '7px 16px', background: 'var(--da-canvas)', color: 'var(--da-brand-dark)', border: '1px solid var(--da-border)', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap' }}
+                    >
+                      View
+                    </button>
+                  </div>
                 )}
               </div>
             );
           })
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 20px', borderTop: '1px solid var(--da-border-light)', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderTop: '1px solid var(--da-border-light)', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
             Showing {pagination.startIndex} to {pagination.endIndex} of {pagination.totalItems} entries
           </span>

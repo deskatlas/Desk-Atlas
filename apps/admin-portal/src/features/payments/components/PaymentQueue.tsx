@@ -422,6 +422,11 @@ export function PaymentQueue() {
                   <div>
                     <div style={{ fontWeight: 800, color: 'var(--da-brand-dark)', fontSize: '14px' }}>{refDisplay}</div>
                     <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>{customerName} &middot; <strong style={{ color: 'var(--da-text-primary)' }}>₱{formattedAmount}</strong> &middot; submitted {formattedTime}</div>
+                    {p.companionNames && p.companionNames.length > 0 && (
+                      <div style={{ fontSize: '11px', color: '#1D4ED8', marginTop: '2px' }} title={`Companions: ${p.companionNames.join(', ')}`}>
+                        +{p.companionNames.length} companion{p.companionNames.length > 1 ? 's' : ''} ({p.companionNames.join(', ')})
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => router.push(`/manage/payments/${p.paymentAttemptId}`)} style={{ background: 'linear-gradient(0deg, var(--da-brand-dark) 70%, #154A32)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '9px', fontWeight: 700, fontSize: '12px', cursor: 'pointer', boxShadow: '0 4px 10px 1px rgba(12,59,39,.16)' }}>Review</button>
@@ -479,10 +484,10 @@ export function PaymentQueue() {
               {overdueSortMode === 'RECENT_DESC'
                 ? "Overdue reviews are sorted by proof upload time (most recent first)."
                 : overdueSortMode === 'RECENT_ASC'
-                ? "Overdue reviews are sorted by proof upload time (oldest first)."
-                : overdueSortMode === 'AMOUNT_DESC'
-                ? "Sorted by highest amount first. Ties are ordered by most recent proof upload."
-                : "Sorted by lowest amount first. Ties are ordered by most recent proof upload."}
+                  ? "Overdue reviews are sorted by proof upload time (oldest first)."
+                  : overdueSortMode === 'AMOUNT_DESC'
+                    ? "Sorted by highest amount first. Ties are ordered by most recent proof upload."
+                    : "Sorted by lowest amount first. Ties are ordered by most recent proof upload."}
             </span>
           </div>
 
@@ -637,6 +642,11 @@ export function PaymentQueue() {
                       <span data-testid="overdue-elapsed-text">{elapsedDuration}</span>{' '}
                       <span data-testid="overdue-elapsed-approx" style={{ color: 'var(--da-text-secondary)', fontSize: '11px' }}>({elapsedApprox})</span>
                     </div>
+                    {p.companionNames && p.companionNames.length > 0 && (
+                      <div style={{ fontSize: '11px', color: '#1D4ED8', marginTop: '2px' }} title={`Companions: ${p.companionNames.join(', ')}`}>
+                        +{p.companionNames.length} companion{p.companionNames.length > 1 ? 's' : ''} ({p.companionNames.join(', ')})
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button
@@ -710,10 +720,10 @@ export function PaymentQueue() {
               {refundedSortMode === 'RECENT_DESC'
                 ? "Refunded payments are sorted by refund time (most recent first)."
                 : refundedSortMode === 'RECENT_ASC'
-                ? "Refunded payments are sorted by refund time (oldest first)."
-                : refundedSortMode === 'AMOUNT_DESC'
-                ? "Sorted by highest refund amount first. Ties are ordered by most recent refund."
-                : "Sorted by lowest refund amount first. Ties are ordered by most recent refund."}
+                  ? "Refunded payments are sorted by refund time (oldest first)."
+                  : refundedSortMode === 'AMOUNT_DESC'
+                    ? "Sorted by highest refund amount first. Ties are ordered by most recent refund."
+                    : "Sorted by lowest refund amount first. Ties are ordered by most recent refund."}
             </span>
           </div>
 
@@ -876,6 +886,11 @@ export function PaymentQueue() {
                     <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
                       {customerName} &middot; <strong style={{ color: 'var(--da-text-primary)' }}>₱{formattedAmount}</strong> &middot; refunded {refundedTime}
                     </div>
+                    {p.companionNames && p.companionNames.length > 0 && (
+                      <div style={{ fontSize: '11px', color: '#1D4ED8', marginTop: '2px' }} title={`Companions: ${p.companionNames.join(', ')}`}>
+                        +{p.companionNames.length} companion{p.companionNames.length > 1 ? 's' : ''} ({p.companionNames.join(', ')})
+                      </div>
+                    )}
                     {p.refundNotes && (
                       <div style={{ fontSize: '11px', color: '#047857', marginTop: '2px', fontFamily: 'var(--da-font-family)' }}>
                         Note: {p.refundNotes}
@@ -1001,10 +1016,10 @@ export function PaymentQueue() {
               {rejectedSortMode === 'REJECTED_DESC'
                 ? "Showing most recently rejected payments first (newest to oldest)."
                 : rejectedSortMode === 'REJECTED_ASC'
-                ? "Showing oldest rejected payments first (oldest to newest)."
-                : rejectedSortMode === 'AMOUNT_DESC'
-                ? "Sorted by highest rejected amount first. Ties are ordered by most recent rejection."
-                : "Sorted by lowest rejected amount first. Ties are ordered by most recent rejection."}
+                  ? "Showing oldest rejected payments first (oldest to newest)."
+                  : rejectedSortMode === 'AMOUNT_DESC'
+                    ? "Sorted by highest rejected amount first. Ties are ordered by most recent rejection."
+                    : "Sorted by lowest rejected amount first. Ties are ordered by most recent rejection."}
             </span>
           </div>
 
@@ -1076,6 +1091,11 @@ export function PaymentQueue() {
                     <div style={{ fontSize: '12px', color: 'var(--da-text-primary)', fontFamily: 'var(--da-font-family)' }}>
                       {customerName} &middot; <strong style={{ color: 'var(--da-text-primary)' }}>₱{formattedAmount}</strong> &middot; rejected {rejectedTime}
                     </div>
+                    {p.companionNames && p.companionNames.length > 0 && (
+                      <div style={{ fontSize: '11px', color: '#1D4ED8', marginTop: '2px' }} title={`Companions: ${p.companionNames.join(', ')}`}>
+                        +{p.companionNames.length} companion{p.companionNames.length > 1 ? 's' : ''} ({p.companionNames.join(', ')})
+                      </div>
+                    )}
                     {p.rejectionReason && (
                       <div style={{ fontSize: '11px', color: '#991B1B', marginTop: '2px', fontFamily: 'var(--da-font-family)' }}>
                         Reason: {p.rejectionReason}

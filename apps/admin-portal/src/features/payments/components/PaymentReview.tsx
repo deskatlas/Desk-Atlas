@@ -337,6 +337,15 @@ export function PaymentReview({ id }: { id: string }) {
   const reviewFields: ReviewField[] = [
     { label: 'Customer', value: customerName },
     { label: 'Email', value: detail.customerEmail },
+    ...(detail.companionNames && detail.companionNames.length > 0
+      ? [
+          {
+            label: `Expected Companions (${detail.companionNames.length})`,
+            value: detail.companionNames.join(', '),
+            testId: 'review-companion-names',
+          },
+        ]
+      : []),
     { label: 'Reference', value: detail.reservationReferenceCode || detail.paymentAttemptId.slice(0, 8) },
     ...(hasPromo
       ? [

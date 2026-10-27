@@ -40,6 +40,7 @@ import {
 import { fetchTemplateAvailability, fetchOccupiedInstances, fetchNextUpcomingBooking } from "../../lib/availabilityApi";
 import { handleNumericKeyDown, WorkspaceCountdownBadge, useLiveCountdownClock, useActiveTabPolling, MarqueeLabel } from "@deskatlas/ui";
 import { useKioskSettings } from "../../../hooks/useKioskSettings";
+import { validateCompanionName } from "@deskatlas/validation";
 
 export interface WorkspaceTemplateSummary {
   id: string;
@@ -515,6 +516,12 @@ export default function KioskReservePage() {
     discountAmount?: number;
     promoCode?: string;
   } | null>(null);
+
+  const [companionNames, setCompanionNames] = useState<string[]>([]);
+  const [companionErrors, setCompanionErrors] = useState<Record<number, string>>({});
+
+  const spotCapacity = selectedWorkspace?.capacity ?? selectedTemplate?.capacity ?? 1;
+  const maxCompanions = Math.max(0, spotCapacity - 1);
 
   // Promo code state (SPEC-3 Section 5.1)
   const [promoCode, setPromoCode] = useState("");
@@ -1005,12 +1012,25 @@ export default function KioskReservePage() {
       errors.contactNumber = "Please enter the remaining digits of your 11-digit mobile number.";
     }
 
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
+    const compErrors: Record<number, string> = {};
+    for (let i = 0; i < maxCompanions; i++) {
+      const val = companionNames[i];
+      if (val && val.trim().length > 0) {
+        const validation = validateCompanionName(val);
+        if (!validation.isValid) {
+          compErrors[i] = validation.error || "Invalid companion name";
+        }
+      }
+    }
+
+    if (Object.keys(errors).length > 0 || Object.keys(compErrors).length > 0) {
+      if (Object.keys(errors).length > 0) setFormErrors(errors);
+      if (Object.keys(compErrors).length > 0) setCompanionErrors(compErrors);
       return;
     }
 
     setFormErrors({});
+    setCompanionErrors({});
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -1025,6 +1045,10 @@ export default function KioskReservePage() {
           customerEmail: emailVal.toLowerCase(),
           customerContactNumber: contactNumberDigits.length === 9 ? `09${contactNumberDigits}` : undefined,
           promoCode: appliedPromo?.code || undefined,
+          companionNames: companionNames
+            .map((n) => (n || "").trim())
+            .filter((n) => n.length > 0)
+            .slice(0, maxCompanions),
           workspaceInstanceId: selectedWorkspace.workspaceInstanceId,
           rateType: selectedRateType,
           durationHours: effectiveDurationHours,
@@ -2826,7 +2850,7 @@ export default function KioskReservePage() {
                     Customer Details
                   </h2>
                   <p className="text-xs text-[var(--da-text-secondary)] mt-0.5">
-                    Enter your contact details to receive your booking QR access pass. DeskAtlas is guest-first — no password or registration required.
+                    Enter your contact details to receive your booking QR access pass. DeskAtlas is guest-first: no password or registration required.
                   </p>
                 </div>
 
@@ -3071,6 +3095,60 @@ export default function KioskReservePage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Dynamic Companion Names (MS-85 Multi-Capacity Companion Registration) */}
+                  {maxCompanions > 0 && (
+                    <div className="mt-4 pt-4 border-t border-[var(--da-border-light)]" data-testid="kiosk-companion-names-container">
+                      <div className="mb-3">
+                        <label className="block text-xs font-bold text-[var(--da-brand-dark)]">
+                          Expected Companions <span className="text-gray-400 font-normal">(Optional, up to {maxCompanions})</span>
+                        </label>
+                        <p className="text-[11px] text-[var(--da-text-secondary)] mt-0.5">
+                          Enter full names of accompanying guests for front-desk check-in verification.
+                        </p>
+                      </div>
+                      <div className="space-y-3">
+                        {Array.from({ length: maxCompanions }).map((_, idx) => (
+                          <div key={idx}>
+                            <label
+                              htmlFor={`kiosk-companion-name-${idx}`}
+                              className="block text-[11px] font-semibold text-[var(--da-text-secondary)] mb-1"
+                            >
+                              Companion {idx + 1} Full Name
+                            </label>
+                            <input
+                              id={`kiosk-companion-name-${idx}`}
+                              data-testid={`kiosk-companion-name-input-${idx}`}
+                              type="text"
+                              value={companionNames[idx] || ""}
+                              onChange={(e) => {
+                                const newNames = [...companionNames];
+                                newNames[idx] = e.target.value;
+                                setCompanionNames(newNames);
+                                if (companionErrors[idx]) {
+                                  setCompanionErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[idx];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              placeholder="e.g. Companion Full Name"
+                              disabled={isSubmitting}
+                              className={`da-input text-sm font-medium ${
+                                companionErrors[idx] ? "border-red-500 ring-red-200" : ""
+                              }`}
+                            />
+                            {companionErrors[idx] && (
+                              <p className="mt-1 text-[11px] font-bold text-red-600" data-testid={`kiosk-companion-name-error-${idx}`}>
+                                {companionErrors[idx]}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Payment Method Selection */}
                   <div>

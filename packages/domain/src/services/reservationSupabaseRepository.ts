@@ -241,6 +241,7 @@ interface PaymentReviewReservationRow extends PaymentReportReservationRow {
   gross_amount_due?: number | string | null;
   discount_amount?: number | string | null;
   promo_code_used?: string | null;
+  companion_names?: string[] | null;
 }
 
 interface PaymentReviewAttemptRow extends PaymentAttemptRow {
@@ -467,11 +468,12 @@ export class ReservationSupabaseRepository
     return catalog;
   }
 
-  private embeddedChildren(rows: Array<{ candidates?: unknown; attempts?: unknown }>):
-    { candidates: ReservationCandidateRow[]; attempts: PaymentAttemptRow[] } | undefined {
+  private embeddedChildren(rows: Array<{ candidates?: unknown; attempts?: unknown }>): { candidates: ReservationCandidateRow[]; attempts: PaymentAttemptRow[] } | undefined {
     if (!rows.every(row => Array.isArray(row.candidates) && Array.isArray(row.attempts))) return undefined;
-    return { candidates: rows.flatMap(row => row.candidates as ReservationCandidateRow[]),
-      attempts: rows.flatMap(row => row.attempts as PaymentAttemptRow[]) };
+    return {
+      candidates: rows.flatMap(row => row.candidates as ReservationCandidateRow[]),
+      attempts: rows.flatMap(row => row.attempts as PaymentAttemptRow[])
+    };
   }
 
   private async fetchCandidatesForReservationIds(
@@ -729,6 +731,7 @@ export class ReservationSupabaseRepository
         closureDate,
         closureNotifiedAt: ((reservation as any).closure_notified_at as string) || null,
         manualResolutionNotes: sanitizeManualResolutionNotes((reservation as any).manual_resolution_notes),
+        companionNames: Array.isArray((reservation as any).companion_names) ? (reservation as any).companion_names : [],
       };
     }));
   }
@@ -759,6 +762,7 @@ export class ReservationSupabaseRepository
       discountAmount: data.discount_amount != null ? Number(data.discount_amount) : undefined,
       promoCodeUsed: data.promo_code_used ?? undefined,
       requestedVoucherId: data.requested_voucher_id ?? undefined,
+      companionNames: Array.isArray(data.companion_names) ? data.companion_names : [],
       promoQuoteSnapshot: data.promo_quote_snapshot ?? undefined,
       candidates,
     };
@@ -847,17 +851,18 @@ export class ReservationSupabaseRepository
       promo_code_used: request.promoCode ? request.promoCode.trim().toUpperCase() : null,
       requested_voucher_id: request.requestedVoucherId ?? null,
       promo_quote_snapshot: request.promoQuoteSnapshot ?? null,
+      companion_names: request.companionNames ?? [],
     };
     await this.request(`/reservations?id=eq.${encodeURIComponent(reservationId)}`, {
       method: "PATCH",
       body: JSON.stringify(patchPayload),
-    }).catch(() => {});
+    }).catch(() => { });
 
     if (request.requestedVoucherId) {
       await this.request('/rpc/hold_voucher_for_pending_reservation', {
         method: 'POST',
         body: JSON.stringify({ p_reservation_id: reservationId }),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const candidatesData = await this.request<any[]>(
@@ -998,6 +1003,7 @@ export class ReservationSupabaseRepository
       submittedCandidates: candidates,
       processedAt: attempt.processed_at,
       processedByUserId: attempt.processed_by_user_id,
+      companionNames: Array.isArray((reservation as any).companion_names) ? (reservation as any).companion_names : [],
     };
   }
 
@@ -1075,6 +1081,7 @@ export class ReservationSupabaseRepository
       submittedCandidates: candidates,
       processedAt: attempt.processed_at,
       processedByUserId: attempt.processed_by_user_id,
+      companionNames: Array.isArray((reservation as any).companion_names) ? (reservation as any).companion_names : [],
     };
   }
 
@@ -1131,6 +1138,7 @@ export class ReservationSupabaseRepository
       grossAmountDue: reservation.gross_amount_due != null ? Number(reservation.gross_amount_due) : undefined,
       discountAmount: reservation.discount_amount != null ? Number(reservation.discount_amount) : undefined,
       promoCodeUsed: reservation.promo_code_used ?? undefined,
+      companionNames: Array.isArray((reservation as any).companion_names) ? (reservation as any).companion_names : [],
     };
   }
 
@@ -1629,6 +1637,7 @@ export class ReservationSupabaseRepository
       assignedFloorName: floor?.name ?? "Unknown Floor",
       assignedStartAt: assignedCandidate.start_at,
       assignedEndAt: assignedCandidate.end_at,
+      companionNames: Array.isArray(reservation.companion_names) ? reservation.companion_names : [],
     };
   }
 
@@ -1708,6 +1717,7 @@ export class ReservationSupabaseRepository
       assignedFloorName: floor?.name ?? "Unknown Floor",
       assignedStartAt: assignedCandidate.start_at,
       assignedEndAt: assignedCandidate.end_at,
+      companionNames: Array.isArray(reservation.companion_names) ? reservation.companion_names : [],
     };
   }
 
@@ -1757,14 +1767,14 @@ export class ReservationSupabaseRepository
     const action = isCheckIn
       ? "reservation_checked_in"
       : isReentry
-      ? "reservation_reentered"
-      : "booking_qr_scanned";
+        ? "reservation_reentered"
+        : "booking_qr_scanned";
 
     const eventType = isCheckIn
       ? "CHECK_IN"
       : isReentry
-      ? "RE_ENTRY"
-      : "QR_SCAN";
+        ? "RE_ENTRY"
+        : "QR_SCAN";
 
     let actorDisplayName: string | null = null;
     if (actorUserId) {
@@ -1893,7 +1903,7 @@ export class ReservationSupabaseRepository
         workspaceInstanceCode: instance?.instance_code ?? null,
         activityType: row.action === 'reservation_rescheduled' ? 'RESCHEDULED'
           : row.action === 'reservation_checked_out' ? 'CHECK_OUT'
-          : row.action === 'reservation_reentered' || row.metadata?.reentry === true || row.metadata?.event_type === 'RE_ENTRY' ? 'REENTRY' : 'CHECK_IN',
+            : row.action === 'reservation_reentered' || row.metadata?.reentry === true || row.metadata?.event_type === 'RE_ENTRY' ? 'REENTRY' : 'CHECK_IN',
         occurredAt: row.created_at, actorUserId: row.actor_user_id, actorRole: row.actor_role,
         actorName: row.metadata?.actor_name || (row.actor_user_id ? profilesById.get(row.actor_user_id) : undefined)
           || (row.actor_role === 'ADMIN' ? 'Admin' : row.actor_role === 'STAFF' ? 'Staff' : row.actor_role === 'CUSTOMER' ? 'Customer' : null),
@@ -2040,11 +2050,13 @@ export class ReservationSupabaseRepository
   }
 
   async commitPaidRecovery(input: import('@deskatlas/validation').PaidRecoveryCommand): Promise<import('./paidRecoveryService').PaidRecoveryContext> {
-    return this.request('/rpc/recover_paid_reservation', { method: 'POST', body: JSON.stringify({
-      p_reference: input.referenceCode, p_email: input.customerEmail, p_episode: input.episodeId,
-      p_remedy: input.remedy, p_workspace: input.remedy === 'REFUND' ? null : input.workspaceInstanceId,
-      p_start: input.remedy === 'RESCHEDULE' ? input.startAt : null,
-    }) });
+    return this.request('/rpc/recover_paid_reservation', {
+      method: 'POST', body: JSON.stringify({
+        p_reference: input.referenceCode, p_email: input.customerEmail, p_episode: input.episodeId,
+        p_remedy: input.remedy, p_workspace: input.remedy === 'REFUND' ? null : input.workspaceInstanceId,
+        p_start: input.remedy === 'RESCHEDULE' ? input.startAt : null,
+      })
+    });
   }
 
   async findGuestReservationTrackingRecord(input: {
@@ -2170,6 +2182,7 @@ export class ReservationSupabaseRepository
       ...closureInfo,
       closureNotifiedAt: reservation.closure_notified_at ?? null,
       manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manual_resolution_notes),
+      companionNames: Array.isArray(reservation.companion_names) ? reservation.companion_names : [],
     };
   }
 
@@ -2279,9 +2292,11 @@ export class ReservationSupabaseRepository
       this.fetchReportRowsByIds<CatalogWorkspaceTemplate>('workspace_templates', 'id,name', instances.map(row => row.template_id)),
       this.fetchReportRowsByIds<CatalogFloor>('floors', 'id,name', instances.map(row => row.floor_id)),
     ]);
-    return { reservations: new Map(reservations.map(row => [row.id, row])), candidates,
+    return {
+      reservations: new Map(reservations.map(row => [row.id, row])), candidates,
       instancesById: new Map(instances.map(row => [row.id, row])),
-      templatesById: new Map(templates.map(row => [row.id, row])), floorsById: new Map(floors.map(row => [row.id, row])) };
+      templatesById: new Map(templates.map(row => [row.id, row])), floorsById: new Map(floors.map(row => [row.id, row]))
+    };
   }
 
   private async loadPaymentReview(
@@ -2431,6 +2446,7 @@ export class ReservationSupabaseRepository
       grossAmountDue: reservation.gross_amount_due != null ? Number(reservation.gross_amount_due) : undefined,
       discountAmount: reservation.discount_amount != null ? Number(reservation.discount_amount) : undefined,
       promoCodeUsed: reservation.promo_code_used ?? undefined,
+      companionNames: Array.isArray((reservation as any).companion_names) ? (reservation as any).companion_names : [],
     };
   }
 
@@ -2617,6 +2633,7 @@ export class ReservationSupabaseRepository
       closureImpactStatus: reservation.closure_impact_status ?? null,
       closureNotifiedAt: reservation.closure_notified_at ?? null,
       manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manual_resolution_notes),
+      companionNames: Array.isArray(reservation.companion_names) ? reservation.companion_names : [],
       ...closureInfo,
     };
   }
@@ -2834,6 +2851,7 @@ export class ReservationSupabaseRepository
         refundedAt: latestAttempt?.refunded_at ?? null,
         refundNotes: latestAttempt?.refund_notes ?? null,
         cancellationRefundNotifiedAt: latestAttempt?.cancellation_refund_notified_at ?? null,
+        companionNames: Array.isArray(r.companion_names) ? r.companion_names : [],
       };
     }));
   }
@@ -3021,10 +3039,10 @@ export class ReservationSupabaseRepository
         actorRole === "STAFF"
           ? "Staff"
           : actorRole === "CUSTOMER"
-          ? "Customer"
-          : actorRole === "SUPERADMIN" || actorRole === "SUPER_ADMIN"
-          ? "Super Admin"
-          : "Admin";
+            ? "Customer"
+            : actorRole === "SUPERADMIN" || actorRole === "SUPER_ADMIN"
+              ? "Super Admin"
+              : "Admin";
       const inSession = Boolean(rel.metadata?.in_session);
       const remainingMinutes = rel.metadata?.remaining_minutes;
 
@@ -3176,6 +3194,7 @@ export class ReservationSupabaseRepository
       promoCodeUsed: r.promo_code_used ?? undefined,
       reminderSentAt: r.reminder_sent_at ?? null,
       attendanceReconfirmedAt: r.attendance_reconfirmed_at ?? null,
+      companionNames: Array.isArray(r.companion_names) ? r.companion_names : [],
     };
   }
 
@@ -3233,7 +3252,7 @@ export class ReservationSupabaseRepository
           updated_at: nowIso,
         }),
       }
-    ).catch(() => {});
+    ).catch(() => { });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -3511,7 +3530,7 @@ export class ReservationSupabaseRepository
           rescheduled_at: nowIso,
         },
       }),
-    }).catch(() => {});
+    }).catch(() => { });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -3577,13 +3596,13 @@ export class ReservationSupabaseRepository
       ).catch(() => []),
       targetDate
         ? this.request<any[]>(
-            `/operating_hours?day_of_week=eq.${dayOfWeek}&is_active=eq.true&order=opens_at.asc`
-          ).catch(() => [])
+          `/operating_hours?day_of_week=eq.${dayOfWeek}&is_active=eq.true&order=opens_at.asc`
+        ).catch(() => [])
         : Promise.resolve([]),
       targetDate
         ? this.request<any[]>(
-            `/schedule_blocks?scope=eq.BUSINESS&start_at=lt.${encodeURIComponent(targetDate + "T23:59:59.999+08:00")}&end_at=gt.${encodeURIComponent(targetDate + "T00:00:00+08:00")}`
-          ).catch(() => [])
+          `/schedule_blocks?scope=eq.BUSINESS&start_at=lt.${encodeURIComponent(targetDate + "T23:59:59.999+08:00")}&end_at=gt.${encodeURIComponent(targetDate + "T00:00:00+08:00")}`
+        ).catch(() => [])
         : Promise.resolve([]),
     ]);
 
@@ -4187,7 +4206,7 @@ export class ReservationSupabaseRepository
           workspace_instance_id: assigned.workspace_instance_id,
         },
       }),
-    }).catch(() => {});
+    }).catch(() => { });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -4417,7 +4436,7 @@ export class ReservationSupabaseRepository
           closure_impact_status: input.actorRole === "CUSTOMER" ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED",
           updated_at: new Date().toISOString(),
         }),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const detail = await this.getAdminReservationDetail(r.id);
@@ -4773,9 +4792,11 @@ export class ReservationSupabaseRepository
       if (overlaps || !await this.clearObservedClosureImpact(row)) continue;
       clearedReservationIds.push(row.id);
       await this.request('/audit_logs', {
-        method: 'POST', body: JSON.stringify({ entity_type: 'reservation', entity_id: row.id,
+        method: 'POST', body: JSON.stringify({
+          entity_type: 'reservation', entity_id: row.id,
           action: 'CLOSURE_CONFLICT_CLEARED', actor_role: 'SYSTEM',
-          metadata: { reason: 'Closure conflict cleared following live collision evaluation', reconciled_at: new Date().toISOString() } }),
+          metadata: { reason: 'Closure conflict cleared following live collision evaluation', reconciled_at: new Date().toISOString() }
+        }),
       });
     }
     return { clearedReservationIds };
@@ -4861,7 +4882,7 @@ export class ReservationSupabaseRepository
           logged_at: nowIso,
         },
       }),
-    }).catch(() => {});
+    }).catch(() => { });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -4956,7 +4977,7 @@ export class ReservationSupabaseRepository
           flagged_at: nowIso,
         },
       }),
-    }).catch(() => {});
+    }).catch(() => { });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -5012,18 +5033,22 @@ export class ReservationSupabaseRepository
         closureImpactStatus: row.closure_impact_status ?? 'AFFECTED_PENDING_ACTION',
       });
     }
-    return { impactedCount: colliding.length, closureDateRange: [...dates].join(', ') || null,
-      closureReason: [...reasons].join(', ') || null, reservations: colliding };
+    return {
+      impactedCount: colliding.length, closureDateRange: [...dates].join(', ') || null,
+      closureReason: [...reasons].join(', ') || null, reservations: colliding
+    };
   }
 
   private async clearObservedClosureImpact(row: { id: string; updated_at: string }): Promise<boolean> {
     if (!row.updated_at) return false;
     const updated = await this.request<Array<{ id: string }>>(
       `/reservations?id=eq.${encodeURIComponent(row.id)}&is_closure_impacted=eq.true&updated_at=eq.${encodeURIComponent(row.updated_at)}&select=id`, {
-        method: 'PATCH', headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({ is_closure_impacted: false, closure_impact_status: null,
-          closure_exception_id: null, updated_at: new Date().toISOString() }),
-      });
+      method: 'PATCH', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        is_closure_impacted: false, closure_impact_status: null,
+        closure_exception_id: null, updated_at: new Date().toISOString()
+      }),
+    });
     return updated.length > 0;
   }
 

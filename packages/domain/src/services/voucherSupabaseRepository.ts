@@ -691,6 +691,9 @@ export class VoucherSupabaseRepository implements VoucherRepository {
       start_at: string;
       end_at: string;
       workspace_name: string | null;
+      workspace_instance_id?: string | null;
+      workspace_template_id?: string | null;
+      floor_id?: string | null;
       amount_due: number;
       currency: string;
       created_at: string;
@@ -744,8 +747,37 @@ export class VoucherSupabaseRepository implements VoucherRepository {
       }
     }
 
+    const instanceIds = Array.from(
+      new Set(
+        Array.from(candidateByResId.values())
+          .map((c) => c.workspace_instance_id)
+          .filter(Boolean)
+      )
+    );
+
+    const instancesById = new Map<
+      string,
+      { id: string; display_name: string; template_id: string; floor_id: string }
+    >();
+
+    if (instanceIds.length > 0) {
+      const { data: instData } = await this.supabase
+        .from('workspace_instances')
+        .select('id, display_name, template_id, floor_id')
+        .in('id', instanceIds);
+
+      if (instData) {
+        for (const inst of instData) {
+          instancesById.set(inst.id, inst as any);
+        }
+      }
+    }
+
     return reservations.map((r) => {
       const cand = candidateByResId.get(r.id);
+      const inst = cand?.workspace_instance_id
+        ? instancesById.get(cand.workspace_instance_id)
+        : undefined;
       return {
         id: r.id,
         reference_code: r.reference_code,
@@ -753,7 +785,10 @@ export class VoucherSupabaseRepository implements VoucherRepository {
         status: r.status,
         start_at: cand?.start_at || r.created_at,
         end_at: cand?.end_at || r.created_at,
-        workspace_name: null,
+        workspace_name: inst?.display_name || null,
+        workspace_instance_id: inst?.id || cand?.workspace_instance_id || null,
+        workspace_template_id: inst?.template_id || null,
+        floor_id: inst?.floor_id || null,
         amount_due: Number(r.amount_due),
         currency: r.currency || 'PHP',
         created_at: r.created_at,

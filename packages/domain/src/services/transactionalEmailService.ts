@@ -3330,6 +3330,39 @@ export class TransactionalEmailService {
     });
   }
 
+  async sendCustomerIdReminderEmail(input: CustomerIdReminderEmailInput): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: CustomerIdReminderEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderCustomerIdReminderEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'customer-id-reminder',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-customer-id-reminder' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Customer ID reminder webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
   async sendVoucherEmail(input: VoucherEmailInput): Promise<EmailSendResult> {
     const resolvedProfile = await this.resolveProfile(input);
     const mergedInput: VoucherEmailInput = {
@@ -4071,6 +4104,104 @@ Important Information:
 - You can use this Customer ID along with your email on My Bookings & Rewards to track your reservations and view your loyalty rewards.
 
 Access My Bookings & Rewards:
+${portalUrl}
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export interface CustomerIdReminderEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerCode: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  customerEmail: string;
+  rewardsPortalUrl?: string;
+}
+
+export function renderCustomerIdReminderEmail(input: CustomerIdReminderEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Coworker';
+  const subject = `Your DeskAtlas Customer ID: ${input.customerCode}`;
+
+  let customerOrigin =
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    'https://deskatlas.test';
+
+  const portalUrl = input.rewardsPortalUrl || `${customerOrigin}/track`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-card { text-align: center; margin: 28px 0; background-color: #f0fdf4; padding: 24px 20px; border-radius: 12px; border: 1px solid #86efac; }
+    .code-label { font-size: 12px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .code-value { font-family: monospace; font-size: 32px; font-weight: 800; color: #166534; letter-spacing: 4px; margin: 8px 0; }
+    .code-hint { font-size: 13px; color: #15803d; margin-top: 6px; }
+    .info-box { background-color: #f8fafc; border-radius: 10px; padding: 18px 20px; margin: 20px 0; border: 1px solid #e2e8f0; }
+    .info-item { font-size: 14px; color: #334155; margin: 8px 0; line-height: 1.5; }
+    .btn-container { text-align: center; margin: 28px 0 20px 0; }
+    .btn { display: inline-block; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; background-color: #15803d; color: #ffffff !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Customer ID Reminder</p>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>You recently requested a reminder of your DeskAtlas Customer ID. Use this ID along with your email to access My Bookings & Rewards.</p>
+
+      <div class="code-card">
+        <div class="code-label">Your Permanent Customer ID</div>
+        <div class="code-value">${escapeHtml(input.customerCode)}</div>
+        <div class="code-hint">Bound to ${escapeHtml(input.customerEmail)}</div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-item"><strong>Important Identity Notice:</strong> Your Customer ID does not change. It remains permanently associated with your email for all current and future reservations, rewards, and passes.</div>
+        <div class="info-item"><strong>Security Advisory:</strong> If you did not request this reminder, no further action is needed. Your Customer ID has not been changed and your account remains secure.</div>
+      </div>
+
+      <div class="btn-container">
+        <a href="${escapeHtml(portalUrl)}" class="btn">Log In to My Bookings & Rewards</a>
+      </div>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Your DeskAtlas Customer ID: ${input.customerCode}
+
+Hello ${customerName},
+
+You recently requested a reminder of your DeskAtlas Customer ID. Use this ID along with your email to access My Bookings & Rewards.
+
+YOUR PERMANENT CUSTOMER ID: ${input.customerCode}
+BOUND EMAIL: ${input.customerEmail}
+
+Important Identity Notice:
+- Your Customer ID does not change. It remains permanently associated with your email for all current and future reservations, rewards, and passes.
+- Security Advisory: If you did not request this reminder, no further action is needed. Your Customer ID has not been changed and your account remains secure.
+
+Log In to My Bookings & Rewards:
 ${portalUrl}
 
 ${renderBusinessFooterText(profile)}

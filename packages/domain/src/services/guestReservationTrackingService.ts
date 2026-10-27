@@ -21,7 +21,7 @@ export class GuestReservationTrackingService {
     private readonly trackingRepository: GuestReservationTrackingRepository,
     private readonly settingsRepository?: SettingsRepository,
     private readonly nowProvider: () => Date = () => new Date()
-  ) {}
+  ) { }
 
   async getReservationTracking(input: {
     referenceCode: string;
@@ -110,6 +110,7 @@ export class GuestReservationTrackingService {
       closureReason: record.closureReason ?? null,
       closureDate: record.closureDate ?? null,
       closureNotifiedAt: record.closureNotifiedAt ?? null,
+      companionNames: record.companionNames ?? [],
     };
   }
 }

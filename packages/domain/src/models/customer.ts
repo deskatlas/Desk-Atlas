@@ -26,7 +26,8 @@ export type RateLimitScope =
   | 'PROMO_IP'
   | 'PROMO_EMAIL'
   | 'EMAIL_CUSTOMER'
-  | 'EMAIL_VOUCHER';
+  | 'EMAIL_VOUCHER'
+  | 'CUSTOMER_ID_RECOVERY';
 
 export interface NotificationOutboxJob {
   id: string;

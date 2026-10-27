@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
       amountDue: body.amountDue ?? null,
       customerContactNumber: body.customerContactNumber ?? rawBody.contactNumber ?? null,
       promoCode: body.promoCode ?? rawBody.promo_code ?? null,
+      companionNames: body.companionNames ?? [],
     };
 
     const reservation = await service.createReservation(payload, {

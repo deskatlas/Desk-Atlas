@@ -278,6 +278,7 @@ export class ReservationMemoryRepository
       qrRevokedAt: null,
       checkedInAt: null,
       checkedOutAt: null,
+      companionNames: request.companionNames ?? [],
       candidates,
     };
 
@@ -416,6 +417,7 @@ export class ReservationMemoryRepository
       grossAmountDue: reservation.grossAmountDue,
       discountAmount: reservation.discountAmount,
       promoCodeUsed: reservation.promoCodeUsed,
+      companionNames: reservation.companionNames ?? [],
     };
   }
 
@@ -450,6 +452,7 @@ export class ReservationMemoryRepository
       submittedCandidates: structuredClone(reservation.candidates ?? []),
       processedAt: attempt.processedAt,
       processedByUserId: attempt.processedByUserId,
+      companionNames: reservation.companionNames ?? [],
     };
   }
 
@@ -502,6 +505,7 @@ export class ReservationMemoryRepository
       submittedCandidates: structuredClone(matchedReservation.candidates ?? []),
       processedAt: attempt.processedAt,
       processedByUserId: attempt.processedByUserId,
+      companionNames: matchedReservation.companionNames ?? [],
     };
   }
 
@@ -924,6 +928,7 @@ export class ReservationMemoryRepository
       assignedFloorName: (assignedCandidate as any).floorName || "Unknown Floor",
       assignedStartAt: assignedCandidate.startAt,
       assignedEndAt: assignedCandidate.endAt,
+      companionNames: reservation.companionNames ?? [],
     };
   }
 
@@ -970,6 +975,7 @@ export class ReservationMemoryRepository
       assignedFloorName: (assignedCandidate as any).floorName || "Unknown Floor",
       assignedStartAt: assignedCandidate.startAt,
       assignedEndAt: assignedCandidate.endAt,
+      companionNames: reservation.companionNames ?? [],
     };
   }
 
@@ -1199,6 +1205,7 @@ export class ReservationMemoryRepository
       closureDate: (reservation as any).closureDate ?? null,
       closureNotifiedAt: reservation.closureNotifiedAt ?? null,
       manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manualResolutionNotes),
+      companionNames: reservation.companionNames ?? [],
     };
   }
 
@@ -1436,6 +1443,7 @@ export class ReservationMemoryRepository
       discountAmount: reservation.discountAmount,
       promoCodeUsed: reservation.promoCodeUsed,
       overdueNotifiedAt: attempt.overdueNotifiedAt ?? null,
+      companionNames: reservation.companionNames ?? [],
     };
   }
 
@@ -1510,6 +1518,7 @@ export class ReservationMemoryRepository
       closureImpactStatus: reservation.closureImpactStatus ?? null,
       closureNotifiedAt: reservation.closureNotifiedAt ?? null,
       manualResolutionNotes: sanitizeManualResolutionNotes(reservation.manualResolutionNotes),
+      companionNames: reservation.companionNames ?? [],
       closureReason: (reservation as any).closureReason ?? null,
       closureDate: (reservation as any).closureDate ?? null,
     };
@@ -1802,10 +1811,10 @@ export class ReservationMemoryRepository
         rel.actorRole === "STAFF"
           ? "Staff"
           : rel.actorRole === "CUSTOMER"
-          ? "Customer"
-          : rel.actorRole === "SUPERADMIN" || rel.actorRole === "SUPER_ADMIN"
-          ? "Super Admin"
-          : "Admin";
+            ? "Customer"
+            : rel.actorRole === "SUPERADMIN" || rel.actorRole === "SUPER_ADMIN"
+              ? "Super Admin"
+              : "Admin";
 
       if (rel.inSession && rel.remainingMinutes) {
         const remainingHours = Math.floor(rel.remainingMinutes / 60);
@@ -1923,6 +1932,7 @@ export class ReservationMemoryRepository
       promoCodeUsed: r.promoCodeUsed,
       reminderSentAt: r.reminderSentAt ?? null,
       attendanceReconfirmedAt: r.attendanceReconfirmedAt ?? null,
+      companionNames: (r as any).companionNames ?? [],
     };
   }
 
@@ -2272,10 +2282,10 @@ export class ReservationMemoryRepository
 
     const hasBusinessClosure = targetDate
       ? this.businessScheduleBlocks.some((b) => {
-          const bStartMs = new Date(b.startAt).getTime();
-          const bEndMs = new Date(b.endAt).getTime();
-          return bStartMs < targetDayEndMs && bEndMs > targetDayStartMs;
-        })
+        const bStartMs = new Date(b.startAt).getTime();
+        const bEndMs = new Date(b.endAt).getTime();
+        return bStartMs < targetDayEndMs && bEndMs > targetDayStartMs;
+      })
       : false;
 
     const isClosed = hasBusinessClosure || (hasConfiguredOperatingHours && dayIntervals.length === 0);
@@ -3106,10 +3116,10 @@ export class ReservationMemoryRepository
       input.actorRole === "STAFF"
         ? "STAFF"
         : input.actorRole === "CUSTOMER"
-        ? "CUSTOMER"
-        : input.actorRole === "SUPERADMIN" || input.actorRole === "SUPER_ADMIN"
-        ? "SUPERADMIN"
-        : "ADMIN";
+          ? "CUSTOMER"
+          : input.actorRole === "SUPERADMIN" || input.actorRole === "SUPER_ADMIN"
+            ? "SUPERADMIN"
+            : "ADMIN";
 
     this.recordOperationalAudit({
       reservation: r,
@@ -3259,13 +3269,13 @@ export class ReservationMemoryRepository
     startAtOrInput:
       | string
       | {
-          date: string;
-          endDate?: string | null;
-          closureType: string;
-          opensAt?: string | null;
-          closesAt?: string | null;
-          timezone?: string;
-        },
+        date: string;
+        endDate?: string | null;
+        closureType: string;
+        opensAt?: string | null;
+        closesAt?: string | null;
+        timezone?: string;
+      },
     endAtParam?: string,
     _workspaceInstanceIdParam?: string
   ): Promise<ClosureImpactPreviewResult> {
@@ -3533,8 +3543,10 @@ export class ReservationMemoryRepository
       const isClosureImpacted = r.isClosureImpacted || Boolean((r as any).is_closure_impacted);
       const impactStatus = r.closureImpactStatus || (r as any).closure_impact_status;
       const status = r.status || (r as any).status;
-      return requiresClosureAction({ isClosureImpacted, closureImpactStatus: impactStatus,
-        reservationStatus: status });
+      return requiresClosureAction({
+        isClosureImpacted, closureImpactStatus: impactStatus,
+        reservationStatus: status
+      });
     });
 
     if (unaddressed.length === 0) {

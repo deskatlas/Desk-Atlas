@@ -51,6 +51,27 @@ export function BookingConfirmationPage({ token }: { token: string }) {
               <Card label="Check-in state" value={formatBookingCheckInState(data.checkInState)} />
             </div>
 
+            {data.companionNames && data.companionNames.length > 0 && (
+              <div data-testid="registered-companions-list" className="mt-6 rounded-[24px] bg-[var(--da-canvas)] p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
+                  Registered Companions ({data.companionNames.length})
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Registered Companions: {data.companionNames.join(', ')}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {data.companionNames.map((name, idx) => (
+                    <span
+                      key={idx}
+                      className="rounded-full bg-slate-200 px-3.5 py-1 text-xs font-semibold text-slate-800"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-6 rounded-[24px] bg-[var(--da-canvas)] p-6">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
                 Booking window

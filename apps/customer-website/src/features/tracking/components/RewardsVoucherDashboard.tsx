@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { AskReservationButton } from '../../assistant/AskReservationButton';
 
 import { useEffect, useState } from "react";
@@ -12,6 +13,9 @@ interface BookingItem {
   start_at: string;
   end_at: string;
   workspace_name?: string | null;
+  workspace_instance_id?: string | null;
+  workspace_template_id?: string | null;
+  floor_id?: string | null;
   amount_due: number;
   currency: string;
   created_at: string;
@@ -547,47 +551,121 @@ export function RewardsVoucherDashboard({
           Confirmed reservations linked to your registered email address.
         </p>
 
-        <div className="mt-6 overflow-x-auto">
+        <div className="mt-6">
           {bookings.length === 0 ? (
             <p className="text-center text-xs text-slate-400 py-6">
               No historical reservations found for {customer.email}.
             </p>
           ) : (
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Reference</th>
-                  <th className="p-3">Source</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Workspace</th>
-                  <th className="p-3">Amount</th>
-                  <th className="p-3">Schedule</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {bookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50/50">
-                    <td className="p-3 font-mono font-bold text-slate-900">
-                      {b.reference_code}
-                      <AskReservationButton reservationId={b.id} />
-                    </td>
-                    <td className="p-3 font-semibold">{b.source}</td>
-                    <td className="p-3">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-bold text-[10px] text-slate-700">
-                        {b.status}
-                      </span>
-                    </td>
-                    <td className="p-3">{b.workspace_name || "Workspace"}</td>
-                    <td className="p-3 font-semibold text-slate-900">
-                      {b.currency} {b.amount_due}
-                    </td>
-                    <td className="p-3 text-slate-500">
-                      {new Date(b.start_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              {/* Desktop table view */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Reference</th>
+                      <th className="p-3">Source</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">Workspace</th>
+                      <th className="p-3">Amount</th>
+                      <th className="p-3">Schedule</th>
+                      <th className="p-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {bookings.map((b) => {
+                      const rebookQuery = new URLSearchParams({
+                        rebookFrom: b.reference_code,
+                      });
+                      if (b.workspace_instance_id) rebookQuery.set("workspaceId", b.workspace_instance_id);
+                      if (b.workspace_template_id) rebookQuery.set("templateId", b.workspace_template_id);
+                      if (b.floor_id) rebookQuery.set("floorId", b.floor_id);
+
+                      return (
+                        <tr key={b.id} className="hover:bg-slate-50/50">
+                          <td className="p-3 font-mono font-bold text-slate-900">
+                            {b.reference_code}
+                            <AskReservationButton reservationId={b.id} />
+                          </td>
+                          <td className="p-3 font-semibold">{b.source}</td>
+                          <td className="p-3">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-bold text-[10px] text-slate-700">
+                              {b.status}
+                            </span>
+                          </td>
+                          <td className="p-3">{b.workspace_name || "Workspace"}</td>
+                          <td className="p-3 font-semibold text-slate-900">
+                            {b.currency} {b.amount_due}
+                          </td>
+                          <td className="p-3 text-slate-500">
+                            {new Date(b.start_at).toLocaleDateString()}
+                          </td>
+                          <td className="p-3 text-right">
+                            <Link
+                              href={`/reserve?${rebookQuery.toString()}`}
+                              className="da-secondary-button inline-flex items-center text-[11px] font-bold py-1.5 px-3"
+                              data-testid={`rebook-btn-${b.reference_code}`}
+                            >
+                              Rebook
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile card view */}
+              <div className="block md:hidden space-y-3">
+                {bookings.map((b) => {
+                  const rebookQuery = new URLSearchParams({
+                    rebookFrom: b.reference_code,
+                  });
+                  if (b.workspace_instance_id) rebookQuery.set("workspaceId", b.workspace_instance_id);
+                  if (b.workspace_template_id) rebookQuery.set("templateId", b.workspace_template_id);
+                  if (b.floor_id) rebookQuery.set("floorId", b.floor_id);
+
+                  return (
+                    <div
+                      key={b.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                      data-testid={`booking-card-${b.reference_code}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="font-mono text-xs font-bold text-slate-900">
+                            {b.reference_code}
+                          </span>
+                          <h4 className="text-sm font-bold text-slate-800 mt-1">
+                            {b.workspace_name || "Workspace"}
+                          </h4>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-bold text-[10px] text-slate-700">
+                          {b.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
+                        <span>{new Date(b.start_at).toLocaleDateString()}</span>
+                        <span className="font-semibold text-slate-900">
+                          {b.currency} {b.amount_due}
+                        </span>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <AskReservationButton reservationId={b.id} />
+                        <Link
+                          href={`/reserve?${rebookQuery.toString()}`}
+                          className="da-secondary-button text-[11px] font-bold py-1.5 px-3"
+                          data-testid={`rebook-card-btn-${b.reference_code}`}
+                        >
+                          Rebook
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       </div>

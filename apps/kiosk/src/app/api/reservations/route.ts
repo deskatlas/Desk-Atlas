@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
         rateSnapshot: body.rateSnapshot ?? null,
         amountDue: body.amountDue ?? null,
         promoCode: body.promoCode ?? (body as any).promo_code ?? null,
+        companionNames: Array.isArray(body.companionNames) ? body.companionNames : [],
         candidates: body.candidates,
       };
     } else {
@@ -190,6 +191,7 @@ export async function POST(request: NextRequest) {
         rateSnapshot: body.rateSnapshot ?? null,
         amountDue: body.amountDue ?? null,
         promoCode: body.promoCode ?? (body as any).promo_code ?? null,
+        companionNames: Array.isArray(body.companionNames) ? body.companionNames : [],
         candidates: [
           {
             rank: 0,

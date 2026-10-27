@@ -169,336 +169,356 @@ export function TrackingPage({
         {/* Existing reservation search detail view */}
         <div className="mt-8">
 
-        {data ? (() => {
-          const isRejected =
-            data.status === "REJECTED" ||
-            data.paymentStatus === "REJECTED" ||
-            (data.status === "CANCELLED" && data.paymentStatus !== "APPROVED" && (!data.confirmedAt || data.paymentStatus === "REJECTED"));
+          {data ? (() => {
+            const isRejected =
+              data.status === "REJECTED" ||
+              data.paymentStatus === "REJECTED" ||
+              (data.status === "CANCELLED" && data.paymentStatus !== "APPROVED" && (!data.confirmedAt || data.paymentStatus === "REJECTED"));
 
-          const isExpired = data.status === "EXPIRED";
-          const statusDisplay = mapReservationStatusDisplay(data.status, data.paymentStatus);
+            const isExpired = data.status === "EXPIRED";
+            const statusDisplay = mapReservationStatusDisplay(data.status, data.paymentStatus);
 
-          const confirmedAtValue = isRejected
-            ? "Rejected"
-            : isExpired && !data.confirmedAt
-            ? "Expired"
-            : data.confirmedAt
-            ? formatDateTime(data.confirmedAt)
-            : "Pending";
+            const confirmedAtValue = isRejected
+              ? "Rejected"
+              : isExpired && !data.confirmedAt
+                ? "Expired"
+                : data.confirmedAt
+                  ? formatDateTime(data.confirmedAt)
+                  : "Pending";
 
-          const finalWorkspaceValue = isRejected
-            ? "Rejected"
-            : (data.finalAssignment?.workspaceDisplayName ?? "Not assigned yet");
+            const finalWorkspaceValue = isRejected
+              ? "Rejected"
+              : (data.finalAssignment?.workspaceDisplayName ?? "Not assigned yet");
 
-          const bookingTimeValue = isRejected
-            ? "Rejected"
-            : data.finalAssignment
-            ? `${formatDateTime(data.finalAssignment.bookingStartAt)} to ${formatTime(
-                data.finalAssignment.bookingEndAt
-              )}`
-            : "Not assigned yet";
+            const bookingTimeValue = isRejected
+              ? "Rejected"
+              : data.finalAssignment
+                ? `${formatDateTime(data.finalAssignment.bookingStartAt)} to ${formatTime(
+                  data.finalAssignment.bookingEndAt
+                )}`
+                : "Not assigned yet";
 
-          return (
-            <div className="mt-8 rounded-[24px] bg-[var(--da-canvas)] p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
-                    Reference
-                  </p>
-                  <p className="mt-1 text-lg font-extrabold text-[var(--da-brand-dark)]">
-                    {data.referenceCode}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {data.isInSession && (
+            return (
+              <div className="mt-8 rounded-[24px] bg-[var(--da-canvas)] p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
+                      Reference
+                    </p>
+                    <p className="mt-1 text-lg font-extrabold text-[var(--da-brand-dark)]">
+                      {data.referenceCode}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {data.isInSession && (
+                      <span
+                        data-testid="in-session-badge"
+                        className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-3.5 py-1.5 text-xs font-bold text-emerald-800"
+                      >
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Session In Progress {data.remainingMinutes ? `(${Math.floor(data.remainingMinutes / 60) > 0 ? `${Math.floor(data.remainingMinutes / 60)}h ` : ""}${data.remainingMinutes % 60}m remaining)` : ""}
+                      </span>
+                    )}
                     <span
-                      data-testid="in-session-badge"
-                      className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-3.5 py-1.5 text-xs font-bold text-emerald-800"
+                      data-testid="tracking-status-badge"
+                      className={`rounded-full px-4 py-2 text-xs font-bold ${isRejected
+                          ? "bg-red-100 text-red-700"
+                          : statusDisplay.badgeClass
+                        }`}
                     >
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                      Session In Progress {data.remainingMinutes ? `(${Math.floor(data.remainingMinutes / 60) > 0 ? `${Math.floor(data.remainingMinutes / 60)}h ` : ""}${data.remainingMinutes % 60}m remaining)` : ""}
+                      {isRejected ? "REJECTED" : statusDisplay.label}
                     </span>
-                  )}
-                  <span
-                    data-testid="tracking-status-badge"
-                    className={`rounded-full px-4 py-2 text-xs font-bold ${
-                      isRejected
-                        ? "bg-red-100 text-red-700"
-                        : statusDisplay.badgeClass
-                    }`}
-                  >
-                    {isRejected ? "REJECTED" : statusDisplay.label}
-                  </span>
-                </div>
-              </div>
-
-              {isExpired && (
-                <div
-                  data-testid="expired-reservation-notice"
-                  className="mt-6 rounded-[18px] border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700"
-                >
-                  <p className="font-semibold text-gray-900">Reservation Expired</p>
-                  <p className="mt-1 text-xs text-gray-600">
-                    This reservation has expired. The booking window has passed without confirmed payment.
-                    Please create a new reservation if you still wish to book.
-                  </p>
-                </div>
-              )}
-
-              <AskReservationButton reservationId={data.reservationId} />
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <InfoCard
-                  label="Amount due"
-                  value={
-                    data.discountAmount && data.discountAmount > 0
-                      ? `${data.currency} ${data.amountDue} (Discount: -${data.currency} ${data.discountAmount}${data.promoCodeUsed ? ` [${data.promoCodeUsed}]` : ""})`
-                      : `${data.currency} ${data.amountDue}`
-                  }
-                />
-                <InfoCard label="Confirmed at" value={confirmedAtValue} />
-                <InfoCard label="Final workspace" value={finalWorkspaceValue} />
-                <InfoCard label="Booking time" value={bookingTimeValue} />
-              </div>
-
-              {/* Closure Impact Remedy Banner */}
-              {data.isClosureImpacted && (
-                <div
-                  data-testid="closure-impact-remedy-banner"
-                  className="mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-5 shadow-sm"
-                >
-                  <div className="flex items-start gap-3.5">
-                    <span className="text-2xl">⚠️</span>
-                    <div className="flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="text-sm font-extrabold uppercase tracking-[0.14em] text-amber-900">
-                          Action Required: Booking Impacted by Business Closure
-                        </h3>
-                        <span className="rounded-full bg-amber-200/80 px-3 py-1 text-xs font-bold text-amber-950">
-                          {data.closureImpactStatus === "MANUAL_RESOLUTION_REQUIRED"
-                            ? "Staff Intervention In Progress"
-                            : data.closureImpactStatus === "CUSTOMER_RESOLVED"
-                            ? "Resolved by Customer"
-                            : data.closureImpactStatus === "STAFF_RESOLVED"
-                            ? "Resolved by Staff"
-                            : "Self-Service Remedy Available"}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-xs font-medium text-amber-900 leading-relaxed">
-                        Your reservation overlaps with a scheduled facility closure or holiday maintenance. Advance rescheduling cutoffs and reschedule limits have been waived so you can immediately choose a new date or time or switch spots at no penalty.
-                      </p>
-                      <div className="mt-4 flex flex-wrap gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setShowRescheduleModal(true)}
-                          data-testid="closure-remedy-reschedule-button"
-                          className="da-primary-button text-xs font-bold"
-                        >
-                          Reschedule Date / Time
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowRelocateModal(true)}
-                          data-testid="closure-remedy-relocate-button"
-                          className="da-secondary-button text-xs font-bold"
-                        >
-                          Relocate Spot
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </div>
-              )}
 
-              {/* In-Session Spot Relocation Section */}
-              {!isRejected && !isExpired && data.status === "CONFIRMED" && (
-                data.pendingRelocationRequest?.status === "PENDING" ? (
+                {isExpired && (
                   <div
-                    data-testid="customer-pending-relocation-badge"
-                    className="mt-6 rounded-[18px] border border-amber-200 bg-amber-50 p-4"
+                    data-testid="expired-reservation-notice"
+                    className="mt-6 rounded-[18px] border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700"
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="text-xl">⏳</span>
+                    <p className="font-semibold text-gray-900">Reservation Expired</p>
+                    <p className="mt-1 text-xs text-gray-600">
+                      This reservation has expired. The booking window has passed without confirmed payment.
+                      Please create a new reservation if you still wish to book.
+                    </p>
+                  </div>
+                )}
+
+                <AskReservationButton reservationId={data.reservationId} />
+
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <InfoCard
+                    label="Amount due"
+                    value={
+                      data.discountAmount && data.discountAmount > 0
+                        ? `${data.currency} ${data.amountDue} (Discount: -${data.currency} ${data.discountAmount}${data.promoCodeUsed ? ` [${data.promoCodeUsed}]` : ""})`
+                        : `${data.currency} ${data.amountDue}`
+                    }
+                  />
+                  <InfoCard label="Confirmed at" value={confirmedAtValue} />
+                  <InfoCard label="Final workspace" value={finalWorkspaceValue} />
+                  <InfoCard label="Booking time" value={bookingTimeValue} />
+                </div>
+
+                {data.companionNames && data.companionNames.length > 0 && (
+                  <div data-testid="registered-companions-list" className="mt-4 rounded-[18px] bg-slate-50 border border-slate-200 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Registered Companions ({data.companionNames.length})
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Registered Companions: {data.companionNames.join(', ')}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {data.companionNames.map((name, idx) => (
+                        <span
+                          key={idx}
+                          className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-800"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Closure Impact Remedy Banner */}
+                {data.isClosureImpacted && (
+                  <div
+                    data-testid="closure-impact-remedy-banner"
+                    className="mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-5 shadow-sm"
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <span className="text-2xl">⚠️</span>
                       <div className="flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
-                            Relocation Request Pending Approval
-                          </p>
-                          <span className="rounded-full bg-amber-200/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-900">
-                            Awaiting Staff
+                          <h3 className="text-sm font-extrabold uppercase tracking-[0.14em] text-amber-900">
+                            Action Required: Booking Impacted by Business Closure
+                          </h3>
+                          <span className="rounded-full bg-amber-200/80 px-3 py-1 text-xs font-bold text-amber-950">
+                            {data.closureImpactStatus === "MANUAL_RESOLUTION_REQUIRED"
+                              ? "Staff Intervention In Progress"
+                              : data.closureImpactStatus === "CUSTOMER_RESOLVED"
+                                ? "Resolved by Customer"
+                                : data.closureImpactStatus === "STAFF_RESOLVED"
+                                  ? "Resolved by Staff"
+                                  : "Self-Service Remedy Available"}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-amber-900">
-                          Your request to move to <strong>{data.pendingRelocationRequest.targetWorkspaceDisplayName}</strong> has been submitted to on-duty staff.
+                        <p className="mt-1.5 text-xs font-medium text-amber-900 leading-relaxed">
+                          Your reservation overlaps with a scheduled facility closure or holiday maintenance. Advance rescheduling cutoffs and reschedule limits have been waived so you can immediately choose a new date or time or switch spots at no penalty.
                         </p>
-                        <p className="mt-1 text-[11px] text-amber-700">
-                          Reason: <em>{data.pendingRelocationRequest.reason}</em>
-                          {data.pendingRelocationRequest.notes ? ` (${data.pendingRelocationRequest.notes})` : ""}
-                        </p>
-                        <p className="mt-1.5 text-[11px] text-amber-700/80">
-                          Please remain at your current desk until staff approves your request. Your digital QR pass will automatically update once confirmed.
-                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowRescheduleModal(true)}
+                            data-testid="closure-remedy-reschedule-button"
+                            className="da-primary-button text-xs font-bold"
+                          >
+                            Reschedule Date / Time
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowRelocateModal(true)}
+                            data-testid="closure-remedy-relocate-button"
+                            className="da-secondary-button text-xs font-bold"
+                          >
+                            Relocate Spot
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-6 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
+                )}
+
+                {/* In-Session Spot Relocation Section */}
+                {!isRejected && !isExpired && data.status === "CONFIRMED" && (
+                  data.pendingRelocationRequest?.status === "PENDING" ? (
+                    <div
+                      data-testid="customer-pending-relocation-badge"
+                      className="mt-6 rounded-[18px] border border-amber-200 bg-amber-50 p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="text-xl">⏳</span>
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">
+                              Relocation Request Pending Approval
+                            </p>
+                            <span className="rounded-full bg-amber-200/70 px-2.5 py-0.5 text-[10px] font-bold text-amber-900">
+                              Awaiting Staff
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-amber-900">
+                            Your request to move to <strong>{data.pendingRelocationRequest.targetWorkspaceDisplayName}</strong> has been submitted to on-duty staff.
+                          </p>
+                          <p className="mt-1 text-[11px] text-amber-700">
+                            Reason: <em>{data.pendingRelocationRequest.reason}</em>
+                            {data.pendingRelocationRequest.notes ? ` (${data.pendingRelocationRequest.notes})` : ""}
+                          </p>
+                          <p className="mt-1.5 text-[11px] text-amber-700/80">
+                            Please remain at your current desk until staff approves your request. Your digital QR pass will automatically update once confirmed.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-6 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
+                            Spot Relocation
+                          </p>
+                          <p className="mt-0.5 text-xs text-[var(--da-text-primary)]">
+                            {data.isInSession
+                              ? "Experiencing physical issues with your spot? You can request to relocate to another available spot."
+                              : "In-session spot swap is available while your booking is underway."}
+                          </p>
+                        </div>
+
+                        {data.isInSession ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowRelocateModal(true)}
+                            className="da-primary-button text-xs font-bold"
+                            data-testid="customer-relocate-button"
+                          >
+                            Request Spot Relocation
+                          </button>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                            Available During Session
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {/* Schedule & Cancellation Management Section */}
+                {!isRejected && !isExpired && data.status === "CONFIRMED" && (
+                  <div className="mt-4 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
-                          Spot Relocation
+                          Schedule & Cancellation Management
                         </p>
                         <p className="mt-0.5 text-xs text-[var(--da-text-primary)]">
-                          {data.isInSession
-                            ? "Experiencing physical issues with your spot? You can request to relocate to another available spot."
-                            : "In-session spot swap is available while your booking is underway."}
+                          {data.canCancel
+                            ? "Need to cancel your booking? You can cancel your reservation and receive a full refund."
+                            : `Self-service cancellation closed ${data.cancellationCutoffDisplay || "12 hours"} prior to booking start time.`}
                         </p>
                       </div>
 
-                      {data.isInSession ? (
-                        <button
-                          type="button"
-                          onClick={() => setShowRelocateModal(true)}
-                          className="da-primary-button text-xs font-bold"
-                          data-testid="customer-relocate-button"
-                        >
-                          Request Spot Relocation
-                        </button>
-                      ) : (
-                        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
-                          Available During Session
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {data.canReschedule && (
+                          <button
+                            type="button"
+                            onClick={() => setShowRescheduleModal(true)}
+                            className="da-secondary-button text-xs font-bold"
+                            data-testid="customer-reschedule-button"
+                          >
+                            Reschedule Reservation
+                          </button>
+                        )}
+
+                        {data.canCancel ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowCancelModal(true)}
+                            className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors"
+                            data-testid="customer-cancel-button"
+                          >
+                            Cancel Reservation
+                          </button>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                            Cancellation Unavailable
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                )
-              )}
+                )}
 
-              {/* Schedule & Cancellation Management Section */}
-              {!isRejected && !isExpired && data.status === "CONFIRMED" && (
-                <div className="mt-4 rounded-[18px] border border-[var(--da-border-light)] bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
-                        Schedule & Cancellation Management
-                      </p>
-                      <p className="mt-0.5 text-xs text-[var(--da-text-primary)]">
-                        {data.canCancel
-                          ? "Need to cancel your booking? You can cancel your reservation and receive a full refund."
-                          : `Self-service cancellation closed ${data.cancellationCutoffDisplay || "12 hours"} prior to booking start time.`}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {data.canReschedule && (
-                        <button
-                          type="button"
-                          onClick={() => setShowRescheduleModal(true)}
-                          className="da-secondary-button text-xs font-bold"
-                          data-testid="customer-reschedule-button"
-                        >
-                          Reschedule Reservation
-                        </button>
-                      )}
-
-                      {data.canCancel ? (
-                        <button
-                          type="button"
-                          onClick={() => setShowCancelModal(true)}
-                          className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors"
-                          data-testid="customer-cancel-button"
-                        >
-                          Cancel Reservation
-                        </button>
-                      ) : (
-                        <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
-                          Cancellation Unavailable
-                        </span>
-                      )}
-                    </div>
+                {/* Required Footer Policy Notice */}
+                <div className="mt-4 rounded-[14px] bg-[#F8FAF9] p-3 text-xs text-[var(--da-text-secondary)] border border-[var(--da-border-light)]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#047857] font-bold">ℹ️ Policy Notice:</span>
+                    <span>Rescheduling and cancellation are only available within the allowed time period set by the business.</span>
                   </div>
                 </div>
-              )}
 
-              {/* Required Footer Policy Notice */}
-              <div className="mt-4 rounded-[14px] bg-[#F8FAF9] p-3 text-xs text-[var(--da-text-secondary)] border border-[var(--da-border-light)]">
-                <div className="flex items-center gap-2">
-                  <span className="text-[#047857] font-bold">ℹ️ Policy Notice:</span>
-                  <span>Rescheduling and cancellation are only available within the allowed time period set by the business.</span>
+                {/* View Terms & Policy Footer Link */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--da-border-light)] pt-3 text-xs text-[var(--da-text-secondary)]">
+                  <span>Need details on notice cutoffs or refund guidelines?</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowTermsModal(true)}
+                    data-testid="cancellation-terms-button"
+                    className="font-bold text-[var(--da-primary)] hover:underline flex items-center gap-1"
+                  >
+                    View Cancellation & Rescheduling Terms ↗
+                  </button>
                 </div>
               </div>
+            );
+          })() : null}
 
-              {/* View Terms & Policy Footer Link */}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--da-border-light)] pt-3 text-xs text-[var(--da-text-secondary)]">
-                <span>Need details on notice cutoffs or refund guidelines?</span>
-                <button
-                  type="button"
-                  onClick={() => setShowTermsModal(true)}
-                  data-testid="cancellation-terms-button"
-                  className="font-bold text-[var(--da-primary)] hover:underline flex items-center gap-1"
-                >
-                  View Cancellation & Rescheduling Terms ↗
-                </button>
-              </div>
-            </div>
-          );
-        })() : null}
+          {showRescheduleModal && data && (
+            <CustomerRescheduleModal
+              trackingData={data}
+              customerEmail={customerEmail || undefined}
+              onClose={() => setShowRescheduleModal(false)}
+              onSuccess={(msg) => {
+                setShowRescheduleModal(false);
+                setSuccessMessage(msg);
+                trackReservation({ referenceCode, customerEmail });
+              }}
+            />
+          )}
 
-        {showRescheduleModal && data && (
-          <CustomerRescheduleModal
-            trackingData={data}
-            customerEmail={customerEmail || undefined}
-            onClose={() => setShowRescheduleModal(false)}
-            onSuccess={(msg) => {
-              setShowRescheduleModal(false);
-              setSuccessMessage(msg);
-              trackReservation({ referenceCode, customerEmail });
-            }}
-          />
-        )}
+          {showRelocateModal && data && (
+            <CustomerRelocateModal
+              trackingData={data}
+              customerEmail={customerEmail || undefined}
+              onClose={() => setShowRelocateModal(false)}
+              onSuccess={(msg) => {
+                setShowRelocateModal(false);
+                setSuccessMessage(msg);
+                trackReservation({ referenceCode, customerEmail });
+              }}
+            />
+          )}
 
-        {showRelocateModal && data && (
-          <CustomerRelocateModal
-            trackingData={data}
-            customerEmail={customerEmail || undefined}
-            onClose={() => setShowRelocateModal(false)}
-            onSuccess={(msg) => {
-              setShowRelocateModal(false);
-              setSuccessMessage(msg);
-              trackReservation({ referenceCode, customerEmail });
-            }}
-          />
-        )}
-
-        {showCancelModal && data && (
-          <CustomerCancelModal
-            isOpen={showCancelModal}
-            onClose={() => setShowCancelModal(false)}
-            onSuccess={() => {
-              setShowCancelModal(false);
-              setSuccessMessage("Your reservation has been cancelled successfully. If eligible, your refund has been queued for disbursement.");
-              trackReservation({ referenceCode, customerEmail });
-            }}
-            referenceCode={data.referenceCode}
-            customerEmail={customerEmail}
-            amountDue={data.amountDue}
-            formattedSchedule={
-              data.finalAssignment?.bookingStartAt && data.finalAssignment?.bookingEndAt
-                ? formatCleanScheduleRange(
+          {showCancelModal && data && (
+            <CustomerCancelModal
+              isOpen={showCancelModal}
+              onClose={() => setShowCancelModal(false)}
+              onSuccess={() => {
+                setShowCancelModal(false);
+                setSuccessMessage("Your reservation has been cancelled successfully. If eligible, your refund has been queued for disbursement.");
+                trackReservation({ referenceCode, customerEmail });
+              }}
+              referenceCode={data.referenceCode}
+              customerEmail={customerEmail}
+              amountDue={data.amountDue}
+              formattedSchedule={
+                data.finalAssignment?.bookingStartAt && data.finalAssignment?.bookingEndAt
+                  ? formatCleanScheduleRange(
                     data.finalAssignment.bookingStartAt,
                     data.finalAssignment.bookingEndAt
                   )
-                : undefined
-            }
-            workspaceName={data.finalAssignment?.workspaceDisplayName}
-          />
-        )}
+                  : undefined
+              }
+              workspaceName={data.finalAssignment?.workspaceDisplayName}
+            />
+          )}
 
-        <CancellationTermsModal
-          isOpen={showTermsModal}
-          onClose={() => setShowTermsModal(false)}
-          defaultCutoffHours={data?.rescheduleCutoffHours ?? 12}
-        />
+          <CancellationTermsModal
+            isOpen={showTermsModal}
+            onClose={() => setShowTermsModal(false)}
+            defaultCutoffHours={data?.rescheduleCutoffHours ?? 12}
+          />
         </div>
       </div>
     </main>

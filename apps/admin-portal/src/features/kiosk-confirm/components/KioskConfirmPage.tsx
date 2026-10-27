@@ -82,6 +82,14 @@ export function KioskConfirmPage() {
                   <span style={{ color: 'var(--da-text-secondary)' }}>Email:</span>
                   <span>{pendingRecord.customerEmail}</span>
                 </div>
+                {pendingRecord.companionNames && pendingRecord.companionNames.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', fontSize: '14px' }} data-testid="kiosk-confirm-companions">
+                    <span style={{ color: 'var(--da-text-secondary)' }}>Companions ({pendingRecord.companionNames.length}):</span>
+                    <span style={{ fontWeight: 600, textAlign: 'right', maxWidth: '65%' }}>
+                      {pendingRecord.companionNames.join(', ')}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '14px' }}>
                   <span style={{ color: 'var(--da-text-secondary)' }}>Payment Method:</span>
                   <span style={{ fontWeight: 700, color: 'var(--da-brand-dark)' }}>

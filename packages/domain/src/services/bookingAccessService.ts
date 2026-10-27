@@ -18,7 +18,7 @@ export class BookingAccessService {
   constructor(
     private readonly bookingAccessRepository: BookingAccessRepository,
     private readonly nowProvider: () => Date = () => new Date()
-  ) {}
+  ) { }
 
   async issueBookingAccess(
     reservationId: string,
@@ -109,6 +109,7 @@ export class BookingAccessService {
       qrIssuedAt: record.qrIssuedAt,
       timeRemainingSeconds,
       reentry: isReentry,
+      companionNames: record.companionNames ?? [],
     };
   }
 
@@ -215,6 +216,7 @@ export class BookingAccessService {
       qrIssuedAt: record.qrIssuedAt,
       timeRemainingSeconds,
       reentry: isReentry,
+      companionNames: record.companionNames ?? [],
     };
   }
 }

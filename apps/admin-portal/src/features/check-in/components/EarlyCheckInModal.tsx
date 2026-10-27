@@ -11,6 +11,7 @@ export interface EarlyCheckInModalProps {
   workspaceName?: string;
   bookingStartAt?: string;
   bookingEndAt?: string;
+  companionNames?: string[];
 }
 
 export function isEarlyCheckInError(error: unknown): boolean {
@@ -54,7 +55,7 @@ export function formatEarlyCheckInSchedule(
       if (bookingEndAt) {
         const endDate = new Date(bookingEndAt);
         formattedEndTime = format(endDate, "h:mm a");
-        formattedSchedule = `${formattedStartDate}, ${formattedStartTime} – ${formattedEndTime}`;
+        formattedSchedule = `${formattedStartDate}, ${formattedStartTime} to ${formattedEndTime}`;
       } else {
         formattedSchedule = `${formattedStartDate} at ${formattedStartTime}`;
       }
@@ -79,6 +80,7 @@ export function EarlyCheckInModal({
   workspaceName,
   bookingStartAt,
   bookingEndAt,
+  companionNames,
 }: EarlyCheckInModalProps) {
   useEffect(() => {
     if (!isOpen) return;
@@ -227,6 +229,15 @@ export function EarlyCheckInModal({
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
               <span style={{ color: "var(--da-text-secondary)", fontWeight: 600 }}>Workspace</span>
               <span style={{ color: "var(--da-text-primary)", fontWeight: 600 }}>{workspaceName}</span>
+            </div>
+          )}
+
+          {companionNames && companionNames.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", fontSize: "13px" }} data-testid="early-checkin-companions">
+              <span style={{ color: "var(--da-text-secondary)", fontWeight: 600 }}>Companions ({companionNames.length})</span>
+              <span style={{ color: "var(--da-brand-dark)", fontWeight: 600, textAlign: "right", maxWidth: "60%" }}>
+                {companionNames.join(", ")}
+              </span>
             </div>
           )}
 
