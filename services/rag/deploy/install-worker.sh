@@ -11,7 +11,9 @@ fi
 sudo usermod -aG docker deskatlas
 sudo python3 -m venv /opt/deskatlas/rag/.venv-worker
 sudo /opt/deskatlas/rag/.venv-worker/bin/pip install -r service-requirements.lock.txt
+sudo /opt/deskatlas/rag/.venv-worker/bin/python cloudrun/provision_answer_tokenizer.py
 sudo docker build -f knowledge-parser.Dockerfile -t deskatlas-knowledge-parser:hosted .
 sudo cp deploy/deskatlas-worker.service /etc/systemd/system/deskatlas-worker.service
+sudo cp deploy/deskatlas-support.service /etc/systemd/system/deskatlas-support.service
 sudo systemctl daemon-reload
 echo 'Installed. Configure credentials before enabling the worker.'

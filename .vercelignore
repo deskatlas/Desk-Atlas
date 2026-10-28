@@ -2,6 +2,8 @@
 **/.env
 **/.env.*
 **/.venv-service/**
+**/.venv/**
+**/.cache/**
 **/.pytest_cache/**
 services/rag/models/**
 **/*.pyc
@@ -10,5 +12,6 @@ services/rag/benchmark-results/**
 services/rag/.deepinfra-deploy*.json
 coverage/**
 outputs/**
+services/rag/experiments/**
 docs/**
 .vscode/**

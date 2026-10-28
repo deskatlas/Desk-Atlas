@@ -78,11 +78,18 @@ def vectors_from_response(body, count):
         raise ValueError('INVALID_EMBEDDING_OUTPUT') from None
 
 
+class HostedEmbeddingFailure(ValueError):
+    def __init__(self, status=None, transient=False):
+        super().__init__('EMBEDDING_FAILED')
+        self.status, self.transient = status, transient
+
+
 class HostedEncoder:
     tokenizer = ByteTokenizer()
 
     def __init__(self):
         deepinfra_headers()  # Validate configuration before claiming jobs.
+        self._async_client = None
 
     def encode(self, texts, *, query=False):
         data = payload(texts, query)
@@ -92,16 +99,32 @@ class HostedEncoder:
                 response = client.post(CONTRACT['endpoint'], headers=deepinfra_headers(), json=data)
                 response.raise_for_status()
                 return vectors_from_response(response.json(), len(texts))
-        except (httpx.HTTPError, ValueError):
-            raise ValueError('EMBEDDING_FAILED') from None
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            raise HostedEmbeddingFailure(status, status == 429 or status >= 500) from None
+        except httpx.RequestError:
+            raise HostedEmbeddingFailure(transient=True) from None
+        except ValueError:
+            raise HostedEmbeddingFailure() from None
 
     async def encode_async(self, texts, *, query=False):
         data = payload(texts, query)
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(45, connect=5),
-                                        follow_redirects=False, trust_env=False) as client:
-                response = await client.post(CONTRACT['endpoint'], headers=deepinfra_headers(), json=data)
-                response.raise_for_status()
-                return vectors_from_response(response.json(), len(texts))
-        except (httpx.HTTPError, ValueError):
-            raise ValueError('EMBEDDING_FAILED') from None
+            if self._async_client is None:
+                self._async_client = httpx.AsyncClient(timeout=httpx.Timeout(45, connect=5),
+                                                       follow_redirects=False, trust_env=False)
+            response = await self._async_client.post(CONTRACT['endpoint'], headers=deepinfra_headers(), json=data)
+            response.raise_for_status()
+            return vectors_from_response(response.json(), len(texts))
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            raise HostedEmbeddingFailure(status, status == 429 or status >= 500) from None
+        except httpx.RequestError:
+            raise HostedEmbeddingFailure(transient=True) from None
+        except ValueError:
+            raise HostedEmbeddingFailure() from None
+
+    async def aclose(self):
+        if self._async_client is not None:
+            await self._async_client.aclose()
+            self._async_client = None

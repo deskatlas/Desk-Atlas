@@ -12,6 +12,7 @@ import { authorizeVerifiedCustomer, VerifiedCustomerError } from './verified';
 import { buildVerifiedResponse } from './verifiedResponse';
 import { buildVerifiedPolicyAddendum } from './verifiedKnowledge';
 import { publicSpotRepository, resolvePublicComparison } from './spots';
+import { readCustomerDiscoveryCatalog } from './catalog';
 
 const headers = { 'Cache-Control': 'no-store, private', Vary: 'Authorization, Cookie, Origin', 'X-Content-Type-Options': 'nosniff' };
 const currentPublishedMaps = new QueryCache<PublishedFloorMap | null>(0);
@@ -70,6 +71,10 @@ export async function customerAssistantSession(request: Request): Promise<Respon
 }
 
 export async function customerAssistantQuery(request: Request): Promise<Response> {
+  // PRD-F26/F27 / QAD-TC46: request-local numeric diagnostics, never prompt data.
+  const started = performance.now();
+  const modelTimings: Record<string, number> = {};
+  let outgoing: Response | undefined;
   let cookie: string | undefined;
   let release: (() => Promise<unknown>) | undefined;
   try {
@@ -110,21 +115,32 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       const capability = signCustomerCapability(claims, config('RAG_CAPABILITY_SECRET'));
       const cloudIdentity = createCloudRunIdentity(request, workSignal);
       const model = async (path: string, body: unknown, operationSignal?: AbortSignal): Promise<unknown> => {
-        await authorize();
-        const base = new URL(config('RAG_SERVICE_URL'));
-        if (base.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)) throw new CustomerAssistantError('ASSISTANT_UNAVAILABLE');
-        const identity = await cloudIdentity();
-        const result = await fetch(new URL(`/v1/customer/${path}`, base), { method: 'POST', cache: 'no-store', redirect: 'error', signal: operationSignal ? AbortSignal.any([workSignal, operationSignal]) : workSignal,
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config('RAG_SERVICE_TOKEN')}`, 'X-Request-Capability': capability,
-            ...(identity ? { 'X-Serverless-Authorization': `Bearer ${identity}` } : {}) }, body: JSON.stringify(body) });
-        if (!result.ok) {
-          if (path === 'document-support' && result.status === 400) {
-            const failure = z.object({ detail: z.enum(['UNRESOLVED_CONTEXT', 'CONFLICTING_SOURCES', 'CONTEXT_BUDGET_EXCEEDED', 'OUTPUT_BUDGET_EXCEEDED']) }).passthrough().safeParse(await result.json().catch(() => null));
-            if (failure.success) throw new CustomerAssistantError(failure.data.detail, 400);
+        const modelStarted = performance.now();
+        try {
+          await authorize();
+          const base = new URL(config('RAG_SERVICE_URL'));
+          if (base.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)) throw new CustomerAssistantError('ASSISTANT_UNAVAILABLE');
+          const identity = await cloudIdentity();
+          const result = await fetch(new URL(`/v1/customer/${path}`, base), { method: 'POST', cache: 'no-store', redirect: 'error', signal: operationSignal ? AbortSignal.any([workSignal, operationSignal]) : workSignal,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config('RAG_SERVICE_TOKEN')}`, 'X-Request-Capability': capability,
+              ...(identity ? { 'X-Serverless-Authorization': `Bearer ${identity}` } : {}) }, body: JSON.stringify(body) });
+          if (!result.ok) {
+            if (result.status === 429) {
+              const rawRetry = result.headers.get('Retry-After') ?? '';
+              const retry = /^\d{1,4}$/.test(rawRetry) ? Number(rawRetry) : 5;
+              throw new CustomerAssistantError('CAPACITY_BUSY', 429, retry >= 1 && retry <= 3600 ? retry : 5);
+            }
+            if (path === 'document-support' && result.status === 400) {
+              const failure = z.object({ detail: z.enum(['UNRESOLVED_CONTEXT', 'CONFLICTING_SOURCES', 'CONTEXT_BUDGET_EXCEEDED', 'OUTPUT_BUDGET_EXCEEDED']) }).passthrough().safeParse(await result.json().catch(() => null));
+              if (failure.success) throw new CustomerAssistantError(failure.data.detail, 400);
+            }
+            throw new CustomerAssistantError('ASSISTANT_UNAVAILABLE');
           }
-          throw new CustomerAssistantError('ASSISTANT_UNAVAILABLE');
+          const output: unknown = await result.json(); await authorize(); return output;
+        } finally {
+          const stage = `model_${path.replaceAll('-', '_')}`;
+          modelTimings[stage] = (modelTimings[stage] ?? 0) + performance.now() - modelStarted;
         }
-        const output: unknown = await result.json(); await authorize(); return output;
       };
       const reader = new CustomerKnowledgeReader(db, claims, config('RAG_EMBEDDING_FINGERPRINT'), authorize);
       const state = z.object({ enabled: z.boolean(), knowledge_epoch: z.number().int().nonnegative() }).strict().parse(await reader.read('availability'));
@@ -141,7 +157,22 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         });
       };
       if (privateQuestion(input)) return privateAnswer();
-      const rawPlan = await model('plan', { message: input.message, user_turns: input.user_turns, has_spot_context: Boolean(input.discovery?.workspace_id || input.discovery?.compared_ids?.length) });
+      let catalogSeeds: z.infer<typeof assistantSourceSchema>[] | undefined;
+      let rawPlan: unknown;
+      const planInput = { message: input.message, user_turns: input.user_turns, has_spot_context: Boolean(input.discovery?.workspace_id || input.discovery?.compared_ids?.length) };
+      if (state.enabled && process.env.CUSTOMER_ASSISTANT_CATALOG_DISCOVERY === 'true') {
+        const catalogStarted = performance.now();
+        const catalog = await readCustomerDiscoveryCatalog(db, reader, scope, state.knowledge_epoch, authorize);
+        modelTimings.catalog_read = performance.now() - catalogStarted;
+        const discovered = z.object({ plan: z.unknown(), chunk_ids: z.array(z.string().uuid()).max(12) }).strict()
+          .parse(await model('catalog-plan', { ...planInput, ...catalog }));
+        if (new Set(discovered.chunk_ids).size !== discovered.chunk_ids.length
+          || discovered.chunk_ids.some(id => !catalog.sources.some(source => source.chunk_id === id))) throw new CustomerAssistantError('INVALID_EVIDENCE');
+        rawPlan = discovered.plan;
+        catalogSeeds = catalog.sources.filter(source => discovered.chunk_ids.includes(source.chunk_id));
+      } else {
+        rawPlan = await model('plan', planInput);
+      }
       // Public booking intent yields verification before executing a forbidden tool.
       if (z.object({ kind: z.literal('BOOKING') }).passthrough().safeParse(rawPlan).success) {
         return privateAnswer();
@@ -172,11 +203,15 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       await control.command('stage', identity, 'retrieving');
       let sources: z.infer<typeof assistantSourceSchema>[] = [];
       if (state.enabled && (plan.kind !== 'WORKSPACE' || context.preferences.calls !== undefined)) {
-        const embedding = assistantSearchSchema.parse(await model('embed', { query: searchQuery }));
         const minimum = Number(config('RAG_MIN_SIMILARITY'));
         if (!Number.isFinite(minimum) || minimum < -1 || minimum > 1) throw new CustomerAssistantError('ASSISTANT_UNAVAILABLE');
-        let seeds = z.array(assistantSourceSchema).max(12).parse(await reader.read('search', { p_vector: embedding.vector, p_min_similarity: minimum }));
-        if (plan.kind === 'KNOWLEDGE' && seeds.length) {
+        let seeds: z.infer<typeof assistantSourceSchema>[];
+        if (catalogSeeds !== undefined) seeds = catalogSeeds;
+        else {
+          const embedding = assistantSearchSchema.parse(await model('embed', { query: searchQuery }));
+          seeds = z.array(assistantSourceSchema).max(12).parse(await reader.read('search', { p_vector: embedding.vector, p_min_similarity: minimum }));
+        }
+        if (catalogSeeds === undefined && plan.kind === 'KNOWLEDGE' && seeds.length) {
           const selected = z.object({ chunk_ids: z.array(z.string().uuid()).max(12) }).strict().parse(await model('knowledge-selection', { message: knowledgeQuestion, sources: seeds }));
           if (new Set(selected.chunk_ids).size !== selected.chunk_ids.length || selected.chunk_ids.some(id => !seeds.some(source => source.chunk_id === id))) throw new CustomerAssistantError('INVALID_EVIDENCE');
           seeds = seeds.filter(source => selected.chunk_ids.includes(source.chunk_id));
@@ -241,16 +276,36 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         } else { answer.kind = 'CLARIFY'; answer.summary = proof.clarification || 'Approved knowledge does not support a consistent complete answer. Please narrow your question or ask the front desk.'; }
       } else { answer.kind = 'CLARIFY'; answer.summary = 'I do not have approved customer knowledge for that question. Please ask the front desk or try a narrower question.'; }
       return reader.release(state.knowledge_epoch, async () => {
-        for (const citation of plan.kind === 'WORKSPACE' ? [] : answer.citations) {
-          const fresh = assistantSourceSchema.parse(await reader.read('source', { p_version: citation.version_id, p_chunk: citation.chunk_id }));
-          if (fresh.content_hash !== citation.content_hash || fresh.epoch !== answer.knowledge_epoch) throw new Error('KNOWLEDGE_CHANGED');
+        // SDD-C21/C24 / QAD-TC44/46: one principal-bound snapshot revalidates
+        // ALL inspected originals, including uncited conditions. It replaces
+        // per-citation network reads without dropping final authority checks.
+        if (plan.kind === 'KNOWLEDGE' && sources.length) {
+          const finalStarted = performance.now();
+          const roots = [...new Map(sources.map(source => [source.version_id, source.chunk_id])).values()];
+          const snapshot = assistantDocumentEvidenceSchema.parse(await reader.read('document', { p_chunks: roots }));
+          if (snapshot.epoch !== answer.knowledge_epoch || snapshot.sources.length !== sources.length
+            || new Set(snapshot.sources.map(source => source.chunk_id)).size !== sources.length
+            || sources.some(source => !snapshot.sources.some(fresh =>
+              fresh.chunk_id === source.chunk_id && fresh.version_id === source.version_id
+              && fresh.document_id === source.document_id && fresh.epoch === answer.knowledge_epoch
+              && fresh.content === source.content && fresh.content_hash === source.content_hash
+              && fresh.title === source.title && fresh.heading_path === source.heading_path
+              && fresh.source_page === source.source_page && fresh.extraction_method === source.extraction_method
+              && createHash('sha256').update(fresh.content).digest('hex') === fresh.content_hash))) throw new Error('KNOWLEDGE_CHANGED');
+          modelTimings.final_document_read = performance.now() - finalStarted;
         }
         await authorize(); return publicCustomerResponseSchema.parse(answer);
       });
     });
-    return response(publicCustomerResponseSchema.parse(data), 200, cookie);
-  } catch (error) { return safeError(error, cookie); }
-  finally { if (release) { try { await release(); } catch { /* Expiring leases recover abandoned work. */ } } }
+    return outgoing = response(publicCustomerResponseSchema.parse(data), 200, cookie);
+  } catch (error) { return outgoing = safeError(error, cookie); }
+  finally {
+    if (release) { try { await release(); } catch { /* Expiring leases recover abandoned work. */ } }
+    if (outgoing && process.env.RAG_DIAGNOSTICS_ENABLED === 'true') {
+      outgoing.headers.set('Server-Timing', Object.entries({ ...modelTimings, total: performance.now() - started })
+        .map(([stage, elapsed]) => `${stage};dur=${elapsed.toFixed(3)}`).join(', '));
+    }
+  }
 }
 
 export async function customerAssistantControl(request: Request, operation: 'progress' | 'cancel'): Promise<Response> {

@@ -2,18 +2,20 @@
 import asyncio
 from pathlib import Path
 import re
+import pytest
 
 from rag.runtime_identity import FILES, implementation_fingerprint
 
 
-def test_fingerprint_changes_when_serving_code_changes(tmp_path):
+@pytest.mark.parametrize('changed', ['app.py', 'rag/batched_support.py', 'customer_public.py'])
+def test_fingerprint_changes_when_serving_code_changes(tmp_path, changed):
     for name in FILES:
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('synthetic serving code', encoding='utf-8')
     original = implementation_fingerprint(tmp_path)
     assert re.fullmatch('[a-f0-9]{64}', original)
-    (tmp_path / 'app.py').write_text('new serving code', encoding='utf-8')
+    (tmp_path / changed).write_text('new serving code', encoding='utf-8')
     assert implementation_fingerprint(tmp_path) != original
 
 
@@ -24,6 +26,7 @@ def test_health_exposes_imported_identity_without_echoing_credentials(monkeypatc
     result = asyncio.run(app.health(None))
     assert result == {'ready': True, 'implementation_fingerprint': loaded,
                       'answer_provider': 'ollama', 'answer_model': 'qwen3:4b',
+                      'document_answer_model': 'qwen3:4b',
                       'evidence_contracts': ['ms65-v1']}
 
 

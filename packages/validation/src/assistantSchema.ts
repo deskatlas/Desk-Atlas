@@ -204,7 +204,7 @@ export const assistantDocumentEvidenceSchema = z.object({
   sources: z.array(assistantSourceSchema).min(1).max(1000),
 }).strict().refine(v => new Set(v.sources.map(s => s.chunk_id)).size === v.sources.length, 'Duplicate sources');
 export const assistantDocumentSupportSchema = z.object({
-  contract: z.literal('ms65-v1'), binding: z.string().regex(/^[a-f0-9]{64}$/),
+  contract: z.enum(['ms65-v1', 'ragfix-prepared-v2']), binding: z.string().regex(/^[a-f0-9]{64}$/),
   outcome: z.enum(['COMPLETE', 'INSUFFICIENT', 'CONFLICT', 'CLARIFY']),
   clarification: z.string().min(1).max(300).refine(focusedClarification).nullable(),
   spans: z.array(z.object({chunk_id: id, quote: z.string().min(1).max(evidenceBudget.quote_utf16),

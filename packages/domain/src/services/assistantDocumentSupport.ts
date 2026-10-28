@@ -1,9 +1,9 @@
 import { assistantDocumentSupportSchema, type AssistantSource } from '@deskatlas/validation';
 
 // MS65 / SDD-C21 / QAD-TC44: mechanical checks remain independent of inference.
-export function validateDocumentSupport(value: unknown, binding: string, sources: AssistantSource[]) {
+export function validateDocumentSupport(value: unknown, binding: string, sources: AssistantSource[], contract: 'ms65-v1' | 'ragfix-prepared-v2' = 'ms65-v1') {
   const parsed = assistantDocumentSupportSchema.safeParse(value);
-  if (!parsed.success || parsed.data.binding !== binding) return undefined;
+  if (!parsed.success || parsed.data.contract !== contract || parsed.data.binding !== binding) return undefined;
   if (sources.some(source => /ignore\s+(?:all\s+|previous\s+)?instructions|reveal\s+(?:secret|credentials)|execute\s+sql|fetch\s+https?:\/\/|bypass\s+permissions/i.test(source.content))) return undefined;
   const result = parsed.data;
   const cursors = new Map<string, number>();

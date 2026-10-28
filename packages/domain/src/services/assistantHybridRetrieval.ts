@@ -24,6 +24,11 @@ function facilityFaultSearch(message: string): string | undefined {
   return 'Facility equipment malfunction and maintenance reporting';
 }
 
+function dailyOperationsSearch(message: string): string | undefined {
+  if (/\b(?:day[ -]to[ -]day|daily (?:operations|responsibilities|tasks)|(?:running|operating|managing) (?:the|this|our) (?:place|workspace|facility|space))\b/i.test(message)) return 'Daily operations and employee responsibilities';
+  return undefined;
+}
+
 function ordinaryTaskSearch(message: string): string | undefined {
   // PRD-F26 / QAD-TC44: normalize ordinary task language into search categories.
   // These strings contain no permissions, required actions or policy answers.
@@ -60,7 +65,7 @@ export function selectBookingGuaranteeSeeds(original: string, candidates: Readon
 export function assistantSearchQueries(original: string, understanding: unknown): string[] {
   const parsed = assistantQueryUnderstandingSchema.safeParse(understanding);
   const aids = parsed.success && parsed.data.original === original ? parsed.data : undefined;
-  const normalizedTask = bookingGuaranteeSearch(original) ?? facilityFaultSearch(original)
+  const normalizedTask = bookingGuaranteeSearch(original) ?? facilityFaultSearch(original) ?? dailyOperationsSearch(original)
     ?? (aids ? ordinaryTaskSearch(original) ?? ordinaryTaskSearch(aids.standalone ?? '') : undefined);
   if (!aids && !normalizedTask) return [original];
   const normalize = (value: string) => value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();

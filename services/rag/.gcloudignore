@@ -17,6 +17,7 @@
 !cloudrun/ollama.Dockerfile
 !cloudrun/provision_answer.sh
 !cloudrun/provision_embedding.py
+!cloudrun/provision_answer_tokenizer.py
 !cloudrun/verify_answer.py
 !cloudrun/build.yaml
 !cloudrun/build-deepinfra.yaml

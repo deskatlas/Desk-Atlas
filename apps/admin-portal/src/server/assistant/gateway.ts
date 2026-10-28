@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AssistantError, assistantAnswerLanguage, assistantCopy, executeAssistantTool, businessDate, currentOperationalPlan, assistantToolNarrative, type AssistantActor, type AssistantRepository, type AssistantToolResult } from '@deskatlas/domain';
+import { AssistantError, assistantAnswerLanguage, assistantCopy, executeAssistantTool, businessDate, currentOperationalPlan, guidanceDocumentPlan, assistantToolNarrative, type AssistantActor, type AssistantRepository, type AssistantToolResult } from '@deskatlas/domain';
 import { assistantAvailabilitySchema, assistantContextSelectionSchema, assistantEvidenceSchema, assistantKnowledgeAvailabilitySchema, assistantAnswerSchema, assistantCancelSchema, assistantExtractSchema, assistantPlanSchema, assistantQuerySchema, assistantSearchSchema, assistantSourceSchema, assistantIdSchema, assistantSourcesSchema, assistantToolResultSchema, type AssistantAnswer, type AssistantQuery, type AssistantSource } from '../../../../../packages/validation/src/assistantSchema';
 import { verifyAdminSession } from '../../app/api/admin/auth/_lib/adminSession';
 import { verifyStaffAssistantSession } from './session';
@@ -21,6 +21,10 @@ import type { AssistantObligation } from '../../../../../packages/validation/src
 import { createCloudRunIdentity, type CloudRunIdentity } from './cloudRun';
 import { assistantDocumentEvidenceSchema } from '../../../../../packages/validation/src/assistantSchema';
 import { validateDocumentSupport } from '../../../../../packages/domain/src/services/assistantDocumentSupport';
+import { readPreparedSupport } from './preparedReader';
+import { preparedSupportEvidenceSchema } from '@deskatlas/validation';
+import { knowledgeValidation as z } from '@deskatlas/validation';
+import { readInternalDiscoveryCatalog } from './catalog';
 
 // SPEC-4: SDD-C20/C21/C22. This module is imported only by server route adapters.
 const noStore = { 'Cache-Control': 'no-store, private', 'Vary': 'Authorization', 'X-Content-Type-Options': 'nosniff' };
@@ -173,14 +177,17 @@ async function model(path: string, payload: unknown, cap: string, signal: AbortS
   try {
     const identity = await cloudIdentity?.();
     budget?.check();
-    diagnostics?.enter(path === '/v1/evidence-cost' ? 'expand' : path === '/v1/context' ? 'context' : path === '/v1/answer' ? 'answer' : path === '/v1/synthesis' ? 'synthesis' : path === '/v1/support' ? 'support' : path === '/v1/embed' || path === '/v1/embed-queries' ? 'embed' : 'plan');
+    diagnostics?.enter(path === '/v1/evidence-cost' ? 'expand' : path === '/v1/context' || path === '/v1/prepared-selection' ? 'context' : path === '/v1/answer' ? 'answer' : path === '/v1/synthesis' ? 'synthesis' : path === '/v1/support' || path === '/v1/document-support' || path === '/v1/prepared-support' ? 'support' : path === '/v1/embed' || path === '/v1/embed-queries' ? 'embed' : 'plan');
     diagnostics?.count('model_request_bytes', Buffer.byteLength(JSON.stringify(payload), 'utf8'));
     const res = await fetch(new URL(path, base), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceSecret}`, 'X-Request-Capability': cap, ...(identity ? { 'X-Serverless-Authorization': `Bearer ${identity}` } : {}), ...(budget ? { 'X-Request-Timeout-Ms': String(budget.remaining()) } : {}) }, body: JSON.stringify(payload), cache: 'no-store', redirect: 'error', signal });
-    for (const key of ['aggregate_model_bytes', 'aggregate_output_reserved', 'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'] as const) {
+    for (const key of ['reasoning_tokens', 'reasoning_bytes', 'completion_bytes', 'cached_input_tokens', 'aggregate_model_bytes', 'aggregate_output_reserved', 'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported', 'evidence_bytes'] as const) {
       const value = res.headers.get(`x-rag-model-${key}`);
-      if (value && /^\d{1,8}$/.test(value)) diagnostics?.count(key, Number(value));
+      if (value && /^\d{1,8}$/.test(value)) {
+        diagnostics?.count(key, Number(value));
+        if (path === '/v1/prepared-selection' && (key === 'reasoning_tokens' || key === 'reasoning_bytes')) diagnostics?.count(key === 'reasoning_tokens' ? 'selection_reasoning_tokens' : 'selection_reasoning_bytes', Number(value));
+      }
     }
-    const stage = path === '/v1/document-support' ? 'support' : path === '/v1/context' ? 'answer' : path === '/v1/embed-queries' ? 'embed' : path.slice(4);
+    const stage = path === '/v1/document-support' || path === '/v1/prepared-support' ? 'support' : path === '/v1/context' || path === '/v1/prepared-selection' || path === '/v1/catalog-plan' ? 'answer' : path === '/v1/embed-queries' ? 'embed' : path.slice(4);
     if (stage === 'plan' || stage === 'embed' || stage === 'answer' || stage === 'synthesis' || stage === 'support') timing?.upstream(stage, res.headers.get('server-timing'), res.headers.get('x-rag-input-tokens'), res.headers.get('x-rag-output-tokens'));
     if (res.status === 403) throw new AssistantError('FORBIDDEN', 'Historical and financial reports require administrator access.', 403);
     if (!res.ok) {
@@ -192,12 +199,12 @@ async function model(path: string, payload: unknown, cap: string, signal: AbortS
       if (detail === 'CONFLICTING_SOURCES') throw new AssistantError('CONFLICTING_SOURCES', 'The applicable published sources conflict. Ask an administrator to resolve the policy.', 400);
       if (detail === 'INVALID_MODEL_OUTPUT') throw new AssistantError('INVALID_MODEL_OUTPUT', 'The model returned an incomplete selection.', 503);
       if (detail === 'MODEL_TIMEOUT' || detail === 'REQUEST_TIMEOUT') throw new AssistantError(detail, 'Answer preparation took too long.', 408);
-      throw new AssistantError(res.status === 429 ? 'CAPACITY_BUSY' : 'MODEL_UNAVAILABLE', res.status === 429 ? 'Assistant is at capacity. Retry shortly.' : 'Local model is unavailable.', res.status === 429 ? 429 : 503);
+      throw new AssistantError(res.status === 429 ? 'CAPACITY_BUSY' : 'MODEL_UNAVAILABLE', res.status === 429 ? 'Assistant is at capacity. Retry shortly.' : 'The answer service is temporarily unavailable. Please retry.', res.status === 429 ? 429 : 503);
     }
     const result: unknown = await res.json();
     diagnostics?.count('model_response_bytes', Buffer.byteLength(JSON.stringify(result), 'utf8'));
     return result;
-  } catch (e) { if (signal.aborted || e instanceof AssistantError) throw e; throw new AssistantError('MODEL_UNAVAILABLE', 'Local model is unavailable.', 503); }
+  } catch (e) { if (signal.aborted || e instanceof AssistantError) throw e; throw new AssistantError('MODEL_UNAVAILABLE', 'The answer service is temporarily unavailable. Please retry.', 503); }
 }
 function checkSensitive(input: AssistantQuery): void {
   const text = [input.message, ...(input.recent_context?.user_turns ?? [])].join(' ');
@@ -298,7 +305,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     const measure: typeof timing.measure = (stage, work) => { diagnostics.enter(stage); return budget!.run(() => timing.measure(stage, work)); };
     validateEvidenceContract(process.env.RAG_EVIDENCE_CONTRACT);
     sameOrigin(request); const verified = await measure('auth', () => authorizeAssistant(request, signal)); diagnostics.authorize(); enabled();
-    await measure('catalog', () => requireKnowledge(verified, signal));
+    const admittedEpoch = await measure('catalog', () => requireKnowledge(verified, signal));
     const parsed = assistantQuerySchema.safeParse(await measure('validate', () => jsonBody(request, signal)));
     if (!parsed.success) throw new AssistantError('INVALID_REQUEST', 'Invalid assistant request.');
     const input = parsed.data; requestId = input.request_id; checkSensitive(input);
@@ -314,12 +321,36 @@ export async function assistantQuery(request: Request): Promise<Response> {
     if (settings.error || !settings.data?.timezone) throw new AssistantError('DATA_UNAVAILABLE', 'Business timezone is unavailable.', 503);
     const timezone = String(settings.data.timezone);
     entry.timezone = timezone;
-    let knowledgeEpoch = await measure('catalog', () => epoch(verified.client, signal));
+    let knowledgeEpoch = admittedEpoch;
     diagnostics.count('epoch', knowledgeEpoch);
-    const fastPlan = process.env.RAG_SOP_FAST_PATH === 'true' ? proceduralDocumentPlan(input.message, input.recent_context) : undefined;
+    const fastPlan = (process.env.RAG_GUIDANCE_FAST_PATH === 'true' ? guidanceDocumentPlan(input.message) : undefined) ?? (process.env.RAG_SOP_FAST_PATH === 'true' ? proceduralDocumentPlan(input.message, input.recent_context) : undefined);
+    const operationalPlan = currentOperationalPlan(input.message);
+    let catalogSeeds: AssistantSource[] | undefined;
+    let catalogPlan: unknown;
+    if (documentContract && process.env.KB_ENABLED === 'true' && process.env.RAG_INTERNAL_CATALOG_DISCOVERY === 'true' && !operationalPlan) {
+      const catalog = await measure('catalog', () => readInternalDiscoveryCatalog(verified.client, verified.actor.role,
+        config('RAG_SCOPE_ID'), knowledgeEpoch, signal, {
+          authorize: () => recheck(verified.client, verified.actor),
+          source: (version, chunk) => rpc(verified.client, 'assistant_read_source', { p_actor: verified.actor.id,
+            p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_version: version, p_chunk: chunk }, signal),
+        }));
+      const result = z.object({ kind: z.enum(['DOCUMENT', 'DEFER']), query: z.string().min(1).max(2000),
+        chunk_ids: z.array(z.string().uuid()).max(16) }).strict().parse(await measure('context', () => model('/v1/catalog-plan', {
+          message: input.message, user_turns: input.recent_context?.user_turns ?? [],
+          sources: catalog.sources.map(({ chunk_id, title, heading_path, content }) => ({ chunk_id, title, heading_path, content })),
+          headings: catalog.headings,
+        }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
+      if (new Set(result.chunk_ids).size !== result.chunk_ids.length
+        || result.chunk_ids.some(id => !catalog.sources.some(source => source.chunk_id === id))
+        || result.kind === 'DEFER' && result.chunk_ids.length) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
+      if (result.kind === 'DOCUMENT') {
+        catalogSeeds = catalog.sources.filter(source => result.chunk_ids.includes(source.chunk_id));
+        catalogPlan = { kind: 'DOCUMENT', query: result.query, tools: [] };
+      }
+    }
     diagnostics.count('shortcut', fastPlan || currentOperationalPlan(input.message) ? 1 : 0);
     const hybrid = process.env.RAG_HYBRID_RETRIEVAL === 'true';
-    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => fastPlan ?? currentOperationalPlan(input.message) ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true, ...(documentContract ? {evidence_contract: 'ms65-v1'} : {}) }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
+    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => catalogPlan ?? fastPlan ?? operationalPlan ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true, ...(documentContract ? {evidence_contract: 'ms65-v1'} : {}) }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
     if (!planResult.success) {
       diagnostics.fail('INVALID_PLAN', 'plan');
       diagnostics.count('plan_invalid_filters', planResult.error.issues.filter(issue => issue.path.includes('args')).length);
@@ -350,17 +381,50 @@ export async function assistantQuery(request: Request): Promise<Response> {
     let synthesis: AssistantSynthesis | undefined;
     let synthesisStatus: 'DISABLED' | 'NOT_ADMITTED' | 'ACCEPTED' | 'EXACT_FALLBACK' = synthesisEnabled ? 'NOT_ADMITTED' : 'DISABLED';
     let documentClarification: string | undefined;
+    let preparedSelections: NonNullable<Awaited<ReturnType<typeof readPreparedSupport>>>['selections'] | undefined;
     if (['DOCUMENT', 'MIXED'].includes(plan.kind)) {
       if (process.env.KB_ENABLED !== 'true') { diagnostics.fail('NO_RELEVANT_SOURCE', 'catalog'); limitations.push('NO_RELEVANT_SOURCE: Published knowledge is not enabled. Ask an administrator.'); }
       else {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
+            preparedSelections = undefined;
+            const prepared = documentContract && process.env.RAG_PREPARED_SUPPORT === 'true' && catalogSeeds === undefined
+              ? await readPreparedSupport(assistantContextualQuestion(input.message, input.recent_context?.user_turns?.at(-1)), knowledgeEpoch, synthesisEnabled, {
+                catalog: () => measure('catalog', () => rpc(verified.client, 'assistant_prepared_catalog', {
+                  p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'),
+                  p_compiler_fingerprint: config('RAG_PREPARATION_FINGERPRINT'),
+                }, signal)),
+                select: payload => measure('context', () => model('/v1/prepared-selection', payload, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)),
+                evidence: selections => measure('expand', () => rpc(verified.client, 'assistant_prepared_evidence', {
+                  p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_selections: selections,
+                  p_compiler_fingerprint: config('RAG_PREPARATION_FINGERPRINT'),
+                }, signal)),
+                answer: payload => measure('support', () => model('/v1/prepared-support', payload, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)),
+              }) : undefined;
+            if (prepared) {
+              if (prepared.result.outcome !== 'COMPLETE') throw new AssistantError('INCOMPLETE_EVIDENCE', 'Applicable prepared support could not be verified completely.', 400);
+              const result = prepared.result;
+              preparedSelections = prepared.selections;
+              synthesis = synthesisEnabled ? result.synthesis! : undefined;
+              synthesisStatus = synthesisEnabled ? 'ACCEPTED' : 'DISABLED';
+              evidenceSpans = result.spans.map(span => ({ chunk_id: span.chunk_id, quote: span.quote, start: span.start, end: span.end }));
+              sources = prepared.sources.filter(source => result.spans.some(span => span.chunk_id === source.chunk_id));
+              contextSources = prepared.sources.filter(source => !sources.some(used => used.chunk_id === source.chunk_id));
+              summary = synthesis ? synthesis.blocks.map(block => block.text).join('\n\n') : result.spans.map(span => span.quote).join('\n\n');
+              diagnostics.count('closure_count', prepared.sources.length);
+              diagnostics.count('bundle_count', result.counts.bundles);
+              diagnostics.count('support_passes', result.counts.calls);
+              diagnostics.count('support_units', result.counts.units);
+            } else {
             let candidates: AssistantSource[];
             const queryMode = process.env.RAG_HYBRID_QUERY_MODE ?? 'expanded';
             const searchMode = process.env.RAG_HYBRID_MODE ?? 'fused';
             if (hybrid && (!['original', 'expanded'].includes(queryMode) || !['semantic', 'lexical', 'fused'].includes(searchMode))) throw new AssistantError('DATA_UNAVAILABLE', 'Invalid retrieval evaluation configuration.', 503);
             const queries = assistantSearchQueries(input.message, queryMode === 'original' ? undefined : plan.search);
-            if (hybrid) {
+            if (catalogSeeds !== undefined) {
+              if (!catalogSeeds.length) throw new AssistantError('NO_RELEVANT_SOURCE', copy.gap, 400);
+              candidates = catalogSeeds;
+            } else if (hybrid) {
               const batch = assistantEmbeddingBatchSchema.safeParse(await measure('embed', () => model('/v1/embed-queries', { queries }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
               if (!batch.success || batch.data.embeddings.length !== queries.length) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
               const branches = assistantHybridCandidatesSchema.safeParse(await measure('retrieve', () => rpc(verified.client, 'assistant_search_hybrid', {
@@ -370,6 +434,15 @@ export async function assistantQuery(request: Request): Promise<Response> {
               if (!branches.success || branches.data.semantic.length !== queries.length || branches.data.lexical.length !== queries.length) throw new AssistantError('DATA_UNAVAILABLE', 'Invalid retrieval result.', 503);
               candidates = fuseAssistantCandidates({ semantic: searchMode === 'lexical' ? queries.map(() => []) : branches.data.semantic,
                 lexical: searchMode === 'semantic' ? queries.map(() => []) : branches.data.lexical });
+            } else if (process.env.RAG_GUIDANCE_FAST_PATH === 'true' && queries.length > 1) {
+              // PRD-F26 / QAD-TC44: the same bounded queries share one encoder
+              // round trip. All original/aided branches retain normal authority.
+              const batch = assistantEmbeddingBatchSchema.parse(await measure('embed', () => model('/v1/embed-queries', { queries: [assistantRetrievalQuery(input.message), ...queries.slice(1)] }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
+              if (batch.embeddings.length !== queries.length) throw new AssistantError('DATA_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
+              const branches = await Promise.all(batch.embeddings.map(embedding => measure('retrieve', async () => assistantSourcesSchema.parse(await rpc(verified.client, 'assistant_search_knowledge', {
+                p_actor: verified.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_vector: embedding.vector, p_min_similarity: Number(config('RAG_MIN_SIMILARITY')),
+              }, signal)))));
+              candidates = fuseAssistantCandidates({ semantic: branches, lexical: branches.map(() => []) });
             } else {
               const embedding = assistantSearchSchema.safeParse(await measure('embed', () => model('/v1/embed', { query: assistantRetrievalQuery(input.message) }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
               if (!embedding.success) throw new AssistantError('MODEL_UNAVAILABLE', 'Embedding configuration mismatch.', 503);
@@ -395,7 +468,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
               // expansion and independent verification still inspect every
               // canonical unit of each selected authorized generation.
               let documentSeeds = candidates.map(source => source.chunk_id);
-              if (new Set(candidates.map(source => source.version_id)).size > 1) {
+              if (catalogSeeds === undefined && new Set(candidates.map(source => source.version_id)).size > 1) {
                 const documentIndexes = new Map([...new Set(candidates.map(source => source.version_id))].map((version, index) => [version, index]));
                 const selection = assistantContextSelectionSchema.parse(await measure('context', () => model('/v1/context', {
                   evidence_contract: 'ms65-v1', reliability_contract: 'ms60-v1', query: plan.query || input.message,
@@ -636,13 +709,14 @@ export async function assistantQuery(request: Request): Promise<Response> {
             if (summary && coverage?.outcome === 'PARTIAL_GENERAL') limitations.push(...coverage.gaps.map(gap => `PARTIAL_GENERAL: Not verified from retrieved passages: ${gap}`));
             if (fits && !summary && !limitations.some(line => line.startsWith('NO_RELEVANT_SOURCE:'))) limitations.push(...(groundingReason && ['INVALID_QUOTES', 'INVALID_GROUPS', 'INVALID_SOURCE_QUOTE'].includes(groundingReason) ? [`INVALID_MODEL_OUTPUT: ${copy.modelOutput}`] : groundingReason === 'INCOMPLETE_COVERAGE' || groundingReason === 'INJECTION_REJECTED' ? [`INCOMPLETE_CONTEXT: Required selected evidence could not be completely verified. Ask an administrator to review the applicable source context.`] : selected.conflicting ? [`CONFLICTING_SOURCES: ${copy.conflict}`] : coverage?.outcome === 'INSUFFICIENT' && coverage.gaps.length ? coverage.gaps.map(gap => `NO_RELEVANT_SOURCE: Not verified from retrieved passages: ${gap}`) : [`NO_RELEVANT_SOURCE: ${copy.gap}`]));
             }
+            }
           } catch (e) {
             diagnostics.error(e);
             if (e instanceof AssistantError && e.status === 403) throw e;
             if (signal.aborted) throw e;
             const code = e instanceof AssistantError ? e.code : 'DATA_UNAVAILABLE';
             if (code === 'AMBIGUOUS_SCOPE' && e instanceof AssistantError) documentClarification = e.message;
-            limitations.push(`${code}: ${code === 'AMBIGUOUS_SCOPE' ? 'Clarification is required to choose the applicable task.' : (code === 'INCOMPLETE_CONTEXT' || code === 'INCOMPLETE_EVIDENCE' || code === 'MODEL_UNAVAILABLE' && e instanceof AssistantError && e.message.startsWith('READER_INCOMPATIBLE:')) && e instanceof AssistantError ? e.message : code === 'NO_RELEVANT_SOURCE' ? copy.gap : code === 'CONFLICTING_SOURCES' ? copy.conflict : code === 'INVALID_MODEL_OUTPUT' ? copy.modelOutput : code === 'MODEL_TIMEOUT' || code === 'REQUEST_TIMEOUT' ? copy.modelTimeout : code === 'MODEL_UNAVAILABLE' ? 'Local model is unavailable. Verified tables remain available.' : 'The document service is unavailable. Please retry. Verified tables remain available.'}`); sources = []; contextSources = []; summary = ''; synthesis = undefined; evidenceSpans = [];
+            limitations.push(`${code}: ${code === 'AMBIGUOUS_SCOPE' ? 'Clarification is required to choose the applicable task.' : (code === 'INCOMPLETE_CONTEXT' || code === 'INCOMPLETE_EVIDENCE' || code === 'MODEL_UNAVAILABLE' && e instanceof AssistantError && e.message.startsWith('READER_INCOMPATIBLE:')) && e instanceof AssistantError ? e.message : code === 'NO_RELEVANT_SOURCE' ? copy.gap : code === 'CONFLICTING_SOURCES' ? copy.conflict : code === 'INVALID_MODEL_OUTPUT' ? copy.modelOutput : code === 'MODEL_TIMEOUT' || code === 'REQUEST_TIMEOUT' ? copy.modelTimeout : code === 'MODEL_UNAVAILABLE' ? 'The answer service is temporarily unavailable. Verified tables remain available.' : 'The document service is unavailable. Please retry. Verified tables remain available.'}`); sources = []; contextSources = []; summary = ''; synthesis = undefined; evidenceSpans = []; preparedSelections = undefined;
           }
           const current = await measure('catalog', () => epoch(verified.client, signal));
           if (!summary) synthesisStatus = synthesisEnabled ? 'NOT_ADMITTED' : 'DISABLED';
@@ -660,7 +734,16 @@ export async function assistantQuery(request: Request): Promise<Response> {
     const finalIdentity = await measure('auth', () => authorizeAssistant(request, signal));
     if (finalIdentity.actor.id !== verified.actor.id || finalIdentity.actor.role !== verified.actor.role) throw new AssistantError('FORBIDDEN', 'Account permissions changed.', 403);
     const finalSources = [...sources, ...contextSources];
-    if (documentContract && finalSources.length) {
+    if (preparedSelections && finalSources.length) {
+      const snapshot = preparedSupportEvidenceSchema.safeParse(await measure('evidence', () => rpc(verified.client, 'assistant_prepared_evidence', {
+        p_actor: finalIdentity.actor.id, p_scope: config('RAG_SCOPE_ID'), p_fingerprint: config('RAG_EMBEDDING_FINGERPRINT'), p_selections: preparedSelections,
+        p_compiler_fingerprint: config('RAG_PREPARATION_FINGERPRINT'),
+      }, signal)));
+      if (!snapshot.success || snapshot.data.epoch !== knowledgeEpoch || snapshot.data.sources.length !== finalSources.length
+        || finalSources.some(source => !snapshot.data.sources.some(current => JSON.stringify(current) === JSON.stringify(source)))) {
+        throw new AssistantError('KNOWLEDGE_CHANGED', 'Prepared sources or permissions changed. Please retry.', 409);
+      }
+    } else if (documentContract && finalSources.length) {
       // MS65: one actor/scoped database snapshot checks ALL inspected chunks,
       // including uncited context, without repeated network round trips.
       const roots = [...new Map(finalSources.map(source => [source.version_id, source.chunk_id])).values()];

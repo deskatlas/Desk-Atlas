@@ -69,6 +69,18 @@ beforeEach(() => {
 });
 afterEach(() => { for (const effect of hooks.state.effects) effect?.cleanup?.(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('MS45 ephemeral launcher lifecycle', () => {
+  it('QAD-TC44 retains a failed request beside its question on the next submission', async () => {
+    eligible = true; render(); await settle(); await clickOpen();
+    query = Promise.resolve(Response.json({ error: { code: 'MODEL_UNAVAILABLE', message: 'The answer service is temporarily unavailable.' } }, { status: 503 }));
+    (panel()!.props.onValue as (value: string) => void)('First question'); await settle();
+    (panel()!.props.onSubmit as () => void)(); await settle();
+    expect(panel()!.props.error).toContain('temporarily unavailable');
+    query = deferred().promise;
+    (panel()!.props.onValue as (value: string) => void)('Second question'); await settle();
+    (panel()!.props.onSubmit as () => void)(); await settle();
+    const messages = panel()!.props.messages as { role: string; text: string }[];
+    expect(messages.map(message => message.text)).toEqual(['First question', 'The answer service is temporarily unavailable.', 'Second question']);
+  });
   it('QAD-TC44 expiry clears conversation and exposes sign-in recovery instead of disappearing', async () => {
     const secret = randomUUID(), start = Date.now();
     featureToken = issueStaffAssistantSession('00000000-0000-4000-8000-000000000001', secret, start);

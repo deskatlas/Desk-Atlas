@@ -5,6 +5,8 @@ COPY service-requirements.lock.txt .
 RUN pip install --no-cache-dir -r service-requirements.lock.txt && useradd --create-home rag
 COPY models.json app.py serve_local.py customer_access.py customer_public.py customer_booking_evidence.py ./
 COPY rag/ ./rag/
+COPY cloudrun/provision_answer_tokenizer.py ./cloudrun/provision_answer_tokenizer.py
+RUN python cloudrun/provision_answer_tokenizer.py
 ENV RAG_EMBEDDING_PROVIDER=deepinfra PYTHONDONTWRITEBYTECODE=1
 USER rag
 EXPOSE 8000

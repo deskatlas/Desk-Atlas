@@ -144,7 +144,11 @@ export function AssistantLauncher({ token, onReauthenticate }: { token?: string;
     pending.current = { controller, id }; last.current = question;
     setBusy(true); setError(''); setStatus('Checking your request…');
     const users = messages.filter(m => m.role === 'user').slice(-4).map(m => m.text);
-    if (!retry) setMessages(previous => [...previous, { id, role: 'user', text: question }]);
+    // PRD-F26 / DSD-UI16: retain the previous request's failure when a new
+    // question clears the active retry notice. Never leave an unanswered bubble.
+    if (!retry) setMessages(previous => [...previous,
+      ...(error ? [{ id: crypto.randomUUID(), role: 'assistant' as const, text: error }] : []),
+      { id, role: 'user', text: question }]);
     setValue('');
     let polling = false, timedOut = false;
     // MS53 / SDD-C20: gateway permits at most 55 seconds. Allow transport cleanup

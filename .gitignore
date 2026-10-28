@@ -64,3 +64,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 services/rag/.deepinfra-deploy*.json
+# Private RAG audit snapshots and deployment manifests remain local.
+outputs/admin-rag-audit-*/

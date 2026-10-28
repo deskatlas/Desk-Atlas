@@ -55,7 +55,7 @@ class GatewayError(ValueError):
 
 
 class Gateway:
-    def __init__(self, url: str, token: str):
+    def __init__(self, url: str, token: str, *, lane='jobs'):
         parsed = urlparse(url)
         if parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}):
             raise ValueError("PRIVATE_HTTPS_GATEWAY_REQUIRED")
@@ -63,9 +63,12 @@ class Gateway:
             raise ValueError("WORKER_TOKEN_REQUIRED")
         self.url = url.rstrip("/")
         self.token = token
+        if lane not in ('jobs', 'support'):
+            raise ValueError('INVALID_WORKER_LANE')
+        self.lane = lane
 
     def call(self, path: str, data: dict):
-        request = Request(self.url + "/api/internal/knowledge/jobs/" + path, json.dumps(data).encode(), {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}, method="POST")
+        request = Request(self.url + "/api/internal/knowledge/" + self.lane + "/" + path, json.dumps(data).encode(), {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}, method="POST")
         try:
             with urlopen(request, timeout=45) as response:
                 return json.load(response)["data"]
@@ -216,7 +219,15 @@ def run_lanes(gateway, encoder, fingerprint, stop=None):
 def main():
     if os.environ.get("KB_ENABLED") != "true":
         raise SystemExit("KB_DISABLED")
-    gateway = Gateway(os.environ.get("KB_GATEWAY_URL", "http://127.0.0.1:3000"), os.environ.get("KB_WORKER_TOKEN", ""))
+    support = os.environ.get('KB_WORKER_MODE') == 'support'
+    gateway = Gateway(os.environ.get("KB_GATEWAY_URL", "http://127.0.0.1:3000"), os.environ.get("KB_WORKER_TOKEN", ""), lane='support' if support else 'jobs')
+    if support:
+        from knowledge.support_worker import run_support_lane
+        stopped = threading.Event()
+        for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(shutdown_signal, lambda _signal, _frame: stopped.set())
+        run_support_lane(gateway, stopped)
+        return
     # A standalone purge process requires neither manifests nor model weights.
     if os.environ.get('KB_WORKER_MODE', 'all') == 'purge':
         run_lane(gateway, 'PURGE')

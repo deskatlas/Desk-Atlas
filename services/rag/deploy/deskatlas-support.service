@@ -1,0 +1,23 @@
+[Unit]
+Description=DeskAtlas source-bound workflow preparation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deskatlas
+WorkingDirectory=/opt/deskatlas/rag
+EnvironmentFile=/etc/deskatlas-worker.env
+Environment=KB_WORKER_MODE=support
+Environment=RAG_MODEL_PROVIDER=deepinfra
+Environment=RAG_ANSWER_MODEL=Qwen/Qwen3-32B
+Environment=RAG_DOCUMENT_ANSWER_MODEL=Qwen/Qwen3-32B
+Environment=RAG_PREPARATION_FORMAT=bounded_schema
+ExecStart=/opt/deskatlas/rag/.venv-worker/bin/python -m knowledge.worker
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=180
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -19,8 +19,9 @@ from rag.evidence_budget import LIMITS
 from rag.procedure import strict_procedure_quotes, strict_faq_quotes
 from rag.governance import strict_governance_quotes
 from rag.runtime_identity import implementation_fingerprint
-from rag.answer_provider import provider, answer_model, deepinfra_headers, deepinfra_payload, normalize_deepinfra, DEEPINFRA_ORIGIN
-from rag.embedding_provider import embedding_provider, embedding_fingerprint, HostedEncoder
+from rag.answer_provider import provider, answer_model, document_model, document_limits, deepinfra_headers, deepinfra_payload, normalize_deepinfra, DEEPINFRA_ORIGIN, BENCHMARK_MODELS, released_model
+from rag.catalog_discovery import CatalogInput, discover_internal
+from rag.embedding_provider import embedding_provider, embedding_fingerprint, HostedEncoder, HostedEmbeddingFailure
 
 # Capture once at import, so an old process cannot claim newly edited code.
 LOADED_IMPLEMENTATION = implementation_fingerprint()
@@ -544,6 +545,7 @@ async def lifespan(app: FastAPI):
         # MS65 candidate: at most three internal partition passes; aggregate
         # work and request deadlines remain independently enforced.
         app.state.slots = asyncio.Semaphore(DOCUMENT_BUDGET['concurrency'])
+        app.state.internal_batch_slots = asyncio.Semaphore(8)
         app.state.customer_slots = asyncio.Semaphore(2)
         app.state.requests = 0
         app.state.encoder = None
@@ -559,15 +561,33 @@ async def lifespan(app: FastAPI):
                 raise RuntimeError('Embedding fingerprint mismatch')
             app.state.encoder = HostedEncoder() if embedding_provider() == 'deepinfra' else Encoder(manifest, root / '.cache' / 'models')
             if embedding_provider() == 'deepinfra':
-                await app.state.encoder.encode_async(['Synthetic embedding readiness check.'])
+                await verify_embedding_readiness(app.state.encoder)
             progress('embedding ready')
+        batched_support = (os.environ.get('RAG_INTERNAL_BATCHED_SUPPORT', 'false') == 'true'
+            or os.environ.get('RAG_PREPARED_SUPPORT') == 'true'
+            or os.environ.get('RAG_CUSTOMER_BATCHED_SUPPORT', 'false') == 'true')
+        if os.environ.get('RAG_PREPARED_SUPPORT') == 'true' and selected_provider != 'deepinfra':
+            raise RuntimeError('PREPARED_SUPPORT_REQUIRES_EXPLICIT_HOSTED_PROVIDER')
         if selected_provider == 'deepinfra':
+            if batched_support and not document_limits()['byte_tokens']:
+                from rag.hosted_tokenizer import tokenizer
+                tokenizer()
             progress('hosted answer model verification')
             # Synthetic schema canary exercises credentials and constrained output.
             # No source text is used and readiness fails if the provider is unusable.
             result = await generate('Return JSON with p=[] and c=false.', {}, PassageSelection)
             if result.passages or result.conflicting_sources:
                 raise RuntimeError('Hosted answer model canary failed')
+            if document_model() != answer_model():
+                if not batched_support:
+                    raise RuntimeError('DOCUMENT_MODEL_REQUIRES_BATCHED_SUPPORT')
+                scoped = request_timing.model_limits.set(document_limits())
+                try:
+                    result = await generate('Return JSON with p=[] and c=false.', {}, PassageSelection)
+                    if result.passages or result.conflicting_sources:
+                        raise RuntimeError('Hosted document model canary failed')
+                finally:
+                    request_timing.model_limits.reset(scoped)
         elif os.environ.get('RAG_PRELOAD_MODEL') == 'true':
             progress('answer model verification')
             model = os.environ.get('RAG_ANSWER_MODEL', 'qwen3:4b')
@@ -584,6 +604,9 @@ async def lifespan(app: FastAPI):
         progress('models ready')
         yield
     finally:
+        close_encoder = getattr(getattr(app.state, 'encoder', None), 'aclose', None)
+        if callable(close_encoder):
+            await close_encoder()
         await app.state.client.aclose()
 
 
@@ -608,7 +631,12 @@ async def authenticate_customer(request: Request):
 @app.post('/v1/customer/plan')
 async def public_customer_plan(body: CustomerPlanInput, claims=Depends(authenticate_customer)):
     admit_customer_operation(claims, 'customer_knowledge')
-    return await interpret_customer_question(body, generate)
+    token = request_timing.model_limits.set(document_limits()) if customer_batching() else None
+    try:
+        return await interpret_customer_question(body, generate)
+    finally:
+        if token is not None:
+            request_timing.model_limits.reset(token)
 
 
 @app.post('/v1/customer/embed')
@@ -641,6 +669,22 @@ class DocumentSupportInput(Strict):
     synthesis: bool = False
 
 
+from rag.prepared_protocol import DiscoveryIndex, SelectedIndex, WorkflowSelection, EntrySelection, select_workflows, discovery_projection, coverage_projection
+from rag.prepared_transport import PackedOriginals, unpack_originals
+
+
+class PreparedSelectionInput(Strict):
+    contract: Literal['ragfix-prepared-v2']
+    query: str = Field(min_length=1, max_length=3000)
+    indexes: list[DiscoveryIndex] = Field(min_length=1, max_length=1000)
+
+
+class PreparedSupportInput(PreparedSelectionInput):
+    evidence: PackedOriginals
+    selected: list[SelectedIndex] = Field(min_length=1, max_length=12)
+    synthesis: bool = True
+
+
 class CustomerCharacteristicsInput(Strict):
     sources: list[Source] = Field(max_length=1000)
     ids: list[str] = Field(max_length=12)
@@ -651,11 +695,39 @@ class CustomerKnowledgeSelectionInput(Strict):
     sources: list[Source] = Field(min_length=1, max_length=12)
 
 
+class CustomerCatalogInput(CustomerPlanInput):
+    sources: list[Source] = Field(min_length=1, max_length=12)
+    headings: list[list[Annotated[str, Field(max_length=500)]]] = Field(min_length=1, max_length=12)
+
+
+def customer_batching():
+    return provider() == 'deepinfra' and os.environ.get('RAG_CUSTOMER_BATCHED_SUPPORT', 'false') == 'true'
+
+
+@app.post('/v1/customer/catalog-plan')
+async def customer_catalog_plan(body: CustomerCatalogInput, claims=Depends(authenticate_customer)):
+    admit_customer_operation(claims, 'customer_knowledge')
+    if not customer_batching():
+        raise HTTPException(503, detail='READER_INCOMPATIBLE')
+    from customer_public import interpret_customer_catalog
+    token = request_timing.model_limits.set(document_limits())
+    try:
+        return await interpret_customer_catalog(body, [source.model_dump() for source in body.sources], body.headings, generate)
+    finally:
+        request_timing.model_limits.reset(token)
+
+
 @app.post('/v1/customer/knowledge-selection')
 async def customer_knowledge_selection(body: CustomerKnowledgeSelectionInput, claims=Depends(authenticate_customer)):
     from customer_public import select_customer_sources
     admit_customer_operation(claims, 'customer_knowledge')
-    return {'chunk_ids': await select_customer_sources(body.message, [s.model_dump() for s in body.sources], generate)}
+    enabled = customer_batching()
+    token = request_timing.model_limits.set(document_limits()) if enabled else None
+    try:
+        return {'chunk_ids': await select_customer_sources(body.message, [s.model_dump() for s in body.sources], generate, single_pass=enabled)}
+    finally:
+        if token is not None:
+            request_timing.model_limits.reset(token)
 
 
 @app.post('/v1/customer/characteristics')
@@ -672,10 +744,18 @@ async def customer_document_support(body: DocumentSupportInput, request: Request
     token = request_timing.work.set({'calls': 0, 'bytes': 0, 'output': 0,
         'max_calls': DOCUMENT_BUDGET['model_calls'], 'max_bytes': DOCUMENT_BUDGET['aggregate_wire_bytes'],
         'max_output': DOCUMENT_BUDGET['aggregate_output_tokens']})
+    limits_token = request_timing.model_limits.set(document_limits()) if customer_batching() else None
     try:
         async with asyncio.timeout(DOCUMENT_BUDGET['deadline_seconds']):
-            result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, customer_reference=True)
+            if limits_token is not None:
+                from rag.batched_support import batched_document_answer
+                result = await batched_document_answer(body.query, [s.model_dump() for s in body.sources], generate,
+                    body.synthesis, actor_role=claims.principal, customer_reference=True)
+            else:
+                result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, customer_reference=True)
     finally:
+        if limits_token is not None:
+            request_timing.model_limits.reset(limits_token)
         request_timing.work.reset(token)
     return {'contract': 'ms65-v1', 'binding': hashlib.sha256(await request.body()).hexdigest(), **result}
 
@@ -688,12 +768,82 @@ async def document_support(body: DocumentSupportInput, request: Request):
     token = request_timing.work.set({'calls': 0, 'bytes': 0, 'output': 0,
         'max_calls': DOCUMENT_BUDGET['model_calls'], 'max_bytes': DOCUMENT_BUDGET['aggregate_wire_bytes'],
         'max_output': DOCUMENT_BUDGET['aggregate_output_tokens']})
+    limits_token = request_timing.model_limits.set(document_limits()) if provider() == 'deepinfra' and os.environ.get('RAG_INTERNAL_BATCHED_SUPPORT', 'false') == 'true' else None
     try:
         async with asyncio.timeout(DOCUMENT_BUDGET['deadline_seconds']):
-            result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, actor_role=claims.role)
+            from rag.document_support import batched_document_answer
+            answer = batched_document_answer if limits_token is not None else document_answer
+            result = await answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, actor_role=claims.role)
     finally:
+        if limits_token is not None:
+            request_timing.model_limits.reset(limits_token)
         request_timing.work.reset(token)
     return {'contract': 'ms65-v1', 'binding': hashlib.sha256(await request.body()).hexdigest(), **result}
+
+
+@app.post('/v1/catalog-plan')
+async def internal_catalog_plan(body: CatalogInput, request: Request):
+    claims = await authenticate(request, request.headers.get('authorization', ''), request.headers.get('x-request-capability', ''))
+    if 'answer' not in claims.ops or claims.role not in ('ADMIN', 'STAFF'):
+        raise HTTPException(403, detail='FORBIDDEN')
+    if os.environ.get('RAG_INTERNAL_BATCHED_SUPPORT') != 'true' or provider() != 'deepinfra':
+        raise HTTPException(503, detail='READER_INCOMPATIBLE')
+    token = request_timing.model_limits.set(document_limits())
+    try:
+        return await discover_internal(body, claims.role, generate)
+    finally:
+        request_timing.model_limits.reset(token)
+
+
+@app.post('/v1/prepared-selection')
+async def prepared_selection(body: PreparedSelectionInput, request: Request):
+    claims = await authenticate(request, request.headers.get('authorization', ''), request.headers.get('x-request-capability', ''))
+    if 'answer' not in claims.ops:
+        raise HTTPException(403, detail='FORBIDDEN')
+    if os.environ.get('RAG_PREPARED_SUPPORT') != 'true' or provider() != 'deepinfra':
+        raise HTTPException(503, detail='READER_INCOMPATIBLE')
+    token = request_timing.model_limits.set(document_limits())
+    try:
+        return await select_workflows(body.query, body.indexes, generate, claims.role)
+    finally:
+        request_timing.model_limits.reset(token)
+
+
+@app.post('/v1/prepared-support')
+async def prepared_support(body: PreparedSupportInput, request: Request):
+    claims = await authenticate(request, request.headers.get('authorization', ''), request.headers.get('x-request-capability', ''))
+    if 'answer' not in claims.ops:
+        raise HTTPException(403, detail='FORBIDDEN')
+    if os.environ.get('RAG_PREPARED_SUPPORT') != 'true' or provider() != 'deepinfra':
+        raise HTTPException(503, detail='READER_INCOMPATIBLE')
+    catalog = {index.version_id: index for index in body.indexes}
+    selected = {index.version_id: index for index in body.selected}
+    sources, original_units = unpack_originals(body.evidence)
+    if (len(catalog) != len(body.indexes) or len(selected) != len(body.selected)
+            or set(selected) != {source['version_id'] for source in sources}
+            or any(index.version_id not in catalog or index.artifact_sha256 != catalog[index.version_id].artifact_sha256
+                   or set(index.selected_groups) - {group.id for group in catalog[index.version_id].groups}
+                   or len(set(index.selected_groups)) != len(index.selected_groups)
+                   for index in body.selected)
+            or any(source['document_id'] != catalog[source['version_id']].document_id for source in sources)):
+        raise HTTPException(503, detail='INVALID_MODEL_OUTPUT')
+    token = request_timing.work.set({'calls': 0, 'bytes': 0, 'output': 0,
+        'max_calls': DOCUMENT_BUDGET['model_calls'], 'max_bytes': DOCUMENT_BUDGET['aggregate_wire_bytes'],
+        'max_output': DOCUMENT_BUDGET['aggregate_output_tokens']})
+    limits_token = request_timing.model_limits.set(document_limits())
+    try:
+        from rag.batched_support import batched_document_answer
+        async with asyncio.timeout(DOCUMENT_BUDGET['deadline_seconds']):
+            result = await batched_document_answer(body.query, sources,
+                generate, body.synthesis, actor_role=claims.role,
+                prepared_index=coverage_projection(body.indexes),
+                selected_workflows=[{'document': next(i for i, original in enumerate(body.indexes) if original.version_id == index.version_id),
+                                     'title': catalog[index.version_id].title, 'groups': index.selected_groups} for index in body.selected],
+                admitted_units=original_units)
+    finally:
+        request_timing.model_limits.reset(limits_token)
+        request_timing.work.reset(token)
+    return {'contract': 'ragfix-prepared-v2', 'binding': hashlib.sha256(await request.body()).hexdigest(), **result}
 
 
 @app.exception_handler(RequestValidationError)
@@ -714,6 +864,37 @@ def model_wire(payload):
     return json.dumps(payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')
 
 
+async def verify_embedding_readiness(encoder):
+    # Synthetic startup check only. Chat embedding calls retain their deadline.
+    for attempt in range(2):
+        try:
+            await encoder.encode_async(['Synthetic embedding readiness check.'])
+            return
+        except HostedEmbeddingFailure as error:
+            if not error.transient or attempt == 1:
+                raise
+            await asyncio.sleep(2)
+
+
+def record_hosted_usage(response):
+    # SDD-C20 / QAD-TC44: numeric provider diagnostics, never reasoning text.
+    usage = response.get('usage') if isinstance(response, dict) else None
+    if isinstance(usage, dict):
+        for detail, field, metric in [('completion_tokens_details','reasoning_tokens','reasoning_tokens'),
+                                      ('prompt_tokens_details','cached_tokens','cached_input_tokens')]:
+            values = usage.get(detail)
+            if isinstance(values, dict):
+                request_timing.model_metric(metric, values.get(field))
+    choices = response.get('choices') if isinstance(response, dict) else None
+    message = choices[0].get('message') if isinstance(choices,list) and choices and isinstance(choices[0],dict) else None
+    if isinstance(message,dict):
+        lengths = [len(message[key].encode()) for key in ('reasoning_content','reasoning') if isinstance(message.get(key),str)]
+        if lengths:
+            request_timing.model_metric('reasoning_bytes',max(lengths))
+        if isinstance(message.get('content'),str):
+            request_timing.model_metric('completion_bytes',len(message['content'].encode()))
+
+
 async def model_request(path: str, payload: dict) -> dict:
     try:
         response = await app.state.client.post(path, content=model_wire(payload), headers={'Content-Type': 'application/json'})
@@ -727,11 +908,16 @@ async def model_request(path: str, payload: dict) -> dict:
         raise HTTPException(503, detail='MODEL_UNAVAILABLE') from None
 
 
+def scoped_answer_model():
+    limits = request_timing.model_limits.get()
+    return limits.get('model', document_model()) if limits else answer_model()
+
+
 async def verify_model(model: str, digest: str):
     if provider() == 'deepinfra':
         # Provider-managed weights have no Ollama digest. The explicit model
         # allowlist and real startup canary replace local artifact verification.
-        if model != answer_model():
+        if model != scoped_answer_model():
             raise HTTPException(503, detail='MODEL_REVISION_MISMATCH')
         return
     try:
@@ -744,18 +930,19 @@ async def verify_model(model: str, digest: str):
 
 
 async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
+    limits = {**LIMITS, **(request_timing.model_limits.get() or {})}
     request_timing.model_metric('system_bytes', len(system.encode()))
-    request_timing.model_metric('context_tokens', LIMITS['context_tokens'])
+    request_timing.model_metric('context_tokens', limits['context_tokens'])
     request_timing.model_metric('template_headroom', LIMITS['template_headroom'])
-    if len(model_wire(content)) + len(system.encode()) > LIMITS['model_request_bytes']:
+    if len(model_wire(content)) + len(system.encode()) > limits['model_request_bytes']:
         raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
-    model = answer_model()
+    model = scoped_answer_model()
     hosted = provider() == 'deepinfra'
     # MS-44: independent experiment controls, unchanged baseline until measured.
-    compact = schema in (PassageSelection, EvidenceCheck, ContextSelection, ContextIndexSelection, ScopedContextSelection, ScopeDecision, ApplicabilityDecision, MainProjection) or issubclass(schema, SupportVerdict)
+    compact = schema in (PassageSelection, EvidenceCheck, ContextSelection, ContextIndexSelection, ScopedContextSelection, ScopeDecision, ApplicabilityDecision, MainProjection, WorkflowSelection) or issubclass(schema, (SupportVerdict, WorkflowSelection, EntrySelection))
     key = 'RAG_PLAN_MAX_TOKENS' if issubclass(schema, Plan) else 'RAG_SELECTION_MAX_TOKENS' if compact else 'RAG_ANSWER_MAX_TOKENS'
     try:
-        default_budget = '384' if schema in (ScopedContextSelection, ScopeDecision, ApplicabilityDecision) else '128' if compact else '1200'
+        default_budget = '384' if schema in (ScopedContextSelection, ScopeDecision, ApplicabilityDecision) or issubclass(schema,(WorkflowSelection,EntrySelection)) else '128' if compact else '1200'
         budget = int(os.environ.get(key, default_budget))
         if not 128 <= budget <= 2400:
             raise ValueError()
@@ -769,14 +956,14 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
     except ValueError:
         raise HTTPException(503, detail='INVALID_TOKEN_BUDGET') from None
     queued = time.perf_counter()
-    async with (app.state.customer_slots if CUSTOMER_INFERENCE.get() else app.state.slots):
+    async with (app.state.customer_slots if CUSTOMER_INFERENCE.get() else app.state.internal_batch_slots if request_timing.model_limits.get() else app.state.slots):
         request_timing.add('queue', (time.perf_counter() - queued) * 1000)
         with request_timing.measure('verify'):
             await verify_model(model, '' if hosted else required('RAG_ANSWER_DIGEST'))
         with request_timing.measure('inference'):
             payload = {
                 'model': model, 'stream': False, 'think': False, 'keep_alive': -1 if keep_alive == '-1' else keep_alive,
-                'format': schema.model_json_schema(), 'options': {'num_gpu': gpu_layers, 'num_ctx': LIMITS['context_tokens'], 'num_batch': 1024 if hosted else model_batch_size(), 'num_predict': budget, 'temperature': 0},
+                'format': schema.model_json_schema(), 'options': {'num_gpu': gpu_layers, 'num_ctx': limits['context_tokens'], 'num_batch': 1024 if hosted else model_batch_size(), 'num_predict': budget, 'temperature': 0},
                 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': model_wire(content).decode('utf-8')}],
             }
             if hosted:
@@ -786,12 +973,32 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
             # conservative upper bound for the pinned byte-level Qwen tokenizer;
             # retain output and chat-template headroom inside num_ctx.
             request_timing.model_metric('serialized_model_bytes', len(model_wire(payload)))
-            if len(model_wire(payload)) > min(LIMITS['model_request_bytes'], LIMITS['context_tokens'] - budget - LIMITS['template_headroom']):
+            serialized = model_wire(payload)
+            if request_timing.model_limits.get() and not limits.get('byte_tokens'):
+                from rag.hosted_tokenizer import token_count
+                input_bound = token_count(serialized.decode())
+            else:
+                input_bound = len(serialized)
+            if len(serialized) > limits['model_request_bytes'] or input_bound + budget + LIMITS['template_headroom'] > limits['context_tokens']:
                 raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
             if not request_timing.reserve_model_work(len(model_wire(payload)), budget):
                 raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
+            reservation = None
+            if model in BENCHMARK_MODELS and not released_model(model):
+                from rag.benchmark_budget import reserve_request
+                try:
+                    reservation = reserve_request(model, len(serialized), budget)
+                except (OSError, ValueError, KeyError):
+                    raise HTTPException(503, detail='BENCHMARK_BUDGET_UNAVAILABLE') from None
             response = await model_request('/v1/openai/chat/completions' if hosted else '/api/chat', payload)
             if hosted:
+                if reservation is not None:
+                    from rag.benchmark_budget import settle_request
+                    try:
+                        settle_request(reservation, response.get('usage', {}))
+                    except (OSError, ValueError, KeyError, StopIteration):
+                        raise HTTPException(503, detail='BENCHMARK_BUDGET_UNAVAILABLE') from None
+                record_hosted_usage(response)
                 response = normalize_deepinfra(response, model)
     for key, field in [('load', 'load_duration'), ('prompt', 'prompt_eval_duration'), ('generation', 'eval_duration')]:
         value = response.get(field)
@@ -799,7 +1006,7 @@ async def generate(system: str, content: dict, schema: type[Strict]) -> Strict:
             request_timing.add(key, value / 1_000_000)
     request_timing.token_count('input', response.get('prompt_eval_count'))
     request_timing.token_count('output', response.get('eval_count'))
-    if type(response.get('prompt_eval_count')) is int and response['prompt_eval_count'] + budget + LIMITS['template_headroom'] > LIMITS['context_tokens']:
+    if type(response.get('prompt_eval_count')) is int and response['prompt_eval_count'] + budget + LIMITS['template_headroom'] > limits['context_tokens']:
         raise HTTPException(400, detail='CONTEXT_BUDGET_EXCEEDED')
     try:
         with request_timing.measure('schema'):
@@ -1654,5 +1861,5 @@ consistent=true unless SOURCE rules materially contradict under the SAME conditi
 @app.get('/health')
 async def health(_claims: Claims = Depends(authenticate)):
     return {'ready': True, 'implementation_fingerprint': LOADED_IMPLEMENTATION,
-            'answer_provider': provider(), 'answer_model': answer_model(),
-            'evidence_contracts': ['ms65-v1']}
+            'answer_provider': provider(), 'answer_model': answer_model(), 'document_answer_model': document_model(),
+            'evidence_contracts': ['ms65-v1', *(['ragfix-prepared-v2'] if os.environ.get('RAG_PREPARED_SUPPORT') == 'true' else [])]}

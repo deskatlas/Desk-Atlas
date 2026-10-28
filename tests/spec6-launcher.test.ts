@@ -11,6 +11,14 @@ const saved = {
 const answer = { model: 'synthetic-model', manifest_digest: 'b'.repeat(64) };
 
 describe('SPEC6-TC01: saved local launcher configuration', () => {
+  it('preserves the separate customer batching choice and approved document model without forwarding them to workers', () => {
+    const configured = { ...saved, RAG_CUSTOMER_BATCHED_SUPPORT: 'true', RAG_DOCUMENT_ANSWER_MODEL: 'Qwen/Qwen3.6-35B-A3B' };
+    const env = launcher.runtimeEnvironment('api', configured, {}, answer);
+    expect(env.RAG_CUSTOMER_BATCHED_SUPPORT).toBe('true');
+    expect(env.RAG_DOCUMENT_ANSWER_MODEL).toBe('Qwen/Qwen3.6-35B-A3B');
+    expect(launcher.runtimeEnvironment('api', saved, {}, answer).RAG_CUSTOMER_BATCHED_SUPPORT).toBeUndefined();
+    expect(launcher.runtimeEnvironment('worker', configured, {}, answer).RAG_CUSTOMER_BATCHED_SUPPORT).toBeUndefined();
+  });
   it('preserves explicit customer access settings for the API without enabling them by default', () => {
     const configured = { ...saved, CUSTOMER_ASSISTANT_ENABLED: 'true', CUSTOMER_ASSISTANT_VERIFIED_ENABLED: 'false' };
     const env = launcher.runtimeEnvironment('api', configured, {}, answer);

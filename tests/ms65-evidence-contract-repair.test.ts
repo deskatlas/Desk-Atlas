@@ -202,6 +202,51 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     });
   }
 
+  it('ragfix embeds original wording and deterministic search aids in one bounded batch', async () => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    vi.stubEnv('RAG_GUIDANCE_FAST_PATH', 'true');
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) => String(url).endsWith('/v1/embed-queries')
+      ? Response.json({ embeddings: (JSON.parse(String(init?.body)).queries as string[]).map(() => ({ vector: [1, ...Array(1023).fill(0)] })) })
+      : original(url, init));
+    const response = await assistantQuery(paymentRequest("I'm new here. What should I focus on when running the place day to day?"));
+    expect(response.status).toBe(200);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/v1/embed-queries'))).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/v1/embed'))).toBe(false);
+  });
+
+  it('prepared workflow serving uses original proof and final checks without query embedding', async () => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    vi.stubEnv('RAG_PREPARED_SUPPORT', 'true');
+    vi.stubEnv('RAG_PREPARATION_FINGERPRINT', 'c'.repeat(64));
+    vi.stubEnv('RAG_GUIDANCE_FAST_PATH', 'true');
+    vi.stubEnv('RAG_SYNTHESIS_ENABLED', 'true');
+    const source = sources[0];
+    const index = { document_id: source.document_id, version_id: source.version_id, title: source.title,
+      artifact_sha256: 'a'.repeat(64), source_binding: 'b'.repeat(64),
+      groups: [{ id: 0, label: 'Shift monitoring', applies_to: 'Staff monitoring the lobby', ranges: [[0, 0]], requires: [], scope: 'WORKFLOW' }] };
+    const originalRpc = db.rpc.getMockImplementation()!;
+    db.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => name === 'assistant_prepared_catalog'
+      ? { error: null, data: { contract: 'ragfix-prepared-v2', epoch: 1, complete: true, documents: [index] } }
+      : name === 'assistant_prepared_evidence'
+        ? { error: null, data: { contract: 'ragfix-prepared-v2', epoch: 1, indexes: [{ ...index, selected_groups: [0] }], sources,
+          units: [{ i: 0, chunk_id: source.chunk_id, heading: source.heading_path, text: source.content, start: 0, end: source.content.length }] } }
+        : originalRpc(name, args));
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) => String(url).endsWith('/v1/prepared-selection')
+      ? Response.json({ contract: 'ragfix-prepared-v2', selections: [{ version_id: source.version_id, artifact_sha256: index.artifact_sha256, groups: [0] }], clarification: null })
+      : String(url).endsWith('/v1/prepared-support') ? Response.json({ contract: 'ragfix-prepared-v2',
+        binding: createHash('sha256').update(String(init?.body)).digest('hex'), outcome: 'COMPLETE', clarification: null,
+        spans: [{ chunk_id: source.chunk_id, quote: source.content, start: 0, end: source.content.length }],
+        synthesis: { version: 'ms57-v1', scope: 'FACTUAL', outcome: 'COMPLETE', gaps: [], blocks: [{ kind: 'text', text: source.content, support: [0] }] },
+        counts: { bundles: 1, calls: 2, units: 1 } }) : originalFetch(url, init));
+    const response = await assistantQuery(paymentRequest('What should I monitor during my shift?'));
+    expect((await response.json()).data.outcome).toBe('SUPPORTED');
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => /\/v1\/embed/.test(String(url)))).toBe(false);
+    expect(db.rpc.mock.calls.filter(([name]) => name === 'assistant_prepared_evidence')).toHaveLength(2);
+    expect(db.rpc.mock.calls.some(([name]) => name === 'assistant_document_evidence')).toBe(false);
+  });
+
   it('payment audit: missing production reader configuration fails before planning', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('RAG_EVIDENCE_CONTRACT', undefined);

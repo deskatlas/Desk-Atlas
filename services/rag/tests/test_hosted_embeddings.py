@@ -77,6 +77,25 @@ def test_sync_and_async_use_same_contract_and_fixed_origin(monkeypatch):
     assert requests[0] == requests[1]
 
 
+def test_async_encoder_reuses_transport_and_closes_it(monkeypatch):
+    monkeypatch.setenv('DEEPINFRA_API_KEY', 'synthetic-key')
+    real = httpx.AsyncClient
+    clients = []
+    def factory(**kwargs):
+        client = real(**kwargs, transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response())))
+        clients.append(client)
+        return client
+    async def run():
+        encoder = HostedEncoder()
+        await encoder.encode_async(['first'])
+        await encoder.encode_async(['second'])
+        assert len(clients) == 1
+        await encoder.aclose()
+        assert clients[0].is_closed
+    with patch('rag.embedding_provider.httpx.AsyncClient', side_effect=factory):
+        asyncio.run(run())
+
+
 def test_async_cancel_propagates_without_background_embedding(monkeypatch):
     monkeypatch.setenv('DEEPINFRA_API_KEY', 'synthetic-key')
     real = httpx.AsyncClient

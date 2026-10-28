@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir pip==25.2 \
     && useradd --create-home rag
 COPY models.json .
 COPY rag/ ./rag/
+COPY cloudrun/provision_answer_tokenizer.py ./cloudrun/provision_answer_tokenizer.py
+RUN python cloudrun/provision_answer_tokenizer.py
 COPY cloudrun/provision_embedding.py ./cloudrun/provision_embedding.py
 RUN python cloudrun/provision_embedding.py && chown -R rag:rag /app
 # serve_local.py is part of the existing loaded-code identity contract.

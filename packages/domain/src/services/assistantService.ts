@@ -33,12 +33,21 @@ export function proceduralDocumentPlan(message: string, context?: { user_turns?:
   if (!new RegExp(`^${prefix} ${action}$`).test(text)) return undefined;
   return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
 }
+// PRD-F26 / QAD-TC44: guidance is read-only retrieval, never a tool grant.
+export function guidanceDocumentPlan(message: string): AssistantPlan | undefined {
+  const text = message.normalize('NFKC').trim().toLowerCase();
+  if (/^(?:how|what|paano)\b/.test(text) && /\b(?:it|that|them|they|ito|iyon|sila|siya)\b/.test(text)) return undefined;
+  if (/\b(show|count|report|revenue|earnings|how many|how much|ilang|ilan|magkano)\b|\d/.test(text)) return undefined;
+  if (!/\b(?:how (?:do|should|can|would) (?:i|we)|what should (?:i|we)|paano (?:ko|kami|namin|natin)|i['’]m new)\b/.test(text)) return undefined;
+  return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
+}
+
 export function currentOperationalPlan(message: string): AssistantPlan | undefined {
   const text = message.normalize('NFKC').toLowerCase();
   // MS44-TC04: the existing snapshot shortcut must also defer mixed intent.
   if (/[;\n]|\b(and|also|then|how|procedure|policy|sop|paano|at|saka|report|ulat)\b/.test(text.replace(/how many/g, 'count'))) return undefined;
   if (/history|yesterday|last|previous|noong|kahapon|nakaraan|revenue|payment|kita|magkano|compare|comparison|floor|desk|template|\d/.test(text)) return undefined;
-  if (!/how many|count|number of|\bilang\b|\bilan\b/.test(text) || !/bookings?|reservations?|reserbasyon|check[ -]?ins?|checked[ -]?in/.test(text) || !/today|ngayong araw|ngayon/.test(text)) return undefined;
+  if (!/how many|count|number of|\bilang\b|\bilan\b/.test(text) || !/bookings?|reservations?|reserbasyon|check[ -]?ins?|checked[ -]?in/.test(text) || !/today|ngayong araw|ngayon|right now|currently/.test(text)) return undefined;
   return { kind: 'OPERATIONAL', query: '', tools: [assistantToolSchema.parse({ name: 'operational_snapshot', args: {} })] };
 }
 

@@ -1,9 +1,10 @@
 // MS77-TC01/02/05/10/11/12/15: real gateway with isolated provider/storage seams.
 import { randomUUID, createHash } from 'node:crypto';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn() }));
+const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc: seams.rpc }) }));
 vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }) }));
+vi.mock('../apps/customer-website/src/server/customer-assistant/catalog', () => ({ readCustomerDiscoveryCatalog: seams.catalog }));
 import { customerAssistantQuery, customerAssistantSession, customerAssistantSource } from '../apps/customer-website/src/server/customer-assistant/gateway';
 
 const content = 'Guest reservations require first name, last name and email.';
@@ -16,6 +17,8 @@ const req = (body: unknown, headers: Record<string, string> = {}) => new Request
 const query = (message = 'Explain the booking process') => ({ message, session_id: randomUUID(), request_id: randomUUID(), generation: randomUUID() });
 let provider: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
+  vi.stubEnv('CUSTOMER_ASSISTANT_CATALOG_DISCOVERY', 'false');
+  seams.catalog.mockReset().mockResolvedValue({ sources: [source], headings: [['Booking']] });
   vi.stubEnv('CUSTOMER_ASSISTANT_ENABLED', 'true'); vi.stubEnv('CUSTOMER_ASSISTANT_ALLOWED_ORIGINS', 'http://localhost:3001');
   vi.stubEnv('RAG_CAPABILITY_SECRET', 'ms77-unit-secret-'.repeat(4)); vi.stubEnv('RAG_SCOPE_ID', 'test');
   vi.stubEnv('RAG_EMBEDDING_FINGERPRINT', 'f'.repeat(64)); vi.stubEnv('RAG_SERVICE_URL', 'http://127.0.0.1:8000');
@@ -55,6 +58,65 @@ it('answers public knowledge with no Customer ID and only CUSTOMER authority at 
     const cap = JSON.parse(Buffer.from(String(init.headers['X-Request-Capability']).split('.')[0], 'base64url').toString());
     expect(cap.principal).toBe('PUBLIC_VISITOR'); expect(cap.audiences).toEqual(['CUSTOMER']); expect(cap.ops).not.toContain('owned_bookings');
   }
+});
+
+it('revalidates all inspected originals in one snapshot, including uncited context', async () => {
+  const context = { ...source, chunk_id: randomUUID(), content: 'Uncited decision-changing condition.',
+    content_hash: createHash('sha256').update('Uncited decision-changing condition.').digest('hex') };
+  const original = seams.rpc.getMockImplementation()!;
+  let snapshots = 0;
+  seams.rpc.mockImplementation(async (name: string, args: unknown) => {
+    if (name === 'customer_document_evidence') {
+      snapshots++;
+      return { error: null, data: { contract: 'ms65-v1', epoch: 2,
+        sources: snapshots === 1 ? [source, context] : [source, { ...context, content: 'Changed condition.' }] } };
+    }
+    return original(name, args);
+  });
+  const response = await customerAssistantQuery(req(query()));
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ error: 'KNOWLEDGE_CHANGED' });
+  expect(snapshots).toBe(2);
+});
+
+it('uses one final document snapshot instead of a round trip per citation', async () => {
+  const response = await customerAssistantQuery(req(query()));
+  expect(response.status).toBe(200);
+  expect(seams.rpc.mock.calls.filter(([name]) => name === 'customer_document_evidence')).toHaveLength(2);
+  expect(seams.rpc.mock.calls.filter(([name]) => name === 'customer_read_source')).toHaveLength(0);
+});
+
+it('preserves upstream customer capacity rejection and its bounded retry interval', async () => {
+  provider.mockImplementation(async () => Response.json({ error: 'CAPACITY_BUSY' }, { status: 429, headers: { 'Retry-After': '7' } }));
+  const response = await customerAssistantQuery(req(query()));
+  expect(response.status).toBe(429);
+  expect(response.headers.get('Retry-After')).toBe('7');
+  expect(await response.json()).toEqual({ error: 'CAPACITY_BUSY' });
+});
+it('discovers current customer documents without embedding while preserving full evidence and release checks', async () => {
+  vi.stubEnv('CUSTOMER_ASSISTANT_CATALOG_DISCOVERY', 'true');
+  vi.stubEnv('RAG_DIAGNOSTICS_ENABLED', 'true');
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => String(url).endsWith('/catalog-plan')
+    ? Response.json({ plan: { kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }] }, chunk_ids: [source.chunk_id] }) : original(url, init));
+  const response = await customerAssistantQuery(req(query()));
+  expect(response.status).toBe(200); expect((await response.json()).summary).toBe(content);
+  expect(seams.catalog).toHaveBeenCalledOnce();
+  expect(provider.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(['/v1/customer/catalog-plan', '/v1/customer/document-support']);
+  expect(seams.rpc.mock.calls.some(([name]) => name === 'customer_document_evidence')).toBe(true);
+  expect(seams.rpc.mock.calls.some(([name]) => name === 'customer_search_knowledge')).toBe(false);
+  expect(response.headers.get('server-timing')).toContain('model_catalog_plan;dur=');
+  expect(response.headers.get('server-timing')).not.toContain(content);
+});
+it('rejects a catalog selector that invents a source or a forbidden operation', async () => {
+  vi.stubEnv('CUSTOMER_ASSISTANT_CATALOG_DISCOVERY', 'true');
+  provider.mockImplementation(async () => Response.json({ plan: { kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }] }, chunk_ids: [randomUUID()] }));
+  let response = await customerAssistantQuery(req(query()));
+  expect(response.status).toBe(503);
+  expect(seams.rpc.mock.calls.some(([name]) => name === 'customer_document_evidence')).toBe(false);
+  provider.mockImplementation(async () => Response.json({ plan: { kind: 'KNOWLEDGE', operations: [{ name: 'payment_report' }] }, chunk_ids: [source.chunk_id] }));
+  response = await customerAssistantQuery(req(query()));
+  expect(response.status).toBe(400);
 });
 it('answers broad suitability from approved knowledge when the physical catalog is too large to rank', async () => {
   const original = provider.getMockImplementation()!;

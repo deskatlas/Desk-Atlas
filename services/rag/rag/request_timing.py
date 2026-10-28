@@ -8,15 +8,18 @@ current: ContextVar[dict | None] = ContextVar('rag_timing', default=None)
 tokens: ContextVar[dict | None] = ContextVar('rag_token_counts', default=None)
 metrics: ContextVar[dict | None] = ContextVar('rag_model_metrics', default=None)
 work: ContextVar[dict | None] = ContextVar('rag_model_work', default=None)
+# PRD-F26 / ragfix: bounded lossless batching on the approved hosted model.
+# Scoped to opted-in document endpoints; customer capability/slots stay separate.
+model_limits: ContextVar[dict | None] = ContextVar('rag_model_limits', default=None)
 STAGES = {'queue', 'verify', 'inference', 'schema', 'load', 'prompt', 'generation', 'deterministic'}
 
 
 def model_metric(key, value):
     """MS54-TC04/08: last model request sizes/budgets, without prompt retention."""
     values = metrics.get()
-    if (values is not None and key in {'aggregate_model_bytes', 'aggregate_output_reserved', 'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported'}
+    if (values is not None and key in {'aggregate_model_bytes', 'aggregate_output_reserved', 'system_bytes', 'serialized_model_bytes', 'context_tokens', 'output_budget', 'template_headroom', 'evidence_packed', 'evidence_supported', 'evidence_bytes', 'reasoning_tokens', 'reasoning_bytes', 'completion_bytes', 'cached_input_tokens'}
             and type(value) is int and 0 <= value <= 10_000_000):
-        values[key] = value
+        values[key] = values.get(key, 0) + value if key in {'reasoning_tokens', 'reasoning_bytes', 'completion_bytes', 'cached_input_tokens'} else value
 
 
 def reserve_model_work(serialized_bytes, output_tokens):

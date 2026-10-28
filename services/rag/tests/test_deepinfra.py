@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 from unittest.mock import patch
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -37,6 +38,67 @@ def hosted(monkeypatch):
 def completion(content='{"p":[],"c":false}', reason='stop'):
     return {'model': DEEPINFRA_MODEL, 'choices': [{'finish_reason': reason,
         'message': {'content': content}}], 'usage': {'prompt_tokens': 50, 'completion_tokens': 10}}
+
+
+def test_provider_reasoning_diagnostics_retain_only_numeric_counts():
+    from rag import request_timing
+    response=completion()
+    response['choices'][0]['message']['reasoning_content']='private synthetic reasoning'
+    response['usage']['completion_tokens_details']={'reasoning_tokens':4}
+    response['usage']['prompt_tokens_details']={'cached_tokens':12}
+    counts={}
+    token=request_timing.metrics.set(counts)
+    try:
+        api.record_hosted_usage(response)
+        assert counts['reasoning_tokens']==4 and counts['cached_input_tokens']==12
+        assert counts['reasoning_bytes']==len('private synthetic reasoning')
+        assert all(type(value) is int for value in counts.values())
+    finally:
+        request_timing.metrics.reset(token)
+
+
+def test_startup_embedding_recovers_once_from_transient_provider_rate_limit():
+    from rag.embedding_provider import HostedEmbeddingFailure
+    encoder=type('Encoder',(),{'encode_async':AsyncMock(side_effect=[HostedEmbeddingFailure(429,True),[[1.0]]])})()
+    with patch.object(api.asyncio,'sleep',new_callable=AsyncMock) as pause:
+        asyncio.run(api.verify_embedding_readiness(encoder))
+    assert encoder.encode_async.await_count==2
+    pause.assert_awaited_once_with(2)
+
+
+@pytest.mark.parametrize('status,transient,calls',[(401,False,1),(503,True,2)])
+def test_startup_retry_preserves_failed_readiness_and_never_loops(status,transient,calls):
+    from rag.embedding_provider import HostedEmbeddingFailure
+    encoder=type('Encoder',(),{'encode_async':AsyncMock(side_effect=HostedEmbeddingFailure(status,transient))})()
+    with patch.object(api.asyncio,'sleep',new_callable=AsyncMock) as pause:
+        with pytest.raises(HostedEmbeddingFailure):
+            asyncio.run(api.verify_embedding_readiness(encoder))
+    assert encoder.encode_async.await_count==calls
+    assert pause.await_count==calls-1
+
+
+@pytest.mark.parametrize('model', ['Qwen/Qwen3-235B-A22B-Instruct-2507', 'Qwen/Qwen3.6-35B-A3B'])
+def test_maintainer_approved_candidate_is_explicit_not_a_fallback(monkeypatch, model):
+    from rag.answer_provider import normalize_deepinfra
+    monkeypatch.setenv('RAG_ANSWER_MODEL', model)
+    assert answer_model() == model
+    with pytest.raises(HTTPException):
+        normalize_deepinfra(completion(), model)
+    monkeypatch.setenv('RAG_ANSWER_MODEL', 'unapproved/model')
+    with pytest.raises(HTTPException):
+        answer_model()
+
+
+def test_qwen36_uses_its_native_byte_bound_and_no_unsupported_soft_switch(monkeypatch):
+    from rag.answer_provider import document_limits, document_model, deepinfra_payload
+    monkeypatch.setenv('RAG_DOCUMENT_ANSWER_MODEL', 'Qwen/Qwen3.6-35B-A3B')
+    limits = document_limits()
+    assert limits['byte_tokens'] is True
+    assert limits['model_request_bytes'] + 2400 + 512 < limits['context_tokens']
+    payload = deepinfra_payload({'model': document_model(), 'format': {'type': 'object', 'properties': {}},
+                                 'messages': [{'role': 'system', 'content': 'Return JSON.'}], 'options': {'num_predict': 128}}, 'Synthetic')
+    assert payload['reasoning_effort'] == 'none'
+    assert payload['messages'][0]['content'] == 'Return JSON.'
 
 
 def run_generation(handler, schema=None, content=None):

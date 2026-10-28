@@ -101,18 +101,45 @@ class Composition(Strict):
     clarification: Literal[''] = ''
     blocks: list[Claim] = Field(max_length=12)
 
+    @classmethod
+    def model_json_schema(cls, **kwargs):
+        # PRD-F26 / QAD-TC44: these constants are server-owned protocol fields,
+        # not tasks for the draft model. Independent verification determines
+        # whether a proposal may become a COMPLETE response.
+        schema = super().model_json_schema(**kwargs)
+        for field in ('outcome', 'clarification'):
+            schema['properties'].pop(field, None)
+        schema['required'] = [field for field in schema.get('required', []) if field not in ('outcome', 'clarification')]
+        return schema
+
 
 class ReferenceComposition(Strict):
     blocks: list[Claim] = Field(min_length=1, max_length=12)
 
 
-def composition_schema(proof_count):
+def composition_schema(proof_count, max_support=None):
     # MS65: transport constraints distinguish canonical evidence addresses from
     # numbers in source prose, such as FAQ 33. Final binding checks still apply.
     claim = create_model('CanonicalClaim', __base__=Claim, support=(
-        list[Annotated[int, Field(ge=0, lt=proof_count)]], Field(min_length=1, max_length=proof_count)))
+        list[Annotated[int, Field(ge=0, lt=proof_count)]], Field(min_length=1, max_length=min(proof_count, max_support) if max_support is not None else proof_count,
+            **({'description': 'Smallest sufficient exact support, normally ONE complete source rule. Add an index only for a distinct necessary fact or qualifier. Equivalent FAQ and body restatements are alternative support, not cumulative obligations.'} if max_support is not None else {}))))
     return create_model('CanonicalComposition', __base__=Composition,
                         blocks=(list[claim], Field(max_length=12)))
+
+
+def framed_composition_schema(proof_count, max_support=None):
+    class TaskFramedComposition(composition_schema(proof_count, max_support)):
+        original_task: str = Field(default='Unspecified', min_length=1, max_length=240)
+        participants: str = Field(default='Unspecified', min_length=1, max_length=240)
+
+        @classmethod
+        def model_json_schema(cls, **kwargs):
+            schema = super().model_json_schema(**kwargs)
+            properties = schema['properties']
+            schema['properties'] = {key: properties[key] for key in ('original_task', 'participants',
+                *[key for key in properties if key not in ('original_task', 'participants')])}
+            return schema
+    return TaskFramedComposition
 
 
 class Verification(Strict):
@@ -512,3 +539,8 @@ def exact_candidate(proof):
     if len(blocks) > 12:
         raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED')
     return Composition(scope='MULTI_PART', outcome='COMPLETE', clarification='', blocks=blocks)
+
+
+async def batched_document_answer(*args, **kwargs):
+    from .batched_support import batched_document_answer as answer
+    return await answer(*args, **kwargs)

@@ -9,7 +9,8 @@ output.parent.mkdir(exist_ok=True)
 paths = [root / name for name in ('models.json', 'service-requirements.lock.txt', 'knowledge-parser.Dockerfile')]
 paths += [path for folder in ('rag', 'knowledge') for path in (root / folder).glob('*.py')]
 paths += list((root / 'rag').glob('*.json'))
-paths += [root / 'deploy' / name for name in ('install-worker.sh', 'configure-worker.py', 'deskatlas-worker.service')]
+paths += [root / 'deploy' / name for name in ('install-worker.sh', 'configure-worker.py', 'deskatlas-worker.service', 'deskatlas-support.service')]
+paths += [root / 'cloudrun' / 'provision_answer_tokenizer.py']
 with tarfile.open(output, 'w:gz') as archive:
     for path in paths:
         if not path.is_file() or path.is_symlink():

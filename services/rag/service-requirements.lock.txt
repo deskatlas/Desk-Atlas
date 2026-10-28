@@ -20,4 +20,13 @@ pytest==8.4.2
 starlette==0.48.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
+tokenizers==0.22.2
+huggingface_hub==0.36.2
+filelock==4.1.0
+fsspec==2026.9.0
+PyYAML==6.0.3
+requests==2.34.2
+tqdm==4.70.1
+charset-normalizer==3.5.2
+urllib3==2.8.0
 uvicorn==0.38.0
