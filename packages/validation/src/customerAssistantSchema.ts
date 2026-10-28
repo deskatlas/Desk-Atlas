@@ -18,10 +18,21 @@ export const customerCapabilitySchema = z.object({
 export type CustomerCapability = z.infer<typeof customerCapabilitySchema>;
 
 // Plans cannot supply a principal, scope, customer ID or arbitrary tool name.
+// PRD-F1-F4/F26 / MS77-TC05/08: interpreted constraints are inert user intent.
+export const customerInterpretedConstraintsSchema = z.object({
+  template_name: z.string().min(1).max(200).optional(), floor_name: z.string().min(1).max(200).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), relative_date: z.enum(['TODAY', 'TOMORROW']).optional(),
+  start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  duration_minutes: z.number().int().min(1).max(1440).optional(),
+  preferences: z.object({ focus: z.boolean().optional(), calls: z.boolean().optional(), power: z.boolean().optional(),
+    group_size: z.number().int().min(1).max(100).optional(), budget: z.number().finite().min(0).max(100000).optional() }).strict().optional(),
+}).strict();
 export const customerPlanSchema = z.object({
   kind: z.enum(['KNOWLEDGE', 'WORKSPACE', 'BOOKING', 'REFUSE']),
   search_query: z.string().min(1).max(1000).optional(),
   comparison_names: z.array(z.string().min(1).max(200)).max(3).optional(),
+  workspace_mode: z.enum(['GUIDANCE', 'LIVE', 'CATALOG']).optional(),
+  constraints: customerInterpretedConstraintsSchema.optional(),
   operations: z.array(z.object({
     name: customerOperationSchema,
     workspace_id: z.string().uuid().optional(), reservation_id: z.string().uuid().optional(),

@@ -1,9 +1,9 @@
 // MS77-TC01/02/05/10/11/12/15: real gateway with isolated provider/storage seams.
 import { randomUUID, createHash } from 'node:crypto';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn() }));
+const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn(), resolveContext: vi.fn(), overview: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc: seams.rpc }) }));
-vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }) }));
+vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }), resolvePublicWorkspaceContext: seams.resolveContext, publicWorkspaceOverview: seams.overview }));
 vi.mock('../apps/customer-website/src/server/customer-assistant/catalog', () => ({ readCustomerDiscoveryCatalog: seams.catalog }));
 import { customerAssistantQuery, customerAssistantSession, customerAssistantSource } from '../apps/customer-website/src/server/customer-assistant/gateway';
 
@@ -14,7 +14,7 @@ let cookie: string;
 const req = (body: unknown, headers: Record<string, string> = {}) => new Request('http://localhost:3001/api/customer-assistant/query', {
   method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}), ...headers }, body: JSON.stringify(body),
 });
-const query = (message = 'Explain the booking process') => ({ message, session_id: randomUUID(), request_id: randomUUID(), generation: randomUUID() });
+const query = (message = 'Explain the booking process') => ({ conversation_contract: 'constraints-v1', message, session_id: randomUUID(), request_id: randomUUID(), generation: randomUUID() });
 let provider: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
   vi.stubEnv('CUSTOMER_ASSISTANT_CATALOG_DISCOVERY', 'false');
@@ -32,6 +32,7 @@ beforeEach(async () => {
     name === 'customer_document_evidence' ? { contract: 'ms65-v1', epoch: 2, sources: [source] } : source,
   }));
   seams.candidates.mockResolvedValue({ spots: [], has_more: false });
+  seams.resolveContext.mockReset(); seams.overview.mockReset();
   provider = vi.fn(async (url: URL, init: RequestInit) => {
     const path = String(url);
     if (path.endsWith('/plan')) return Response.json({ kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }] });
@@ -48,6 +49,74 @@ beforeEach(async () => {
   cookie = session.headers.get('Set-Cookie')!.split(';')[0];
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+// PRD-F1-F4/F26 / MS77-TC01/05/08/12: audit conversational regressions.
+it.each(['It is my first time here. How does booking work, and do I need an account?', 'How do I pay for my booking?'])(
+  'keeps general first-person procedures public: %s', async message => {
+    const result = await customerAssistantQuery(req(query(message)));
+    expect((await result.json()).kind).toBe('ANSWER');
+    expect(provider).toHaveBeenCalled();
+  });
+it('does not treat model search wording as a customer demand for live availability', async () => {
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => String(url).endsWith('/plan')
+    ? Response.json({ kind: 'WORKSPACE', search_query: 'Which quiet desks are available?', operations: [{ name: 'public_workspace' }] }) : original(url, init));
+  seams.candidates.mockResolvedValue({ spots: [], has_more: true });
+  const result = await customerAssistantQuery(req(query('Hi! I need somewhere quiet to work today. What would you recommend?')));
+  expect((await result.json()).kind).toBe('ANSWER');
+});
+it('asks only for missing duration after applying conversational schedule constraints', async () => {
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }],
+    constraints: { relative_date: 'TODAY', start_time: '07:00', preferences: { group_size: 1 } } }));
+  const result = await customerAssistantQuery(req(query('Just me, 7am today. Any desks available?')));
+  const answer = await result.json();
+  expect(result.status).toBe(200);
+  expect(answer.summary).toMatch(/how long|duration/i);
+  expect(answer.summary).not.toMatch(/which.*date.*start time/i);
+  expect(answer.discovery.start_time).toBe('07:00');
+  expect(answer.discovery.preferences.group_size).toBe(1);
+  expect(seams.availability).not.toHaveBeenCalled();
+});
+it('resolves Focus Pod into a template before checking the candidate bound', async () => {
+  const template_id = randomUUID();
+  seams.resolveContext.mockImplementation(async context => ({ context: { ...context, template_id } }));
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }], workspace_mode: 'LIVE',
+    constraints: { template_name: 'Focus Pod', relative_date: 'TODAY', start_time: '07:00', duration_minutes: 120, preferences: { group_size: 1 } } }));
+  const result = await customerAssistantQuery(req(query('Just me, 7am for two hours today. A Focus Pod please.')));
+  expect(result.status).toBe(200);
+  expect(seams.candidates).toHaveBeenCalledWith(expect.objectContaining({ template_id, start_time: '07:00', duration_minutes: 120, preferences: { group_size: 1 } }));
+});
+it('answers type/rate overviews from the current public map and refuses changed snapshots', async () => {
+  provider.mockImplementation(async () => Response.json({ kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }], workspace_mode: 'CATALOG' }));
+  seams.overview.mockResolvedValue('Published Focus Pod: PHP 100 per hour.');
+  let result = await customerAssistantQuery(req(query('What kinds of workspaces do you have, and roughly how much do they cost?')));
+  expect((await result.json()).summary).toContain('PHP 100');
+  seams.overview.mockResolvedValueOnce('old rate').mockResolvedValueOnce('new rate');
+  result = await customerAssistantQuery(req(query('What types and rates?')));
+  expect(result.status).toBe(409);
+});
+it('offers inert exact map labels when the scoped live catalog still exceeds twelve', async () => {
+  const template_id = randomUUID(), floor_id = randomUUID();
+  seams.resolveContext.mockImplementation(async context => ({ context, offered_names: ['Focus Pod Spot 1', 'Focus Pod Spot 2'] }));
+  seams.candidates.mockResolvedValue({ spots: [], has_more: true });
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', workspace_mode: 'LIVE', operations: [{ name: 'public_workspace' }] }));
+  const result = await customerAssistantQuery(req({ ...query('Which Focus Pods are available?'), discovery: {
+    template_id, floor_id, date: '2026-11-01', start_time: '07:00', duration_minutes: 120 } }));
+  const answer = await result.json();
+  expect(answer.offered_names).toEqual(['Focus Pod Spot 1', 'Focus Pod Spot 2']);
+  expect(answer.summary).toContain('availability not checked');
+  expect(answer.suggestions).toEqual([]);
+  expect(seams.availability).not.toHaveBeenCalled();
+});
+it('does not emit new response fields to an older strict ms77 browser', async () => {
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }],
+    constraints: { relative_date: 'TODAY', start_time: '07:00' } }));
+  const result = await customerAssistantQuery(req({ message: '7am today, any desks?', session_id: randomUUID(), request_id: randomUUID(), generation: randomUUID() }));
+  const answer = await result.json();
+  expect(result.status).toBe(200);
+  expect(answer).not.toHaveProperty('discovery');
+  expect(answer).not.toHaveProperty('offered_names');
+});
 
 it('answers public knowledge with no Customer ID and only CUSTOMER authority at every read', async () => {
   const response = await customerAssistantQuery(req(query()));
@@ -134,6 +203,52 @@ it('still narrows an explicit live availability request rather than ranking a tr
   seams.candidates.mockResolvedValue({ spots: [], has_more: true });
   const response = await customerAssistantQuery(req(query('Which desks are available?')));
   expect((await response.json()).kind).toBe('CLARIFY'); expect(provider).toHaveBeenCalledTimes(1);
+});
+// PRD-F26 / MS77-TC05/08: saved constraints apply to conversational suggestions.
+it.each([false, true])('sends saved preferences to discovery and narrows instead of generic guidance (catalog=%s)', async catalog => {
+  vi.stubEnv('CUSTOMER_ASSISTANT_CATALOG_DISCOVERY', String(catalog));
+  const discovery = { preferences: { group_size: 10 } };
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => {
+    if (String(url).endsWith(catalog ? '/catalog-plan' : '/plan')) {
+      expect(JSON.parse(String(init.body)).discovery).toEqual(discovery);
+      const plan = { kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }] };
+      return Response.json(catalog ? { plan, chunk_ids: [] } : plan);
+    }
+    return original(url, init);
+  });
+  seams.candidates.mockResolvedValue({ spots: [], has_more: true });
+  const response = await customerAssistantQuery(req({ ...query('What is a good spot for us?'), discovery }));
+  const answer = await response.json();
+  expect(response.status).toBe(200);
+  expect(answer.kind).toBe('CLARIFY');
+  expect(answer.summary).toContain('10');
+  expect(provider).toHaveBeenCalledOnce();
+});
+it.each([false, true])('filters small spots for a saved group of ten (schedule=%s)', async scheduled => {
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }] }));
+  const large = { workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(),
+    name: 'Group room', capacity: 10, hourly_rate: 100 };
+  const small = { ...large, workspace_id: randomUUID(), name: 'Single desk', capacity: 1 };
+  seams.candidates.mockResolvedValue({ spots: [small, large], has_more: false });
+  seams.availability.mockResolvedValue(new Set([small.workspace_id, large.workspace_id]));
+  seams.prices.mockResolvedValue(new Map([[large.workspace_id, 200]]));
+  const discovery = { preferences: { group_size: 10 }, ...(scheduled ? { date: '2026-11-01', start_time: '09:00', duration_minutes: 120 } : {}) };
+  const response = await customerAssistantQuery(req({ ...query('What is a good spot for us?'), discovery }));
+  expect(response.status).toBe(200);
+  const answer = await response.json();
+  expect(answer.suggestions.map((spot: { name: string }) => spot.name)).toEqual(['Group room']);
+  expect(answer.summary).toContain('10');
+  expect(answer.suggestions[0].availability).toBe(scheduled ? 'AVAILABLE' : 'NOT_CHECKED');
+});
+it('explains when no published spot fits the saved group size even without a schedule', async () => {
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }] }));
+  seams.candidates.mockResolvedValue({ spots: [{ workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(),
+    name: 'Single desk', capacity: 1, hourly_rate: 100 }], has_more: false });
+  const response = await customerAssistantQuery(req({ ...query('What is a good spot for us?'), discovery: { preferences: { group_size: 10 } } }));
+  const answer = await response.json();
+  expect(answer.suggestions).toEqual([]);
+  expect(answer.summary).toContain('No spots could be confirmed for your group of 10');
 });
 it('private questions trigger verification before knowledge lookup or provider spend, without echoing identifiers', async () => {
   const response = await customerAssistantQuery(req(query('Explain my reservation reference code SECRET-REF')));

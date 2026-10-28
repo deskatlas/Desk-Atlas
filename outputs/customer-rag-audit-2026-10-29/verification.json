@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Irkutsk",
+  "local_review_url": "http://127.0.0.1:3013/",
+  "customer_build_id": "gUOnu-xsF1LiXn-Jk2OJj",
+  "checks": {
+    "pnpm_typecheck": "passed",
+    "pnpm_lint": "passed: 63 TypeScript and 48 Python boundary files",
+    "pnpm_test": {
+      "files_passed": 300,
+      "files_skipped": 7,
+      "tests_passed": 2794,
+      "expected_failure": 1,
+      "tests_skipped": 43
+    },
+    "pnpm_build": "all four applications passed",
+    "final_customer_build": "passed after final source changes",
+    "targeted_customer_tests": 65,
+    "python_ms77_tests": 54,
+    "qwen_transport_tests": 27,
+    "diff_whitespace_and_script_syntax": "passed"
+  },
+  "original_http_replay": {
+    "before_elapsed_ms": 13614,
+    "before_symptom": true,
+    "after_elapsed_ms": 12365,
+    "after_symptom": false,
+    "after_useful": true,
+    "after_exit_code": 0
+  },
+  "limitations": [
+    "Local repair and review only; no hosted deployment",
+    "The 12-candidate and three-spot bounds remain",
+    "No matches for the selected three is not an exhaustive venue result",
+    "Small real-model browser sample, not a latency SLA or p95",
+    "The original generic B04 failure trace was not recovered"
+  ]
+}

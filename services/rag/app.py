@@ -19,7 +19,7 @@ from rag.evidence_budget import LIMITS
 from rag.procedure import strict_procedure_quotes, strict_faq_quotes
 from rag.governance import strict_governance_quotes
 from rag.runtime_identity import implementation_fingerprint
-from rag.answer_provider import provider, answer_model, document_model, document_limits, deepinfra_headers, deepinfra_payload, normalize_deepinfra, DEEPINFRA_ORIGIN, BENCHMARK_MODELS, released_model
+from rag.answer_provider import provider, answer_model, document_model, document_limits, planning_limits, deepinfra_headers, deepinfra_payload, normalize_deepinfra, DEEPINFRA_ORIGIN, BENCHMARK_MODELS, released_model
 from rag.catalog_discovery import CatalogInput, discover_internal
 from rag.embedding_provider import embedding_provider, embedding_fingerprint, HostedEncoder, HostedEmbeddingFailure
 
@@ -569,7 +569,8 @@ async def lifespan(app: FastAPI):
         if os.environ.get('RAG_PREPARED_SUPPORT') == 'true' and selected_provider != 'deepinfra':
             raise RuntimeError('PREPARED_SUPPORT_REQUIRES_EXPLICIT_HOSTED_PROVIDER')
         if selected_provider == 'deepinfra':
-            if batched_support and not document_limits()['byte_tokens']:
+            planning_limits(internal=True)
+            if batched_support and (not document_limits()['byte_tokens'] or not planning_limits()['byte_tokens']):
                 from rag.hosted_tokenizer import tokenizer
                 tokenizer()
             progress('hosted answer model verification')
@@ -631,7 +632,7 @@ async def authenticate_customer(request: Request):
 @app.post('/v1/customer/plan')
 async def public_customer_plan(body: CustomerPlanInput, claims=Depends(authenticate_customer)):
     admit_customer_operation(claims, 'customer_knowledge')
-    token = request_timing.model_limits.set(document_limits()) if customer_batching() else None
+    token = request_timing.model_limits.set(planning_limits()) if customer_batching() else None
     try:
         return await interpret_customer_question(body, generate)
     finally:
@@ -710,7 +711,7 @@ async def customer_catalog_plan(body: CustomerCatalogInput, claims=Depends(authe
     if not customer_batching():
         raise HTTPException(503, detail='READER_INCOMPATIBLE')
     from customer_public import interpret_customer_catalog
-    token = request_timing.model_limits.set(document_limits())
+    token = request_timing.model_limits.set(planning_limits())
     try:
         return await interpret_customer_catalog(body, [source.model_dump() for source in body.sources], body.headings, generate)
     finally:
@@ -788,7 +789,7 @@ async def internal_catalog_plan(body: CatalogInput, request: Request):
         raise HTTPException(403, detail='FORBIDDEN')
     if os.environ.get('RAG_INTERNAL_BATCHED_SUPPORT') != 'true' or provider() != 'deepinfra':
         raise HTTPException(503, detail='READER_INCOMPATIBLE')
-    token = request_timing.model_limits.set(document_limits())
+    token = request_timing.model_limits.set(planning_limits(internal=True))
     try:
         return await discover_internal(body, claims.role, generate)
     finally:

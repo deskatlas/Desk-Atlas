@@ -20,8 +20,10 @@ export const customerDiscoveryContextSchema = z.object({
   preferences: customerPreferencesSchema.optional(),
 }).strict();
 export const publicCustomerQuerySchema = customerControlIdentitySchema.extend({
+  conversation_contract: z.literal('constraints-v1').optional(),
   message: z.string().trim().min(1).max(2000), user_turns: z.array(z.string().min(1).max(2000)).max(4).default([]),
   discovery: customerDiscoveryContextSchema.optional(), knowledge_epoch: z.number().int().safe().nonnegative().optional(),
+  offered_names: z.array(z.string().min(1).max(200)).max(3).optional(),
   // MS78-TC05: domain resolves malformed, absent and foreign pointers uniformly.
   selected_reservation_id: z.string().max(100).optional(), reservation_filter: z.enum(['UPCOMING', 'HISTORY']).optional(),
 }).strict();
@@ -45,6 +47,8 @@ export const publicCustomerResponseSchema = z.object({
   suggestions: z.array(customerSpotSuggestionSchema).max(3), actions: z.array(customerActionSchema).max(4),
   as_of: z.string().datetime(), knowledge_epoch: z.number().int().safe().nonnegative(), request_id: id,
   limitations: z.array(z.string().max(500)).max(12),
+  discovery: customerDiscoveryContextSchema.optional(),
+  offered_names: z.array(z.string().min(1).max(200)).max(3).optional(),
   // MS78-R02/R04: private fields only follow combined-purpose authorization.
   booking_result: z.enum(['CONTEXT', 'CLARIFY', 'RESERVATION_UNAVAILABLE', 'BOOKING_CHANGED']).optional(),
   reservation_choices: z.array(customerReservationChoiceSchema).max(10).optional(),

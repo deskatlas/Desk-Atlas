@@ -38,7 +38,7 @@ export function guidanceDocumentPlan(message: string): AssistantPlan | undefined
   const text = message.normalize('NFKC').trim().toLowerCase();
   if (/^(?:how|what|paano)\b/.test(text) && /\b(?:it|that|them|they|ito|iyon|sila|siya)\b/.test(text)) return undefined;
   if (/\b(show|count|report|revenue|earnings|how many|how much|ilang|ilan|magkano)\b|\d/.test(text)) return undefined;
-  if (!/\b(?:how (?:do|should|can|would) (?:i|we)|what should (?:i|we)|paano (?:ko|kami|namin|natin)|i['’]m new)\b/.test(text)) return undefined;
+  if (!/\b(?:how (?:do|should|can|would) (?:i|we)|what should (?:i|we|staff|employees)|paano (?:ko|kami|namin|natin)|i['’]m new)\b/.test(text)) return undefined;
   return { kind: 'DOCUMENT', query: message.trim(), tools: [] };
 }
 

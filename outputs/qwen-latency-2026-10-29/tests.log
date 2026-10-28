@@ -1,0 +1,17 @@
+
+> deskatlas-monorepo@ test C:\Users\reyna\Desk-Atlas
+> vitest run
+
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+
+ Test Files  299 passed | 7 skipped (306)
+      Tests  2766 passed | 1 expected fail | 43 skipped (2810)
+   Start at  01:50:18
+   Duration  103.83s (import 92%, tests 4%, transform 3%, worker 1%)
+
+     Import  640 modules were evaluated 3213 times · 888.69s total, 92% of tracked time
+             ~17.38s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation
+

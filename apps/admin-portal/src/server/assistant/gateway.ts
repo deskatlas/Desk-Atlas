@@ -337,12 +337,13 @@ export async function assistantQuery(request: Request): Promise<Response> {
       const result = z.object({ kind: z.enum(['DOCUMENT', 'DEFER']), query: z.string().min(1).max(2000),
         chunk_ids: z.array(z.string().uuid()).max(16) }).strict().parse(await measure('context', () => model('/v1/catalog-plan', {
           message: input.message, user_turns: input.recent_context?.user_turns ?? [],
+          document_task: Boolean(fastPlan),
           sources: catalog.sources.map(({ chunk_id, title, heading_path, content }) => ({ chunk_id, title, heading_path, content })),
           headings: catalog.headings,
         }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
       if (new Set(result.chunk_ids).size !== result.chunk_ids.length
         || result.chunk_ids.some(id => !catalog.sources.some(source => source.chunk_id === id))
-        || result.kind === 'DEFER' && result.chunk_ids.length) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
+        || result.kind === 'DEFER' && (result.chunk_ids.length || Boolean(fastPlan))) throw new AssistantError('INVALID_MODEL_OUTPUT', copy.modelOutput, 503);
       if (result.kind === 'DOCUMENT') {
         catalogSeeds = catalog.sources.filter(source => result.chunk_ids.includes(source.chunk_id));
         catalogPlan = { kind: 'DOCUMENT', query: result.query, tools: [] };

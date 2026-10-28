@@ -1,0 +1,10 @@
+{
+  "command": "node scripts/customer-rag-audit-repro.cjs",
+  "status": 200,
+  "kind": "CLARIFY",
+  "summary": "Please narrow by workspace type or floor, or choose up to three spots to compare.",
+  "elapsed_ms": 13614,
+  "symptom_reproduced": true,
+  "server_timing": null,
+  "exit_code": 1
+}

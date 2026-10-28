@@ -4,6 +4,12 @@ import { assistantSearchQueries } from '../packages/domain/src/services/assistan
 
 // PRD-F26 / SDD-C20-C22 / QAD-TC44/46: ordinary wording, never permissions.
 describe('ragfix current operations and guidance routing', () => {
+  it.each(['A guest has a confirmed paid booking. What should staff check on arrival?', 'What should employees verify before check-in?'])('classifies role-worded guidance once without granting a tool: %s', message => {
+    expect(guidanceDocumentPlan(message)).toEqual({ kind: 'DOCUMENT', query: message, tools: [] });
+  });
+  it.each(['What should staff do and show revenue today?', 'What should employees check for reservation 123?', 'What should staff do with that?'])('keeps mixed, record-specific and unresolved role wording on the planner path: %s', message => {
+    expect(guidanceDocumentPlan(message)).toBeUndefined();
+  });
   it('keeps broad daily operations searchable without replacing the original question', () => {
     const message = "I'm new here. What should I focus on when running the place day to day?";
     const queries = assistantSearchQueries(message, undefined);

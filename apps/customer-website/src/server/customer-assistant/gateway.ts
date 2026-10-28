@@ -11,7 +11,8 @@ import { assistantConfig as config, CustomerAssistantError, customerRequestBody,
 import { authorizeVerifiedCustomer, VerifiedCustomerError } from './verified';
 import { buildVerifiedResponse } from './verifiedResponse';
 import { buildVerifiedPolicyAddendum } from './verifiedKnowledge';
-import { publicSpotRepository, resolvePublicComparison } from './spots';
+import { publicSpotRepository, resolvePublicComparison, resolvePublicWorkspaceContext, publicWorkspaceOverview } from './spots';
+import { requestsPrivateRecord, mergeConversationConstraints, missingScheduleQuestion } from './conversation';
 import { readCustomerDiscoveryCatalog } from './catalog';
 
 const headers = { 'Cache-Control': 'no-store, private', Vary: 'Authorization, Cookie, Origin', 'X-Content-Type-Options': 'nosniff' };
@@ -58,7 +59,7 @@ function baseAnswer(input: PublicCustomerQuery): PublicCustomerResponse {
     as_of: new Date().toISOString(), knowledge_epoch: 0, request_id: input.request_id, limitations: [] };
 }
 function privateQuestion(input: PublicCustomerQuery) {
-  return Boolean(input.selected_reservation_id || /\b(my|our)\b.{0,40}\b(bookings?|reservations?|payments?|refunds?|proof|check.?in|customer\s*id|reference\s*code)\b/i.test(input.message));
+  return Boolean(input.selected_reservation_id || requestsPrivateRecord(input.message));
 }
 function verifyRequired(answer: PublicCustomerResponse): PublicCustomerResponse {
   return { ...answer, kind: 'VERIFY_REQUIRED', summary: 'Verify Customer ID and email to ask about your own reservations. You can continue public help and guest booking without verification.', actions: [{ id: 'VERIFY_CUSTOMER' }] };
@@ -159,7 +160,10 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       if (privateQuestion(input)) return privateAnswer();
       let catalogSeeds: z.infer<typeof assistantSourceSchema>[] | undefined;
       let rawPlan: unknown;
-      const planInput = { message: input.message, user_turns: input.user_turns, has_spot_context: Boolean(input.discovery?.workspace_id || input.discovery?.compared_ids?.length) };
+      // PRD-F26 / MS77-TC05/08: saved context informs intent, never evidence.
+      const planInput = { conversation_contract: 'constraints-v1', message: input.message, user_turns: input.user_turns, has_spot_context: Boolean(input.discovery?.workspace_id || input.discovery?.compared_ids?.length),
+        ...(input.offered_names?.length ? { offered_names: input.offered_names } : {}),
+        ...(input.discovery ? { discovery: input.discovery } : {}) };
       if (state.enabled && process.env.CUSTOMER_ASSISTANT_CATALOG_DISCOVERY === 'true') {
         const catalogStarted = performance.now();
         const catalog = await readCustomerDiscoveryCatalog(db, reader, scope, state.knowledge_epoch, authorize);
@@ -183,19 +187,58 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         ? `${input.message}\nSearch interpretation (not evidence): ${searchQuery}` : input.message;
       if (plan.kind === 'REFUSE') return { ...answer, kind: 'UNSUPPORTED' as const, summary: 'I can explain published customer information and help you compare spots. Use the normal booking screens to make changes.' };
       const spotRepository = publicSpotRepository(db, workSignal);
-      const context = { ...input.discovery, preferences: { ...input.discovery?.preferences } };
+      let context = mergeConversationConstraints(input.discovery, plan.constraints);
+      let floorChoices: string[] = [];
+      let offeredNames: string[] = [];
+      if (plan.kind === 'WORKSPACE' && plan.workspace_mode === 'GUIDANCE' && !context.workspace_id && !context.compared_ids?.length) {
+        plan = { ...plan, kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }] };
+        answer.discovery = context;
+        answer.limitations.push('This is general workspace guidance. Live availability and prices require a complete schedule.');
+      }
+      if (plan.workspace_mode === 'CATALOG') {
+        const overview = await publicWorkspaceOverview();
+        await authorize();
+        if (overview !== await publicWorkspaceOverview()) throw new Error('KNOWLEDGE_CHANGED');
+        return reader.release(state.knowledge_epoch, async () => ({ ...answer, summary: overview }));
+      }
+      if (plan.kind === 'WORKSPACE' && (plan.constraints?.template_name || plan.constraints?.floor_name || context.template_id || context.floor_id)) {
+        const resolved = await resolvePublicWorkspaceContext(context, plan.constraints?.template_name, plan.constraints?.floor_name, plan.comparison_names, input.message);
+        context = resolved.context;
+        floorChoices = resolved.floor_choices ?? [];
+        offeredNames = resolved.offered_names ?? [];
+        answer.discovery = context;
+        if (resolved.clarification) return { ...answer, kind: 'CLARIFY' as const, summary: resolved.clarification };
+      } else
       if (plan.kind === 'WORKSPACE' && plan.comparison_names?.length) {
         const ids = await resolvePublicComparison(plan.comparison_names);
-        if (!ids?.length) return { ...answer, kind: 'CLARIFY' as const, summary: 'Please use the exact labels on the workspace map, or select up to three spots with Compare. I will use your saved schedule and preferences.' };
-        context.compared_ids = ids;
+        if (ids?.length) context.compared_ids = ids;
+        else {
+          const resolved = await resolvePublicWorkspaceContext(context, undefined, undefined, plan.comparison_names, input.message);
+          context = resolved.context;
+          floorChoices = resolved.floor_choices ?? [];
+          offeredNames = resolved.offered_names ?? [];
+          answer.discovery = context;
+          if (resolved.clarification) return { ...answer, kind: 'CLARIFY' as const, summary: resolved.clarification };
+        }
       }
       let candidateSnapshot: Awaited<ReturnType<typeof spotRepository.candidates>> | undefined;
       const missingSchedule = !context.date || !context.start_time || !context.duration_minutes;
       // Candidate narrowing and schedule clarification cost no embedding/composition.
       if (plan.kind === 'WORKSPACE') {
+        answer.discovery = context;
+        const missing = missingScheduleQuestion(context);
+        if (plan.constraints && missing && (context.date || context.start_time || context.duration_minutes)) {
+          return { ...answer, kind: 'CLARIFY' as const, summary: missing };
+        }
         candidateSnapshot = await spotRepository.candidates(context);
         if (candidateSnapshot.has_more) {
-          if (/\b(?:available|availability|vacant|bookable|compare)\b/i.test(`${input.message} ${searchQuery}`)) return { ...answer, kind: 'CLARIFY' as const, summary: 'Please narrow by workspace type or floor, or choose up to three spots to compare.' };
+          answer.offered_names = offeredNames;
+          const examples = offeredNames.length ? ` Examples from the published map (availability not checked): ${offeredNames.join(', ')}. Tell me which of these to compare, or name other map spots.` : ' You can also compare up to three map spots.';
+          if (Object.values(context.preferences).some(value => value !== undefined) || context.date || context.start_time || context.duration_minutes) {
+            const narrow = context.template_id && !context.floor_id ? `Which floor should I check for that workspace type?${floorChoices.length ? ` Published choices: ${floorChoices.join(', ')}.` : ''}` : context.floor_id && !context.template_id ? 'Which workspace type should I check on that floor?' : context.template_id && context.floor_id ? 'Please choose up to three exact spots on this floor to compare.' : 'Which workspace type or floor should I check?';
+            return { ...answer, kind: 'CLARIFY' as const, summary: `I will use your saved schedule and preferences${context.preferences.group_size ? ` for your group of ${context.preferences.group_size}` : ''}. There are more than twelve matching spots. ${narrow}${examples}` };
+          }
+          if (plan.workspace_mode === 'LIVE' || /\b(?:available|availability|vacant|bookable|compare)\b/i.test(input.message)) return { ...answer, kind: 'CLARIFY' as const, summary: 'There are more than twelve matching spots. Which workspace type or floor would you like me to check? You can also compare up to three map spots.' };
           plan = { ...plan, kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }] };
           answer.limitations.push('This is general workspace-type guidance. Compare up to three map spots to check current availability with your saved schedule and preferences.');
         }
@@ -243,10 +286,10 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         const winner = ranked[0];
         const recommendation = winner && winner.score > 0 && (!ranked[1] || winner.score > ranked[1].score)
           ? `${winner.name} matches more of your saved preferences.` : 'These options are tied on the verified preferences; I cannot name a better match from the available evidence.';
-        answer.summary = missingSchedule ? 'This is a characteristic-only comparison. Availability and prices have not been checked. Which business date, start time and duration should I check? Save them below.'
-          : decision.narrow ? 'Please narrow the workspace type or floor.' : decision.suggestions.length
-          ? `${recommendation} I used your saved date, start time, duration${context.preferences.group_size ? `, group size (${context.preferences.group_size})` : ''}${context.preferences.budget !== undefined ? ` and total budget (PHP ${context.preferences.budget})` : ''}. Matches are shown below.`
-          : 'No spots could be confirmed for these constraints. Try another schedule or narrow your preferences.';
+        answer.summary = decision.narrow ? 'Please narrow the workspace type or floor.' : !decision.suggestions.length
+          ? `No spots could be confirmed${context.preferences.group_size ? ` for your group of ${context.preferences.group_size}` : ''} with these constraints. Try another schedule or narrow your preferences.`
+          : missingSchedule ? `These spots match your saved constraints${context.preferences.group_size ? ` for your group of ${context.preferences.group_size}` : ''}. Availability and prices have not been checked. Which business date, start time and duration should I check? Save them below.`
+          : `${recommendation} I used your saved date, start time, duration${context.preferences.group_size ? `, group size (${context.preferences.group_size})` : ''}${context.preferences.budget !== undefined ? ` and total budget (PHP ${context.preferences.budget})` : ''}. Matches are shown below.`;
         answer.limitations = ['Suggestions are provisional and create no inventory hold. Quotes are base totals for the requested duration; checkout determines any applicable promotion.'];
         if (context.compared_ids?.some(id => !ranked.some(spot => spot.workspace_id === id))) answer.limitations.push('Some selected spots do not pass the current availability, capacity, budget or published-catalog checks and are not suggested.');
         if (ranked.some(spot => spot.catalog_reasons?.length)) answer.limitations.push('Published map tags describe expected conditions, which may vary. They do not guarantee quietness or a working outlet.');
@@ -297,7 +340,10 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         await authorize(); return publicCustomerResponseSchema.parse(answer);
       });
     });
-    return outgoing = response(publicCustomerResponseSchema.parse(data), 200, cookie);
+    const publicData = publicCustomerResponseSchema.parse(data);
+    // Older browser builds strictly parse ms77-v1 and cannot accept new fields.
+    if (!input.conversation_contract) { delete publicData.discovery; delete publicData.offered_names; }
+    return outgoing = response(publicData, 200, cookie);
   } catch (error) { return outgoing = safeError(error, cookie); }
   finally {
     if (release) { try { await release(); } catch { /* Expiring leases recover abandoned work. */ } }

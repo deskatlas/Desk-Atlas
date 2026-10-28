@@ -9,6 +9,57 @@ from customer_public import CustomerPlanInput, customer_plan, approved_character
 ID = '00000000-0000-4000-8000-000000000001'
 
 
+@pytest.mark.parametrize('catalog', [False, True])
+def test_audit_constraints_survive_both_planner_paths(catalog):
+    import asyncio
+    from customer_public import interpret_customer_question, interpret_customer_catalog
+    body = CustomerPlanInput(conversation_contract='constraints-v1', message='Just me, 7am for two hours today. A Focus Pod please.', offered_names=['Focus Pod Spot 2'])
+    async def generate(prompt, data, schema):
+        assert 'category is NOT' in prompt
+        assert data['offered_names'] == ['Focus Pod Spot 2']
+        return schema.model_validate({'kind': 'WORKSPACE', 'search_query': body.message, 'comparison_names': [],
+            'workspace_mode': 'LIVE', 'constraints': {'template_name': 'Focus Pod', 'relative_date': 'TODAY',
+                'start_time': '07:00', 'duration_minutes': 120, 'preferences': {'group_size': 1}},
+            **({'primaries': [], 'dependencies': []} if catalog else {})})
+    result = asyncio.run(interpret_customer_catalog(body, [{'title': 'Catalog', 'heading_path': '', 'content': '', 'chunk_id': ID}], [[]], generate)) if catalog else asyncio.run(interpret_customer_question(body, generate))
+    plan = result['plan'] if catalog else result
+    assert plan['workspace_mode'] == 'LIVE'
+    assert plan['constraints'] == {'template_name': 'Focus Pod', 'relative_date': 'TODAY', 'start_time': '07:00',
+        'duration_minutes': 120, 'preferences': {'group_size': 1}}
+
+
+@pytest.mark.parametrize('question', ['It is my first time here. How does booking work, and do I need an account?',
+    'How do I pay for my booking?', 'Can I cancel my reservation?'])
+def test_first_person_procedures_do_not_bypass_the_planner_as_private(question):
+    assert customer_plan(CustomerPlanInput(message=question))['kind'] == 'KNOWLEDGE'
+
+
+def test_compact_catalog_keeps_constraints_and_separates_category_from_comparison(monkeypatch):
+    import asyncio
+    from customer_public import interpret_customer_catalog
+    monkeypatch.setenv('RAG_QWEN_COMPACT_CATALOG', 'true')
+    async def generate(prompt, data, schema):
+        return schema.model_validate({'k': 'WORKSPACE', 't': 'Live workspace search', 'q': 'Focus Pod at 7am today',
+            'n': [], 'p': [], 'd': [], 'workspace_mode': 'LIVE',
+            'constraints': {'template_name': 'Focus Pod', 'relative_date': 'TODAY', 'start_time': '07:00'}})
+    result = asyncio.run(interpret_customer_catalog(CustomerPlanInput(conversation_contract='constraints-v1', message='Focus Pod at 7am today?'),
+        [{'title': 'Catalog', 'heading_path': '', 'content': '', 'chunk_id': ID}], [[]], generate))
+    assert result['plan']['constraints']['template_name'] == 'Focus Pod'
+    assert result['plan']['constraints']['start_time'] == '07:00'
+    assert result['plan']['comparison_names'] == []
+    assert 'duration_minutes' not in result['plan']['constraints']
+
+
+def test_older_gateway_receives_only_the_original_plan_fields():
+    import asyncio
+    from customer_public import interpret_customer_question
+    async def generate(prompt, data, schema):
+        return schema(kind='WORKSPACE', search_query='Which desks are available?', comparison_names=[],
+            workspace_mode='LIVE', constraints={'start_time': '07:00'})
+    result = asyncio.run(interpret_customer_question(CustomerPlanInput(message='7am today, any desks?'), generate))
+    assert 'workspace_mode' not in result and 'constraints' not in result
+
+
 @pytest.mark.parametrize('question,kind', [
     ('Explain the booking process', 'KNOWLEDGE'), ('Help me choose a spot', 'WORKSPACE'),
     ('Can I use this for focused work?', 'WORKSPACE'), ('Explain my payment status', 'BOOKING'),
@@ -52,6 +103,31 @@ def test_source_injection_does_not_become_an_action_or_characteristic():
 
 def test_general_booking_question_is_not_overridden_by_discovery_context():
     assert customer_plan(CustomerPlanInput(message='Explain the booking process', has_spot_context=True))['kind'] == 'KNOWLEDGE'
+
+
+@pytest.mark.parametrize('catalog', [False, True])
+@pytest.mark.parametrize('message,kind', [('What is a good spot for us?', 'WORKSPACE'), ('Explain the booking process', 'KNOWLEDGE')])
+def test_saved_preferences_reach_both_interpreters_without_changing_general_policy_intent(catalog, message, kind):
+    import asyncio
+    from customer_public import CustomerInterpretation, CustomerCatalogInterpretation, interpret_customer_question, interpret_customer_catalog
+    discovery = {'date': '2026-11-01', 'start_time': '09:00', 'duration_minutes': 120,
+                 'preferences': {'group_size': 10, 'budget': 500, 'power': True}}
+    body = CustomerPlanInput(message=message, discovery=discovery)
+
+    async def generate(prompt, data, schema):
+        assert data['discovery'] == discovery
+        assert 'WORKSPACE' in prompt and 'saved discovery context' in prompt
+        values = {'kind': kind, 'search_query': message, 'comparison_names': []}
+        return CustomerCatalogInterpretation(**values, primaries=[], dependencies=[]) if catalog else CustomerInterpretation(**values)
+
+    result = asyncio.run(interpret_customer_catalog(body, [{'title': 'Catalog', 'heading_path': '', 'content': '', 'chunk_id': ID}], [[]], generate)) if catalog else asyncio.run(interpret_customer_question(body, generate))
+    assert (result['plan'] if catalog else result)['kind'] == kind
+
+
+@pytest.mark.parametrize('preferences', [{'group_size': 0}, {'group_size': 101}, {'budget': -1}, {'role': 'ADMIN'}])
+def test_saved_preferences_are_bounded_and_inert(preferences):
+    with pytest.raises(ValidationError):
+        CustomerPlanInput(message='Help me choose a spot', discovery={'preferences': preferences})
 
 
 def test_model_interpretation_distinguishes_general_booking_from_private_records():

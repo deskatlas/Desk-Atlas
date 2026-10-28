@@ -1,0 +1,30 @@
+[
+  {
+    "sha256": "7902dfe5186ed52e5acc7ae517be7390ff83de3d6741323b034749e80bde11c0",
+    "path": "apps/customer-website/src/server/customer-assistant/gateway.ts"
+  },
+  {
+    "sha256": "57e625779d260864426130e18c3a19b361c0aa39ddc2603d09ce3aec9f72c11c",
+    "path": "apps/customer-website/src/server/customer-assistant/conversation.ts"
+  },
+  {
+    "sha256": "2ab1fedc021a488651aa1431aa1daa9d56bb9ab6aff3b2a509dca748bbfe3b5c",
+    "path": "apps/customer-website/src/server/customer-assistant/spots.ts"
+  },
+  {
+    "sha256": "a22a125ae2cd647da2dfa70caa98fedd3a54670025501be7951fe7146ba20224",
+    "path": "apps/customer-website/src/features/assistant/CustomerAssistantProvider.tsx"
+  },
+  {
+    "sha256": "a3aed86f6b4aeb8a9fbb689251445c68c7cb7bf5c21d3708901cc4b05bc8b216",
+    "path": "packages/validation/src/customerAssistantSchema.ts"
+  },
+  {
+    "sha256": "12b38f7fdc40cf677b6bb801142e7e4b0fd467416b6883089b4ecce1db22c98d",
+    "path": "packages/validation/src/publicCustomerAssistantSchema.ts"
+  },
+  {
+    "sha256": "53a8c352115f8570f20d333d350286c1396f0026dcf5b994e5528542525fdd3f",
+    "path": "services/rag/customer_public.py"
+  }
+]

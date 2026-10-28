@@ -143,3 +143,33 @@ deployment-wide HTTP load and controlled activation also remain MS-79 release ga
 The four full-suite failures match the preceding MS76/MS78 runs: MS35 DrawSQL parity for overdue_notified_at, MF71/MF78 survey email expectations, and MF79 payment-queue source-string sorting. These files were not changed by MS77. The full test log is in node_modules/.cache/ms77-full-test.log; build logs are in node_modules/.cache/ms78-final-build.log and node_modules/.cache/ms77-customer-build.log.
 
 Prepared synthetic manual browser fixtures are in evaluation/ms77-browser-fixtures.json. Their status remains PENDING_BROWSER_ACCESS. Missing schedule produces an explicitly labeled characteristic-only comparison and asks for date/time/duration; it emits no availability badge or price. Empty/contradictory characteristic evidence produces a limitation instead of a preference claim.
+
+## October 29 saved discovery preferences repair
+
+PRD-F26, SDD-C20-C24 and MS77-TC05/08 cover personal spot suggestions using
+the saved schedule and preferences. The customer gateway now includes its
+validated optional `discovery` object in both `/v1/customer/plan` and
+`/v1/customer/catalog-plan` requests. Matching strict Python input accepts the
+bounded schedule, selection identifiers and preferences. Both model interpreters
+receive the saved values as user constraints, with instructions to use WORKSPACE
+for personal recommendations while retaining KNOWLEDGE for general policy questions.
+
+Previously, planning saw only the question and whether spots were selected. An
+oversized candidate set could also downgrade a personal recommendation to generic
+knowledge without applying its saved constraints. With saved constraints, that
+case now asks for a narrower floor, type or explicit comparison. Capacity remains
+a deterministic hard filter. Missing schedule does not hide an empty capacity
+result, and replies identify the requested group size without asserting availability.
+
+Local regression coverage includes both planning paths with a saved group of ten,
+capacity exclusion with and without a schedule, an empty matching set, interpreter
+context forwarding, general-policy intent and invalid preference rejection.
+The focused gateway/conversation selection passes 30 tests and the MS77 Python
+selection passes 47 tests. Deploy the matching Python service before the customer
+gateway because the previous strict service input rejects `discovery`. No hosted
+deployment, paid inference or browser acceptance is claimed by these local checks.
+
+Final local verification: `pnpm typecheck`, `pnpm lint` and `pnpm build` pass.
+`pnpm test` passes 299 files with 2,766 passing tests, one expected failure and
+43 skipped tests. The additional Python conversation/runtime selection passes
+16 tests. The final focused gateway/conversation rerun passes all 30 tests.

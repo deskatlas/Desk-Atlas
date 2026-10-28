@@ -97,7 +97,8 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
   const [selected, setSelected] = useState(initialReservation);
   const [reservationFilter, setReservationFilter] = useState<'UPCOMING' | 'HISTORY'>('UPCOMING');
   const [message, setMessage] = useState('');
-  const [turns, setTurns] = useState<{ question: string; answer: PublicCustomerResponse }[]>([]);
+  const [turns, setTurns] = useState<({ question: string; answer: PublicCustomerResponse } | { question: string; error: string; requestId: string })[]>([]);
+  const lastAnswer = turns.filter((turn): turn is { question: string; answer: PublicCustomerResponse } => 'answer' in turn).at(-1)?.answer;
   const [pendingQuestion, setPendingQuestion] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
@@ -163,10 +164,11 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
         }).catch(() => {});
       }, 3000);
       const result = await fetch('/api/customer-assistant/query', { method: 'POST', cache: 'no-store', signal: abort.signal, headers: requestHeaders,
-        body: JSON.stringify({ ...identity, message: question, user_turns: turns.slice(-4).map(t => t.question),
+        body: JSON.stringify({ ...identity, conversation_contract: 'constraints-v1', message: question, user_turns: turns.slice(-4).map(t => t.question),
+          ...(lastAnswer?.offered_names?.length || lastAnswer?.suggestions.length ? { offered_names: lastAnswer.offered_names?.length ? lastAnswer.offered_names : lastAnswer.suggestions.map(spot => spot.name) } : {}),
           ...(Object.keys(discovery).length ? { discovery } : {}), ...(selected ? { selected_reservation_id: selected } : {}),
           ...(token ? { reservation_filter: reservationFilter } : {}),
-          ...(turns.at(-1) ? { knowledge_epoch: turns.at(-1)!.answer.knowledge_epoch } : {}) }) });
+          ...(lastAnswer ? { knowledge_epoch: lastAnswer.knowledge_epoch } : {}) }) });
       if (!mounted.current || abort.signal.aborted || generation.current !== gen || key !== currentContext.current) return;
       if (result.status === 401 || result.status === 403) {
         if (token) clearSession();
@@ -174,12 +176,25 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
       }
       if (!result.ok) {
         const retrySeconds = Number(result.headers.get('Retry-After'));
-        throw new Error(result.status === 429 ? `The assistant has reached its request limit. ${retrySeconds > 0 ? `Please try again in ${Math.ceil(retrySeconds / 60)} minute(s).` : 'Please try again shortly.'}` : 'Assistance is temporarily unavailable. Please retry.');
+        const failure: unknown = await result.json().catch(() => null);
+        const code = failure && typeof failure === 'object' && 'error' in failure ? failure.error : undefined;
+        const notices: Record<string, string> = {
+          SCHEDULE_INVALID: 'That schedule does not meet the booking rules. Please check the business date, start time and duration.',
+          KNOWLEDGE_CHANGED: 'The published information changed while I was checking. Please retry.',
+          INVALID_EVIDENCE: 'I could not verify the supporting information. Please retry.',
+          CAPACITY_BUSY: 'The assistant is busy with other questions. Please try again shortly.',
+        };
+        throw new Error(typeof code === 'string' && notices[code] ? notices[code] : result.status === 429 ? `The assistant has reached its request limit. ${retrySeconds > 0 ? `Please try again in ${Math.ceil(retrySeconds / 60)} minute(s).` : 'Please try again shortly.'}` : 'Assistance is temporarily unavailable. Please retry.');
       }
       const answer = publicCustomerResponseSchema.parse(await result.json());
       if (!mounted.current || abort.signal.aborted || generation.current !== gen || key !== currentContext.current) return;
       setTurns(previous => [...previous, { question, answer }]); setPendingQuestion(''); setNotice('Answer ready.');
-    } catch (error) { if (mounted.current && !abort.signal.aborted && generation.current === gen) setNotice(error instanceof Error ? error.message : 'Unable to answer.'); }
+      if (answer.discovery) onDiscovery(answer.discovery);
+    } catch (error) { if (mounted.current && !abort.signal.aborted && generation.current === gen) {
+      const failure = error instanceof Error ? error.message : 'Unable to answer.';
+      setTurns(previous => [...previous, { question, error: failure, requestId: identity.request_id }]);
+      setPendingQuestion(''); setNotice(failure);
+    } }
     finally { if (progress) clearInterval(progress); if (active.current?.identity.request_id === identity.request_id) active.current = null;
       if (mounted.current && generation.current === gen) setBusy(false); }
   }
@@ -204,7 +219,7 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
         <button key={prompt} type="button" disabled={busy} className="da-secondary-button text-left" onClick={() => void ask(prompt)}>{prompt}</button>)}</div>
     </div>}
     <div className="space-y-4" role="log" aria-label="Conversation">
-      {turns.map((turn, index) => <div key={index} className="space-y-3">
+      {turns.map((turn, index) => 'answer' in turn ? <div key={index} className="space-y-3">
         <div className="ml-auto w-fit max-w-[85%] rounded-2xl bg-[var(--da-primary)] px-4 py-3 text-sm text-white"><p className="sr-only">You</p><p className="whitespace-pre-wrap">{turn.question}</p></div>
         <article className="mr-auto max-w-[95%] rounded-2xl border border-[var(--da-border)] bg-white p-4 space-y-3">
         <p className="text-xs font-bold text-[var(--da-text-secondary)]">DeskAtlas</p><AssistantAnswerText text={turn.answer.summary} />
@@ -227,7 +242,13 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
         {turn.answer.policy_excerpts?.length ? <div className="text-sm whitespace-pre-wrap"><p className="font-bold">Approved policy guidance</p>{turn.answer.policy_excerpts.map((policy, i) => <p key={i}>{policy.quote}</p>)}</div> : null}
         {turn.answer.citations.length > 0 && <details><summary className="text-xs font-bold">Sources ({turn.answer.citations.length})</summary><div className="mt-2 flex flex-wrap gap-2">{turn.answer.citations.map(citation => <button key={citation.chunk_id} type="button" className="da-secondary-button text-xs" onClick={() => void source(citation)}>{citation.title}</button>)}</div></details>}
         {turn.answer.limitations.map(line => <p key={line} className="text-xs text-[var(--da-text-secondary)]">{line}</p>)}
-      </article></div>)}
+      </article></div> : <div key={index} className="space-y-3">
+        <div className="ml-auto w-fit max-w-[85%] rounded-2xl bg-[var(--da-primary)] px-4 py-3 text-sm text-white"><p className="sr-only">You</p><p className="whitespace-pre-wrap">{turn.question}</p></div>
+        <div className="mr-auto max-w-[95%] rounded-2xl border border-[var(--da-border)] bg-white p-4 text-sm space-y-2"><p>{turn.error}</p>
+          <p className="text-xs text-[var(--da-text-secondary)]">Support reference: {turn.requestId}</p>
+          <button type="button" disabled={busy} className="da-secondary-button text-xs" onClick={() => void ask(turn.question)}>Retry</button>
+        </div>
+      </div>)}
       {pendingQuestion && <div className="space-y-3"><div className="ml-auto w-fit max-w-[85%] rounded-2xl bg-[var(--da-primary)] px-4 py-3 text-sm text-white"><p className="sr-only">You</p><p className="whitespace-pre-wrap">{pendingQuestion}</p></div><div className="mr-auto max-w-[95%] rounded-2xl border border-[var(--da-border)] bg-white px-4 py-3 text-sm">{busy ? 'DeskAtlas is typing...' : notice}{!busy && <button type="button" className="da-secondary-button ml-2 text-xs" onClick={() => void ask(pendingQuestion)}>Retry</button>}</div></div>}
       {excerpt && <div className="whitespace-pre-wrap rounded-xl border border-[var(--da-border)] bg-white p-3 text-sm"><p className="font-bold">Approved source excerpt</p>{excerpt}</div>}
       <div ref={bottom} />

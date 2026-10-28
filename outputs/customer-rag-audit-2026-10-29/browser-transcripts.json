@@ -1,0 +1,23 @@
+[
+  {
+    "question": "i need a desk for 7am, any availability on focus pod today?",
+    "observed": "You\n\ni need a desk for 7am, any availability on focus pod today?\n\nDeskAtlas\n\nPlease use the exact labels on the workspace map, or select up to three spots with Compare. I will use your saved schedule and preferences.",
+    "elapsed_upper_ms": 27982
+  },
+  {
+    "question": "Hi! I need somewhere quiet to work today. What would you recommend?",
+    "transcript": "You\n\ni need a desk for 7am, any availability on focus pod today?\n\nDeskAtlas\n\nPlease use the exact labels on the workspace map, or select up to three spots with Compare. I will use your saved schedule and preferences.\n\nYou\n\nHi! I need somewhere quiet to work today. What would you recommend?\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare."
+  },
+  {
+    "question": "Just me, from 7am for two hours today. A Focus Pod please.",
+    "transcript": "You\n\ni need a desk for 7am, any availability on focus pod today?\n\nDeskAtlas\n\nPlease use the exact labels on the workspace map, or select up to three spots with Compare. I will use your saved schedule and preferences.\n\nYou\n\nHi! I need somewhere quiet to work today. What would you recommend?\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare.\n\nYou\n\nJust me, from 7am for two hours today. A Focus Pod please.\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare."
+  },
+  {
+    "question": "What kinds of workspaces do you have, and roughly how much do they cost?",
+    "transcript": "You\n\ni need a desk for 7am, any availability on focus pod today?\n\nDeskAtlas\n\nPlease use the exact labels on the workspace map, or select up to three spots with Compare. I will use your saved schedule and preferences.\n\nYou\n\nHi! I need somewhere quiet to work today. What would you recommend?\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare.\n\nYou\n\nJust me, from 7am for two hours today. A Focus Pod please.\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare.\n\nYou\n\nWhat kinds of workspaces do you have, and roughly how much do they cost?\n\nAssistance is temporarily unavailable. Please retry.Retry"
+  },
+  {
+    "question": "It is my first time here. How does booking work, and do I need an account?",
+    "transcript": "You\n\ni need a desk for 7am, any availability on focus pod today?\n\nDeskAtlas\n\nPlease use the exact labels on the workspace map, or select up to three spots with Compare. I will use your saved schedule and preferences.\n\nYou\n\nHi! I need somewhere quiet to work today. What would you recommend?\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare.\n\nYou\n\nJust me, from 7am for two hours today. A Focus Pod please.\n\nDeskAtlas\n\nPlease narrow by workspace type or floor, or choose up to three spots to compare.\n\nYou\n\nIt is my first time here. How does booking work, and do I need an account?\n\nDeskAtlas\n\nVerify Customer ID and email to ask about your own reservations. You can continue public help and guest booking without verification.\n\nVerify Customer ID and email"
+  }
+]

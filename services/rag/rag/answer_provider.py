@@ -46,7 +46,21 @@ def document_model():
 
 
 def document_limits():
-    model = document_model()
+    return limits_for_model(document_model())
+
+
+def planning_limits(*, internal=False):
+    model = answer_model()
+    if internal:
+        model = os.environ.get('RAG_INTERNAL_DISCOVERY_MODEL', model)
+        # Both selected roles already pass independent startup canaries. Never
+        # introduce a third unverified inference role through this override.
+        if model not in {answer_model(), document_model()}:
+            raise HTTPException(503, detail='MODEL_REVISION_MISMATCH')
+    return {**limits_for_model(model), 'model': model}
+
+
+def limits_for_model(model):
     byte_tokens = model == 'Qwen/Qwen3.6-35B-A3B' or model in BENCHMARK_MODELS
     return {'context_tokens': 262144 if byte_tokens else 131072 if model == 'Qwen/Qwen3-235B-A22B-Instruct-2507' else 32768,
             'model_request_bytes': 240000, 'byte_tokens': byte_tokens}

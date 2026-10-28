@@ -106,6 +106,9 @@ async def run(data, ledger=None):
                 raise
             trace['calls'].append({'schema': schema.__name__, 'model': model, 'elapsed_ms': round((time.perf_counter()-call_start)*1000),
                 'input_tokens': normalized.get('prompt_eval_count'), 'output_tokens': normalized.get('eval_count'),
+                'request_bytes': len(serialized),
+                'cached_input_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens', 0),
+                'reasoning_tokens': (usage.get('completion_tokens_details') or {}).get('reasoning_tokens', 0),
                 'result': value.model_dump()})
             return value
         try:
