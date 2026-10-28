@@ -33,7 +33,12 @@ describe('MS83 Vercel notification scheduling', () => {
     expect(existsSync(path)).toBe(true);
     const config = JSON.parse(readFileSync(path, 'utf8')) as { crons: Array<{ path: string; schedule: string }> };
     expect(config.crons).toEqual([{ path: '/api/internal/rewards/process', schedule: '* * * * *' }]);
-    expect(existsSync('apps/customer-website/vercel.json')).toBe(false);
+    for (const app of ['customer-website', 'staff-dashboard', 'kiosk']) {
+      const appPath = `apps/${app}/vercel.json`;
+      const appConfig = existsSync(appPath)
+        ? JSON.parse(readFileSync(appPath, 'utf8')) as { crons?: unknown[] } : {};
+      expect(appConfig.crons ?? []).toEqual([]);
+    }
   });
   it('accepts Vercel CRON_SECRET on GET and actually processes due mail', async () => {
     const response = await GET(request('synthetic-cron-secret'));

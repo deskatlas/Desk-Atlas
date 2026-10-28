@@ -1,13 +1,10 @@
-# RAG continuation: latency and quality gates remain open
+# RAG continuation: historical latency and quality findings
 
-Subsequent continuation: [fast candidate, approved source publications and
-release proposal](RAGFIX-FAST-CANDIDATE-2026-10-28.md). The maintainer approved
-a $1 additional-model benchmark and publication of five reviewed source-policy
-replacements. Those replacements are verified active. Latest complete local
-admin, STAFF-follow-up and customer-booking samples pass below ten seconds,
-but hosted canary, final browser repeat and explicit recurring-cost deployment
-approval remain open. The historical measurements and blockers below are
-retained; they do not describe the latest candidate or authorize deployment.
+Current status: [fast RAG release record](RAGFIX-FAST-CANDIDATE-2026-10-28.md).
+The maintainer subsequently authorized the branch/dev/main pushes and deployment
+after local verification. All five reviewed source-policy replacements are
+active. The historical measurements and blockers below describe earlier states;
+the linked release record contains the current deployment and acceptance limits.
 
 October 28, 2026, Asia/Irkutsk. PRD-F26/F27, SDD-C20-C24,
 ERD-E24-E29 and QAD-TC44-TC46. No source publication, database mutation,

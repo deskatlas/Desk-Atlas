@@ -1,24 +1,75 @@
-# Fast RAG candidate and publication record
+# Fast RAG release and publication record
 
 Subsequent maintainer authorization: push `ragfix`, merge and push `dev`, then
 merge and push `main`, and deploy RAG if it functions well locally. Repeated
 complete local admin, STAFF-follow-up and customer-booking requests passed in
 8,600, 7,312 and 8,475 ms respectively. This authorizes the previously reviewed
 conditional runtime/application rollout; the historical pending-approval notes
-below are retained for chronology. Production success must still be verified.
+below are retained for chronology. The current production results follow.
 
 October 28, 2026, Asia/Irkutsk. PRD-F4/F5/F6/F7/F9/F26/F27,
 SDD-C20-C24, ERD-E24-E29 and QAD-TC44-TC46.
 
-## Current release boundary
+## Current release: October 29, 2026
 
-The local candidate produces useful complete responses under ten seconds in
-the samples below. This is not production latency acceptance, a p95 estimate,
-or a guarantee for every question. No application or inference-service
-deployment, Git push or merge has occurred in this continuation. The additional
-model is admitted only by explicit local benchmark configuration and cannot
-be enabled on Cloud Run by that flag. Production adoption and its ongoing
-inference charges require separate maintainer approval after review.
+The maintainer's subsequent instruction authorized pushing `ragfix`, merging
+and pushing `dev`, then merging and pushing `main`, followed by deployment if
+local RAG worked. Commit `4f78b12` completed that sequence. Local complete
+admin, actual STAFF follow-up and customer booking checks passed at 8,600,
+7,312 and 8,475 ms. Hosted canaries also passed below ten seconds.
+
+Production deployment is functional, but complete public-domain latency has
+not consistently met ten seconds. Latest simultaneous checks after placing
+only the three query endpoints in Vercel Singapore (`sin1`) returned:
+
+| Principal | HTTP | Complete client elapsed | Result |
+|---|---|---|---|
+| Admin payment review | 200 | 10,759 ms | SUPPORTED, 9 citations |
+| STAFF paid-arrival follow-up | 200 | 13,296 ms | SUPPORTED, 7 citations |
+| Public customer booking | 200 | 12,377 ms | ANSWER, 5 citations |
+
+The customer answer correctly states no hold, the 60-minute payment deadline,
+proof review and final allocation after verification. Staff arrival guidance
+limits collection to unpaid walk-ins or verified outstanding amounts and
+requires a confirmed active window for check-in. The placement change reduced
+catalog overhead but did not close the complete-response latency gate. These
+samples are not p95 or load-test acceptance. Final browser repetition remains
+unavailable because Work browser use is disabled; API checks do not replace it.
+
+Runtime uses immutable image digest
+`sha256:92f17467e52476ecf70cc813d00e3a0930e812794f1f056fdbb58a1357322ed2`
+and `google/gemini-3.1-flash-lite`, admitted through the explicit hosted release
+flag. The benchmark flag is false. `deskatlas-rag-chat-production-00014-7xz`
+serves the stable production Cloud Run endpoint at 100% traffic. Existing
+separate admin, staff and customer Google service accounts and principal-bound
+capabilities are retained. Initial internal failures exposed a missing internal
+batching flag on the shared production service; the final revision enables it.
+Customer task framing remains disabled in code.
+
+The production service has one warm 1-vCPU/1-GiB instance shared by all three
+surfaces, concurrency seven, and the existing separate internal/public
+admission limits. Staging has minimum zero and is unused by production apps.
+Canary tags are removed. The reviewed idle estimate remains about $12.96 per
+30 days before free tier, plus active hosting, inference and ancillary usage.
+This is an estimate, not a bill or spending cap.
+
+The live Vercel releases are admin `dpl_EauW5excV7tMZKNuwhZGP4FkjUFH`,
+staff `dpl_6Sn31i3WnHUmiHdiNv6rKD2dfo7P`, and customer
+`dpl_B5AZYjgZmfxrJWEyeVekYsTQoemR`. Their query functions are verified in
+`sin1`; other routes keep their existing placement. Production flags are saved
+in project environments for subsequent Git deployments. Private probe and
+deployment receipts remain under the ignored audit output directory.
+
+Final repository checks: all four app builds, typecheck and lint passed. The
+full suite passed 2,761 tests, with one expected failure and 43 skips. The cron
+test now checks the actual invariant (only admin schedules the worker), while
+allowing other apps to have function-placement configuration. An initial local
+build encountered a corrupt generated dev validator while preview servers were
+running; after stopping the owned previews and repairing the generated file,
+the complete build and static checks passed. No generated files are committed.
+
+The remaining sections retain historical candidate measurements and approval
+boundaries; this section supersedes their deployment status.
 
 The maintainer separately approved five reviewed knowledge replacements.
 All five were uploaded through the ordinary authenticated, versioned admin

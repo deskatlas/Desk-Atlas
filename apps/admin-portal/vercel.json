@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/assistant/query/route.ts": { "regions": ["sin1"] }
+  },
   "crons": [
     {
       "path": "/api/internal/rewards/process",

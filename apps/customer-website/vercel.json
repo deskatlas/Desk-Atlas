@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/customer-assistant/query/route.ts": { "regions": ["sin1"] }
+  }
+}
