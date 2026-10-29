@@ -663,11 +663,19 @@ app.add_middleware(RequestBoundary)
 from rag.document_support import document_answer, BUDGET as DOCUMENT_BUDGET
 
 
+class WorkspaceCatalogFact(Strict):
+    template_id: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=200)
+    capacity: int = Field(ge=1, le=10000)
+    hourly_rate: float = Field(ge=0, allow_inf_nan=False)
+
+
 class DocumentSupportInput(Strict):
     contract: Literal['ms65-v1']
     query: str = Field(min_length=1, max_length=3000)
     sources: list[Source] = Field(min_length=1, max_length=1000)
     synthesis: bool = False
+    workspace_catalog: list[WorkspaceCatalogFact] | None = Field(default=None, max_length=128)
 
 
 from rag.prepared_protocol import DiscoveryIndex, SelectedIndex, WorkflowSelection, EntrySelection, select_workflows, discovery_projection, coverage_projection
@@ -742,6 +750,11 @@ async def customer_characteristics(body: CustomerCharacteristicsInput, claims=De
 @app.post('/v1/customer/document-support')
 async def customer_document_support(body: DocumentSupportInput, request: Request, claims=Depends(authenticate_customer)):
     admit_customer_operation(claims, 'customer_knowledge')
+    catalog = getattr(body, 'workspace_catalog', None)
+    if catalog:
+        admit_customer_operation(claims, 'public_workspace')
+        if not customer_batching():
+            raise HTTPException(503, detail='READER_INCOMPATIBLE')
     token = request_timing.work.set({'calls': 0, 'bytes': 0, 'output': 0,
         'max_calls': DOCUMENT_BUDGET['model_calls'], 'max_bytes': DOCUMENT_BUDGET['aggregate_wire_bytes'],
         'max_output': DOCUMENT_BUDGET['aggregate_output_tokens']})
@@ -751,7 +764,8 @@ async def customer_document_support(body: DocumentSupportInput, request: Request
             if limits_token is not None:
                 from rag.batched_support import batched_document_answer
                 result = await batched_document_answer(body.query, [s.model_dump() for s in body.sources], generate,
-                    body.synthesis, actor_role=claims.principal, customer_reference=True)
+                    body.synthesis, actor_role=claims.principal, customer_reference=True,
+                    **({'workspace_catalog': [fact.model_dump() for fact in catalog]} if catalog else {}))
             else:
                 result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, customer_reference=True)
     finally:
@@ -763,6 +777,8 @@ async def customer_document_support(body: DocumentSupportInput, request: Request
 
 @app.post('/v1/document-support')
 async def document_support(body: DocumentSupportInput, request: Request):
+    if body.workspace_catalog is not None:
+        raise HTTPException(403, detail='FORBIDDEN')
     claims = await authenticate(request, request.headers.get('authorization', ''), request.headers.get('x-request-capability', ''))
     if 'answer' not in claims.ops:
         raise HTTPException(403, detail='FORBIDDEN')

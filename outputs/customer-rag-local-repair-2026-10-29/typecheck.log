@@ -1,0 +1,23 @@
+
+> deskatlas-monorepo@ typecheck C:\Users\reyna\Desk-Atlas
+> pnpm -r typecheck
+
+Scope: 9 of 10 workspace projects
+packages/validation typecheck$ tsc --noEmit
+packages/validation typecheck: Done
+packages/domain typecheck$ tsc --noEmit
+packages/domain typecheck: Done
+packages/server typecheck$ tsc --noEmit
+packages/ui typecheck$ tsc --noEmit
+packages/server typecheck: Done
+packages/ui typecheck: Done
+apps/admin-portal typecheck$ tsc --noEmit
+apps/customer-website typecheck$ tsc --noEmit
+apps/kiosk typecheck$ tsc --noEmit
+apps/staff-dashboard typecheck$ tsc --noEmit
+apps/staff-dashboard typecheck: .next/types/validator.ts(5,79): error TS2307: Cannot find module './routes.js' or its corresponding type declarations.
+apps/staff-dashboard typecheck: Failed
+C:\Users\reyna\Desk-Atlas\apps\staff-dashboard:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @deskatlas/staff-dashboard@0.0.1 typecheck: `tsc --noEmit`
+Exit status 2
+ ELIFECYCLE  Command failed with exit code 2.

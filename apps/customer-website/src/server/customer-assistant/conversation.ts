@@ -1,5 +1,18 @@
 import { customerDiscoveryContextSchema, type CustomerDiscoveryContext, customerInterpretedConstraintsSchema, knowledgeValidation as z } from '@deskatlas/validation';
 
+// PRD-F26 / QAD-TC44: an immediate continuation must not revive older topics.
+// The previous user question supplies intent only, never evidence or authority.
+export function customerConversationTask(message: string, userTurns: string[]) {
+  const followUp = /^(?:(?:ok(?:ay)?|and|so|then)[,!.]?\s*)*(?:what (?:happens|comes|do i do) (?:after that|next)|what (?:about|if) (?:that|it)|how (?:about|does) (?:that|it)|and then|what next)[?.!\s]*$/i;
+  const continuation = followUp.test(message);
+  const previous = [...userTurns].reverse().find(turn => !followUp.test(turn));
+  if (!continuation || !previous) return { message, user_turns: userTurns, question: message };
+  const channel = /\b(?:walk[ -]?in|kiosk|on[ -]?site)\b/i.test(previous) ? 'on-site walk-in at the kiosk'
+    : /\b(?:website|online|email|payment link)\b/i.test(previous) ? 'customer website' : undefined;
+  const question = `${channel ? `Active customer channel: ${channel}.\n` : ''}Latest customer question: ${previous}\nFollow-up: ${message}`;
+  return { message: question.length <= 2000 ? question : message, user_turns: [previous], question };
+}
+
 // PRD-F26 / MS77-TC12: procedure wording is public; ownership is checked at reads.
 export function requestsPrivateRecord(message: string): boolean {
   const owned = /\b(?:my|our)\s+(?:(?:existing|current|latest|last|upcoming|previous|confirmed|pending|paid)\s+)?(?:bookings?|reservations?|payments?|refunds?|proof|check.?in|customer\s*id|reference\s*code)\b/i.test(message);

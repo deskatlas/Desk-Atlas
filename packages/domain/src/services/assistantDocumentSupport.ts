@@ -1,7 +1,14 @@
 import { assistantDocumentSupportSchema, type AssistantSource } from '@deskatlas/validation';
 
 // MS65 / SDD-C21 / QAD-TC44: mechanical checks remain independent of inference.
-export function validateDocumentSupport(value: unknown, binding: string, sources: AssistantSource[], contract: 'ms65-v1' | 'ragfix-prepared-v2' = 'ms65-v1') {
+export function sourceBackedPaymentMethodOnly(text: string, quotes: string[]): boolean {
+  if (!quotes.some(quote => quote.includes('QR Payment')) || !/\bQR\b/.test(text)) return false;
+  if (/\bQR(?:s| codes?)?\b/i.test(text.replaceAll('QR Payment', ''))) return false;
+  const roles = /\b(?:bookings?|codes?|scan\w*|check.?in|entry|access|tokens?|active|activat\w*|valid\w*|confirm\w*|approv\w*|assign\w*|allocat\w*|refund\w*)\b/i;
+  return !roles.test(text);
+}
+
+export function validateDocumentSupport(value: unknown, binding: string, sources: AssistantSource[], contract: 'ms65-v1' | 'ragfix-prepared-v2' = 'ms65-v1', options?: { customerPaymentMethod?: boolean }) {
   const parsed = assistantDocumentSupportSchema.safeParse(value);
   if (!parsed.success || parsed.data.contract !== contract || parsed.data.binding !== binding) return undefined;
   if (sources.some(source => /ignore\s+(?:all\s+|previous\s+)?instructions|reveal\s+(?:secret|credentials)|execute\s+sql|fetch\s+https?:\/\/|bypass\s+permissions/i.test(source.content))) return undefined;
@@ -19,6 +26,7 @@ export function validateDocumentSupport(value: unknown, binding: string, sources
     // QAD-TC44/46: require source wording for QR roles even if an upstream
     // semantic verifier approved a substituted QR identity or negated action.
     if (result.synthesis.blocks.some(block => /\bQR(?:s| codes?)?\b/i.test(block.text)
+      && !(options?.customerPaymentMethod && sourceBackedPaymentMethodOnly(block.text, block.support.map(index => result.spans[index]?.quote ?? '')))
       && block.text !== block.support.map(index => result.spans[index]?.quote).join('\n\n'))) return undefined;
   }
   return result;

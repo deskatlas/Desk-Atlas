@@ -1,0 +1,58 @@
+{
+  "captured_at": "2026-10-29T10:01:49.260Z",
+  "method": "Visible customer browser, sequential manual-style questions, one signed anonymous visitor, no quota bypass",
+  "timing_note": "observed_by_ms is a completion observation upper bound including tool and inspection delays; not precise latency",
+  "results": [
+    {
+      "question": "Hi! I have never been here before. What is DeskAtlas and how does it work?",
+      "outcome": "Assistance is temporarily unavailable. Please retry.",
+      "reference": "7c84d568-3bd2-4025-b0e7-842d0d09c3b7",
+      "observed_by_ms": 22553
+    },
+    {
+      "question": "What kinds of spaces do you have, and how much would a few hours cost?",
+      "outcome": "ANSWER: 11 workspace types, capacities and hourly base rates; no few-hour estimate",
+      "observed_by_ms": 11561
+    },
+    {
+      "question": "I just need somewhere quiet to study and take an occasional video call. What would you recommend?",
+      "outcome": "ANSWER: quiet desks vs Sky Den/Sky Booth for spoken calls, six sources",
+      "observed_by_ms": 15951
+    },
+    {
+      "question": "How do I book and pay? Do I need an account, and when is my desk actually confirmed?",
+      "outcome": "ANSWER: guest booking, 60-minute payment link, receipt, admin review, no hold, final unit confirmation; six sources",
+      "observed_by_ms": 24873
+    },
+    {
+      "question": "What if my plans change or I arrive late? Can I cancel, move the booking, or get a refund?",
+      "outcome": "ANSWER: 24-hour cutoff, 50% refund subject approval, late end time unchanged, authorized amendment; seven sources",
+      "observed_by_ms": 31477
+    },
+    {
+      "question": "Where are you located, what time are you open, and do you have Wi-Fi, outlets, parking or food?",
+      "outcome": "ANSWER: address and 24/7 hours, Wi-Fi, charging qualification, pantry; explicitly cannot confirm parking; five sources",
+      "observed_by_ms": 25650
+    },
+    {
+      "question": "Paano kung first time ko lang at gusto ko lang mag walk in? Kailangan ba mag reserve muna?",
+      "outcome": "PARTIAL: English kiosk explanation, optional rewards, only first two numbered steps, no direct yes/no on prior reservation",
+      "observed_by_ms": 16315
+    },
+    {
+      "question": "Okay, what happens after that?",
+      "outcome": "WRONG CONTEXT: switched from on-site walk-in to website email payment, adds unrelated cancellation/relocation policy; eight sources",
+      "observed_by_ms": 18082
+    },
+    {
+      "question": "What should I do if the internet stops working or another guest is being noisy while I am working?",
+      "outcome": "ANSWER: notify staff, unit and timing, authorized remedy, safety and privacy; two sources",
+      "observed_by_ms": 17471
+    },
+    {
+      "question": "Hi! I have never been here before. What is DeskAtlas and how does it work?",
+      "outcome": "ANSWER on repeat: website/walk-in guest booking overview, three sources",
+      "observed_by_ms": 25188
+    }
+  ]
+}

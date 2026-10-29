@@ -1,0 +1,35 @@
+[
+  {
+    "kind": "browser",
+    "question": "First-time introduction repeated",
+    "elapsed_ms": 18987,
+    "result": "ANSWER",
+    "note": "After mixed-channel qualifier; before coherent product-orientation selection. Full raw response retained in production-build-browser.json."
+  },
+  {
+    "kind": "http",
+    "question": "First-time introduction",
+    "elapsed_ms": 29817,
+    "result": "ANSWER",
+    "model_catalog_plan_ms": 13627.881,
+    "model_document_support_ms": 13250.048,
+    "note": "Diagnostic through loopback ingress; not a browser render measurement."
+  },
+  {
+    "kind": "http",
+    "question": "First-time introduction",
+    "elapsed_ms": 16953,
+    "result": "CLARIFY",
+    "catalog_inference_ms": 4905.418,
+    "document_inference_ms": 9064.165,
+    "catalog_queue_ms": 0.009,
+    "document_queue_ms": 0.012,
+    "note": "Full-source completeness rejection before product-orientation repair."
+  },
+  {
+    "kind": "http",
+    "elapsed_ms": 9,
+    "result": "ASSISTANT_UNAVAILABLE",
+    "note": "Direct origin bypassed the required local ingress and lacked its trusted header. Environment probe was not an admitted RAG request; rerun through ingress."
+  }
+]

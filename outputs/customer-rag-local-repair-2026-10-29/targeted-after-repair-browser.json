@@ -1,0 +1,12 @@
+[
+  {
+    "case": 4,
+    "phase": "targeted-after-repair",
+    "question": "How do I book and pay? Do I need an account, and when is my desk actually confirmed?",
+    "started_at": "2026-10-29T11:59:07.044Z",
+    "elapsed_ms": 8772,
+    "baseline_ms": 11105,
+    "complete": true,
+    "response": "You\n\nHow do I book and pay? Do I need an account, and when is my desk actually confirmed?\n\nDeskAtlas\n\nNo account is required; simply select a workspace, date, and time on the public website, then submit your contact details. After submission, you will receive a private payment link with a 60-minute deadline to upload proof of transfer. Your desk is not confirmed until an administrator verifies your payment and a final confirmation email is issued with your specific unit assignment.\n\nA successful submission creates a pending request and queue number; it does not hold a unit. The website issues booking-specific payment instructions and a private payment page after submission; an initial administrator approval is not required before paying. Complete payment and proof upload before the server-recorded 60-minute payment-session deadline. Administrator review occurs after proof submission and does not guarantee allocation. After payment-proof verification, final allocation must\n\nSources (3)"
+  }
+]

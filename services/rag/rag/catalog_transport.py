@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 import os
 
 from fastapi import HTTPException
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, create_model
 
 from customer_public import CustomerCatalogInterpretation, CustomerRequiredSource
 from .catalog_discovery import CatalogDecision, DocumentCatalogDecision
@@ -43,6 +43,9 @@ def catalog_generator(generate, *, customer):
         instruction = prompt + '\nWire keys: ' + mapping + '. '
         instruction += 'Use only actual catalog i addresses. All original discovery, role and explicit-reference rules remain mandatory.'
         wire_schema = CompactCustomerCatalog if customer else CompactInternalCatalog
+        if customer and canonical_schema.model_json_schema()['properties']['primaries'].get('maxItems') == 1:
+            wire_schema = create_model('CompactCustomerOrientationCatalog', __base__=CompactCustomerCatalog,
+                primaries=(list[Annotated[int, Field(ge=0, lt=12)]], Field(alias='p', max_length=1)))
         if not customer and issubclass(canonical_schema, DocumentCatalogDecision):
             wire_schema = CompactInternalDocumentCatalog
             instruction += ' The authenticated gateway already classified this task as read-only DOCUMENT guidance. Select its original sources; do not repeat that classification. No live lookup or action is authorized.'

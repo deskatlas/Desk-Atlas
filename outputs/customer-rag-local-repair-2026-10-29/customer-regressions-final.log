@@ -1,0 +1,13 @@
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+
+ Test Files  5 passed (5)
+      Tests  85 passed (85)
+   Start at  20:35:33
+   Duration  4.12s (transform 52%, import 44%, tests 3%, worker 1%)
+
+  Transform  transforming modules took 6.51s · 52% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

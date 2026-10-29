@@ -79,9 +79,11 @@ def packets(units, prompt, payload, schema):
     return result
 
 
-async def batched_document_answer(query, sources, generate, synthesis=True, *, actor_role=None, prepared_index=None, selected_workflows=None, admitted_units=None, customer_reference=False):
+async def batched_document_answer(query, sources, generate, synthesis=True, *, actor_role=None, prepared_index=None, selected_workflows=None, admitted_units=None, customer_reference=False, workspace_catalog=None):
     principals = ('PUBLIC_VISITOR', 'VERIFIED_CUSTOMER') if customer_reference else ('ADMIN', 'STAFF')
     if actor_role not in principals:
+        raise HTTPException(403, detail='FORBIDDEN')
+    if workspace_catalog is not None and not customer_reference:
         raise HTTPException(403, detail='FORBIDDEN')
     if customer_reference and any(value is not None for value in (prepared_index, selected_workflows, admitted_units)):
         # Internal prepared indexes have a distinct audience and admission path.
@@ -107,6 +109,17 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
     from .draft_transport import overview_requested
     overview = overview_requested(query)
     base['requested_detail'] = 'OVERVIEW' if overview else 'TASK'
+    catalog_rule = ''
+    if workspace_catalog:
+        base['workspace_catalog'] = workspace_catalog
+        catalog_rule = (' The separate workspace_catalog contains current server-read published template facts. '
+            'For capacity and hourly base rate ONLY, these typed facts take precedence over historical document numbers. '
+            'Use ORIGINAL documents for suitability, speaking rules and all other policy, preserving their conditions. '
+            'A historical numerical mismatch is not a policy conflict: use the current catalog number or omit the unnecessary number. '
+            'Do not infer availability, soundproofing, equipment or a final price from catalog capacity/rate. '
+            'Do NOT put numerical capacities or base rates in the policy draft, including parenthetical labels. '
+            'The gateway displays current catalog values separately, without document citations for those values. '
+            'Document support addresses map qualitative policy; catalog numbers have separate server provenance, never fabricated document offsets.')
     prepared_context = {}
     if prepared_index is not None:
         base['selected_workflows'] = selected_workflows
@@ -116,6 +129,19 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
     customer_boundary = ' If explaining workspace selection, submission or pending approval/payment, explicitly state that it does not hold inventory when the supplied originals establish that rule. A final-confirmation sentence alone does not express the no-hold rule. Preserve the documented role responsible for payment-proof review in the SAME block as that review; do not replace an explicit administrator-only condition with unspecified staff or payment verification.'
     participants = ' Preserve the participants in the ORIGINAL question. A person reporting a problem is not necessarily the person causing it. Address the reporter with acknowledgement and assistance; direct corrective instructions only to the actor responsible for the documented problem. Never transfer blame or obligations to an uninvolved complainant.'
     draft_prompt = (CUSTOMER_DRAFT + customer_boundary if customer_reference else WHOLE_DRAFT) + participants
+    draft_prompt += catalog_rule
+    if customer_reference:
+        draft_prompt += (' Answer the actual question directly in the first sentence. A first-time walk-in question '
+            'asks whether advance booking is needed and how to get started, not for a full kiosk/rewards manual. '
+            'Do not introduce QR explanations, optional rewards or later changes unless asked or necessary to the requested decision. '
+            'For a next-step follow-up, continue the LATEST customer topic and its channel; do not revive older cancellation or website topics. '
+            'Retain required payment, no-hold and confirmation boundaries when explaining booking steps.')
+        draft_prompt += (' For a routine website booking/payment question, draft the normal sequence and its confirmation safeguards: '
+            'guest details without an account, request submission without an inventory hold, official payment/proof deadline, '
+            'administrator proof review, candidate allocation and final assigned-unit confirmation, but ONLY as supported by supplied originals. '
+            'Keep candidate priority and all-choices-conflict recovery when stated in the source. '
+            'Do not add optional rewards, customer-ID workarounds, kiosk walkthroughs or cancellation procedures unless asked. '
+            'A documented optional ID does not make account registration required.')
     draft_prompt += ' Keep the ENTIRE visible draft concise: aim for 80-140 words TOTAL across all blocks, not per block. Prioritize the original task and material conditions. Do not repeat a summary as a second detailed checklist. More words are permitted only when necessary to retain decision-changing conditions. QR identity and scan permissions will use mapped exact original wording before independent review.'
     framed = not customer_reference and os.environ.get('RAG_TASK_FRAMED_DRAFT') == 'true'
     if framed:
@@ -180,6 +206,11 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
             # A draft cannot decide that a missing policy may be invented.
             raise HTTPException(400, detail='UNRESOLVED_CONTEXT')
         fragments.extend(inspection.draft)
+    original_question = query.split('\nSearch interpretation (not evidence):', 1)[0]
+    if (customer_reference and overview and not re.search(
+            r'\b(?:QR|check.?in|check.?out|scan\w*|arriv\w*|entry|access|attendance|rewards?|vouchers?|customer id)\b', original_question, re.I)):
+        from .draft_transport import trim_customer_orientation_fragments
+        fragments = trim_customer_orientation_fragments(fragments)
     selected = {address for block in fragments for address in block.support}
     proof = [unit for unit in units if unit['i'] in selected]
     if not proof:
@@ -228,24 +259,35 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
                 address = len(proof)
                 proof.append(rule)
             blocks.append({'kind': 'text', 'text': rule['text'], 'support': [address]})
-    from .draft_transport import canonical_access_blocks, requested_scope
+    from .draft_transport import canonical_access_blocks, requested_scope, reconcile_catalog_capacities, qualify_customer_payment_channel
     scope = requested_scope(query, scope)
-    blocks = canonical_access_blocks(blocks, proof, units)
+    if customer_reference:
+        blocks = qualify_customer_payment_channel(blocks)
+    blocks = canonical_access_blocks(blocks, proof, units, customer_reference=customer_reference)
+    if workspace_catalog:
+        blocks = [{**block, 'text': reconcile_catalog_capacities(block['text'], workspace_catalog)} for block in blocks]
     if len(blocks) > 12 or not blocks or wire_length('\n\n'.join(block['text'] for block in blocks)) > BUDGET['answer_utf16']:
-        raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED')
+        raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED', headers={'X-RAG-Failure-Stage': 'visible-answer'})
     evidence = [{'i': i, 'original_i': unit['i'], 'text': unit['text']} for i, unit in enumerate(proof)]
     from .request_timing import model_metric
     model_metric('evidence_packed', len(proof))
     model_metric('evidence_bytes', len(wire(evidence)))
     if len(proof) > BUDGET['proof_spans'] or len(wire(evidence)) > BUDGET['selected_bytes']:
-        raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED')
+        raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED', headers={'X-RAG-Failure-Stage': 'selected-proof'})
     candidate = Composition(scope=scope, blocks=blocks)
     cited_generations = {generations[unit['chunk_id']] for unit in proof}
     uncited = list(dict.fromkeys(source.get('title', '') for source in sources if generations[source['chunk_id']] not in cited_generations))
-    payload = lambda batch: {'units': transport(batch), **prepared_context, **base, 'uncited_documents': uncited, 'answer': candidate.model_dump(), 'evidence': evidence}
-    detailed = prepared_index is not None or not customer_reference
+    # Policy proof checks only document-backed prose. Current numeric catalog
+    # fields are rendered separately by the gateway and revalidated there.
+    verification_base = {key: value for key, value in base.items() if key != 'workspace_catalog'}
+    payload = lambda batch: {'units': transport(batch), **prepared_context, **verification_base, 'uncited_documents': uncited, 'answer': candidate.model_dump(), 'evidence': evidence}
+    # QAD-TC44/46: a safe-but-incomplete customer draft needs the same exact
+    # missing-rule addresses as internal proof recovery, not a blind refusal.
+    detailed = True
     verifier_schema = verification_schema(len(units)) if detailed else Verification
     verifier_prompt = (CUSTOMER_VERIFY + customer_boundary if customer_reference else VERIFY) + participants + (' Return reason_code=NONE and missing_originals=[] only when all verdicts pass. On failure, give the reason_code and exact ORIGINAL unit i addresses for omitted necessary rules, at most eight. Evidence original_i identifies its original occurrence. Do not demand an optional neighboring task just because a draft mislabeled its scope DOCUMENT_WIDE. Missing normal modes or decision-changing conditions remain failures.' if detailed else '')
+    if workspace_catalog:
+        verifier_prompt += ' Numeric workspace capacities and base rates are displayed separately by the server from its current published map. They are outside this document-backed policy draft. Do not require optional numerical labels for a suitability question; still verify every qualitative claim, condition, prohibition and safety boundary against ALL originals.'
     verifier_prompt += ' Source lists of example incident types are alternatives, not a checklist of tasks for every complaint. A question about named symptoms does not require discussing every other complaint category. Equivalent rules already covered in the answer are not omissions. Require every applicable action, escalation condition and safety restriction; do not expand the user task to unrelated examples.'
     if overview:
         verifier_prompt += (' The ORIGINAL user requested an OVERVIEW or priorities, not detailed instructions '
@@ -268,10 +310,16 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
     # model answer. Recheck every original partition and the complete candidate.
     # Unsupported, unsafe, irrelevant or conflicting drafts cannot use this path.
     exact_added = set()
-    for _ in range(2):
-        if (customer_reference or not all(v.relevant and v.supported and v.consistent and v.safe for v in verdicts)
-                or all(v.complete for v in verdicts)):
+    for _ in range(1 if customer_reference else 2):
+        safe_scope = all(v.relevant and v.consistent and v.safe for v in verdicts)
+        exact_fallback = customer_reference and safe_scope and any(not v.supported for v in verdicts)
+        if (not safe_scope or (not exact_fallback and not all(v.supported for v in verdicts))
+                or all(v.supported and v.complete for v in verdicts)):
             break
+        if exact_fallback:
+            # Discard unsupported generated prose. Only its already-admitted
+            # exact originals can form the recovery candidate; verify it anew.
+            blocks = []
         missing = {i for v in verdicts if not v.complete for i in getattr(v, 'missing_originals', [])}
         # A flagged fragment can have prerequisites in the same original
         # section. Bring that section's remaining exact units together instead
@@ -284,6 +332,30 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
             # Do not widen a large section beyond admission. The verifier's
             # exact flagged rules remain the minimum bounded repair proposal.
             additions = [u for u in units if u['i'] in missing and u['i'] not in exact_added]
+        if exact_fallback:
+            additions = sorted({unit['i']: unit for unit in [*proof, *additions]}.values(), key=lambda unit: unit['i'])
+        if customer_reference:
+            # The immutable document RPC orders chunks by version and ordinal.
+            # A repaired chunk-edge fragment must carry its same-generation
+            # continuation, not expose a dangling obligation as a complete rule.
+            closed = {unit['i']: unit for unit in additions}
+            dangling = re.compile(r'\b(?:must|shall|should|will|can|may|unless|because|and|or|to|the|an?)\s*$', re.I)
+            positions = {unit['i']: index for index, unit in enumerate(units)}
+            for unit in additions:
+                tail = unit
+                for _boundary in range(4):
+                    if not dangling.search(tail['text']):
+                        break
+                    following = positions[tail['i']] + 1
+                    if (following >= len(units)
+                            or generations[units[following]['chunk_id']] != generations[tail['chunk_id']]
+                            or re.match(r'^\s*#{1,6}\s', units[following]['text'])):
+                        raise HTTPException(400, detail='UNRESOLVED_CONTEXT')
+                    tail = units[following]
+                    closed[tail['i']] = tail
+                if dangling.search(tail['text']):
+                    raise HTTPException(400, detail='UNRESOLVED_CONTEXT')
+            additions = sorted(closed.values(), key=lambda unit: unit['i'])
         groups = []
         for unit in additions:
             if (not groups or groups[-1][-1]['heading'] != unit['heading']
@@ -315,9 +387,11 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
         else:
             break
     if any(not verdict.consistent for verdict in verdicts):
-        raise HTTPException(400, detail='CONFLICTING_SOURCES')
+        raise HTTPException(400, detail='CONFLICTING_SOURCES', headers={'X-RAG-Failure-Stage': 'verification-conflict'})
     if any(not all((v.relevant, v.supported, v.complete, v.safe)) for v in verdicts):
-        raise HTTPException(400, detail='UNRESOLVED_CONTEXT')
+        reason = next(name for name, field in [('relevance', 'relevant'), ('support', 'supported'), ('completeness', 'complete'), ('safety', 'safe')]
+                      if any(not getattr(verdict, field) for verdict in verdicts))
+        raise HTTPException(400, detail='UNRESOLVED_CONTEXT', headers={'X-RAG-Failure-Stage': 'verification-' + reason})
     # Recovery may have appended an earlier original paragraph. Canonical span
     # order is required by the gateway; remap integers without changing claims.
     used = {i for block in candidate.blocks for i in block.support}

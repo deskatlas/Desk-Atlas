@@ -1,0 +1,102 @@
+[
+  {
+    "case": 1,
+    "phase": "final-candidate",
+    "question": "Hi! I have never been here before. What is DeskAtlas and how does it work?",
+    "started_at": "2026-10-29T12:17:06.812Z",
+    "elapsed_ms": 11305,
+    "baseline_ms": 15425,
+    "complete": true,
+    "response": "You\n\nHi! I have never been here before. What is DeskAtlas and how does it work?\n\nDeskAtlas\n\nWith DeskAtlas, you can book a physical desk or room online or walk in to use the on-site kiosk. You do not need a personal account or prior registration to make a standard guest booking.\n\nTo book online, select a workspace on the website, provide your contact details, and submit the request. A pending status does not hold inventory; you must complete payment and upload proof within 60 minutes for an administrator to verify and confirm your assignment.\n\nThe shared kiosk is intended for visitors physically present at SKYDY. The customer chooses a specific physical desk/room, permitted schedule or pass, reviews the current quote, provides the requested guest details and chooses Cash or QR Payment. It does not require a personal-account login, and browsing/queue assignment does not hold the space. Customers needing private booking history or rewards should primarily use the verified website flow on their own devices.\n\n1\\.  Select a physical unit and valid schedule on the on-site kiosk; confirm the party size and quiet-space requirements.\n\n2\\.  Enter requested guest details. If the proposed rewards functionality is enabled, a returning customer may optionally enter their Unique Customer ID and an already issued voucher. Neither is mandatory for an ordinary walk-in.\n\nA Unique Customer ID is a proposed feature issued only after your first confirmed booking to help link future visits; it is not required for initial reservations.\n\nSources (7)"
+  },
+  {
+    "case": 2,
+    "phase": "final-candidate",
+    "question": "What kinds of spaces do you have, and how much would a few hours cost?",
+    "started_at": "2026-10-29T12:17:27.325Z",
+    "elapsed_ms": 6573,
+    "baseline_ms": 9031,
+    "complete": true,
+    "response": "You\n\nWhat kinds of spaces do you have, and how much would a few hours cost?\n\nDeskAtlas\n\nPublished workspace types and base rates:\nCollab Nook: capacity 2; PHP 85 per hour.\nDesign Dock: capacity 1; PHP 35 per hour.\nFlow Row: capacity 1; PHP 50 per hour.\nFocus Pod: capacity 1; PHP 50 per hour.\nPower Bar: capacity 1; PHP 40 per hour.\nSky Booth: capacity 1; PHP 100 per hour.\nSky Circle: capacity 4; PHP 150 per hour.\nSky Den: capacity 1; PHP 70 per hour.\nSky Link: capacity 10; PHP 500 per hour.\nSky Pod: capacity 3; PHP 120 per hour.\nThink Spot: capacity 1; PHP 17 per hour.\nThese are published base rates, not a quote or a live availability check. Which type and schedule would you like to check?"
+  },
+  {
+    "case": 3,
+    "phase": "final-candidate",
+    "question": "I just need somewhere quiet to study and take an occasional video call. What would you recommend?",
+    "started_at": "2026-10-29T12:17:37.430Z",
+    "elapsed_ms": 10413,
+    "baseline_ms": 12214,
+    "complete": true,
+    "response": "You\n\nI just need somewhere quiet to study and take an occasional video call. What would you recommend?\n\nDeskAtlas\n\nFor occasional video calls, a quiet shared desk is unsuitable; we recommend the Sky Den, a one-person room advertised as soundproof. This accommodates your need for both quiet study and spoken activity. Please verify current availability, the actual session quote, and any specific equipment needs with staff before booking.\n\nNote that a visible space or pending request is not a hold; booking is confirmed only through the applicable verification process. Historical rates are for comparison only and do not guarantee current prices.\n\nCurrent published capacities: Sky Den: 1 person.\n\nSources (4)\n\nWorkspace capacities and base rates use the current published map. Availability and final prices require a schedule."
+  },
+  {
+    "case": 4,
+    "phase": "final-candidate",
+    "question": "How do I book and pay? Do I need an account, and when is my desk actually confirmed?",
+    "started_at": "2026-10-29T12:18:03.296Z",
+    "elapsed_ms": 10874,
+    "baseline_ms": 11105,
+    "complete": true,
+    "response": "You\n\nHow do I book and pay? Do I need an account, and when is my desk actually confirmed?\n\nDeskAtlas\n\nOn the public customer website, select a physical named workspace from the map; select a permitted date, start time and duration; confirm capacity, price/pass and session end time (including the next date for overnight use); optionally rank eligible same-type alternatives; enter requested first/last name and a reachable booking email; review the summary and submit. No customer account is required. Keep the queue/reference displayed after submission.\n\n## **Review and confirmation boundary**\n\nA successful submission creates a pending request and queue number; it does not hold a unit. The website issues booking-specific payment instructions and a private payment page after submission; an initial administrator approval is not required before paying. Complete payment and proof upload before the server-recorded 60-minute payment-session deadline. Administrator review occurs after proof submission and does not guarantee allocation. After payment-proof verification, final allocation must\n\nstill find a valid non-overlapping unit from approved choices. Only an explicit final confirmation showing the actual physical unit and schedule establishes a confirmed booking. If all choices conflict, staff must follow the authorized recovery/reconciliation path; payment alone must not cause duplicate allocation.\n\nWebsite reservations have no integrated card-payment gateway. After submitting a website request, follow the payment methods and recipient details shown on its official private payment page. Submit genuine proof for subsequent administrator review; paying does not require an earlier administrator approval. On-site shared kiosk walk-ins instead offer staff-handled cash or the currently displayed authorized static QR transfer, followed by staff verification. Website payment instructions must never be inferred from an old screenshot or kiosk QR.\n\n## **Confirmation email**\n\nThe final verified message identifies the actual booked workspace, time window and check-in directions. A bank receipt, payment QR, queue number, admin approval email or proof-upload success message is never independently a confirmed reservation.\n\nSources (5)"
+  },
+  {
+    "case": 5,
+    "phase": "final-candidate",
+    "question": "What if my plans change or I arrive late? Can I cancel, move the booking, or get a refund?",
+    "started_at": "2026-10-29T12:18:33.009Z",
+    "elapsed_ms": 9558,
+    "baseline_ms": 13816,
+    "complete": true,
+    "response": "You\n\nWhat if my plans change or I arrive late? Can I cancel, move the booking, or get a refund?\n\nDeskAtlas\n\nTo cancel or reschedule, you must request at least 24 hours before your start time; same-day changes are not accepted under the standard rule. If you arrive late, your booking end time does not shift. For eligible timely cancellations, a 50% refund of the verified payment base is available, subject to approved policy.\n\nTo move your booking, you must request an authorized amendment with your reference and reason. Staff will check availability and price differences. You must not occupy a new space until you receive a revised official confirmation.\n\nFor emergencies or business-initiated issues, staff will review the specific case. Do not assume automatic waivers or refunds. Retain your booking reference and payment receipt, and contact the front desk or official SKYDY Messenger for verified resolution.\n\nSources (9)"
+  },
+  {
+    "case": 6,
+    "phase": "final-candidate",
+    "question": "Where are you located, what time are you open, and do you have Wi-Fi, outlets, parking or food?",
+    "started_at": "2026-10-29T12:18:47.007Z",
+    "elapsed_ms": 8882,
+    "baseline_ms": 11156,
+    "complete": true,
+    "response": "You\n\nWhere are you located, what time are you open, and do you have Wi-Fi, outlets, parking or food?\n\nDeskAtlas\n\nSKYDY Hub and Coworking Space is located on the 3rd Floor of RM101 Square, Ramon Magsaysay Boulevard corner D. Ampil Street, Santa Mesa, Manila 1016, Philippines, near LRT-2 Pureza Station. The venue operates 24 hours a day, seven days a week, including weekends and public holidays, unless an official temporary change is announced. Customer Wi-Fi is offered, with connection instructions provided at check-in. Charging facilities and shared pantry amenities, including a water dispenser, microwave, and coffee/tea supplies, are available. However, a dedicated outlet or independent air-conditioner is not guaranteed at every physical unit. The source documents do not confirm the availability of parking.\n\nSources (3)"
+  },
+  {
+    "case": 7,
+    "phase": "final-candidate",
+    "question": "Paano kung first time ko lang at gusto ko lang mag walk in? Kailangan ba mag reserve muna?",
+    "started_at": "2026-10-29T12:18:58.976Z",
+    "elapsed_ms": 10060,
+    "baseline_ms": 9446,
+    "complete": true,
+    "response": "You\n\nPaano kung first time ko lang at gusto ko lang mag walk in? Kailangan ba mag reserve muna?\n\nDeskAtlas\n\nNo, advance booking is not required for walk-ins. The on-site kiosk is the designated account-free channel for first-time visitors to request a workspace without prior registration.\n\nTo start, select a physical desk or room and valid schedule on the kiosk, then provide your guest details. You may optionally enter a Unique Customer ID if you have one from a previous booking, but this is not mandatory.\n\nAfter reviewing the staff-authorized amount, choose Cash at Front Desk or static QR Payment.\n\nNote that browsing or queue assignment does not hold inventory; you must wait for staff to verify the request and confirm your physical assignment.\n\nSources (4)"
+  },
+  {
+    "case": 8,
+    "phase": "final-candidate",
+    "question": "Okay, what happens after that?",
+    "started_at": "2026-10-29T12:19:27.099Z",
+    "elapsed_ms": 8107,
+    "baseline_ms": 11577,
+    "complete": true,
+    "response": "You\n\nOkay, what happens after that?\n\nDeskAtlas\n\nNo, advance booking is not required for first-time walk-ins. The on-site kiosk is designed as an account-free option for visitors physically present at SKYDY. You can select a physical desk or room, review the current quote, and provide your guest details directly at the kiosk.\n\nAfter selecting your workspace and schedule, you will choose a payment route, such as Cash at the Front Desk or a static QR Payment.\n\nYou must retain your kiosk queue number and payment receipt.\n\nStaff will then verify your request, payment, and eligibility to confirm your assignment.\n\nThe shared kiosk is intended for visitors physically present at SKYDY. The customer chooses a specific physical desk/room, permitted schedule or pass, reviews the current quote, provides the requested guest details and chooses Cash or QR Payment. It does not require a personal-account login, and browsing/queue assignment does not hold the space. Customers needing private booking history or rewards should primarily use the verified website flow on their own devices.\n\n6\\.  Check in only after the eligible assignment and attendance process is confirmed. The kiosk queue number, external payment QR and proposed Customer ID are not attendance credentials.\n\nSources (4)"
+  },
+  {
+    "case": 9,
+    "phase": "final-candidate",
+    "question": "What should I do if the internet stops working or another guest is being noisy while I am working?",
+    "started_at": "2026-10-29T12:19:52.863Z",
+    "elapsed_ms": 8371,
+    "baseline_ms": 13462,
+    "complete": true,
+    "response": "You\n\nWhat should I do if the internet stops working or another guest is being noisy while I am working?\n\nDeskAtlas\n\nReport the Wi-Fi outage or noisy guest to on-site staff immediately. Temporary loss of internet or noise issues does not automatically grant extra session time, change your booking status, or waive payment. Staff will check for authorized remedies, such as relocation to a suitable alternative unit, but no free upgrade or refund is guaranteed. Follow any posted safety instructions if the area is restricted.\n\nSources (2)"
+  },
+  {
+    "case": 10,
+    "phase": "final-candidate",
+    "question": "Hi! I have never been here before. What is DeskAtlas and how does it work?",
+    "started_at": "2026-10-29T12:23:36.175Z",
+    "elapsed_ms": 7595,
+    "baseline_ms": 13056,
+    "complete": true,
+    "response": "You\n\nHi! I have never been here before. What is DeskAtlas and how does it work?\n\nDeskAtlas\n\nThe complete guidance is too long for one verified answer. Please ask about one step or policy at a time."
+  }
+]

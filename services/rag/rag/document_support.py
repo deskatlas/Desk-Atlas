@@ -194,7 +194,7 @@ def canonical_units(sources):
             # Complete paragraphs, list items and tables retain their qualifiers.
             # Oversize atomic units cannot be silently cut to obtain admission.
             if wire_length(quote) > 1500:
-                raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED')
+                raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED', headers={'X-RAG-Failure-Stage': 'original-unit'})
             units.append({'i': len(units), 'chunk_id': source['chunk_id'],
                           'heading': source['heading_path'], 'text': quote,
                           'start': wire_length(source['content'][:start]),

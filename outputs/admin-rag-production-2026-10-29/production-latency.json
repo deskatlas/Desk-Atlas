@@ -1,0 +1,158 @@
+{
+  "surface": "https://admin.thedeskatlas.com",
+  "measurement": "complete_http_not_browser_render",
+  "rows": [
+    {
+      "case": 1,
+      "question": "Can you give me the big picture of how bookings, payments, and check-ins fit together?",
+      "status": 200,
+      "elapsed_ms": 29790,
+      "kind": "DOCUMENT",
+      "outcome": "SUPPORTED",
+      "mode": "SYNTHESIZED",
+      "citations": 6,
+      "tables": 0,
+      "summary": "Bookings require first name, last name, and email; accounts are not needed. Inventory is allocated only upon authorized payment confirmation, as selection or pending payment creates no hold. Staff confirm kiosk counter payments, while administrators approve online proofs. Check-in occurs only for confirmed bookings within the active window, using the first eligible scan or manual entry.\n\n7. Complete check-in only for a confirmed booking within its active booking window, and provide the assigned workspace information. Never permit early booking-QR entry. A payment QR is not a booking access QR.\n\n- **Access:** Payment and booking QRs serve different purposes. Booking QRs use opaque tokens. Early check-in is prohibited. During the active booking window, the first eligible scan automatically checks in a confirmed booking not already checked in manually.\n\nWorkspace status is managed via Active (Bookable), Maintenance (Blocked), and Inactive (Hidden). Occupied status is derived from reservations. Verify reservation details to establish actual check-in, as a confirmed RESERVED session may appear Occupied before the guest arrives.",
+      "limitations": [
+        "Quotations retain the language of the published source."
+      ],
+      "server_timing": "auth;dur=221.422, catalog;dur=2300.495, validate;dur=2.143, settings;dur=132.092, python_answer_queue;dur=0.021, python_answer_verify;dur=0.012, python_answer_inference;dur=2345.058, python_answer_schema;dur=0.067, python_answer_residual;dur=14.693, python_answer_total;dur=2359.851, context;dur=3339.754, python_plan_queue;dur=0.011, python_plan_verify;dur=0.006, python_plan_inference;dur=9093.813, python_plan_schema;dur=0.106, python_plan_residual;dur=7.884, python_plan_total;dur=9101.820, plan;dur=9376.806, python_embed_queue;dur=0.008, python_embed_inference;dur=621.274, python_embed_residual;dur=11.523, python_embed_total;dur=632.805, embed;dur=1236.037, retrieve;dur=951.513, expand;dur=206.164, python_support_queue;dur=0.020, python_support_verify;dur=0.013, python_support_inference;dur=11533.677, python_support_schema;dur=0.080, python_support_residual;dur=137.614, python_support_total;dur=11671.404, support;dur=12337.354, evidence;dur=255.014, serialize;dur=0.225, residual;dur=0.000, total;dur=29720.644",
+      "substantive": true,
+      "within_10s": false,
+      "within_15s": false
+    },
+    {
+      "case": 2,
+      "question": "If they already sent proof, does that mean the desk is secured?",
+      "status": 200,
+      "elapsed_ms": 41850,
+      "kind": "DOCUMENT",
+      "outcome": "SOURCE_REVIEW",
+      "mode": "FAILURE",
+      "citations": 0,
+      "tables": 0,
+      "summary": "I could not prepare a verified document answer.",
+      "limitations": [
+        "INCOMPLETE_CONTEXT: Required procedure context could not be verified."
+      ],
+      "server_timing": "auth;dur=429.610, catalog;dur=1686.786, validate;dur=0.330, settings;dur=119.373, python_answer_queue;dur=0.019, python_answer_verify;dur=0.012, python_answer_inference;dur=6022.144, python_answer_schema;dur=0.062, python_answer_residual;dur=3.649, python_answer_total;dur=6025.885, context;dur=6898.887, python_plan_queue;dur=0.009, python_plan_verify;dur=0.005, python_plan_inference;dur=14560.157, python_plan_schema;dur=0.099, python_plan_residual;dur=1.312, python_plan_total;dur=14561.581, plan;dur=14793.008, python_embed_queue;dur=0.008, python_embed_inference;dur=260.325, python_embed_residual;dur=10.265, python_embed_total;dur=270.598, embed;dur=897.490, retrieve;dur=888.021, expand;dur=126.556, python_support_queue;dur=0.031, python_support_verify;dur=0.024, python_support_inference;dur=16091.700, python_support_schema;dur=0.147, python_support_residual;dur=15.485, python_support_total;dur=16107.387, support;dur=16490.187, serialize;dur=0.135, residual;dur=0.000, total;dur=41783.246",
+      "substantive": false,
+      "within_10s": false,
+      "within_15s": false
+    },
+    {
+      "case": 3,
+      "question": "Someone says they paid, but their booking isn't confirmed. What should I do?",
+      "status": 200,
+      "elapsed_ms": 698,
+      "kind": "CLARIFY",
+      "outcome": "CLARIFICATION",
+      "mode": "CLARIFICATION",
+      "citations": 0,
+      "tables": 0,
+      "summary": "Did they pay online through the website, or at the kiosk counter?",
+      "limitations": [],
+      "server_timing": "auth;dur=228.811, catalog;dur=268.179, validate;dur=0.318, settings;dur=129.102, plan;dur=0.007, serialize;dur=0.139, residual;dur=1.959, total;dur=628.517",
+      "substantive": false,
+      "within_10s": true,
+      "within_15s": true
+    },
+    {
+      "case": 4,
+      "question": "They paid online. How do I review it?",
+      "status": 200,
+      "elapsed_ms": 20396,
+      "kind": "DOCUMENT",
+      "outcome": "SOURCE_REVIEW",
+      "mode": "FAILURE",
+      "citations": 0,
+      "tables": 0,
+      "summary": "I could not prepare a verified document answer.",
+      "limitations": [
+        "INCOMPLETE_CONTEXT: Required procedure context could not be verified."
+      ],
+      "server_timing": "auth;dur=225.340, catalog;dur=1816.939, validate;dur=0.220, settings;dur=116.491, python_answer_queue;dur=0.011, python_answer_verify;dur=0.007, python_answer_inference;dur=1568.622, python_answer_schema;dur=0.099, python_answer_residual;dur=3.202, python_answer_total;dur=1571.941, context;dur=2257.208, plan;dur=0.006, expand;dur=127.810, python_support_queue;dur=0.036, python_support_verify;dur=0.026, python_support_inference;dur=15397.082, python_support_schema;dur=0.156, python_support_residual;dur=19.834, python_support_total;dur=15417.133, support;dur=15785.182, serialize;dur=0.129, residual;dur=3.446, total;dur=20332.771",
+      "substantive": false,
+      "within_10s": false,
+      "within_15s": false
+    },
+    {
+      "case": 5,
+      "question": "How are things looking today? Anything I need to deal with?",
+      "status": 200,
+      "elapsed_ms": 878,
+      "kind": "OPERATIONAL",
+      "outcome": "SUPPORTED",
+      "mode": "EXACT",
+      "citations": 0,
+      "tables": 1,
+      "summary": "Today qualifying scheduled bookings: 0; Current check-ins: 0; Reserved desks now: 0; In-use desks now: 0.",
+      "limitations": [
+        "This snapshot covers scheduled bookings, check-ins and reserved or in-use desks. It does not include pending payment reviews or maintenance issues. Check Payments and the dashboard Maintenance Overview for those.",
+        "Scheduled starts use the current candidate schedule; historical moves cannot be reconstructed.",
+        "Available now requires an explicit interval."
+      ],
+      "server_timing": "auth;dur=239.844, catalog;dur=224.833, validate;dur=0.291, settings;dur=104.179, plan;dur=0.009, tools;dur=242.906, serialize;dur=0.158, residual;dur=5.221, total;dur=817.439",
+      "substantive": true,
+      "within_10s": true,
+      "within_15s": true
+    },
+    {
+      "case": 6,
+      "question": "May nagrereklamo sa wifi at ang ingay daw. Paano ko sila tutulungan?",
+      "status": 200,
+      "elapsed_ms": 17184,
+      "kind": "DOCUMENT",
+      "outcome": "SUPPORTED",
+      "mode": "SYNTHESIZED",
+      "citations": 2,
+      "tables": 0,
+      "summary": "For the internet issue, assess the concern and report the malfunction to management; prevent customers from using equipment that presents a safety risk. For the noise complaint, politely remind the customer to observe the facility's noise rules and ask them to lower their voices. If the noise violation is repeated or serious, escalate the matter to the supervisor or manager.\n\nFor the noise complaint, politely remind the customer to observe the facility's noise rules and ask them to lower their voices. If the noise violation is repeated or serious, escalate the matter to the supervisor or manager.",
+      "limitations": [
+        "Quotations retain the language of the published source."
+      ],
+      "server_timing": "auth;dur=393.723, catalog;dur=1974.448, validate;dur=0.272, settings;dur=109.691, python_answer_queue;dur=0.039, python_answer_verify;dur=0.011, python_answer_inference;dur=2567.893, python_answer_schema;dur=0.035, python_answer_residual;dur=3.417, python_answer_total;dur=2571.396, context;dur=3276.872, plan;dur=0.006, expand;dur=235.504, python_support_queue;dur=0.018, python_support_verify;dur=0.013, python_support_inference;dur=10118.555, python_support_schema;dur=0.078, python_support_residual;dur=23.897, python_support_total;dur=10142.561, support;dur=10850.939, evidence;dur=238.241, serialize;dur=0.154, residual;dur=41.806, total;dur=17121.657",
+      "substantive": true,
+      "within_10s": false,
+      "within_15s": false
+    },
+    {
+      "case": 7,
+      "question": "How do booking QR codes work when a guest arrives?",
+      "status": 200,
+      "elapsed_ms": 33976,
+      "kind": "DOCUMENT",
+      "outcome": "SOURCE_REVIEW",
+      "mode": "FAILURE",
+      "citations": 0,
+      "tables": 0,
+      "summary": "I could not prepare a verified document answer.",
+      "limitations": [
+        "INCOMPLETE_CONTEXT: Required procedure context could not be verified."
+      ],
+      "server_timing": "auth;dur=399.479, catalog;dur=1878.835, validate;dur=0.241, settings;dur=106.504, python_answer_queue;dur=0.012, python_answer_verify;dur=0.007, python_answer_inference;dur=1403.922, python_answer_schema;dur=0.031, python_answer_residual;dur=3.259, python_answer_total;dur=1407.231, context;dur=2049.057, python_plan_queue;dur=0.010, python_plan_verify;dur=0.006, python_plan_inference;dur=5837.578, python_plan_schema;dur=0.084, python_plan_residual;dur=1.043, python_plan_total;dur=5838.720, plan;dur=6084.852, python_embed_queue;dur=0.007, python_embed_inference;dur=236.457, python_embed_residual;dur=10.163, python_embed_total;dur=246.627, embed;dur=830.731, retrieve;dur=631.049, expand;dur=109.376, python_support_queue;dur=0.032, python_support_verify;dur=0.026, python_support_inference;dur=21899.294, python_support_schema;dur=0.189, python_support_residual;dur=18.522, python_support_total;dur=21918.064, support;dur=22285.052, serialize;dur=0.144, residual;dur=0.000, total;dur=33915.704",
+      "substantive": false,
+      "within_10s": false,
+      "within_15s": false
+    },
+    {
+      "case": 8,
+      "question": "I'm about to hand over my shift. What should I tell the next person?",
+      "status": 200,
+      "elapsed_ms": 17958,
+      "kind": "DOCUMENT",
+      "outcome": "SUPPORTED",
+      "mode": "SYNTHESIZED",
+      "citations": 2,
+      "tables": 0,
+      "summary": "Report pending reservations, customer requests, and unresolved complaints. Explain ongoing facility issues and maintenance concerns. Turn over relevant records, cash, and documents according to workplace policy. Confirm the status of pending payments and transactions. Record significant incidents or operational concerns. Ensure the incoming employee understands any task requiring immediate attention.\n\n### 3.2. Shift Handover\n\nEmployees ending a shift must communicate important information to the incoming employee.\n\n2. Explain ongoing facility issues and maintenance concerns.\n\n3. Turn over relevant records, cash, and documents according to workplace policy.\n\n4. Confirm the status of pending payments and transactions.\n\n5. Record significant incidents or operational concerns.\n\n6. Ensure the incoming employee understands any task requiring immediate attention.",
+      "limitations": [
+        "Quotations retain the language of the published source."
+      ],
+      "server_timing": "auth;dur=247.638, catalog;dur=1863.781, validate;dur=0.354, settings;dur=124.302, python_answer_queue;dur=0.011, python_answer_verify;dur=0.007, python_answer_inference;dur=2856.748, python_answer_schema;dur=0.033, python_answer_residual;dur=2.746, python_answer_total;dur=2859.545, context;dur=3506.936, plan;dur=0.006, expand;dur=346.832, python_support_queue;dur=0.032, python_support_verify;dur=0.020, python_support_inference;dur=10414.592, python_support_schema;dur=0.120, python_support_residual;dur=41.339, python_support_total;dur=10456.104, support;dur=11295.178, evidence;dur=378.733, serialize;dur=0.143, residual;dur=111.456, total;dur=17875.359",
+      "substantive": true,
+      "within_10s": false,
+      "within_15s": false
+    }
+  ]
+}

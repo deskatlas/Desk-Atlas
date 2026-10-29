@@ -1,0 +1,9 @@
+{
+  "checked_at": "2026-10-29T12:43:46.107Z",
+  "ready": true,
+  "implementation_current": true,
+  "loaded_fingerprint": "d35832fe6f8fd7e0b424ce9bac77ae48c96a131cbd6ae01181da3d1e4ee49b6d",
+  "answer_provider": "deepinfra",
+  "answer_model": "Qwen/Qwen3.6-35B-A3B",
+  "document_answer_model": "Qwen/Qwen3.6-35B-A3B"
+}

@@ -1,0 +1,125 @@
+- main:
+  - link "DeskAtlas":
+    - /url: /
+    - generic: DeskAtlas
+  - navigation:
+    - link "Reserve":
+      - /url: /reserve
+    - link "Track Reservation":
+      - /url: /track
+  - paragraph: Guest Booking
+  - heading "Find the right workspace for your day." [level=1]
+  - paragraph: Explore the published floor map, pick your preferred workspace, choose backup options, and finish payment from a secure one-hour link.
+  - link "Explore Workspaces":
+    - /url: /reserve
+  - link "Track Reservation":
+    - /url: /track
+  - img "Workspace preview 1"
+  - img "Workspace preview 2"
+  - img "Workspace preview 3"
+  - heading "How DeskAtlas Works" [level=2]
+  - generic: "1"
+  - paragraph: Browse the published workspace map
+  - generic: "2"
+  - paragraph: Choose your schedule and up to two backups
+  - generic: "3"
+  - paragraph: Submit your reservation without holding inventory
+  - generic: "4"
+  - paragraph: Complete payment from your one-hour email link
+  - article:
+    - heading "Spot-first booking" [level=3]
+    - paragraph: Select the exact desk, booth, or meeting room you want from the live floor map.
+  - article:
+    - heading "Guest-first flow" [level=3]
+    - paragraph: Reserve without creating an account. We only need your name and email.
+  - article:
+    - heading "Protected confirmation" [level=3]
+    - paragraph: A booking QR is issued only after proof is reviewed and a workspace is allocated.
+  - button "Privacy Notice"
+- button "Ask DeskAtlas" [expanded]
+- alert
+- dialog "Ask DeskAtlas":
+  - heading "Ask DeskAtlas" [level=2]
+  - paragraph: Ask about spaces, prices and booking policies. No verification needed.
+  - log "Conversation":
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: DeskAtlas is the customer-facing reference system for SKYDY Study Hub & Coworking Space, providing workspace suitability, pricing, and policy guidance. It is not a live booking engine or price database; actual availability, booking quotes, and reservation outcomes are determined by official channels and authenticated transactions. To get started, visit the venue at RM101 Square, 3rd Floor, Manila, or contact SKYDY via its official Facebook page and Messenger. For reservations, use the website or on-site kiosk, where map availability labels indicate potential eligibility but do not hold inventory until confirmed. Staff verification is required for walk-ins and payment processing.
+      - generic "Sources (3)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: What kinds of spaces do you have, and how much would a few hours cost?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "Published workspace types and base rates: Collab Nook: capacity 2; PHP 85 per hour. Design Dock: capacity 1; PHP 35 per hour. Flow Row: capacity 1; PHP 50 per hour. Focus Pod: capacity 1; PHP 50 per hour. Power Bar: capacity 1; PHP 40 per hour. Sky Booth: capacity 1; PHP 100 per hour. Sky Circle: capacity 4; PHP 150 per hour. Sky Den: capacity 1; PHP 70 per hour. Sky Link: capacity 10; PHP 500 per hour. Sky Pod: capacity 3; PHP 120 per hour. Think Spot: capacity 1; PHP 17 per hour. These are published base rates, not a quote or a live availability check. Which type and schedule would you like to check?"
+    - paragraph: You
+    - paragraph: I just need somewhere quiet to study and take an occasional video call. What would you recommend?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "For quiet study with occasional video calls, we recommend the Sky Den or Sky Booth. These are the only named rooms advertised as soundproof, making them suitable for spoken calls, whereas shared desks like Think Spot or Focus Pod are not appropriate for video calls. Please note that while these rooms are advertised as soundproof, they do not guarantee absolute recording silence. We cannot confirm live availability or final pricing here; please verify the actual setup, current quote, and schedule via the official booking channel or front desk. Current published capacities: Focus Pod: 1 person; Sky Booth: 1 person; Sky Den: 1 person; Think Spot: 1 person."
+      - generic "Sources (5)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: How do I book and pay? Do I need an account, and when is my desk actually confirmed?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: No account is required. On the website, select a workspace, date, and time, then submit your name and email. You will receive a private payment link with a 60-minute deadline to upload proof of transfer. A pending status or payment upload does not hold inventory or confirm your desk. Your desk is only confirmed after an administrator reviews your proof and the system assigns a specific physical unit. You will receive a final confirmation email identifying the exact workspace and schedule. Until that email arrives, your booking is not secured.
+      - generic "Sources (5)"
+    - paragraph: You
+    - paragraph: What if my plans change or I arrive late? Can I cancel, move the booking, or get a refund?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: To cancel or reschedule, you must request at least 24 hours before your start time; same-day changes are not accepted under the standard rule. If eligible, cancellations qualify for a 50% refund of the verified payment base, subject to authorized approval. Late arrivals do not extend your session end time. To move your booking, you must request an authorized amendment via the front desk or official Messenger with your reference and reason. Staff will check availability and price differences; you must wait for a revised confirmation before occupying a new space. Chat requests cannot relocate confirmed bookings. For emergencies or business-initiated issues, staff will review the specific case under approved policy. Do not assume automatic waivers or refunds. Retain your booking reference and original payment receipt, and share these through verified private channels for resolution.
+      - generic "Sources (9)"
+    - paragraph: You
+    - paragraph: Where are you located, what time are you open, and do you have Wi-Fi, outlets, parking or food?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: SKYDY Hub and Coworking Space is located on the 3rd Floor of RM101 Square, Ramon Magsaysay Boulevard corner D. Ampil Street, Santa Mesa, Manila 1016, Philippines, near LRT-2 Pureza Station. The venue operates 24 hours a day, seven days a week, including weekends and public holidays, unless an official temporary change is announced. Customer Wi-Fi is offered, with connection instructions provided at check-in. Charging facilities and air conditioning exist, but a dedicated outlet or independent air-conditioner is not guaranteed at every physical unit. Shared pantry facilities include a water dispenser, microwave, glasses, and coffee/tea supplies, subject to current availability and house rules. The source documentation does not confirm the availability of parking. For specific accessibility features, elevators, or step-free routes, please ask staff in advance, as the third-floor address does not guarantee them.
+      - generic "Sources (4)"
+    - paragraph: You
+    - paragraph: Paano kung first time ko lang at gusto ko lang mag walk in? Kailangan ba mag reserve muna?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: No, advance booking is not required for a first-time walk-in. You may use the on-site shared kiosk to create a walk-in request without a personal account or prior reservation. Select your desired physical desk or room, review the current quote, and choose Cash or QR Payment. Please note that browsing or queue assignment at the kiosk does not hold inventory; staff verification and payment reconciliation are required to secure your space.
+      - generic "Sources (3)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: Okay, what happens after that?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "No, advance booking is not required for a first-time walk-in. The on-site kiosk is the designated account-free channel for visitors physically present at SKYDY. You may select a specific physical desk or room, review the current quote, and provide your guest details directly at the kiosk. After selecting your workspace and schedule, you will choose a payment route: Cash at the Front Desk or a static QR Payment. You must retain your kiosk queue number and any transfer receipt. Staff will then verify your request, payment, and eligibility to confirm your assignment. The shared kiosk is intended for visitors physically present at SKYDY. The customer chooses a specific physical desk/room, permitted schedule or pass, reviews the current quote, provides the requested guest details and chooses Cash or QR Payment. It does not require a personal-account login, and browsing/queue assignment does not hold the space. Customers needing private booking history or rewards should primarily use the verified website flow on their own devices. 6\\. Check in only after the eligible assignment and attendance process is confirmed. The kiosk queue number, external payment QR and proposed Customer ID are not attendance credentials."
+      - generic "Sources (4)"
+    - paragraph: You
+    - paragraph: What should I do if the internet stops working or another guest is being noisy while I am working?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: Report the issue to on-site staff immediately. Temporary loss of Wi-Fi or power does not by itself grant an extra session, change the booking status, or waive payment. For noise or conduct complaints, state the exact desk or common area, time, and issue to staff promptly. Staff can check comfort and customer conduct and may escalate safety or privacy issues. Do not handle dangerous repairs or post other visitors’ private information.
+      - generic "Sources (2)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: DeskAtlas is the customer-facing booking system for SKYDY Hub and Coworking Space, allowing you to reserve workspaces online or via an on-site kiosk. You do not need a personal account to make a standard guest reservation. To start, visit the customer website to browse the interactive map, select a physical unit, and submit your contact details. Alternatively, use the on-site shared kiosk for walk-in requests. Please note that browsing or queue assignment does not hold inventory. After submission, you must pay and upload proof of payment via the official private link within 60 minutes. Only the final confirmation email establishes your assigned spot and authorized reservation interval.
+      - generic "Sources (5)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: DeskAtlas is the customer-facing reference system for SKYDY Study Hub & Coworking Space, providing workspace suitability, pricing, and booking guidance. SKYDY operates 24/7 at RM101 Square, 3rd Floor, Manila. Solo desks generally support walk-ins, while rooms and group bookings require advance reservation. Availability shown on maps is potential eligibility, not a held inventory. To book, use official channels like Facebook Messenger or the on-site kiosk; staff verify assignments and payments. Always confirm specific amenities and final prices via approved quotes, as reference rates are illustrative only.
+      - generic "Sources (3)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+  - generic "Schedule and preferences"
+  - generic "My reservations (verification required)"
+  - paragraph: Suggestions do not hold a spot. Availability is checked again when booking.
+  - status: Answer ready.
+  - generic: Ask DeskAtlas
+  - textbox "Ask DeskAtlas":
+    - /placeholder: Ask a question...
+  - button "Send" [disabled]
+  - button "Close":
+    - generic: Close

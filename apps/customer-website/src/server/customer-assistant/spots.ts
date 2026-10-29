@@ -61,11 +61,16 @@ export async function resolvePublicWorkspaceContext(context: CustomerDiscoveryCo
   return resolveWorkspaceNames(await maps().loadAllPublishedFloorMaps({ audience: 'CUSTOMER' }), context, templateName, floorName, names, currentMessage);
 }
 export async function publicWorkspaceOverview(): Promise<string> {
+  const types = await publicWorkspaceTypes();
+  return types.length ? `Published workspace types and base rates:\n${types.map(spot => `${spot.name}: capacity ${spot.capacity}; PHP ${spot.hourly_rate} per hour.`).join('\n')}\nThese are published base rates, not a quote or a live availability check. Which type and schedule would you like to check?`
+    : 'There are no workspace types on the current published customer map. Please contact the front desk.';
+}
+// PRD-F1-F4/F26: typed current facts, separate from historical document evidence.
+export async function publicWorkspaceTypes() {
   const published = await maps().loadAllPublishedFloorMaps({ audience: 'CUSTOMER' });
   const types = [...new Map(published.flatMap(map => map.elements.flatMap(element => element.workspace ? [element.workspace] : []))
     .map(spot => [spot.templateId, spot])).values()].sort((a, b) => a.templateName.localeCompare(b.templateName));
-  return types.length ? `Published workspace types and base rates:\n${types.map(spot => `${spot.templateName}: capacity ${spot.capacity}; PHP ${spot.rateAmount} per hour.`).join('\n')}\nThese are published base rates, not a quote or a live availability check. Which type and schedule would you like to check?`
-    : 'There are no workspace types on the current published customer map. Please contact the front desk.';
+  return types.map(spot => ({ template_id: spot.templateId, name: spot.templateName, capacity: spot.capacity, hourly_rate: spot.rateAmount }));
 }
 
 const spotSchema = z.object({ workspace_id: z.string().uuid(), template_id: z.string().uuid(), floor_id: z.string().uuid(),

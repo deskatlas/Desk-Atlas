@@ -1,0 +1,83 @@
+- main:
+  - link "DeskAtlas":
+    - /url: /
+    - generic: DeskAtlas
+  - navigation:
+    - link "Reserve":
+      - /url: /reserve
+    - link "Track Reservation":
+      - /url: /track
+  - paragraph: Guest Booking
+  - heading "Find the right workspace for your day." [level=1]
+  - paragraph: Explore the published floor map, pick your preferred workspace, choose backup options, and finish payment from a secure one-hour link.
+  - link "Explore Workspaces":
+    - /url: /reserve
+  - link "Track Reservation":
+    - /url: /track
+  - img "Workspace preview 1"
+  - img "Workspace preview 2"
+  - img "Workspace preview 3"
+  - heading "How DeskAtlas Works" [level=2]
+  - generic: "1"
+  - paragraph: Browse the published workspace map
+  - generic: "2"
+  - paragraph: Choose your schedule and up to two backups
+  - generic: "3"
+  - paragraph: Submit your reservation without holding inventory
+  - generic: "4"
+  - paragraph: Complete payment from your one-hour email link
+  - article:
+    - heading "Spot-first booking" [level=3]
+    - paragraph: Select the exact desk, booth, or meeting room you want from the live floor map.
+  - article:
+    - heading "Guest-first flow" [level=3]
+    - paragraph: Reserve without creating an account. We only need your name and email.
+  - article:
+    - heading "Protected confirmation" [level=3]
+    - paragraph: A booking QR is issued only after proof is reviewed and a workspace is allocated.
+  - button "Privacy Notice"
+- button "Ask DeskAtlas" [expanded]
+- alert
+- dialog "Ask DeskAtlas":
+  - heading "Ask DeskAtlas" [level=2]
+  - paragraph: Ask about spaces, prices and booking policies. No verification needed.
+  - log "Conversation":
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: DeskAtlas is a coworking space where you can book a physical desk or room online or as a walk-in. You do not need a personal account to book; simply select a workspace on the website, provide your contact details, and submit the request. A queue number only acknowledges receipt and does not hold inventory. After submission, you must pay and upload proof of payment via the official private payment page within 60 minutes. An administrator reviews this proof, and only the final confirmation email establishes your assigned spot and authorized reservation interval. The shared kiosk is intended for visitors physically present at SKYDY. The customer chooses a specific physical desk/room, permitted schedule or pass, reviews the current quote, provides the requested guest details and chooses Cash or QR Payment. It does not require a personal-account login, and browsing/queue assignment does not hold the space. Customers needing private booking history or rewards should primarily use the verified website flow on their own devices. 1\. Select a physical unit and valid schedule on the on-site kiosk; confirm the party size and quiet-space requirements. 2\. Enter requested guest details. If the proposed rewards functionality is enabled, a returning customer may optionally enter their Unique Customer ID and an already issued voucher. Neither is mandatory for an ordinary walk-in. A Unique Customer ID is a proposed feature issued only after your first confirmed booking to help link future visits. It is not required for standard reservations, nor is it a check-in credential or proof of payment.
+      - generic "Sources (9)"
+    - paragraph: You
+    - paragraph: What kinds of spaces do you have, and how much would a few hours cost?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "Published workspace types and base rates: Collab Nook: capacity 2; PHP 85 per hour. Design Dock: capacity 1; PHP 35 per hour. Flow Row: capacity 1; PHP 50 per hour. Focus Pod: capacity 1; PHP 50 per hour. Power Bar: capacity 1; PHP 40 per hour. Sky Booth: capacity 1; PHP 100 per hour. Sky Circle: capacity 4; PHP 150 per hour. Sky Den: capacity 1; PHP 70 per hour. Sky Link: capacity 10; PHP 500 per hour. Sky Pod: capacity 3; PHP 120 per hour. Think Spot: capacity 1; PHP 17 per hour. These are published base rates, not a quote or a live availability check. Which type and schedule would you like to check?"
+    - paragraph: You
+    - paragraph: I just need somewhere quiet to study and take an occasional video call. What would you recommend?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "For quiet study with occasional video calls, we recommend the Sky Den or Sky Booth. These are the only rooms advertised as soundproof, making them suitable for spoken calls, whereas shared desks like Think Spot or Focus Pod are not appropriate for video calls. Please note that while these rooms are soundproof-advertised, they do not guarantee absolute recording silence. You must verify the actual live availability, current pricing, and specific setup through the official booking interface or front desk before proceeding. Current published capacities: Focus Pod: 1 person; Sky Booth: 1 person; Sky Den: 1 person; Think Spot: 1 person."
+      - generic "Sources (5)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: How do I book and pay? Do I need an account, and when is my desk actually confirmed?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: The published customer documents do not establish a complete answer to that question. Please ask about one part of the policy, or contact the front desk for the missing details.
+    - paragraph: You
+    - paragraph: How do I book and pay? Do I need an account, and when is my desk actually confirmed?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: No account is required; simply select a workspace, date, and time on the public website, then submit your contact details. After submission, you will receive a private payment link with a 60-minute deadline to upload proof of transfer. Your desk is not confirmed until an administrator verifies your payment and a final confirmation email is issued with your specific unit assignment. A successful submission creates a pending request and queue number; it does not hold a unit. The website issues booking-specific payment instructions and a private payment page after submission; an initial administrator approval is not required before paying. Complete payment and proof upload before the server-recorded 60-minute payment-session deadline. Administrator review occurs after proof submission and does not guarantee allocation. After payment-proof verification, final allocation must
+      - generic "Sources (3)"
+  - generic "Schedule and preferences"
+  - generic "My reservations (verification required)"
+  - paragraph: Suggestions do not hold a spot. Availability is checked again when booking.
+  - status: Answer ready.
+  - generic: Ask DeskAtlas
+  - textbox "Ask DeskAtlas":
+    - /placeholder: Ask a question...
+  - button "Send" [disabled]
+  - button "Close":
+    - generic: Close

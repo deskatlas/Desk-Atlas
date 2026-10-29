@@ -1,0 +1,112 @@
+- main:
+  - link "DeskAtlas":
+    - /url: /
+    - generic: DeskAtlas
+  - navigation:
+    - link "Reserve":
+      - /url: /reserve
+    - link "Track Reservation":
+      - /url: /track
+  - paragraph: Guest Booking
+  - heading "Find the right workspace for your day." [level=1]
+  - paragraph: Explore the published floor map, pick your preferred workspace, choose backup options, and finish payment from a secure one-hour link.
+  - link "Explore Workspaces":
+    - /url: /reserve
+  - link "Track Reservation":
+    - /url: /track
+  - img "Workspace preview 1"
+  - img "Workspace preview 2"
+  - img "Workspace preview 3"
+  - heading "How DeskAtlas Works" [level=2]
+  - generic: "1"
+  - paragraph: Browse the published workspace map
+  - generic: "2"
+  - paragraph: Choose your schedule and up to two backups
+  - generic: "3"
+  - paragraph: Submit your reservation without holding inventory
+  - generic: "4"
+  - paragraph: Complete payment from your one-hour email link
+  - article:
+    - heading "Spot-first booking" [level=3]
+    - paragraph: Select the exact desk, booth, or meeting room you want from the live floor map.
+  - article:
+    - heading "Guest-first flow" [level=3]
+    - paragraph: Reserve without creating an account. We only need your name and email.
+  - article:
+    - heading "Protected confirmation" [level=3]
+    - paragraph: A booking QR is issued only after proof is reviewed and a workspace is allocated.
+  - button "Privacy Notice"
+- button "Ask DeskAtlas" [expanded]
+- alert
+- dialog "Ask DeskAtlas":
+  - heading "Ask DeskAtlas" [level=2]
+  - paragraph: Ask about spaces, prices and booking policies. No verification needed.
+  - log "Conversation":
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - paragraph: Assistance is temporarily unavailable. Please retry.
+    - paragraph: "Support reference: 7c84d568-3bd2-4025-b0e7-842d0d09c3b7"
+    - button "Retry"
+    - paragraph: You
+    - paragraph: What kinds of spaces do you have, and how much would a few hours cost?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "Published workspace types and base rates: Collab Nook: capacity 2; PHP 85 per hour. Design Dock: capacity 1; PHP 35 per hour. Flow Row: capacity 1; PHP 50 per hour. Focus Pod: capacity 1; PHP 50 per hour. Power Bar: capacity 1; PHP 40 per hour. Sky Booth: capacity 1; PHP 100 per hour. Sky Circle: capacity 4; PHP 150 per hour. Sky Den: capacity 1; PHP 70 per hour. Sky Link: capacity 10; PHP 500 per hour. Sky Pod: capacity 3; PHP 120 per hour. Think Spot: capacity 1; PHP 17 per hour. These are published base rates, not a quote or a live availability check. Which type and schedule would you like to check?"
+    - paragraph: You
+    - paragraph: I just need somewhere quiet to study and take an occasional video call. What would you recommend?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: For quiet study, Think Spot, Focus Pod, Flow Row, Design Dock, or Power Bar are suitable. However, these are shared quiet desks and are not appropriate for spoken video calls. For a video call, Sky Den (one person) or Sky Booth (two people) are recommended as they are advertised as soundproof rooms. Please note that no workspace guarantees complete recording silence. Additionally, a visible space or pending request is not a hold; booking is confirmed only through the applicable verification and final assignment process.
+      - generic "Sources (6)"
+    - paragraph: You
+    - paragraph: How do I book and pay? Do I need an account, and when is my desk actually confirmed?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: No account is required. On the website, select a workspace, date, and time, then submit your name and email. You will receive a private payment link with a 60-minute deadline. Pay via the specified method and upload a genuine receipt (JPG/PNG/WebP, max 10 MB). Submitting payment does not hold inventory. An administrator reviews your proof, and a valid unit must still be available. Your desk is only confirmed when you receive an explicit final confirmation showing the specific physical unit and schedule.
+      - generic "Sources (6)"
+    - paragraph: You
+    - paragraph: What if my plans change or I arrive late? Can I cancel, move the booking, or get a refund?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: To cancel or reschedule, you must request at least 24 hours before your start time; same-day changes are not accepted under the standard rule. If eligible, a timely cancellation qualifies for a 50% refund of the verified payment base, subject to authorized approval. For late arrivals, the booking end time does not shift automatically, and no automatic credit is promised. To move your booking, you must request an authorized amendment with your reference and preferred new unit. Staff will check live availability and price differences. You must not occupy the new space until you receive a revised official confirmation. For any dispute, retain your booking reference, original receipt, and exact schedule. Contact the front desk or official SKYDY Messenger to resolve issues; do not assume chat messages or payment receipts alone confirm changes or refunds.
+      - generic "Sources (7)"
+    - paragraph: You
+    - paragraph: Where are you located, what time are you open, and do you have Wi-Fi, outlets, parking or food?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: SKYDY Hub and Coworking Space is located on the 3rd Floor of RM101 Square, Ramon Magsaysay Boulevard corner D. Ampil Street, Santa Mesa, Manila 1016, Metro Manila, Philippines. The nearest rail landmark is LRT-2 Pureza Station. Regular business operation is 24 hours a day, seven days a week, including weekends and public holidays, unless an official temporary change is announced. Customer Wi-Fi is offered, with connection instructions provided at check-in. Charging facilities and air conditioning exist, but a dedicated outlet or independent air-conditioner is not guaranteed at every physical unit. Shared pantry facilities include a water dispenser, microwave, glasses, and coffee/tea supplies, subject to current availability and house rules. The source text does not confirm the availability of parking. For specific accessibility features, equipment, or current operational status, please contact SKYDY via its official Facebook page or approach the front desk.
+      - generic "Sources (5)"
+    - paragraph: You
+    - paragraph: Paano kung first time ko lang at gusto ko lang mag walk in? Kailangan ba mag reserve muna?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: The shared kiosk is intended for visitors physically present at SKYDY. The customer chooses a specific physical desk/room, permitted schedule or pass, reviews the current quote, provides the requested guest details and chooses Cash or QR Payment. It does not require a personal-account login, and browsing/queue assignment does not hold the space. Customers needing private booking history or rewards should primarily use the verified website flow on their own devices. 1\. Select a physical unit and valid schedule on the on-site kiosk; confirm the party size and quiet-space requirements. 2\. Enter requested guest details. If the proposed rewards functionality is enabled, a returning customer may optionally enter their Unique Customer ID and an already issued voucher. Neither is mandatory for an ordinary walk-in.
+      - generic "Sources (2)"
+    - paragraph: You
+    - paragraph: Okay, what happens after that?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: On the website, select a workspace, date, and time, then submit your name and email; no account is required. After submission, you receive a private payment link with a 60-minute deadline. Complete payment and upload a genuine receipt proof before the deadline expires. Submitting payment does not hold inventory or confirm your booking. An administrator reviews your proof after submission. Only an explicit final confirmation showing the actual physical unit and schedule establishes a confirmed booking. If plans change, cancellation requests must be made at least 24 hours in advance to qualify for a 50% refund of the verified eligible payment base. Same-day changes or late arrivals are not accepted under the standard rule. For relocations or upgrades after confirmation, contact the front desk or official Messenger; do not move to a new space until a revised confirmation is issued.
+      - generic "Sources (8)"
+    - paragraph: You
+    - paragraph: What should I do if the internet stops working or another guest is being noisy while I am working?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: For Wi-Fi or power outages, report the affected unit and timing to staff and follow any safety restrictions. Temporary loss of service does not by itself grant an extra session, change the booking status, or waive payment; ask for an authorized recorded decision about any remedy or relocation. For noise complaints, state the exact desk or common area, time, and issue, and notify staff promptly. Staff can check comfort and customer conduct issues and may escalate safety or privacy concerns. Do not handle dangerous repairs or post other visitors’ private information.
+      - generic "Sources (2)"
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: DeskAtlas is the customer-facing reference system for SKYDY Study Hub & Coworking Space, providing guidance on workspace selection, booking, and pricing. As a first-time visitor, you can book a physical workspace via the public customer website or visit as a walk-in using the on-site shared kiosk. Both methods allow you to select a desk or room, review availability, and complete payment without requiring a personal account. For assistance, contact SKYDY via their official Facebook Messenger or visit the on-site front desk.
+      - generic "Sources (3)"
+  - generic "Schedule and preferences"
+  - generic "My reservations (verification required)"
+  - paragraph: Suggestions do not hold a spot. Availability is checked again when booking.
+  - status: Answer ready.
+  - generic: Ask DeskAtlas
+  - textbox "Ask DeskAtlas":
+    - /placeholder: Ask a question...
+  - button "Send" [disabled]
+  - button "Close":
+    - generic: Close

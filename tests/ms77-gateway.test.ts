@@ -1,9 +1,9 @@
 // MS77-TC01/02/05/10/11/12/15: real gateway with isolated provider/storage seams.
 import { randomUUID, createHash } from 'node:crypto';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn(), resolveContext: vi.fn(), overview: vi.fn() }));
+const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn(), resolveContext: vi.fn(), overview: vi.fn(), workspaceTypes: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc: seams.rpc }) }));
-vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }), resolvePublicWorkspaceContext: seams.resolveContext, publicWorkspaceOverview: seams.overview }));
+vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }), resolvePublicWorkspaceContext: seams.resolveContext, publicWorkspaceOverview: seams.overview, publicWorkspaceTypes: seams.workspaceTypes }));
 vi.mock('../apps/customer-website/src/server/customer-assistant/catalog', () => ({ readCustomerDiscoveryCatalog: seams.catalog }));
 import { customerAssistantQuery, customerAssistantSession, customerAssistantSource } from '../apps/customer-website/src/server/customer-assistant/gateway';
 
@@ -33,6 +33,7 @@ beforeEach(async () => {
   }));
   seams.candidates.mockResolvedValue({ spots: [], has_more: false });
   seams.resolveContext.mockReset(); seams.overview.mockReset();
+  seams.workspaceTypes.mockReset().mockResolvedValue([]);
   provider = vi.fn(async (url: URL, init: RequestInit) => {
     const path = String(url);
     if (path.endsWith('/plan')) return Response.json({ kind: 'KNOWLEDGE', operations: [{ name: 'customer_knowledge' }] });
@@ -49,6 +50,75 @@ beforeEach(async () => {
   cookie = session.headers.get('Set-Cookie')!.split(';')[0];
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+// PRD-F26 / QAD-TC44/46: regressions from the October 29 public browser audit.
+it('resolves an anaphoric follow-up against the latest topic instead of older payment and cancellation topics', async () => {
+  const response = await customerAssistantQuery(req({ ...query('Okay, what happens after that?'),
+    user_turns: ['How do I pay online?', 'Can I cancel?', 'Do you have Wi-Fi?', 'Can I walk in without reserving first?'] }));
+  expect(response.status).toBe(200);
+  const planned = JSON.parse(String(provider.mock.calls[0][1].body)) as { message: string; user_turns: string[] };
+  expect(planned.user_turns).toEqual(['Can I walk in without reserving first?']);
+  const documentCall = provider.mock.calls.find(([url]) => String(url).endsWith('/document-support'))!;
+  expect(JSON.parse(String(documentCall[1].body)).query).toContain('Can I walk in without reserving first?');
+});
+
+it('resolves a repeated continuation to the latest named topic without adding model calls', async () => {
+  const response = await customerAssistantQuery(req({ ...query('Okay, what happens after that?'),
+    user_turns: ['Can I cancel online?', 'Can I walk in without reserving first?', 'Okay, what happens after that?'] }));
+  expect(response.status).toBe(200);
+  const planned = JSON.parse(String(provider.mock.calls[0][1].body)) as { message: string; user_turns: string[] };
+  expect(planned.message).toContain('Active customer channel: on-site walk-in at the kiosk.');
+  expect(planned.user_turns).toEqual(['Can I walk in without reserving first?']);
+  expect(provider.mock.calls.filter(([url]) => String(url).endsWith('/plan'))).toHaveLength(1);
+  expect(provider.mock.calls.filter(([url]) => String(url).endsWith('/document-support'))).toHaveLength(1);
+});
+
+it.each(['WORKSPACE', 'KNOWLEDGE'])('supplies and revalidates current capacities for recommendations classified as %s', async kind => {
+  const facts = [{ template_id: randomUUID(), name: 'Sky Booth', capacity: 1, hourly_rate: 100 }];
+  seams.workspaceTypes.mockResolvedValue(facts);
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => String(url).endsWith('/plan')
+    ? Response.json({ kind, ...(kind === 'WORKSPACE' ? { workspace_mode: 'GUIDANCE' } : {}), operations: [{ name: 'customer_knowledge' }, { name: 'public_workspace' }] }) : original(url, init));
+  const response = await customerAssistantQuery(req(query('What do you recommend for study and video calls?')));
+  expect(response.status).toBe(200);
+  const documentCall = provider.mock.calls.find(([url]) => String(url).endsWith('/document-support'))!;
+  expect(JSON.parse(String(documentCall[1].body)).workspace_catalog).toEqual(facts);
+  expect(seams.workspaceTypes).toHaveBeenCalledTimes(2);
+  expect(provider.mock.calls.filter(([url]) => String(url).endsWith('/document-support'))).toHaveLength(1);
+});
+
+it('withdraws a recommendation if current capacity changes before release', async () => {
+  const facts = [{ template_id: randomUUID(), name: 'Sky Booth', capacity: 1, hourly_rate: 100 }];
+  seams.workspaceTypes.mockResolvedValueOnce(facts).mockResolvedValueOnce([{ ...facts[0], capacity: 2 }]);
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => String(url).endsWith('/plan')
+    ? Response.json({ kind: 'WORKSPACE', workspace_mode: 'GUIDANCE', operations: [{ name: 'customer_knowledge' }, { name: 'public_workspace' }] }) : original(url, init));
+  const response = await customerAssistantQuery(req(query('Recommend a room for a video call')));
+  expect(response.status).toBe(409);
+  expect((await response.json()).error).toBe('KNOWLEDGE_CHANGED');
+});
+
+it.each(['INVALID_MODEL_OUTPUT', 'MODEL_UNAVAILABLE', 'MODEL_TIMEOUT'])('preserves a safe classified upstream failure: %s', async code => {
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => String(url).endsWith('/document-support')
+    ? Response.json({ detail: code }, { status: code === 'MODEL_TIMEOUT' ? 504 : 503 }) : original(url, init));
+  const response = await customerAssistantQuery(req(query()));
+  expect((await response.json()).error).toBe(code);
+  expect(provider.mock.calls.filter(([url]) => String(url).endsWith('/document-support'))).toHaveLength(1);
+});
+
+it('retains only allowlisted numeric upstream diagnostic spans', async () => {
+  vi.stubEnv('RAG_DIAGNOSTICS_ENABLED', 'true');
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (url: URL, init: RequestInit) => {
+    const response: Response = await original(url, init);
+    response.headers.set('Server-Timing', 'inference;dur=1200.5, queue;dur=2, secret_prompt;dur=99');
+    return response;
+  });
+  const response = await customerAssistantQuery(req(query()));
+  expect(response.headers.get('server-timing')).toContain('upstream_document_support_inference;dur=1200.500');
+  expect(response.headers.get('server-timing')).not.toContain('secret_prompt');
+});
 
 // PRD-F1-F4/F26 / MS77-TC01/05/08/12: audit conversational regressions.
 it.each(['It is my first time here. How does booking work, and do I need an account?', 'How do I pay for my booking?'])(

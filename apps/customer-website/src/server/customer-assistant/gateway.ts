@@ -11,8 +11,8 @@ import { assistantConfig as config, CustomerAssistantError, customerRequestBody,
 import { authorizeVerifiedCustomer, VerifiedCustomerError } from './verified';
 import { buildVerifiedResponse } from './verifiedResponse';
 import { buildVerifiedPolicyAddendum } from './verifiedKnowledge';
-import { publicSpotRepository, resolvePublicComparison, resolvePublicWorkspaceContext, publicWorkspaceOverview } from './spots';
-import { requestsPrivateRecord, mergeConversationConstraints, missingScheduleQuestion } from './conversation';
+import { publicSpotRepository, resolvePublicComparison, resolvePublicWorkspaceContext, publicWorkspaceOverview, publicWorkspaceTypes } from './spots';
+import { requestsPrivateRecord, mergeConversationConstraints, missingScheduleQuestion, customerConversationTask } from './conversation';
 import { readCustomerDiscoveryCatalog } from './catalog';
 
 const headers = { 'Cache-Control': 'no-store, private', Vary: 'Authorization, Cookie, Origin', 'X-Content-Type-Options': 'nosniff' };
@@ -125,7 +125,20 @@ export async function customerAssistantQuery(request: Request): Promise<Response
           const result = await fetch(new URL(`/v1/customer/${path}`, base), { method: 'POST', cache: 'no-store', redirect: 'error', signal: operationSignal ? AbortSignal.any([workSignal, operationSignal]) : workSignal,
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config('RAG_SERVICE_TOKEN')}`, 'X-Request-Capability': capability,
               ...(identity ? { 'X-Serverless-Authorization': `Bearer ${identity}` } : {}) }, body: JSON.stringify(body) });
+          if (process.env.RAG_DIAGNOSTICS_ENABLED === 'true') {
+            // Numeric, allowlisted upstream spans identify queue/provider work
+            // without retaining questions, source prose or provider bodies.
+            for (const match of (result.headers.get('Server-Timing') ?? '').matchAll(/\b(queue|verify|inference|schema|deterministic|residual);dur=(\d+(?:\.\d+)?)/g)) {
+              const elapsed = Number(match[2]);
+              if (Number.isFinite(elapsed) && elapsed <= 60000) {
+                const stage = `upstream_${path.replaceAll('-', '_')}_${match[1]}`;
+                modelTimings[stage] = (modelTimings[stage] ?? 0) + elapsed;
+              }
+            }
+          }
           if (!result.ok) {
+            const failureStage = result.headers.get('X-RAG-Failure-Stage');
+            if (failureStage && ['original-unit', 'visible-answer', 'selected-proof', 'verification-relevance', 'verification-support', 'verification-completeness', 'verification-conflict', 'verification-safety'].includes(failureStage)) modelTimings[`failure_${failureStage.replaceAll('-', '_')}`] = 0;
             if (result.status === 429) {
               const rawRetry = result.headers.get('Retry-After') ?? '';
               const retry = /^\d{1,4}$/.test(rawRetry) ? Number(rawRetry) : 5;
@@ -134,6 +147,10 @@ export async function customerAssistantQuery(request: Request): Promise<Response
             if (path === 'document-support' && result.status === 400) {
               const failure = z.object({ detail: z.enum(['UNRESOLVED_CONTEXT', 'CONFLICTING_SOURCES', 'CONTEXT_BUDGET_EXCEEDED', 'OUTPUT_BUDGET_EXCEEDED']) }).passthrough().safeParse(await result.json().catch(() => null));
               if (failure.success) throw new CustomerAssistantError(failure.data.detail, 400);
+            }
+            if (result.status === 503 || result.status === 504) {
+              const failure = z.object({ detail: z.enum(['INVALID_MODEL_OUTPUT', 'MODEL_UNAVAILABLE', 'MODEL_TIMEOUT', 'REQUEST_TIMEOUT']) }).passthrough().safeParse(await result.json().catch(() => null));
+              if (failure.success) throw new CustomerAssistantError(failure.data.detail, result.status);
             }
             throw new CustomerAssistantError('ASSISTANT_UNAVAILABLE');
           }
@@ -161,7 +178,8 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       let catalogSeeds: z.infer<typeof assistantSourceSchema>[] | undefined;
       let rawPlan: unknown;
       // PRD-F26 / MS77-TC05/08: saved context informs intent, never evidence.
-      const planInput = { conversation_contract: 'constraints-v1', message: input.message, user_turns: input.user_turns, has_spot_context: Boolean(input.discovery?.workspace_id || input.discovery?.compared_ids?.length),
+      const task = customerConversationTask(input.message, input.user_turns);
+      const planInput = { conversation_contract: 'constraints-v1', message: task.message, user_turns: task.user_turns, has_spot_context: Boolean(input.discovery?.workspace_id || input.discovery?.compared_ids?.length),
         ...(input.offered_names?.length ? { offered_names: input.offered_names } : {}),
         ...(input.discovery ? { discovery: input.discovery } : {}) };
       if (state.enabled && process.env.CUSTOMER_ASSISTANT_CATALOG_DISCOVERY === 'true') {
@@ -183,10 +201,12 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       }
       let plan = admitCustomerPlan(rawPlan, claims);
       const searchQuery = plan.search_query ?? input.message;
-      const knowledgeQuestion = plan.search_query && input.message.length + searchQuery.length < 1900
-        ? `${input.message}\nSearch interpretation (not evidence): ${searchQuery}` : input.message;
+      const knowledgeQuestion = plan.search_query && task.question.length + searchQuery.length < 2900
+        ? `${task.question}\nSearch interpretation (not evidence): ${searchQuery}` : task.question;
       if (plan.kind === 'REFUSE') return { ...answer, kind: 'UNSUPPORTED' as const, summary: 'I can explain published customer information and help you compare spots. Use the normal booking screens to make changes.' };
       const spotRepository = publicSpotRepository(db, workSignal);
+      const workspaceGuidance = (plan.kind === 'WORKSPACE' && plan.workspace_mode === 'GUIDANCE') || (plan.kind === 'KNOWLEDGE'
+        && /\b(?:recommend\w*|suitab\w*|capacity|capacities|how many people|quiet (?:study|work)|video calls?|online interview)\b/i.test(task.question));
       let context = mergeConversationConstraints(input.discovery, plan.constraints);
       let floorChoices: string[] = [];
       let offeredNames: string[] = [];
@@ -244,6 +264,12 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         }
       }
       await control.command('stage', identity, 'retrieving');
+      // Start the independent catalog read alongside document expansion, not
+      // another inference pass. Revalidate its exact values before release.
+      const workspaceCatalog = workspaceGuidance ? publicWorkspaceTypes() : undefined;
+      // Attach a rejection handler immediately while other authorized reads run.
+      if (workspaceCatalog) void workspaceCatalog.catch(() => {});
+      let currentTypes: Awaited<ReturnType<typeof publicWorkspaceTypes>> | undefined;
       let sources: z.infer<typeof assistantSourceSchema>[] = [];
       if (state.enabled && (plan.kind !== 'WORKSPACE' || context.preferences.calls !== undefined)) {
         const minimum = Number(config('RAG_MIN_SIMILARITY'));
@@ -300,7 +326,9 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         const used = new Set(answer.suggestions.flatMap(s => s.reasons.map(r => r.chunk_id)));
         answer.citations = sources.filter(s => used.has(s.chunk_id)).map(({ content: _content, ...citation }) => citation);
       } else if (sources.length) {
-        const payload = { contract: 'ms65-v1', synthesis: true, query: knowledgeQuestion, sources };
+        currentTypes = await workspaceCatalog;
+        const payload = { contract: 'ms65-v1', synthesis: true, query: knowledgeQuestion, sources,
+          ...(currentTypes?.length ? { workspace_catalog: currentTypes } : {}) };
         if (Buffer.byteLength(JSON.stringify(payload)) > 260000) throw new CustomerAssistantError('NARROW_QUESTION', 400);
         let rawProof: unknown;
         try { rawProof = await model('document-support', payload); }
@@ -311,11 +339,16 @@ export async function customerAssistantQuery(request: Request): Promise<Response
             return { ...answer, kind: 'CLARIFY' as const, summary: knowledgeGaps[error.code] };
           });
         }
-        const proof = validateDocumentSupport(rawProof, createHash('sha256').update(JSON.stringify(payload)).digest('hex'), sources);
+        const proof = validateDocumentSupport(rawProof, createHash('sha256').update(JSON.stringify(payload)).digest('hex'), sources, 'ms65-v1', { customerPaymentMethod: true });
         if (!proof) throw new CustomerAssistantError('INVALID_EVIDENCE');
         if (proof.outcome === 'COMPLETE') {
           answer.summary = (proof.synthesis?.main_blocks ?? proof.synthesis?.blocks ?? []).map(b => b.text).join('\n\n');
+          if (currentTypes?.length) {
+            const mentioned = currentTypes.filter(type => answer.summary.toLowerCase().includes(type.name.toLowerCase()));
+            if (mentioned.length) answer.summary += `\n\nCurrent published capacities: ${mentioned.map(type => `${type.name}: ${type.capacity} ${type.capacity === 1 ? 'person' : 'people'}`).join('; ')}.`;
+          }
           answer.citations = sources.filter(s => proof.spans.some(span => span.chunk_id === s.chunk_id)).map(({ content: _content, ...citation }) => citation);
+          if (currentTypes?.length) answer.limitations.push('Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.');
         } else { answer.kind = 'CLARIFY'; answer.summary = proof.clarification || 'Approved knowledge does not support a consistent complete answer. Please narrow your question or ask the front desk.'; }
       } else { answer.kind = 'CLARIFY'; answer.summary = 'I do not have approved customer knowledge for that question. Please ask the front desk or try a narrower question.'; }
       return reader.release(state.knowledge_epoch, async () => {
@@ -325,7 +358,11 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         if (plan.kind === 'KNOWLEDGE' && sources.length) {
           const finalStarted = performance.now();
           const roots = [...new Map(sources.map(source => [source.version_id, source.chunk_id])).values()];
-          const snapshot = assistantDocumentEvidenceSchema.parse(await reader.read('document', { p_chunks: roots }));
+          const [rawSnapshot, freshTypes] = await Promise.all([
+            reader.read('document', { p_chunks: roots }), currentTypes ? publicWorkspaceTypes() : undefined,
+          ]);
+          const snapshot = assistantDocumentEvidenceSchema.parse(rawSnapshot);
+          if (currentTypes && JSON.stringify(currentTypes) !== JSON.stringify(freshTypes)) throw new Error('KNOWLEDGE_CHANGED');
           if (snapshot.epoch !== answer.knowledge_epoch || snapshot.sources.length !== sources.length
             || new Set(snapshot.sources.map(source => source.chunk_id)).size !== sources.length
             || sources.some(source => !snapshot.sources.some(fresh =>

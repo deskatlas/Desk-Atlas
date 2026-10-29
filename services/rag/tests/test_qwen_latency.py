@@ -282,16 +282,15 @@ def test_compact_draft_keeps_address_bounds_and_restores_canonical_shape():
         restore_draft(compact(s='FACTUAL', b=[{'t': 'Too many addresses.', 'p': [0, 1, 2]}]), schema)
 
 
-def test_customer_stable_wire_schema_cannot_bypass_actual_canonical_bounds():
+def test_customer_wire_schema_enforces_actual_canonical_bounds_before_restoration():
     from pydantic import ValidationError
     from rag.document_support import composition_schema
     from rag.draft_transport import compact_draft_schema, restore_draft
     canonical = composition_schema(2, 3)
     wire = compact_draft_schema(canonical, customer=True)
-    assert wire.model_json_schema() == compact_draft_schema(composition_schema(100, 3), customer=True).model_json_schema()
-    untrusted = wire(s='FACTUAL', b=[{'t': 'Not a real source address.', 'p': [99]}])
     with pytest.raises(ValidationError):
-        restore_draft(untrusted, canonical)
+        wire(s='FACTUAL', b=[{'t': 'Not a real source address.', 'p': [99]}])
+    assert restore_draft(wire(s='FACTUAL', b=[{'t': 'Real address.', 'p': [1]}]), canonical).blocks[0].support == [1]
 
 
 @pytest.mark.parametrize('complete', [True, False])

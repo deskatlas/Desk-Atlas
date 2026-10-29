@@ -1,0 +1,59 @@
+- main:
+  - link "DeskAtlas":
+    - /url: /
+    - generic: DeskAtlas
+  - navigation:
+    - link "Reserve":
+      - /url: /reserve
+    - link "Track Reservation":
+      - /url: /track
+  - paragraph: Guest Booking
+  - heading "Find the right workspace for your day." [level=1]
+  - paragraph: Explore the published floor map, pick your preferred workspace, choose backup options, and finish payment from a secure one-hour link.
+  - link "Explore Workspaces":
+    - /url: /reserve
+  - link "Track Reservation":
+    - /url: /track
+  - img "Workspace preview 1"
+  - img "Workspace preview 2"
+  - img "Workspace preview 3"
+  - heading "How DeskAtlas Works" [level=2]
+  - generic: "1"
+  - paragraph: Browse the published workspace map
+  - generic: "2"
+  - paragraph: Choose your schedule and up to two backups
+  - generic: "3"
+  - paragraph: Submit your reservation without holding inventory
+  - generic: "4"
+  - paragraph: Complete payment from your one-hour email link
+  - article:
+    - heading "Spot-first booking" [level=3]
+    - paragraph: Select the exact desk, booth, or meeting room you want from the live floor map.
+  - article:
+    - heading "Guest-first flow" [level=3]
+    - paragraph: Reserve without creating an account. We only need your name and email.
+  - article:
+    - heading "Protected confirmation" [level=3]
+    - paragraph: A booking QR is issued only after proof is reviewed and a workspace is allocated.
+  - button "Privacy Notice"
+- button "Ask DeskAtlas" [expanded]
+- alert
+- dialog "Ask DeskAtlas":
+  - heading "Ask DeskAtlas" [level=2]
+  - paragraph: Ask about spaces, prices and booking policies. No verification needed.
+  - log "Conversation":
+    - paragraph: You
+    - paragraph: Hi! I have never been here before. What is DeskAtlas and how does it work?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: The published customer documents do not establish a complete answer to that question. Please ask about one part of the policy, or contact the front desk for the missing details.
+  - generic "Schedule and preferences"
+  - generic "My reservations (verification required)"
+  - paragraph: Suggestions do not hold a spot. Availability is checked again when booking.
+  - status: Answer ready.
+  - generic: Ask DeskAtlas
+  - textbox "Ask DeskAtlas":
+    - /placeholder: Ask a question...
+  - button "Send" [disabled]
+  - button "Close":
+    - generic: Close

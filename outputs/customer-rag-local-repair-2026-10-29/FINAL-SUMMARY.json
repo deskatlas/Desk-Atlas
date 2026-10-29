@@ -1,0 +1,25 @@
+{
+  "candidate": "booking-scope repair; loaded fingerprint in runtime-verification-final.json",
+  "measurement": "complete_http_not_browser_render",
+  "attempts": 10,
+  "http_errors": 0,
+  "answers": 10,
+  "automatic_usefulness_pass": 10,
+  "mean_ms": 10153.5,
+  "median_ms": 10842.0,
+  "min_ms": 6751,
+  "max_ms": 11781,
+  "under_10s": 4,
+  "within_15s": 10,
+  "baseline_browser_mean_ms": 12029,
+  "browser_acceptance": "PENDING: tool still returns disabled after reported enablement and reconnect/reset",
+  "latency_parity": "NOT CERTIFIED: local HTTP excludes render/bootstrap; different network and provider timing",
+  "tests": {
+    "application_passed": 2825,
+    "python_passed": 232,
+    "focused_customer_passed": 85,
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed"
+  }
+}

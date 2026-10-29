@@ -179,6 +179,10 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
         const failure: unknown = await result.json().catch(() => null);
         const code = failure && typeof failure === 'object' && 'error' in failure ? failure.error : undefined;
         const notices: Record<string, string> = {
+          INVALID_MODEL_OUTPUT: 'I could not validate the generated answer. Please retry your question.',
+          MODEL_UNAVAILABLE: 'The answer service could not be reached. Please retry shortly.',
+          MODEL_TIMEOUT: 'The answer service took too long. Please retry your question.',
+          REQUEST_TIMEOUT: 'The answer took too long to complete. Please retry your question.',
           SCHEDULE_INVALID: 'That schedule does not meet the booking rules. Please check the business date, start time and duration.',
           KNOWLEDGE_CHANGED: 'The published information changed while I was checking. Please retry.',
           INVALID_EVIDENCE: 'I could not verify the supporting information. Please retry.',

@@ -1,0 +1,87 @@
+- main:
+  - link "DeskAtlas":
+    - /url: /
+    - generic: DeskAtlas
+  - navigation:
+    - link "Reserve":
+      - /url: /reserve
+    - link "Track Reservation":
+      - /url: /track
+  - paragraph: Guest Booking
+  - heading "Find the right workspace for your day." [level=1]
+  - paragraph: Explore the published floor map, pick your preferred workspace, choose backup options, and finish payment from a secure one-hour link.
+  - link "Explore Workspaces":
+    - /url: /reserve
+  - link "Track Reservation":
+    - /url: /track
+  - img "Workspace preview 1"
+  - img "Workspace preview 2"
+  - img "Workspace preview 3"
+  - heading "How DeskAtlas Works" [level=2]
+  - generic: "1"
+  - paragraph: Browse the published workspace map
+  - generic: "2"
+  - paragraph: Choose your schedule and up to two backups
+  - generic: "3"
+  - paragraph: Submit your reservation without holding inventory
+  - generic: "4"
+  - paragraph: Complete payment from your one-hour email link
+  - article:
+    - heading "Spot-first booking" [level=3]
+    - paragraph: Select the exact desk, booth, or meeting room you want from the live floor map.
+  - article:
+    - heading "Guest-first flow" [level=3]
+    - paragraph: Reserve without creating an account. We only need your name and email.
+  - article:
+    - heading "Protected confirmation" [level=3]
+    - paragraph: A booking QR is issued only after proof is reviewed and a workspace is allocated.
+  - button "Privacy Notice"
+- button "Ask DeskAtlas" [expanded]
+- button "Open Next.js Dev Tools":
+- alert
+- dialog "Ask DeskAtlas":
+  - heading "Ask DeskAtlas" [level=2]
+  - paragraph: Ask about spaces, prices and booking policies. No verification needed.
+  - log "Conversation":
+    - paragraph: You
+    - paragraph: Paano kung first time ko lang at gusto ko lang mag walk in? Kailangan ba mag reserve muna?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: Advance booking is not strictly required for solo desk use, which is described as walk-in eligible, but availability is not guaranteed. Walk-in eligibility depends on the exact unit, schedule, payment route, and staff verification at the time of arrival. You must have your official confirmation and schedule ready if you have a reservation; otherwise, you are subject to current availability. Solo-desk hourly use is walk-in, but advance requests normally use eligible day-pass options. A map icon or “available” presentation represents potential eligibility, not a held reservation, so a request can compete with other pending requests until an eligible unit is actually confirmed.
+      - generic "Sources (3)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: Okay, what happens after that?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: Yes, advance booking is required; walk-ins are not accepted for workspace selection. To start, visit the public website, select a physical workspace, date, and time, then submit your details to receive a queue number and private payment instructions. After submission, you must complete payment and upload proof via the private link within 60 minutes. This step does not hold inventory; a final confirmation email is only issued after administrator review verifies your proof and assigns a specific, non-overlapping unit.
+      - generic "Sources (5)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+    - paragraph: You
+    - paragraph: Okay, what happens after that?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: The complete guidance is too long for one verified answer. Please ask about one step or policy at a time.
+    - paragraph: You
+    - paragraph: Okay, what happens after that?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: No, advance booking is not required for first-time walk-ins. The on-site kiosk is the designated account-free channel for visitors physically present at SKYDY. You may select a specific physical desk or room, review the current quote, and provide your guest details directly at the kiosk. After selecting your workspace and schedule, you will choose a payment route, such as Cash at the Front Desk or a static QR Payment. You must retain your kiosk queue number and transfer receipt. Staff will then verify your request, payment, and eligibility to confirm your assignment. The shared kiosk is intended for visitors physically present at SKYDY. The customer chooses a specific physical desk/room, permitted schedule or pass, reviews the current quote, provides the requested guest details and chooses Cash or QR Payment. It does not require a personal-account login, and browsing/queue assignment does not hold the space. Customers needing private booking history or rewards should primarily use the verified website flow on their own devices. 6\. Check in only after the eligible assignment and attendance process is confirmed. The kiosk queue number, external payment QR and proposed Customer ID are not attendance credentials.
+      - generic "Sources (4)"
+    - paragraph: You
+    - paragraph: I just need somewhere quiet to study and take an occasional video call. What would you recommend?
+    - article:
+      - paragraph: DeskAtlas
+      - paragraph: "For solo study with occasional video calls, we recommend the Sky Den. It is a private one-person room advertised as soundproof, making it suitable for spoken activities unlike shared quiet desks. Please note that no workspace guarantees complete recording silence or specific equipment. You must verify live availability, current pricing, and any essential needs like Wi-Fi stability with staff before booking. Current published capacities: Sky Den: 1 person."
+      - generic "Sources (3)"
+      - paragraph: Workspace capacities and base rates use the current published map. Availability and final prices require a schedule.
+  - generic "Schedule and preferences"
+  - generic "My reservations (verification required)"
+  - paragraph: Suggestions do not hold a spot. Availability is checked again when booking.
+  - status: Answer ready.
+  - generic: Ask DeskAtlas
+  - textbox "Ask DeskAtlas":
+    - /placeholder: Ask a question...
+  - button "Send" [disabled]
+  - button "Close":
+    - generic: Close

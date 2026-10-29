@@ -1,0 +1,12 @@
+[
+  {
+    "case": 1,
+    "phase": "final-acceptance",
+    "question": "Hi! I have never been here before. What is DeskAtlas and how does it work?",
+    "started_at": "2026-10-29T12:05:47.182Z",
+    "elapsed_ms": 10643,
+    "baseline_ms": 15425,
+    "complete": true,
+    "response": "You\n\nHi! I have never been here before. What is DeskAtlas and how does it work?\n\nDeskAtlas\n\nThe published customer documents do not establish a complete answer to that question. Please ask about one part of the policy, or contact the front desk for the missing details."
+  }
+]
