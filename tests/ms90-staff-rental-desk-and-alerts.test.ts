@@ -7,6 +7,7 @@ import {
   InMemoryAdditionalServiceRepository,
   createAdditionalServiceService,
   InMemoryRentalRepository,
+  SupabaseRentalRepository,
   createRentalService,
   RentalValidationError,
   assignRentalSchema,
@@ -150,6 +151,69 @@ describe('MS-90: Staff Operations Rental Desk, Booking QR/ID Lookup, Duration As
       expect(rental.customerEmail).toBe('juan@example.com');
       expect(rental.spotName).toBe('Hot Desk #05');
       expect(rental.status).toBe('active');
+    });
+
+    it('MS90-TC02c: Booking Name Precedence: Supabase rental mapping prioritizes reservation customer name over generic customer profile name', async () => {
+      const repo = new SupabaseRentalRepository({
+        supabaseUrl: 'https://mock.supabase.co',
+        serviceRoleKey: 'mock-key',
+      });
+
+      const origFetch = global.fetch;
+      try {
+        global.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              id: 'rnt-mock-1',
+              rental_code: 'RNT-20261030-ABC123',
+              reservation_id: 'res-mock-1',
+              customer_id: 'cust-legacy-1',
+              service_id: 'svc-1',
+              unit_count: 1,
+              billing_mode: 'hourly',
+              duration_units: 1,
+              rate_applied: 50,
+              total_amount: 50,
+              id_verified: true,
+              id_notes: '',
+              status: 'active',
+              rented_at: '2026-10-30T00:00:00Z',
+              due_at: '2026-10-30T01:00:00Z',
+              returned_at: null,
+              staff_user_id: null,
+              notes: '',
+              created_at: '2026-10-30T00:00:00Z',
+              updated_at: '2026-10-30T00:00:00Z',
+              customers: {
+                first_name: 'Mary',
+                last_name: 'Barrientos',
+                email: 'shared@example.com',
+              },
+              reservations: {
+                reference_code: 'REF-789',
+                status: 'CONFIRMED',
+                customer_first_name: 'Rey',
+                customer_last_name: 'Go',
+                customer_email: 'shared@example.com',
+                reservation_candidates: [
+                  {
+                    is_assigned: true,
+                    workspace_instances: { display_name: 'Hot Desk #01' },
+                  },
+                ],
+              },
+            },
+          ],
+        } as any);
+
+        const rentals = await repo.listRentals();
+        expect(rentals).toHaveLength(1);
+        expect(rentals[0].customerName).toBe('Rey Go');
+      } finally {
+        global.fetch = origFetch;
+      }
     });
 
     it('MS90-TC03: Atomic Stock Decrement: Calling assignRental decrements available_inventory by 1 and creates a booking_rentals record with status active', async () => {

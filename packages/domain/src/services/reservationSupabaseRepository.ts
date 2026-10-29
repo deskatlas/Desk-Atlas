@@ -2040,12 +2040,12 @@ export class ReservationSupabaseRepository
         const totalAmount = Number(r.total_amount ?? 0);
         const extensions = Array.isArray(r.rental_extensions) ? r.rental_extensions : [];
         const extensionAmount = extensions.reduce((sum: number, ext: any) => sum + Number(ext.additional_amount ?? 0), 0);
-        const customerName = r.customers && (r.customers.first_name || r.customers.last_name)
-          ? `${r.customers.first_name || ""} ${r.customers.last_name || ""}`.trim()
-          : r.reservations && (r.reservations.customer_first_name || r.reservations.customer_last_name)
+        const customerName = r.reservations && (r.reservations.customer_first_name || r.reservations.customer_last_name)
           ? `${r.reservations.customer_first_name || ""} ${r.reservations.customer_last_name || ""}`.trim()
+          : r.customers && (r.customers.first_name || r.customers.last_name)
+          ? `${r.customers.first_name || ""} ${r.customers.last_name || ""}`.trim()
           : "Customer";
-        const customerEmail = r.customers?.email || r.reservations?.customer_email || "";
+        const customerEmail = r.reservations?.customer_email || r.customers?.email || "";
         const candidates = Array.isArray(r.reservations?.reservation_candidates)
           ? r.reservations.reservation_candidates
           : [];

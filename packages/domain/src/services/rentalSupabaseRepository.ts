@@ -84,12 +84,12 @@ function extractSpotName(reservations?: BookingRentalRow['reservations']): strin
 
 function mapBookingRentalRow(row: BookingRentalRow): BookingRental {
   const customerName =
-    row.customers && (row.customers.first_name || row.customers.last_name)
-      ? `${row.customers.first_name || ''} ${row.customers.last_name || ''}`.trim()
-      : row.reservations && (row.reservations.customer_first_name || row.reservations.customer_last_name)
+    row.reservations && (row.reservations.customer_first_name || row.reservations.customer_last_name)
       ? `${row.reservations.customer_first_name || ''} ${row.reservations.customer_last_name || ''}`.trim()
+      : row.customers && (row.customers.first_name || row.customers.last_name)
+      ? `${row.customers.first_name || ''} ${row.customers.last_name || ''}`.trim()
       : undefined;
-  const customerEmail = row.customers?.email || row.reservations?.customer_email;
+  const customerEmail = row.reservations?.customer_email || row.customers?.email;
   const spotName = extractSpotName(row.reservations);
   const nowMs = Date.now();
   const dueMs = new Date(row.due_at).getTime();
@@ -362,12 +362,12 @@ export class SupabaseRentalRepository implements RentalRepository {
 
       if (isNearingEnd || isOverdue) {
         const customerName =
-          row.customers && (row.customers.first_name || row.customers.last_name)
-            ? `${row.customers.first_name || ''} ${row.customers.last_name || ''}`.trim()
-            : row.reservations && (row.reservations.customer_first_name || row.reservations.customer_last_name)
+          row.reservations && (row.reservations.customer_first_name || row.reservations.customer_last_name)
             ? `${row.reservations.customer_first_name || ''} ${row.reservations.customer_last_name || ''}`.trim()
+            : row.customers && (row.customers.first_name || row.customers.last_name)
+            ? `${row.customers.first_name || ''} ${row.customers.last_name || ''}`.trim()
             : 'Customer';
-        const customerEmail = row.customers?.email || row.reservations?.customer_email || undefined;
+        const customerEmail = row.reservations?.customer_email || row.customers?.email || undefined;
         const spotName = extractSpotName(row.reservations) || 'Workspace';
 
         alerts.push({
