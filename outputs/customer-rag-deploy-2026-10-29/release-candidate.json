@@ -1,0 +1,23 @@
+{
+  "service": "deskatlas-rag-chat-production",
+  "url": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app",
+  "latest_ready_revision": "deskatlas-rag-chat-production-cust-c63cd9a8",
+  "traffic": [
+    {
+      "percent": 100,
+      "revisionName": "deskatlas-rag-chat-production-admin1029b"
+    },
+    {
+      "revisionName": "deskatlas-rag-chat-production-cust-c63cd9a8",
+      "tag": "cust1029",
+      "url": "https://cust1029---deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app"
+    }
+  ],
+  "image": "us-central1-docker.pkg.dev/deskatlas-rag/deskatlas-rag/api-hosted@sha256:cba31e5398de0dc756bae5aee89502a0d49c9e531f03858f9fa6c3bc6311fcd1",
+  "unchanged_configuration_sha256": "8715454651847c7fe5d33afb0b406cb9abfd6d322f09287c2bba5da20715f0f7",
+  "latency_flags": {
+    "RAG_TASK_FRAMED_DRAFT": "false",
+    "RAG_QWEN_INDEXED_SOURCES": "true"
+  },
+  "private_iam": true
+}

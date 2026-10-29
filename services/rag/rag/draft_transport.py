@@ -42,7 +42,7 @@ def trim_customer_orientation_fragments(fragments):
 def reconcile_catalog_capacities(text, catalog):
     """PRD-F26: keep live numeric fields out of document-backed policy prose.
 
-    Only an adjacent parenthetical capacity label is a mechanical field binding.
+    Only explicit positive capacity labels are mechanical field bindings.
     The gateway displays current capacities separately from document citations.
     Do not rewrite policy, negation, party requirements or source evidence. The
     complete resulting answer still receives independent original-source review.
@@ -58,6 +58,13 @@ def reconcile_catalog_capacities(text, catalog):
         adjective = (r'(' + re.escape(fact['name']) + r'\s+(?:is\s+)?(?:a\s+)?'
                      r'(?:(?:private|soundproof)\s+)?)' + number + r'[-\s]+person\s+(rooms?|booths?|spaces?)\b')
         text = re.sub(adjective, lambda match: match[1] + match[2], text, flags=re.I)
+        # A generated call-permission sentence can move the historical size
+        # label after the activity. Anchor the whole positive subject/predicate
+        # so restrictive wording such as "only allows" remains untouched.
+        call_size = (r'(' + re.escape(fact['name'])
+                     + r'\s+allows\s+(?:spoken\s+)?(?:video\s+)?calls)\s+for\s+'
+                     + number + r'\s+(?:people|persons?|pax)(?=[,.!?;]|$)')
+        text = re.sub(call_size, lambda match: match[1], text, flags=re.I)
     return text
 
 

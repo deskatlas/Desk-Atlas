@@ -83,6 +83,7 @@ it.each(['WORKSPACE', 'KNOWLEDGE'])('supplies and revalidates current capacities
   expect(response.status).toBe(200);
   const documentCall = provider.mock.calls.find(([url]) => String(url).endsWith('/document-support'))!;
   expect(JSON.parse(String(documentCall[1].body)).workspace_catalog).toEqual(facts);
+  expect(JSON.parse(String(documentCall[1].body)).presentation_contract).toBe('customer-concise-v1');
   expect(seams.workspaceTypes).toHaveBeenCalledTimes(2);
   expect(provider.mock.calls.filter(([url]) => String(url).endsWith('/document-support'))).toHaveLength(1);
 });

@@ -327,7 +327,7 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         answer.citations = sources.filter(s => used.has(s.chunk_id)).map(({ content: _content, ...citation }) => citation);
       } else if (sources.length) {
         currentTypes = await workspaceCatalog;
-        const payload = { contract: 'ms65-v1', synthesis: true, query: knowledgeQuestion, sources,
+        const payload = { contract: 'ms65-v1', presentation_contract: 'customer-concise-v1', synthesis: true, query: knowledgeQuestion, sources,
           ...(currentTypes?.length ? { workspace_catalog: currentTypes } : {}) };
         if (Buffer.byteLength(JSON.stringify(payload)) > 260000) throw new CustomerAssistantError('NARROW_QUESTION', 400);
         let rawProof: unknown;

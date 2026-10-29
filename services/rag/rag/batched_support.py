@@ -79,11 +79,11 @@ def packets(units, prompt, payload, schema):
     return result
 
 
-async def batched_document_answer(query, sources, generate, synthesis=True, *, actor_role=None, prepared_index=None, selected_workflows=None, admitted_units=None, customer_reference=False, workspace_catalog=None):
+async def batched_document_answer(query, sources, generate, synthesis=True, *, actor_role=None, prepared_index=None, selected_workflows=None, admitted_units=None, customer_reference=False, workspace_catalog=None, customer_payment_method=False):
     principals = ('PUBLIC_VISITOR', 'VERIFIED_CUSTOMER') if customer_reference else ('ADMIN', 'STAFF')
     if actor_role not in principals:
         raise HTTPException(403, detail='FORBIDDEN')
-    if workspace_catalog is not None and not customer_reference:
+    if (workspace_catalog is not None or customer_payment_method) and not customer_reference:
         raise HTTPException(403, detail='FORBIDDEN')
     if customer_reference and any(value is not None for value in (prepared_index, selected_workflows, admitted_units)):
         # Internal prepared indexes have a distinct audience and admission path.
@@ -263,7 +263,7 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
     scope = requested_scope(query, scope)
     if customer_reference:
         blocks = qualify_customer_payment_channel(blocks)
-    blocks = canonical_access_blocks(blocks, proof, units, customer_reference=customer_reference)
+    blocks = canonical_access_blocks(blocks, proof, units, customer_reference=customer_reference and customer_payment_method)
     if workspace_catalog:
         blocks = [{**block, 'text': reconcile_catalog_capacities(block['text'], workspace_catalog)} for block in blocks]
     if len(blocks) > 12 or not blocks or wire_length('\n\n'.join(block['text'] for block in blocks)) > BUDGET['answer_utf16']:
@@ -373,6 +373,11 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
                     support.append(address)
                     exact_added.add(unit['i'])
                 blocks.append({'kind': 'text', 'text': '\n\n'.join(u['text'] for u in group), 'support': support})
+            if customer_reference and workspace_catalog and customer_payment_method:
+                # Recovery reuses exact originals, so apply the same typed
+                # capacity projection before independently checking them again.
+                # Canonical evidence and offsets retain the original numbers.
+                blocks = [{**block, 'text': reconcile_catalog_capacities(block['text'], workspace_catalog)} for block in blocks]
             evidence = [{'i': i, 'original_i': u['i'], 'text': u['text']} for i, u in enumerate(proof)]
             if (len(proof) > BUDGET['proof_spans'] or len(wire(evidence)) > BUDGET['selected_bytes']
                     or wire_length('\n\n'.join(b['text'] for b in blocks)) > BUDGET['answer_utf16']):

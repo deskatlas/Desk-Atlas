@@ -676,6 +676,7 @@ class DocumentSupportInput(Strict):
     sources: list[Source] = Field(min_length=1, max_length=1000)
     synthesis: bool = False
     workspace_catalog: list[WorkspaceCatalogFact] | None = Field(default=None, max_length=128)
+    presentation_contract: Literal['customer-concise-v1'] | None = None
 
 
 from rag.prepared_protocol import DiscoveryIndex, SelectedIndex, WorkflowSelection, EntrySelection, select_workflows, discovery_projection, coverage_projection
@@ -765,6 +766,7 @@ async def customer_document_support(body: DocumentSupportInput, request: Request
                 from rag.batched_support import batched_document_answer
                 result = await batched_document_answer(body.query, [s.model_dump() for s in body.sources], generate,
                     body.synthesis, actor_role=claims.principal, customer_reference=True,
+                    **({'customer_payment_method': True} if getattr(body, 'presentation_contract', None) == 'customer-concise-v1' else {}),
                     **({'workspace_catalog': [fact.model_dump() for fact in catalog]} if catalog else {}))
             else:
                 result = await document_answer(body.query, [s.model_dump() for s in body.sources], generate, body.synthesis, customer_reference=True)
@@ -777,7 +779,7 @@ async def customer_document_support(body: DocumentSupportInput, request: Request
 
 @app.post('/v1/document-support')
 async def document_support(body: DocumentSupportInput, request: Request):
-    if body.workspace_catalog is not None:
+    if body.workspace_catalog is not None or body.presentation_contract is not None:
         raise HTTPException(403, detail='FORBIDDEN')
     claims = await authenticate(request, request.headers.get('authorization', ''), request.headers.get('x-request-capability', ''))
     if 'answer' not in claims.ops:

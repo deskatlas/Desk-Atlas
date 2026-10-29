@@ -8,6 +8,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -28,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tag')
     parser.add_argument('--catalog-only', action='store_true')
+    parser.add_argument('--customer-repair', action='store_true')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     cli = shutil.which('gcloud.cmd') or shutil.which('gcloud')
@@ -116,11 +118,49 @@ def main():
     constraints = plan.get('constraints', {})
     if (status != 200 or plan.get('kind') != 'WORKSPACE' or constraints.get('relative_date') != 'TODAY'
             or constraints.get('start_time') != '07:00' or 'focus pod' not in constraints.get('template_name', '').lower()
-            or constraints.get('duration_minutes') is not None):
+            or constraints.get('duration_minutes') is not None or constraints.get('date') is not None):
+        print(json.dumps({'synthetic_plan_probe': plan}), flush=True)
         raise ValueError('CONVERSATIONAL_CONSTRAINTS_FAILED')
     status, private = call('private_record_routing', '/v1/customer/plan', customer_headers(), {'message': 'Show my bookings.'})
     if status != 200 or private.get('kind') != 'BOOKING':
         raise ValueError('PRIVATE_RECORD_ROUTING_FAILED')
+    if args.customer_repair:
+        # Synthetic originals only. These calls certify serving compatibility,
+        # not corpus quality or full website timing before the app is deployed.
+        text = 'Sky Booth (two people) allows spoken video calls. Availability must be checked separately. Choose Cash or QR Payment.'
+        source = {'document_id': str(uuid4()), 'version_id': str(uuid4()), 'chunk_id': str(uuid4()),
+            'title': 'Synthetic customer suitability guide', 'heading_path': 'Calls', 'source_page': None,
+            'epoch': 0, 'extraction_method': 'TEXT', 'content_hash': hashlib.sha256(text.encode()).hexdigest(), 'content': text}
+        for typed in (False, True):
+            payload = {'contract': 'ms65-v1', 'synthesis': True,
+                'query': 'Can I take a spoken video call in Sky Booth, and which payment methods are offered?', 'sources': [source]}
+            if typed:
+                payload['presentation_contract'] = 'customer-concise-v1'
+                payload['workspace_catalog'] = [{'template_id': str(uuid4()), 'name': 'Sky Booth', 'capacity': 1, 'hourly_rate': 100}]
+            status, proof = call('customer_document_current_catalog' if typed else 'customer_document_legacy',
+                '/v1/customer/document-support', customer_headers(), payload)
+            expected = hashlib.sha256(json.dumps(payload).encode()).hexdigest()
+            if status != 200 or proof.get('binding') != expected or proof.get('outcome') != 'COMPLETE' or not proof.get('spans'):
+                raise ValueError('CUSTOMER_DOCUMENT_COMPATIBILITY_FAILED')
+            original = text.encode('utf-16-le')
+            for span in proof['spans']:
+                if (span.get('chunk_id') != source['chunk_id']
+                        or original[span['start'] * 2:span['end'] * 2] != span['quote'].encode('utf-16-le')):
+                    raise ValueError('CUSTOMER_CANONICAL_PROOF_FAILED')
+            prose = ' '.join(block['text'] for block in proof.get('synthesis', {}).get('blocks', []))
+            if not typed:
+                for block in proof.get('synthesis', {}).get('blocks', []):
+                    if (re.search(r'\bQR(?:s| codes?)?\b', block['text'], re.I)
+                            and block['text'] != '\n\n'.join(proof['spans'][index]['quote'] for index in block['support'])):
+                        raise ValueError('CUSTOMER_LEGACY_QR_COMPATIBILITY_FAILED')
+            if not re.search(r'\b(?:calls?|spoken|video)\b', prose, re.I) or typed and re.search(r'\b(?:two|2)\s+people\b', prose, re.I):
+                print(json.dumps({'synthetic_probe_only': True, 'typed_catalog': typed,
+                    'topic_mentioned': bool(re.search(r'\b(?:calls?|spoken|video)\b', prose, re.I)),
+                    'historical_capacity_in_prose': bool(re.search(r'\b(?:two|2)\s+people\b', prose, re.I))}), flush=True)
+                # This text is generated exclusively from the fixed synthetic
+                # fixture above, never from a real corpus or customer record.
+                print(json.dumps({'synthetic_fixture_prose': prose[:1200]}), flush=True)
+                raise ValueError('CUSTOMER_CATALOG_AUTHORITY_FAILED')
     receipt = {'service': service_name, 'url': url, 'tag': args.tag,
         'latest_ready_revision': service['status']['latestReadyRevisionName'],
         'implementation_fingerprint': implementation_fingerprint(), 'checks': rows, 'passed': True}
@@ -138,6 +178,7 @@ if __name__ == '__main__':
         # Only fixed local stage errors, never remote bodies or exception text.
         permitted = {'GCLOUD_REQUIRED', 'REVISION_TAG_NOT_READY', 'UNEXPECTED_SERVICE_URL', 'PUBLIC_IAM_REJECTED',
             'IAM_NOT_ENFORCED', 'SERVICE_TOKEN_NOT_ENFORCED', 'CAPABILITY_NOT_ENFORCED', 'LOADED_IMPLEMENTATION_MISMATCH', 'DEPLOYED_MODEL_PROFILE_MISMATCH',
-            'CUSTOMER_PRINCIPAL_BOUNDARY_FAILED', 'LEGACY_PLAN_COMPATIBILITY_FAILED', 'CONVERSATIONAL_CONSTRAINTS_FAILED', 'PRIVATE_RECORD_ROUTING_FAILED'}
+            'CUSTOMER_PRINCIPAL_BOUNDARY_FAILED', 'LEGACY_PLAN_COMPATIBILITY_FAILED', 'CONVERSATIONAL_CONSTRAINTS_FAILED', 'PRIVATE_RECORD_ROUTING_FAILED',
+            'CUSTOMER_DOCUMENT_COMPATIBILITY_FAILED', 'CUSTOMER_CANONICAL_PROOF_FAILED', 'CUSTOMER_CATALOG_AUTHORITY_FAILED', 'CUSTOMER_LEGACY_QR_COMPATIBILITY_FAILED'}
         print(str(error) if type(error) is ValueError and str(error) in permitted else 'RAG_DEPLOYMENT_CHECK_FAILED: operator access or transport', flush=True)
         raise SystemExit(1) from None

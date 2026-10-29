@@ -1,0 +1,17 @@
+{
+  "id": "1f08fa5d-e79c-4f8b-ade4-9b7c22da7c78",
+  "results": {
+    "images": [
+      {
+        "artifactRegistryPackage": "projects/deskatlas-rag/locations/us-central1/repositories/deskatlas-rag/packages/api-hosted/versions/sha256:c1c008accbec137295cf2f3c3d61bc2681e49cb80f7121f1b8896cfd1fce7d1b",
+        "digest": "sha256:c1c008accbec137295cf2f3c3d61bc2681e49cb80f7121f1b8896cfd1fce7d1b",
+        "name": "us-central1-docker.pkg.dev/deskatlas-rag/deskatlas-rag/api-hosted:1f08fa5d-e79c-4f8b-ade4-9b7c22da7c78",
+        "pushTiming": {
+          "endTime": "2026-10-29T13:13:13.768030641Z",
+          "startTime": "2026-10-29T13:13:04.873013252Z"
+        }
+      }
+    ]
+  },
+  "status": "SUCCESS"
+}

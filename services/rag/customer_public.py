@@ -82,8 +82,21 @@ CustomerInterpretation.model_rebuild()
 def interpreted_constraints(result, body):
     if body.conversation_contract != 'constraints-v1':
         return {}
+    constraints = result.constraints.model_dump(exclude_none=True) if result.constraints is not None else None
+    if constraints is not None:
+        # PRD-F26 / QAD-TC44: model discovery cannot supply an unstated default
+        # booking length or turn a relative day into its imagined current date.
+        # User history and saved discovery are intent, never source documents.
+        utterances = '\n'.join([*body.user_turns, body.message])
+        saved = body.discovery
+        date = constraints.get('date')
+        if date and date not in utterances and not (saved and saved.date == date):
+            constraints.pop('date', None)
+        duration_cue = re.search(r'\b(?:hours?|hrs?|minutes?|mins?|oras|minuto)\b|\d\s*[hm]\b', utterances, re.I)
+        if not duration_cue and not (saved and saved.duration_minutes is not None):
+            constraints.pop('duration_minutes', None)
     return {**({'workspace_mode': result.workspace_mode} if result.workspace_mode else {}),
-            **({'constraints': result.constraints.model_dump(exclude_none=True)} if result.constraints is not None else {})}
+            **({'constraints': constraints} if constraints is not None else {})}
 
 
 async def interpret_customer_question(body, generate):

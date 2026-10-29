@@ -152,4 +152,14 @@ can add a verification pass. Earlier failures and outliers remain preserved.
 See `outputs/customer-rag-local-repair-2026-10-29/VERIFICATION.md` and
 `FINAL-SUMMARY.json` for the complete current result and outstanding browser gate.
 The user reported re-enabling browser use, but the tool still rejected access
-after reconnect and reset. No production deployment has occurred.
+after reconnect and reset. That local campaign preceded production deployment.
+
+## Backend deployment addendum
+
+The user subsequently authorized RAG-only deployment, keeping app deployment
+for themselves. The repaired backend now serves 100% of production traffic as
+`deskatlas-rag-chat-production-cust-c63cd9a8`. Hosted candidate and stable-URL
+compatibility/proof checks passed, with private IAM and runtime settings
+preserved. See `deploy/CUSTOMER-BROAD-AUDIT-2026-10-29.md` for the release,
+rollout fixes, measurements, rollback and latest app handoff requirements.
+This does not replace the pending updated-app browser timing verification.

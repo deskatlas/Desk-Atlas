@@ -21,6 +21,23 @@ def test_product_introduction_is_an_overview_without_narrowing_joint_policy_ques
         schema(kind='KNOWLEDGE', search_query=question, comparison_names=[], primaries=[0, 1], dependencies=[])
 
 
+def test_catalog_constraints_cannot_invent_a_calendar_date_or_default_duration():
+    from customer_public import CustomerPlanInput, CustomerInterpretation, interpreted_constraints
+    body = CustomerPlanInput(conversation_contract='constraints-v1',
+        message='i need a desk for 7am, any availability on focus pod today?')
+    result = CustomerInterpretation(kind='WORKSPACE', search_query=body.message, comparison_names=[],
+        workspace_mode='LIVE', constraints={'template_name': 'Focus Pod', 'date': '2026-05-22',
+            'relative_date': 'TODAY', 'start_time': '07:00', 'duration_minutes': 60})
+    constraints = interpreted_constraints(result, body)['constraints']
+    assert 'date' not in constraints
+    assert 'duration_minutes' not in constraints
+    assert constraints['relative_date'] == 'TODAY'
+    assert constraints['start_time'] == '07:00'
+    explicit = body.model_copy(update={'message': 'Focus Pod on 2026-05-22 at 7am for one hour'})
+    assert interpreted_constraints(result, explicit)['constraints']['duration_minutes'] == 60
+    assert interpreted_constraints(result, explicit)['constraints']['date'] == '2026-05-22'
+
+
 def test_website_booking_scope_keeps_one_workflow_but_preserves_joint_requests():
     from customer_public import website_booking_task
     assert website_booking_task('How do I book and pay? Do I need an account, and when is my desk actually confirmed?')
@@ -63,6 +80,9 @@ def test_capacity_reconciliation_changes_only_named_positive_capacity_labels():
     facts = [{'name': 'Sky Booth', 'capacity': 1}]
     assert reconcile_catalog_capacities('Sky Booth (two people) is soundproof.', facts) == 'Sky Booth is soundproof.'
     assert reconcile_catalog_capacities('Sky Booth is a private two-person room.', facts) == 'Sky Booth is a private room.'
+    assert reconcile_catalog_capacities('Yes, the Sky Booth allows spoken video calls for two people, and you may choose between Cash or QR Payment.', facts) == 'Yes, the Sky Booth allows spoken video calls, and you may choose between Cash or QR Payment.'
+    restriction = 'Sky Booth only allows spoken video calls for two people.'
+    assert reconcile_catalog_capacities(restriction, facts) == restriction
     text = 'Sky Booth is not suitable for two people. Quiet desks prohibit calls.'
     assert reconcile_catalog_capacities(text, facts) == text
 
@@ -89,9 +109,49 @@ def test_payment_method_mention_does_not_expand_an_entire_kiosk_manual(monkeypat
         assert len(data['units']) == 3
         return Verification(relevant=True, supported=True, complete=True, consistent=True, safe=True)
     result = asyncio.run(batched_document_answer('How can I pay at the kiosk?', [source], generate,
-        actor_role='PUBLIC_VISITOR', customer_reference=True))
+        actor_role='PUBLIC_VISITOR', customer_reference=True, customer_payment_method=True))
     assert result['outcome'] == 'COMPLETE'
     assert len(calls) == 2
+
+
+def test_legacy_customer_qr_output_keeps_exact_wording_without_negotiation(monkeypatch):
+    monkeypatch.setattr('rag.batched_support.token_count', lambda text: len(text.encode()))
+    text = 'At the kiosk, choose Cash or QR Payment. Staff verify the payment.'
+    source = {'chunk_id': 'legacy', 'heading_path': 'Kiosk', 'content': text,
+              'content_hash': hashlib.sha256(text.encode()).hexdigest()}
+    async def generate(prompt, data, schema):
+        if 'answer' not in data:
+            return schema(scope='FACTUAL', blocks=[{'kind': 'text', 'text': 'Choose QR Payment.', 'support': [0]}])
+        assert data['answer']['blocks'][0]['text'] == text
+        return schema(relevant=True, supported=True, complete=True, consistent=True, safe=True,
+            reason_code='NONE', missing_originals=[])
+    result = asyncio.run(batched_document_answer('Payment methods?', [source], generate,
+        actor_role='PUBLIC_VISITOR', customer_reference=True))
+    assert result['synthesis']['blocks'][0]['text'] == text
+
+
+def test_exact_recovery_cannot_reintroduce_historical_capacity_labels(monkeypatch):
+    monkeypatch.setattr('rag.batched_support.token_count', lambda text: len(text.encode()))
+    text = 'Sky Booth (two people) allows spoken video calls. Choose Cash or QR Payment.'
+    source = {'chunk_id': 'catalog', 'heading_path': 'Calls', 'content': text,
+              'content_hash': hashlib.sha256(text.encode()).hexdigest()}
+    calls = []
+    async def generate(prompt, data, schema):
+        calls.append(data)
+        if 'answer' not in data:
+            return schema(scope='FACTUAL', blocks=[{'kind': 'text', 'text': 'A video call guarantees privacy.', 'support': [0]}])
+        prose = ' '.join(block['text'] for block in data['answer']['blocks'])
+        if len(calls) == 2:
+            return schema(relevant=True, supported=False, complete=True, consistent=True, safe=True,
+                reason_code='UNSUPPORTED_CLAIM', missing_originals=[])
+        assert '(two people)' not in prose
+        assert 'QR Payment' in prose
+        return schema(relevant=True, supported=True, complete=True, consistent=True, safe=True,
+            reason_code='NONE', missing_originals=[])
+    result = asyncio.run(batched_document_answer('Calls and payment methods?', [source], generate,
+        actor_role='PUBLIC_VISITOR', customer_reference=True, customer_payment_method=True,
+        workspace_catalog=[{'name': 'Sky Booth', 'capacity': 1}]))
+    assert result['outcome'] == 'COMPLETE'
 
 
 def test_mixed_channel_introduction_does_not_apply_a_website_link_to_kiosk(monkeypatch):
