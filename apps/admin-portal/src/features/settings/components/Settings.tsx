@@ -104,6 +104,7 @@ export function canSaveBusinessProfile(params: {
   kioskAllowanceMinutes?: number | string | null;
   bookingEndAlertMinutes?: number | string | null;
   nearCheckoutThresholdMinutes?: number | string | null;
+  rentalAlertMinutes?: number | string | null;
   rescheduleMaxAdvanceValue?: number | string | null;
   rescheduleMaxAdvanceUnit?: string | null;
   maxAdvanceBookingDays?: number | string | null;
@@ -175,6 +176,13 @@ export function canSaveBusinessProfile(params: {
     const alertNum = Number(params.bookingEndAlertMinutes);
     if (isNaN(alertNum) || alertNum < 1 || alertNum > 60) {
       return { canSave: false, reason: 'Booking end-time alert threshold must be between 1 and 60 minutes' };
+    }
+  }
+
+  if (params.rentalAlertMinutes !== undefined && params.rentalAlertMinutes !== null && (params.rentalAlertMinutes as unknown) !== '') {
+    const alertNum = Number(params.rentalAlertMinutes);
+    if (isNaN(alertNum) || alertNum < 1 || alertNum > 60) {
+      return { canSave: false, reason: 'Rental expiration alert threshold must be between 1 and 60 minutes' };
     }
   }
 
@@ -339,6 +347,7 @@ export function Settings() {
     kioskAllowanceMinutes: 5,
     bookingEndAlertMinutes: 15,
     nearCheckoutThresholdMinutes: 15,
+    rentalAlertMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
@@ -518,7 +527,7 @@ export function Settings() {
     const deltaY = e.clientY - dragStartRef.current.y;
     const newX = Math.max(0, Math.min(100, dragStartRef.current.posX - (deltaX / rect.width) * 100));
     const newY = Math.max(0, Math.min(100, dragStartRef.current.posY - (deltaY / rect.height) * 100));
-    
+
     setLandingPreviewPhotos((prev) => {
       const updated = [...prev];
       const idx = updated.findIndex((p) => p.displayOrder === slotIndex);
@@ -920,6 +929,9 @@ export function Settings() {
       const normalizedEndAlert = businessSettings.bookingEndAlertMinutes === undefined || businessSettings.bookingEndAlertMinutes === null || Number(businessSettings.bookingEndAlertMinutes) < 1
         ? 5
         : Math.min(60, Math.max(1, Number(businessSettings.bookingEndAlertMinutes)));
+      const normalizedRentalAlert = businessSettings.rentalAlertMinutes === undefined || businessSettings.rentalAlertMinutes === null || Number(businessSettings.rentalAlertMinutes) < 1
+        ? 5
+        : Math.min(60, Math.max(1, Number(businessSettings.rentalAlertMinutes)));
       const normalizedSessionTimeout = !businessSettings.customerSessionTimeoutMinutes || Number(businessSettings.customerSessionTimeoutMinutes) < 1
         ? 20
         : Math.min(180, Math.max(1, Number(businessSettings.customerSessionTimeoutMinutes)));
@@ -959,6 +971,7 @@ export function Settings() {
         kioskTimeoutMinutes: normalizedTimeout,
         kioskAllowanceMinutes: normalizedAllowance,
         bookingEndAlertMinutes: normalizedEndAlert,
+        rentalAlertMinutes: normalizedRentalAlert,
         customerSessionTimeoutMinutes: normalizedSessionTimeout,
         customerRescheduleCutoffHours: normalizedRescheduleCutoff,
         rescheduleMaxAdvanceValue: normalizedMaxAdvanceVal,
@@ -1543,14 +1556,14 @@ export function Settings() {
       {/* Navigation Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--da-border-light)', marginBottom: '24px', overflowX: 'auto', gap: '4px' }}>
         {tabs.map((t, i) => (
-          <button 
+          <button
             key={i}
             onClick={() => {
               setActiveTab(t);
               setErrorMsg(null);
             }}
-            style={{ 
-              background: 'none', border: 'none', padding: '10px 20px', fontSize: '13px', fontWeight: 700, 
+            style={{
+              background: 'none', border: 'none', padding: '10px 20px', fontSize: '13px', fontWeight: 700,
               cursor: 'pointer', fontFamily: 'var(--da-font-family)', whiteSpace: 'nowrap',
               color: activeTab === t ? 'var(--da-brand-dark)' : 'var(--da-text-secondary)',
               borderBottom: activeTab === t ? '2px solid var(--da-brand-dark)' : '2px solid transparent'
@@ -1586,24 +1599,24 @@ export function Settings() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Business Name</label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={businessSettings.businessName}
                         onChange={(e) => setBusinessSettings({ ...businessSettings, businessName: e.target.value })}
                         required
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                       />
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Email</label>
-                        <input 
-                          type="email" 
+                        <input
+                          type="email"
                           value={businessSettings.contactEmail || ''}
                           onChange={(e) => setBusinessSettings({ ...businessSettings, contactEmail: e.target.value || null })}
                           placeholder="contact@example.com"
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
                         {businessSettings.contactEmail && !isValidEmail(businessSettings.contactEmail) && (
                           <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
@@ -1613,32 +1626,32 @@ export function Settings() {
                       </div>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Contact Number</label>
-                        <div 
-                          style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            border: '1px solid var(--da-border)', 
-                            borderRadius: '8px', 
-                            overflow: 'hidden', 
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            border: '1px solid var(--da-border)',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
                             background: '#fff',
                           }}
                         >
-                          <span 
-                            style={{ 
-                              padding: '10px 12px 10px 14px', 
-                              fontSize: '13px', 
-                              fontWeight: 600, 
-                              color: 'var(--da-text-secondary)', 
-                              background: '#f8fafc', 
-                              borderRight: '1px solid var(--da-border)', 
+                          <span
+                            style={{
+                              padding: '10px 12px 10px 14px',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              color: 'var(--da-text-secondary)',
+                              background: '#f8fafc',
+                              borderRight: '1px solid var(--da-border)',
                               userSelect: 'none',
                               lineHeight: 1,
                             }}
                           >
                             +63
                           </span>
-                          <input 
-                            type="tel" 
+                          <input
+                            type="tel"
                             inputMode="numeric"
                             pattern="[0-9]*"
                             maxLength={10}
@@ -1646,15 +1659,15 @@ export function Settings() {
                             onChange={(e) => handlePhoneChange(e.target.value)}
                             onKeyDown={(e) => handleNumericKeyDown(e)}
                             placeholder="9171234567"
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              padding: '10px 14px', 
-                              fontSize: '13px', 
-                              fontFamily: 'var(--da-font-family)', 
+                            style={{
+                              width: '100%',
+                              border: 'none',
+                              outline: 'none',
+                              padding: '10px 14px',
+                              fontSize: '13px',
+                              fontFamily: 'var(--da-font-family)',
                               background: 'transparent',
-                            }} 
+                            }}
                           />
                         </div>
                         <div style={{ fontSize: '11px', color: phoneDigits && phoneDigits.length !== 10 ? '#ef4444' : 'var(--da-text-secondary)', marginTop: '4px' }}>
@@ -1672,12 +1685,12 @@ export function Settings() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Facebook Page URL (Optional)</label>
-                        <input 
-                          type="url" 
+                        <input
+                          type="url"
                           value={businessSettings.facebookUrl || ''}
                           onChange={(e) => setBusinessSettings({ ...businessSettings, facebookUrl: e.target.value || null })}
                           placeholder="https://facebook.com/yourbusiness"
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
                         {businessSettings.facebookUrl && !isValidUrl(businessSettings.facebookUrl) && (
                           <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
@@ -1687,12 +1700,12 @@ export function Settings() {
                       </div>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Instagram URL (Optional)</label>
-                        <input 
-                          type="url" 
+                        <input
+                          type="url"
                           value={businessSettings.instagramUrl || ''}
                           onChange={(e) => setBusinessSettings({ ...businessSettings, instagramUrl: e.target.value || null })}
                           placeholder="https://instagram.com/yourbusiness"
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
                         {businessSettings.instagramUrl && !isValidUrl(businessSettings.instagramUrl) && (
                           <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
@@ -1705,12 +1718,12 @@ export function Settings() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Twitter / X URL (Optional)</label>
-                        <input 
-                          type="url" 
+                        <input
+                          type="url"
                           value={businessSettings.twitterUrl || ''}
                           onChange={(e) => setBusinessSettings({ ...businessSettings, twitterUrl: e.target.value || null })}
                           placeholder="https://x.com/yourbusiness"
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
                         {businessSettings.twitterUrl && !isValidUrl(businessSettings.twitterUrl) && (
                           <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
@@ -1720,12 +1733,12 @@ export function Settings() {
                       </div>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Website URL (Optional)</label>
-                        <input 
-                          type="url" 
+                        <input
+                          type="url"
                           value={businessSettings.websiteUrl || ''}
                           onChange={(e) => setBusinessSettings({ ...businessSettings, websiteUrl: e.target.value || null })}
                           placeholder="https://yourbusiness.com"
-                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
                         {businessSettings.websiteUrl && !isValidUrl(businessSettings.websiteUrl) && (
                           <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
@@ -1906,7 +1919,7 @@ export function Settings() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Timezone</label>
-                        <select 
+                        <select
                           value={businessSettings.timezone}
                           onChange={(e) => setBusinessSettings({ ...businessSettings, timezone: e.target.value })}
                           style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
@@ -1920,10 +1933,10 @@ export function Settings() {
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                           Booking Slot Interval (Minutes)
                         </label>
-                        <input 
-                          type="number" 
-                          min={1} 
-                          max={240} 
+                        <input
+                          type="number"
+                          min={1}
+                          max={240}
                           value={businessSettings.bookingIntervalMinutes === '' as unknown ? '' : (businessSettings.bookingIntervalMinutes ?? '')}
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -1939,14 +1952,14 @@ export function Settings() {
                             }
                           }}
                           onKeyDown={(e) => handleNumericKeyDown(e)}
-                          style={{ 
-                            width: '100%', 
-                            border: (businessSettings.bookingIntervalMinutes as unknown) !== '' && Number(businessSettings.bookingIntervalMinutes) < 1 ? '1px solid #ef4444' : '1px solid var(--da-border)', 
-                            borderRadius: '8px', 
-                            padding: '10px 14px', 
-                            fontSize: '13px', 
-                            fontFamily: 'var(--da-font-family)' 
-                          }} 
+                          style={{
+                            width: '100%',
+                            border: (businessSettings.bookingIntervalMinutes as unknown) !== '' && Number(businessSettings.bookingIntervalMinutes) < 1 ? '1px solid #ef4444' : '1px solid var(--da-border)',
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            fontSize: '13px',
+                            fontFamily: 'var(--da-font-family)'
+                          }}
                         />
                         {(businessSettings.bookingIntervalMinutes as unknown) !== '' && Number(businessSettings.bookingIntervalMinutes) < 1 && (
                           <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>
@@ -1961,10 +1974,10 @@ export function Settings() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Online Payment Session Expiry (Minutes)</label>
-                      <input 
-                        type="number" 
-                        min={5} 
-                        max={1440} 
+                      <input
+                        type="number"
+                        min={5}
+                        max={1440}
                         value={(businessSettings.paymentExpiryMinutes as unknown) === '' ? '' : (businessSettings.paymentExpiryMinutes ?? '')}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -1979,7 +1992,7 @@ export function Settings() {
                           }
                         }}
                         onKeyDown={(e) => handleNumericKeyDown(e)}
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                       />
                       <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                         Default is 60 minutes for online GCash/bank transfer proof submission.
@@ -1988,10 +2001,10 @@ export function Settings() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Reservation Session Reset Timer (Minutes)</label>
-                      <input 
-                        type="number" 
-                        min={1} 
-                        max={180} 
+                      <input
+                        type="number"
+                        min={1}
+                        max={180}
                         value={(businessSettings.customerSessionTimeoutMinutes as unknown) === '' ? '' : (businessSettings.customerSessionTimeoutMinutes ?? 20)}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -2008,7 +2021,7 @@ export function Settings() {
                           }
                         }}
                         onKeyDown={(e) => handleNumericKeyDown(e)}
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                       />
                       <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                         Default is 20 minutes. Determines when an inactive customer booking session on /reserve automatically resets.
@@ -2017,10 +2030,10 @@ export function Settings() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>Customer Self-Service Reschedule Notice Cutoff (Hours)</label>
-                      <input 
-                        type="number" 
-                        min={0} 
-                        max={720} 
+                      <input
+                        type="number"
+                        min={0}
+                        max={720}
                         value={(businessSettings.customerRescheduleCutoffHours as unknown) === '' ? '' : (businessSettings.customerRescheduleCutoffHours ?? 12)}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -2037,7 +2050,7 @@ export function Settings() {
                           }
                         }}
                         onKeyDown={(e) => handleNumericKeyDown(e)}
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                       />
                       <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                         Default is 12 hours. Minimum notice in hours before original start time required for customer self-service rescheduling on Track Reservation.
@@ -2049,10 +2062,10 @@ export function Settings() {
                         Maximum Reschedule Advance Limit
                       </label>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input 
-                          type="number" 
-                          min={1} 
-                          max={businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365} 
+                        <input
+                          type="number"
+                          min={1}
+                          max={businessSettings.rescheduleMaxAdvanceUnit === 'HOURS' ? 8760 : 365}
                           value={(businessSettings.rescheduleMaxAdvanceValue as unknown) === '' ? '' : (businessSettings.rescheduleMaxAdvanceValue ?? 30)}
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -2071,9 +2084,9 @@ export function Settings() {
                           }}
                           onKeyDown={(e) => handleNumericKeyDown(e)}
                           data-testid="reschedule-max-advance-value-input"
-                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
-                        <select 
+                        <select
                           value={businessSettings.rescheduleMaxAdvanceUnit || 'DAYS'}
                           onChange={(e) => {
                             const newUnit = e.target.value as 'DAYS' | 'HOURS';
@@ -2083,7 +2096,7 @@ export function Settings() {
                             });
                           }}
                           data-testid="reschedule-max-advance-unit-select"
-                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }} 
+                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
                         >
                           <option value="DAYS">Days</option>
                           <option value="HOURS">Hours</option>
@@ -2099,10 +2112,10 @@ export function Settings() {
                         Customer Self-Service Cancellation Notice Cutoff
                       </label>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input 
-                          type="number" 
-                          min={1} 
-                          max={businessSettings.customerCancellationCutoffUnit === 'HOURS' ? 720 : 30} 
+                        <input
+                          type="number"
+                          min={1}
+                          max={businessSettings.customerCancellationCutoffUnit === 'HOURS' ? 720 : 30}
                           value={(businessSettings.customerCancellationCutoffValue as unknown) === '' ? '' : (businessSettings.customerCancellationCutoffValue ?? 12)}
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -2121,9 +2134,9 @@ export function Settings() {
                           }}
                           onKeyDown={(e) => handleNumericKeyDown(e)}
                           data-testid="customer-cancellation-cutoff-value-input"
-                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
-                        <select 
+                        <select
                           value={businessSettings.customerCancellationCutoffUnit || 'HOURS'}
                           onChange={(e) => {
                             const newUnit = e.target.value as 'DAYS' | 'HOURS';
@@ -2133,7 +2146,7 @@ export function Settings() {
                             });
                           }}
                           data-testid="customer-cancellation-cutoff-unit-select"
-                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }} 
+                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
                         >
                           <option value="HOURS">Hours</option>
                           <option value="DAYS">Days</option>
@@ -2149,10 +2162,10 @@ export function Settings() {
                         Advance Reservation Reminder Timing
                       </label>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input 
-                          type="number" 
-                          min={1} 
-                          max={businessSettings.customerReminderAdvanceUnit === 'DAYS' ? 14 : 336} 
+                        <input
+                          type="number"
+                          min={1}
+                          max={businessSettings.customerReminderAdvanceUnit === 'DAYS' ? 14 : 336}
                           value={(businessSettings.customerReminderAdvanceValue as unknown) === '' ? '' : (businessSettings.customerReminderAdvanceValue ?? 12)}
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -2171,9 +2184,9 @@ export function Settings() {
                           }}
                           onKeyDown={(e) => handleNumericKeyDown(e)}
                           data-testid="customer-reminder-advance-value-input"
-                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                          style={{ flex: 1, border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                         />
-                        <select 
+                        <select
                           value={businessSettings.customerReminderAdvanceUnit || 'HOURS'}
                           onChange={(e) => {
                             const newUnit = e.target.value as 'DAYS' | 'HOURS';
@@ -2183,7 +2196,7 @@ export function Settings() {
                             });
                           }}
                           data-testid="customer-reminder-advance-unit-select"
-                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }} 
+                          style={{ width: '120px', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)', background: '#fff' }}
                         >
                           <option value="HOURS">Hours</option>
                           <option value="DAYS">Days</option>
@@ -2198,10 +2211,10 @@ export function Settings() {
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                         Near-Checkout Proximity Alert Threshold (Minutes Before)
                       </label>
-                      <input 
-                        type="number" 
-                        min={5} 
-                        max={60} 
+                      <input
+                        type="number"
+                        min={5}
+                        max={60}
                         value={
                           (businessSettings.nearCheckoutThresholdMinutes as unknown) === ''
                             ? ''
@@ -2226,7 +2239,7 @@ export function Settings() {
                         }}
                         onKeyDown={(e) => handleNumericKeyDown(e)}
                         data-testid="near-checkout-threshold-input"
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                       />
                       <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                         Staff and Admin dashboards will trigger proactive alerts and near-checkout triage highlights this many minutes before a checked-in booking end time (default: 15 mins, range: 5-60 mins).
@@ -2235,12 +2248,50 @@ export function Settings() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
+                        Rental Expiration Staff Alert Lead Time (Minutes Before)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={
+                          (businessSettings.rentalAlertMinutes as unknown) === ''
+                            ? ''
+                            : (businessSettings.rentalAlertMinutes ?? 5)
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const parsedVal = raw === '' ? ('' as unknown as number) : Number(raw);
+                          setBusinessSettings({
+                            ...businessSettings,
+                            rentalAlertMinutes: parsedVal,
+                          });
+                        }}
+                        onBlur={() => {
+                          const current = businessSettings.rentalAlertMinutes;
+                          if (current === undefined || current === null || (current as unknown) === '' || Number(current) < 1) {
+                            setBusinessSettings({ ...businessSettings, rentalAlertMinutes: 5 });
+                          } else if (Number(current) > 60) {
+                            setBusinessSettings({ ...businessSettings, rentalAlertMinutes: 60 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleNumericKeyDown(e)}
+                        data-testid="rental-alert-minutes-input"
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
+                      />
+                      <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
+                        Minutes before a rental duration ends when front-desk staff should be alerted on their screen to prepare for return or time extension (default: 5 minutes, range: 1-60 mins).
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                         Maximum Advance Booking Window (Days)
                       </label>
-                      <input 
-                        type="number" 
-                        min={1} 
-                        max={365} 
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
                         value={(businessSettings.maxAdvanceBookingDays as unknown) === '' ? '' : (businessSettings.maxAdvanceBookingDays ?? 90)}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -2258,7 +2309,7 @@ export function Settings() {
                         }}
                         onKeyDown={(e) => handleNumericKeyDown(e)}
                         data-testid="max-advance-booking-days-input"
-                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                        style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                       />
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
                         {[30, 60, 90, 120, 180].map((preset) => (
@@ -2299,21 +2350,22 @@ export function Settings() {
                     bookingIntervalMinutes: businessSettings.bookingIntervalMinutes,
                     bookingEndAlertMinutes: businessSettings.bookingEndAlertMinutes,
                     nearCheckoutThresholdMinutes: businessSettings.nearCheckoutThresholdMinutes,
+                    rentalAlertMinutes: businessSettings.rentalAlertMinutes,
                     rescheduleMaxAdvanceValue: businessSettings.rescheduleMaxAdvanceValue,
                     rescheduleMaxAdvanceUnit: businessSettings.rescheduleMaxAdvanceUnit,
                     maxAdvanceBookingDays: businessSettings.maxAdvanceBookingDays,
                   });
                   const isDisabled = saving || !check.canSave;
                   return (
-                    <button 
+                    <button
                       type="submit"
                       disabled={isDisabled}
                       title={!check.canSave ? check.reason : undefined}
-                      style={{ 
-                        background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px', 
-                        borderRadius: '8px', fontWeight: 700, fontSize: '13px', 
-                        cursor: isDisabled ? 'not-allowed' : 'pointer', 
-                        opacity: isDisabled ? 0.6 : 1 
+                      style={{
+                        background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px',
+                        borderRadius: '8px', fontWeight: 700, fontSize: '13px',
+                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        opacity: isDisabled ? 0.6 : 1
                       }}
                     >
                       {saving ? 'Saving...' : 'Save Business Profile'}
@@ -2403,9 +2455,9 @@ export function Settings() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {daySchedules.map((schedule, idx) => (
-                    <div 
+                    <div
                       key={schedule.dayOfWeek}
-                      style={{ 
+                      style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '12px 16px', background: schedule.isOpen ? '#FAFAFA' : '#F1F5F9',
                         border: '1px solid var(--da-border-light)', borderRadius: '10px',
@@ -2414,7 +2466,7 @@ export function Settings() {
                     >
                       {/* Day Label & Toggle */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '140px' }}>
-                        <input 
+                        <input
                           type="checkbox"
                           id={`day-toggle-${schedule.dayOfWeek}`}
                           checked={schedule.isOpen}
@@ -2430,7 +2482,7 @@ export function Settings() {
                           }}
                           style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                         />
-                        <label 
+                        <label
                           htmlFor={`day-toggle-${schedule.dayOfWeek}`}
                           style={{ fontSize: '13px', fontWeight: 700, color: schedule.isOpen ? '#1E293B' : '#94A3B8', cursor: 'pointer' }}
                         >
@@ -2465,7 +2517,7 @@ export function Settings() {
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <select 
+                            <select
                               aria-label={`${DAY_NAMES[schedule.dayOfWeek]} Opening Time`}
                               value={schedule.opensAt}
                               onChange={(e) => {
@@ -2478,10 +2530,10 @@ export function Settings() {
                                 updated[idx] = { ...schedule, opensAt: newOpensAt, closesAt: newClosesAt };
                                 setDaySchedules(updated);
                               }}
-                              style={{ 
-                                border: '1px solid var(--da-border)', 
-                                borderRadius: '6px', 
-                                padding: '6px 10px', 
+                              style={{
+                                border: '1px solid var(--da-border)',
+                                borderRadius: '6px',
+                                padding: '6px 10px',
                                 fontSize: '12px',
                                 background: '#fff',
                                 color: '#0F172A',
@@ -2495,7 +2547,7 @@ export function Settings() {
                               ))}
                             </select>
                             <span style={{ fontSize: '12px', color: '#64748B' }}>to</span>
-                            <select 
+                            <select
                               aria-label={`${DAY_NAMES[schedule.dayOfWeek]} Closing Time`}
                               value={schedule.closesAt}
                               onChange={(e) => {
@@ -2507,10 +2559,10 @@ export function Settings() {
                                 updated[idx] = { ...schedule, closesAt: newClosesAt };
                                 setDaySchedules(updated);
                               }}
-                              style={{ 
-                                border: '1px solid var(--da-border)', 
-                                borderRadius: '6px', 
-                                padding: '6px 10px', 
+                              style={{
+                                border: '1px solid var(--da-border)',
+                                borderRadius: '6px',
+                                padding: '6px 10px',
                                 fontSize: '12px',
                                 background: '#fff',
                                 color: '#0F172A',
@@ -2520,9 +2572,9 @@ export function Settings() {
                               {getTimeOptions(true, schedule.closesAt).map((t) => {
                                 const isUnavailable = schedule.opensAt ? t <= schedule.opensAt : false;
                                 return (
-                                  <option 
-                                    key={t} 
-                                    value={t} 
+                                  <option
+                                    key={t}
+                                    value={t}
                                     disabled={isUnavailable}
                                     style={{
                                       color: isUnavailable ? '#94A3B8' : '#0F172A',
@@ -2695,14 +2747,14 @@ export function Settings() {
 
               {/* Save Business Hours Button */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--da-border-light)' }}>
-                <button 
+                <button
                   type="button"
                   onClick={handleSaveOperatingHours}
                   disabled={saving}
-                  style={{ 
-                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px', 
-                    borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
-                    opacity: saving ? 0.7 : 1 
+                  style={{
+                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px',
+                    borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.7 : 1
                   }}
                 >
                   {saving ? 'Saving...' : 'Save Business Hours'}
@@ -2761,9 +2813,9 @@ export function Settings() {
                     const isUploadingQr = uploadingQrId === method.id;
 
                     return (
-                      <div 
+                      <div
                         key={method.id}
-                        style={{ 
+                        style={{
                           border: '1px solid var(--da-border)', borderRadius: '14px', padding: '22px',
                           background: method.isActive ? '#FFFFFF' : '#F8FAFC',
                           boxShadow: 'var(--da-shadow-sm)',
@@ -2777,7 +2829,7 @@ export function Settings() {
                           {/* Top bar: Provider Badge, Display Name, Move Up/Down, Active Toggle, Delete */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '220px' }}>
-                              <span style={{ 
+                              <span style={{
                                 fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '6px',
                                 background: providerInfo.badgeBg,
                                 color: providerInfo.badgeColor,
@@ -2790,7 +2842,7 @@ export function Settings() {
                                 <span>{providerInfo.icon}</span>
                                 <span>{providerInfo.label}</span>
                               </span>
-                              <input 
+                              <input
                                 type="text"
                                 value={method.displayName}
                                 onChange={(e) => {
@@ -2837,7 +2889,7 @@ export function Settings() {
                               </div>
 
                               <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', margin: '0 4px' }}>
-                                <input 
+                                <input
                                   type="checkbox"
                                   checked={method.isActive}
                                   onChange={(e) => {
@@ -2870,7 +2922,7 @@ export function Settings() {
                               <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
                                 Account / Receiver Name <span style={{ color: '#EF4444' }}>*</span>
                               </label>
-                              <input 
+                              <input
                                 type="text"
                                 value={method.accountName || ''}
                                 onChange={(e) => {
@@ -2887,7 +2939,7 @@ export function Settings() {
                               <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
                                 Account / Mobile Number <span style={{ color: '#EF4444' }}>*</span>
                               </label>
-                              <input 
+                              <input
                                 type="text"
                                 value={method.accountNumber || ''}
                                 onKeyDown={(e) => handleNumericKeyDown(e, { allowDash: true })}
@@ -2909,7 +2961,7 @@ export function Settings() {
                             <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '4px' }}>
                               Customer Instructions
                             </label>
-                            <textarea 
+                            <textarea
                               rows={2}
                               value={method.instructions || ''}
                               onChange={(e) => {
@@ -3031,8 +3083,8 @@ export function Settings() {
                                 onClick={() => handleSavePaymentMethod(method)}
                                 disabled={isDisabled}
                                 title={isInvalid ? 'Account/Receiver name and Account/Mobile number are required' : undefined}
-                                style={{ 
-                                  background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '8px 18px', 
+                                style={{
+                                  background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '8px 18px',
                                   borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: isDisabled ? 'not-allowed' : 'pointer',
                                   opacity: isDisabled ? 0.6 : 1,
                                 }}
@@ -3181,21 +3233,21 @@ export function Settings() {
                               background: isSelected
                                 ? '#F0FDFA'
                                 : hasClosure
-                                ? isFullDay
-                                  ? '#FEF2F2'
-                                  : '#FFFBEB'
-                                : isPast
-                                ? '#F1F5F9'
-                                : cell.isCurrentMonth
-                                ? '#FFFFFF'
-                                : '#F8FAFC',
+                                  ? isFullDay
+                                    ? '#FEF2F2'
+                                    : '#FFFBEB'
+                                  : isPast
+                                    ? '#F1F5F9'
+                                    : cell.isCurrentMonth
+                                      ? '#FFFFFF'
+                                      : '#F8FAFC',
                               border: isSelected
                                 ? '2px solid var(--da-brand-dark)'
                                 : hasClosure
-                                ? isFullDay
-                                  ? '1px solid #FECACA'
-                                  : '1px solid #FDE68A'
-                                : '1px solid var(--da-border-light)',
+                                  ? isFullDay
+                                    ? '1px solid #FECACA'
+                                    : '1px solid #FDE68A'
+                                  : '1px solid var(--da-border-light)',
                               borderRadius: '8px',
                               textAlign: 'left',
                               cursor: isCellDisabled ? 'not-allowed' : 'pointer',
@@ -4129,8 +4181,8 @@ export function Settings() {
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                       Inactivity Timeout (Minutes)
                     </label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min={1}
                       max={60}
                       value={(businessSettings.kioskTimeoutMinutes as unknown) === '' ? '' : (businessSettings.kioskTimeoutMinutes ?? '')}
@@ -4147,7 +4199,7 @@ export function Settings() {
                         }
                       }}
                       onKeyDown={(e) => handleNumericKeyDown(e)}
-                      style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                     />
                     <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                       The kiosk resets automatically to the welcome screen if the user is inactive for this duration.
@@ -4170,8 +4222,8 @@ export function Settings() {
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--da-text-secondary)', marginBottom: '6px' }}>
                       Kiosk Booking Allowance (Minutes)
                     </label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min={0}
                       max={60}
                       value={(businessSettings.kioskAllowanceMinutes as unknown) === '' ? '' : (businessSettings.kioskAllowanceMinutes ?? 5)}
@@ -4190,7 +4242,7 @@ export function Settings() {
                         }
                       }}
                       onKeyDown={(e) => handleNumericKeyDown(e)}
-                      style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }} 
+                      style={{ width: '100%', border: '1px solid var(--da-border)', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontFamily: 'var(--da-font-family)' }}
                     />
                     <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)', marginTop: '4px' }}>
                       Default is 5 minutes. Added to the current time when starting a walk-in booking session on the Kiosk.
@@ -4201,13 +4253,13 @@ export function Settings() {
 
               {/* Save Kiosk Settings Button */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--da-border-light)' }}>
-                <button 
+                <button
                   type="submit"
                   disabled={saving}
-                  style={{ 
-                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px', 
-                    borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', 
-                    opacity: saving ? 0.7 : 1 
+                  style={{
+                    background: 'var(--da-brand-dark)', color: '#fff', border: 'none', padding: '12px 28px',
+                    borderRadius: '8px', fontWeight: 700, fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.7 : 1
                   }}
                 >
                   {saving ? 'Saving...' : 'Save Kiosk Settings'}
@@ -4458,7 +4510,7 @@ export function Settings() {
 
       {/* MODAL: Enlarge QR Preview */}
       {viewingQrUrl && (
-        <div 
+        <div
           onClick={() => setViewingQrUrl(null)}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
@@ -4466,7 +4518,7 @@ export function Settings() {
             zIndex: 1100, padding: '20px'
           }}
         >
-          <div 
+          <div
             onClick={(e) => e.stopPropagation()}
             style={{
               background: '#fff', borderRadius: '16px', padding: '20px',
@@ -4486,8 +4538,8 @@ export function Settings() {
                 ✕
               </button>
             </div>
-            <img 
-              src={viewingQrUrl} 
+            <img
+              src={viewingQrUrl}
               alt="Full QR Preview"
               style={{ width: '100%', maxHeight: '300px', objectFit: 'contain', borderRadius: '8px' }}
             />

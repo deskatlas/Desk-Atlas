@@ -29,19 +29,24 @@ export function Layout() {
             <div className="hidden md:flex items-center space-x-8">
               <Link
                 to="/"
-                className={`${
-                  isActive("/") ? "text-teal-600" : "text-gray-600 hover:text-gray-900"
-                } transition-colors`}
+                className={`${isActive("/") ? "text-teal-600" : "text-gray-600 hover:text-gray-900"
+                  } transition-colors`}
               >
                 Home
               </Link>
               <Link
                 to="/workspaces"
-                className={`${
-                  isActive("/workspaces") ? "text-teal-600" : "text-gray-600 hover:text-gray-900"
-                } transition-colors`}
+                className={`${isActive("/workspaces") ? "text-teal-600" : "text-gray-600 hover:text-gray-900"
+                  } transition-colors`}
               >
                 Workspaces
+              </Link>
+              <Link
+                to="/services"
+                className={`${isActive("/services") ? "text-teal-600" : "text-gray-600 hover:text-gray-900"
+                  } transition-colors`}
+              >
+                Services
               </Link>
               <Link
                 to="/manage-booking"
@@ -70,21 +75,27 @@ export function Layout() {
               <div className="flex flex-col space-y-4">
                 <Link
                   to="/"
-                  className={`${
-                    isActive("/") ? "text-teal-600" : "text-gray-600"
-                  } px-4 py-2`}
+                  className={`${isActive("/") ? "text-teal-600" : "text-gray-600"
+                    } px-4 py-2`}
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Home
                 </Link>
                 <Link
                   to="/workspaces"
-                  className={`${
-                    isActive("/workspaces") ? "text-teal-600" : "text-gray-600"
-                  } px-4 py-2`}
+                  className={`${isActive("/workspaces") ? "text-teal-600" : "text-gray-600"
+                    } px-4 py-2`}
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Workspaces
+                </Link>
+                <Link
+                  to="/services"
+                  className={`${isActive("/services") ? "text-teal-600" : "text-gray-600"
+                    } px-4 py-2`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Services
                 </Link>
                 <Link
                   to="/manage-booking"
@@ -131,6 +142,11 @@ export function Layout() {
                 <li>
                   <Link to="/workspaces" className="hover:text-teal-600 transition-colors">
                     Workspaces
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/services" className="hover:text-teal-600 transition-colors">
+                    Services
                   </Link>
                 </li>
                 <li>

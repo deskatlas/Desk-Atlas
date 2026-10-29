@@ -101,6 +101,7 @@ export interface BusinessSettings {
   kioskAllowanceMinutes?: number | null;
   bookingEndAlertMinutes?: number | null;
   nearCheckoutThresholdMinutes?: number;
+  rentalAlertMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
   rescheduleMaxAdvanceValue?: number;
@@ -171,6 +172,7 @@ export interface UpdateBusinessSettingsInput {
   kioskAllowanceMinutes?: number | null;
   bookingEndAlertMinutes?: number | null;
   nearCheckoutThresholdMinutes?: number | null;
+  rentalAlertMinutes?: number | null;
   customerSessionTimeoutMinutes?: number | null;
   customerRescheduleCutoffHours?: number | null;
   rescheduleMaxAdvanceValue?: number | null;

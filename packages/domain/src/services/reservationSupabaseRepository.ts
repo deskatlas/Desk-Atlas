@@ -58,6 +58,7 @@ import {
 } from "./adminReservationService";
 import {
   ReportPaymentAttemptRecord,
+  ReportRentalRecord,
   ReportReservationRecord,
 } from "../models/reports";
 import { ReservationRepository } from "./reservationRepository";
@@ -2027,6 +2028,59 @@ export class ReservationSupabaseRepository
         } satisfies ReportPaymentAttemptRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async listReportRentals(): Promise<ReportRentalRecord[]> {
+    try {
+      const rentals = await this.request<any[]>(
+        "/booking_rentals?select=*,customers(first_name,last_name,email),additional_services(name,service_type),reservations(reference_code,customer_first_name,customer_last_name,customer_email,reservation_candidates(is_assigned,workspace_instances(display_name,instance_code))),rental_extensions(id,additional_amount)&order=created_at.desc&limit=1000"
+      );
+      if (!rentals || !Array.isArray(rentals)) return [];
+      return rentals.map((r: any) => {
+        const totalAmount = Number(r.total_amount ?? 0);
+        const extensions = Array.isArray(r.rental_extensions) ? r.rental_extensions : [];
+        const extensionAmount = extensions.reduce((sum: number, ext: any) => sum + Number(ext.additional_amount ?? 0), 0);
+        const customerName = r.customers && (r.customers.first_name || r.customers.last_name)
+          ? `${r.customers.first_name || ""} ${r.customers.last_name || ""}`.trim()
+          : r.reservations && (r.reservations.customer_first_name || r.reservations.customer_last_name)
+          ? `${r.reservations.customer_first_name || ""} ${r.reservations.customer_last_name || ""}`.trim()
+          : "Customer";
+        const customerEmail = r.customers?.email || r.reservations?.customer_email || "";
+        const candidates = Array.isArray(r.reservations?.reservation_candidates)
+          ? r.reservations.reservation_candidates
+          : [];
+        const assigned = candidates.find((c: any) => c.is_assigned) ?? candidates[0];
+        const spotName =
+          assigned?.workspace_instances?.display_name ||
+          assigned?.workspace_instances?.instance_code ||
+          "Spot";
+        return {
+          rentalId: r.id,
+          rentalCode: r.rental_code,
+          bookingReference: r.reservations?.reference_code ?? "",
+          customerName: customerName || "Customer",
+          customerEmail,
+          spotName,
+          serviceName: r.additional_services?.name ?? "Equipment Rental",
+          serviceType: (r.additional_services?.service_type as any) ?? "rental",
+          billingMode: r.billing_mode,
+          durationUnits: r.duration_units,
+          rateApplied: Number(r.rate_applied ?? 0),
+          totalAmount,
+          extensionCount: extensions.length,
+          extensionAmount,
+          idVerified: Boolean(r.id_verified),
+          idNotes: r.id_notes ?? "",
+          status: r.status,
+          rentedAt: r.rented_at,
+          dueAt: r.due_at,
+          returnedAt: r.returned_at ?? null,
+          staffName: r.staff_user_id ? "Staff Member" : "Front Desk Staff",
+        } satisfies ReportRentalRecord;
+      });
+    } catch {
+      return [];
+    }
   }
 
   private async fetchReportRowsByIds<T>(

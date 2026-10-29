@@ -11,6 +11,8 @@ import {
   downloadAdminReport,
   fetchAdminReportsSnapshot,
 } from '../../../app/lib/adminReportsApi';
+import { RentalMetricsCard } from './RentalMetricsCard';
+import { TopRentalsTable } from './TopRentalsTable';
 
 export function Reports() {
   const [range, setRange] = useState<AdminReportRange>('30days');
@@ -60,9 +62,9 @@ export function Reports() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '22px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 3px', letterSpacing: '-0.02em' }}>Reports & Analytics</h1>
-          <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>Operational metrics and financial performance</div>
+          <div style={{ fontSize: '13px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>Operational metrics, auxiliary services, and financial performance</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={() => handleDownload('operations-summary', 'xlsx')}
             disabled={loading || Boolean(exportingType)}
@@ -81,6 +83,25 @@ export function Reports() {
             }}
           >
             {exportingType === 'operations-summary' ? 'Exporting...' : 'Export Summary (Excel)'}
+          </button>
+          <button
+            onClick={() => handleDownload('rentals', 'csv')}
+            disabled={loading || Boolean(exportingType)}
+            style={{
+              background: '#fff',
+              color: 'var(--da-brand-dark)',
+              border: '1px solid var(--da-border)',
+              borderRadius: '8px',
+              padding: '9px 16px',
+              fontSize: '13px',
+              fontWeight: 700,
+              fontFamily: 'var(--da-font-family)',
+              cursor: loading || Boolean(exportingType) ? 'not-allowed' : 'pointer',
+              opacity: loading || Boolean(exportingType) ? 0.7 : 1,
+              transition: 'opacity 0.15s ease',
+            }}
+          >
+            {exportingType === 'rentals' ? 'Exporting...' : 'Export Rentals (CSV)'}
           </button>
           <select
             value={range}
@@ -119,7 +140,8 @@ export function Reports() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+      {/* Main Reservation & Financial Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '20px' }}>
         {metrics.map((m, i) => (
           <div key={i} style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '20px', boxShadow: 'var(--da-shadow-sm)', opacity: loading ? 0.7 : 1 }}>
             <div style={{ fontSize: '12px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)', marginBottom: '8px' }}>{m.label}</div>
@@ -130,6 +152,9 @@ export function Reports() {
           </div>
         ))}
       </div>
+
+      {/* Additional Services & Equipment Rentals KPI Scorecard (MS-91) */}
+      <RentalMetricsCard analytics={snapshot?.rentalAnalytics} loading={loading} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '24px' }}>
         <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '20px', boxShadow: 'var(--da-shadow-sm)' }}>
@@ -177,7 +202,6 @@ export function Reports() {
                     minWidth: 0,
                   }}
                 >
-                  {/* Label above bar for small bars (<25% height) or zero-value bars */}
                   {!labelInfo.isInsideBar && (
                     <span
                       data-testid={`revenue-bar-label-${i}`}
@@ -196,7 +220,6 @@ export function Reports() {
                     </span>
                   )}
 
-                  {/* Bar element */}
                   <div
                     data-testid={`revenue-bar-${i}`}
                     style={{
@@ -214,7 +237,6 @@ export function Reports() {
                       minHeight: '8px',
                     }}
                   >
-                    {/* Label inside bar for tall bars (>= 25% height) */}
                     {labelInfo.isInsideBar && (
                       <span
                         data-testid={`revenue-bar-label-${i}`}
@@ -234,7 +256,6 @@ export function Reports() {
                     )}
                   </div>
 
-                  {/* Day of week or period label */}
                   <div style={{ fontSize: allBars.length > 14 ? '9px' : '10px', color: 'var(--da-text-secondary)', fontFamily: 'var(--da-font-family)' }}>
                     {bar.label}
                   </div>
@@ -266,7 +287,7 @@ export function Reports() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px', marginBottom: '24px' }}>
         <div style={{ background: '#fff', border: '1px solid var(--da-border)', borderRadius: '14px', padding: '20px', boxShadow: 'var(--da-shadow-sm)' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--da-brand-dark)', margin: '0 0 16px' }}>Operational Reports & Exports</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
@@ -277,6 +298,7 @@ export function Reports() {
               { id: 'booking-activity', name: 'Customer Booking Activity', count: 0, exportType: 'booking-activity' as const },
               { id: 'cancellation', name: 'Cancellation & Rescheduling', count: 0, exportType: 'cancellation' as const },
               { id: 'checkin', name: 'Check-in / Checkout Records', count: 0, exportType: 'checkin' as const },
+              { id: 'rentals', name: 'Additional Services & Rentals', count: 0, exportType: 'rentals' as const },
             ]).map((cat) => (
               <div
                 key={cat.id}
@@ -294,23 +316,42 @@ export function Reports() {
                   <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--da-text-primary)' }}>{cat.name}</div>
                   <div style={{ fontSize: '11px', color: 'var(--da-text-secondary)' }}>{cat.count} records</div>
                 </div>
-                <button
-                  onClick={() => handleDownload(cat.exportType, 'xlsx')}
-                  disabled={exportingType === cat.exportType}
-                  style={{
-                    background: '#fff',
-                    border: '1px solid var(--da-border)',
-                    borderRadius: '6px',
-                    padding: '5px 9px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    color: 'var(--da-brand-dark)',
-                    cursor: exportingType === cat.exportType ? 'not-allowed' : 'pointer',
-                    opacity: exportingType === cat.exportType ? 0.6 : 1,
-                  }}
-                >
-                  {exportingType === cat.exportType ? '...' : 'Excel'}
-                </button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => handleDownload(cat.exportType, 'xlsx')}
+                    disabled={exportingType === cat.exportType}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid var(--da-border)',
+                      borderRadius: '6px',
+                      padding: '5px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: 'var(--da-brand-dark)',
+                      cursor: exportingType === cat.exportType ? 'not-allowed' : 'pointer',
+                      opacity: exportingType === cat.exportType ? 0.6 : 1,
+                    }}
+                  >
+                    Excel
+                  </button>
+                  <button
+                    onClick={() => handleDownload(cat.exportType, 'csv')}
+                    disabled={exportingType === cat.exportType}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid var(--da-border)',
+                      borderRadius: '6px',
+                      padding: '5px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: 'var(--da-text-secondary)',
+                      cursor: exportingType === cat.exportType ? 'not-allowed' : 'pointer',
+                      opacity: exportingType === cat.exportType ? 0.6 : 1,
+                    }}
+                  >
+                    CSV
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -346,6 +387,13 @@ export function Reports() {
           )}
         </div>
       </div>
+
+      {/* Top Rented Equipment Leaderboard (MS-91) */}
+      <TopRentalsTable
+        topItems={snapshot?.rentalAnalytics?.topRentedItems}
+        totalRevenue={snapshot?.rentalAnalytics?.totalRentalRevenue}
+        loading={loading}
+      />
     </main>
   );
 }

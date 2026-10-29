@@ -9,7 +9,9 @@ import {
   AdminRevenueOverviewBar,
   AdminTopWorkspaceSummary,
   ReportPaymentAttemptRecord,
+  ReportRentalRecord,
   ReportReservationRecord,
+  RentalAnalyticsSnapshot,
 } from "../models/reports";
 import { ReportsRepository } from "./reportsRepository";
 import { buildAdminExcelWorkbook, formatDateTime } from "./excelReportBuilder";
@@ -26,6 +28,91 @@ const REPORT_CATEGORY_DEFINITIONS: Array<{
   { id: "cancellation", name: "Cancellation & Rescheduling", exportType: "cancellation" },
   { id: "checkin", name: "Check-in / Checkout Records", exportType: "checkin" },
 ];
+
+
+export function calculateRentalAnalytics(rentals: ReportRentalRecord[]): RentalAnalyticsSnapshot {
+  let totalRevenue = 0;
+  let activeRentalsCount = 0;
+  let returnedRentalsCount = 0;
+  let overdueRentalsCount = 0;
+  let totalDurationHours = 0;
+
+  const itemMap = new Map<string, { serviceId: string; serviceName: string; rentalsCount: number; totalRevenue: number }>();
+
+  for (const r of rentals) {
+    if (r.status === "active") activeRentalsCount++;
+    if (r.status === "returned") returnedRentalsCount++;
+    if (r.status === "overdue") overdueRentalsCount++;
+
+    const fee = r.totalAmount + (r.extensionAmount || 0);
+
+    // Cancelled rentals are excluded from gross revenue metrics
+    if (r.status !== "cancelled") {
+      totalRevenue += fee;
+    }
+
+    const durationInHours = r.billingMode === "daily" ? r.durationUnits * 24 : r.durationUnits;
+    totalDurationHours += durationInHours;
+
+    const key = r.serviceName;
+    const existing = itemMap.get(key) ?? {
+      serviceId: r.serviceName,
+      serviceName: r.serviceName,
+      rentalsCount: 0,
+      totalRevenue: 0,
+    };
+    existing.rentalsCount++;
+    if (r.status !== "cancelled") {
+      existing.totalRevenue += fee;
+    }
+    itemMap.set(key, existing);
+  }
+
+  const topRentedItems = Array.from(itemMap.values()).sort((a, b) => b.rentalsCount - a.rentalsCount);
+
+  return {
+    totalRentalsCount: rentals.length,
+    activeRentalsCount,
+    returnedRentalsCount,
+    overdueRentalsCount,
+    totalRentalRevenue: totalRevenue,
+    averageDurationHours: rentals.length > 0 ? Number((totalDurationHours / rentals.length).toFixed(1)) : 0,
+    topRentedItems,
+  };
+}
+
+export function sanitizeCsvField(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  let str = String(value);
+  if (/^[\s]*[=+\-@]/.test(str)) {
+    str = str.replace(/^[\s]*[=+\-@]+/, "");
+  }
+  return str;
+}
+
+export function buildRentalRows(rentals: ReportRentalRecord[]): Array<Record<string, string | number>> {
+  return rentals.map((r) => {
+    const fee = r.totalAmount + (r.extensionAmount || 0);
+    return {
+      "Rental Code": sanitizeCsvField(r.rentalCode),
+      "Booking Ref": sanitizeCsvField(r.bookingReference),
+      "Customer Name": sanitizeCsvField(r.customerName),
+      "Customer Email": sanitizeCsvField(r.customerEmail),
+      "Assigned Spot": sanitizeCsvField(r.spotName),
+      "Item Name": sanitizeCsvField(r.serviceName),
+      "Service Type": sanitizeCsvField(r.serviceType),
+      "Billing Mode": sanitizeCsvField(r.billingMode),
+      "Duration": `${r.durationUnits} ${r.billingMode === "daily" ? "day(s)" : "hr(s)"}`,
+      "Rate (PHP)": r.rateApplied.toFixed(2),
+      "Total Fee (PHP)": fee.toFixed(2),
+      "Rented At": sanitizeCsvField(r.rentedAt),
+      "Due At": sanitizeCsvField(r.dueAt),
+      "Returned At": sanitizeCsvField(r.returnedAt || "N/A"),
+      "Status": sanitizeCsvField(r.status.toUpperCase()),
+      "Staff Handler": sanitizeCsvField(r.staffName || "Staff"),
+    };
+  });
+}
 
 export class ReportsError extends Error {
   constructor(message: string) {
@@ -44,6 +131,7 @@ export class ReportsService {
     const now = this.nowProvider();
     const reservations = await this.repository.listReportReservations();
     const payments = await this.repository.listReportPaymentAttempts();
+    const rentals = this.repository.listReportRentals ? await this.repository.listReportRentals() : [];
 
     const rangeBounds = calculateReportRangeBounds(now, range);
 
@@ -148,14 +236,19 @@ export class ReportsService {
     const revenueOverview = buildRevenueOverview(now, payments, currency, range);
     const topWorkspaces = buildTopWorkspaces(currentReservations.length > 0 ? currentReservations : reservations);
 
-    const reportCategories = REPORT_CATEGORY_DEFINITIONS.map((definition) => ({
+    const categoryDefs = [...REPORT_CATEGORY_DEFINITIONS];
+    if (rentals.length > 0) {
+      categoryDefs.push({ id: "rentals", name: "Additional Services & Rentals", exportType: "rentals" });
+    }
+
+    const reportCategories = categoryDefs.map((definition) => ({
       id: definition.id,
       name: definition.name,
-      count: this.buildExportRows(definition.exportType, reservations, payments).length,
+      count: this.buildExportRows(definition.exportType, reservations, payments, rentals).length,
       exportType: definition.exportType,
     }));
 
-    const recentReports = REPORT_CATEGORY_DEFINITIONS.map((definition, index) =>
+    const recentReports = categoryDefs.map((definition, index) =>
       this.buildRecentReport(definition.exportType, definition.name, index + 1, now)
     );
 
@@ -172,6 +265,7 @@ export class ReportsService {
       topUsers,
       defaultExportType: "operations-summary",
       generatedAt: now.toISOString(),
+      rentalAnalytics: calculateRentalAnalytics(rentals.filter((r) => isWithinRange(r.rentedAt, rangeBounds.currentStart, rangeBounds.currentEnd))),
     };
   }
 
@@ -188,6 +282,7 @@ export class ReportsService {
     const now = this.nowProvider();
     let reservations = await this.repository.listReportReservations();
     let payments = await this.repository.listReportPaymentAttempts();
+    let rentals = this.repository.listReportRentals ? await this.repository.listReportRentals() : [];
 
     if (range) {
       const rangeBounds = calculateReportRangeBounds(now, range);
@@ -196,6 +291,9 @@ export class ReportsService {
       );
       payments = payments.filter((p) =>
         isWithinRange(p.createdAt, rangeBounds.currentStart, rangeBounds.currentEnd)
+      );
+      rentals = rentals.filter((r) =>
+        isWithinRange(r.rentedAt, rangeBounds.currentStart, rangeBounds.currentEnd)
       );
     }
 
@@ -210,6 +308,7 @@ export class ReportsService {
         snapshot,
         reservations,
         payments,
+        rentals,
         now,
       });
 
@@ -221,7 +320,7 @@ export class ReportsService {
       };
     }
 
-    const rows = this.buildExportRows(exportType, reservations, payments);
+    const rows = this.buildExportRows(exportType, reservations, payments, rentals);
 
     return {
       filename: `deskatlas-${exportType}${rangeSuffix}-${filenameDate}.csv`,
@@ -249,7 +348,8 @@ export class ReportsService {
   private buildExportRows(
     exportType: AdminReportExportType,
     reservations: ReportReservationRecord[],
-    payments: ReportPaymentAttemptRecord[]
+    payments: ReportPaymentAttemptRecord[],
+    rentals: ReportRentalRecord[] = []
   ): Array<Record<string, string | number>> {
     switch (exportType) {
       case "operations-summary":
@@ -266,6 +366,8 @@ export class ReportsService {
         return buildCancellationRows(reservations, payments);
       case "checkin":
         return buildCheckInRows(reservations);
+      case "rentals":
+        return buildRentalRows(rentals);
       default:
         throw new ReportsError("Unsupported report export type.");
     }
@@ -908,7 +1010,10 @@ function toCsv(rows: Array<Record<string, string | number>>) {
 }
 
 function csvEscape(value: string | number) {
-  const stringValue = String(value ?? "");
+  let stringValue = String(value ?? "");
+  if (/^[\s]*[=+\-@]/.test(stringValue)) {
+    stringValue = stringValue.replace(/^[\s]*[=+\-@]+/, "");
+  }
   if (/[",\n]/.test(stringValue)) {
     return `"${stringValue.replace(/"/g, '""')}"`;
   }

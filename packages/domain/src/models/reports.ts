@@ -6,7 +6,8 @@ export type AdminReportCategoryId =
   | "payment"
   | "booking-activity"
   | "cancellation"
-  | "checkin";
+  | "checkin"
+  | "rentals";
 
 export type AdminReportExportType =
   | "operations-summary"
@@ -15,7 +16,8 @@ export type AdminReportExportType =
   | "payment"
   | "booking-activity"
   | "cancellation"
-  | "checkin";
+  | "checkin"
+  | "rentals";
 
 export interface ReportReservationRecord {
   reservationId: string;
@@ -72,6 +74,45 @@ export interface ReportPaymentAttemptRecord {
   refundedAt?: string | null;
   overdueNotifiedAt?: string | null;
   cancellationRefundNotifiedAt?: string | null;
+}
+
+export interface ReportRentalRecord {
+  rentalId: string;
+  rentalCode: string;
+  bookingReference: string;
+  customerName: string;
+  customerEmail: string;
+  spotName: string;
+  serviceName: string;
+  serviceType: "rental" | "one_time";
+  billingMode: "hourly" | "daily";
+  durationUnits: number;
+  rateApplied: number;
+  totalAmount: number;
+  extensionCount: number;
+  extensionAmount: number;
+  idVerified: boolean;
+  idNotes: string;
+  status: "active" | "returned" | "overdue" | "cancelled";
+  rentedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  staffName: string;
+}
+
+export interface RentalAnalyticsSnapshot {
+  totalRentalsCount: number;
+  activeRentalsCount: number;
+  returnedRentalsCount: number;
+  overdueRentalsCount: number;
+  totalRentalRevenue: number;
+  averageDurationHours: number;
+  topRentedItems: Array<{
+    serviceId: string;
+    serviceName: string;
+    rentalsCount: number;
+    totalRevenue: number;
+  }>;
 }
 
 export type AdminReportRange = "today" | "7days" | "30days" | "month" | "year";
@@ -144,4 +185,5 @@ export interface AdminReportsSnapshot {
   topUsers: AdminFrequentBookerSummary[];
   defaultExportType: AdminReportExportType;
   generatedAt: string;
+  rentalAnalytics?: RentalAnalyticsSnapshot;
 }

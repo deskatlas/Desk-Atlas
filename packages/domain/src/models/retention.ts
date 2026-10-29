@@ -14,6 +14,8 @@ export interface RetentionPurgeRecordSet {
   paymentAttempts: Array<Record<string, unknown>>;
   paidCandidateRecovery: Array<Record<string, unknown>>;
   storageProofPaths: string[];
+  bookingRentals?: Array<Record<string, unknown>>;
+  rentalExtensions?: Array<Record<string, unknown>>;
 }
 
 export interface RetentionBackupPayload {
@@ -26,12 +28,16 @@ export interface RetentionBackupPayload {
     reservationCount: number;
     paymentAttemptCount: number;
     storageProofCount: number;
+    rentalCount?: number;
+    rentalExtensionCount?: number;
   };
   reservations: Array<Record<string, unknown>>;
   reservationCandidates: Array<Record<string, unknown>>;
   paymentAttempts: Array<Record<string, unknown>>;
   paidCandidateRecovery: Array<Record<string, unknown>>;
   storageProofPaths: string[];
+  bookingRentals?: Array<Record<string, unknown>>;
+  rentalExtensions?: Array<Record<string, unknown>>;
 }
 
 export interface RetentionPurgeResult {
@@ -51,4 +57,3 @@ export interface RetentionPurgeResult {
   customerProfilesRetained: boolean;
   error?: string;
 }
-

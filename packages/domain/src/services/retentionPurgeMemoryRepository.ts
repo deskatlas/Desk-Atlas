@@ -1,4 +1,4 @@
-import { ReportReservationRecord, ReportPaymentAttemptRecord } from '../models/reports';
+import { ReportReservationRecord, ReportPaymentAttemptRecord, ReportRentalRecord } from '../models/reports';
 import { RetentionPurgeRecordSet } from '../models/retention';
 import { RetentionPurgeRepository } from './retentionPurgeRepository';
 
@@ -66,6 +66,8 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
   public paidCandidateRecovery: Array<Record<string, unknown>> = [];
   public notificationOutbox: Array<Record<string, unknown>> = [];
   public vouchers: Array<Record<string, unknown>> = [];
+  public bookingRentals: Array<Record<string, unknown>> = [];
+  public rentalExtensions: Array<Record<string, unknown>> = [];
   public qualifyingFacts: Array<Record<string, unknown>> = [];
   public storageBucket: Set<string> = new Set();
   public auditLogs: Array<Record<string, unknown>> = [];
@@ -78,6 +80,8 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
     paymentAttempts?: MemoryPaymentAttemptRecord[];
     paidCandidateRecovery?: Array<Record<string, unknown>>;
     storageFiles?: string[];
+    bookingRentals?: Array<Record<string, unknown>>;
+    rentalExtensions?: Array<Record<string, unknown>>;
     adminEmail?: string;
   }) {
     if (initialData?.customers) this.customers = [...initialData.customers];
@@ -86,12 +90,15 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
     if (initialData?.paymentAttempts) this.paymentAttempts = [...initialData.paymentAttempts];
     if (initialData?.paidCandidateRecovery) this.paidCandidateRecovery = [...initialData.paidCandidateRecovery];
     if (initialData?.storageFiles) initialData.storageFiles.forEach((f) => this.storageBucket.add(f));
+    if (initialData?.bookingRentals) this.bookingRentals = [...initialData.bookingRentals];
+    if (initialData?.rentalExtensions) this.rentalExtensions = [...initialData.rentalExtensions];
     if (initialData?.adminEmail) this.adminEmail = initialData.adminEmail;
   }
 
   async getPurgeEligibleRecords(cutoffTimestamp: Date): Promise<{
     reportReservations: ReportReservationRecord[];
     reportPayments: ReportPaymentAttemptRecord[];
+    reportRentals?: ReportRentalRecord[];
     recordSet: RetentionPurgeRecordSet;
     totalRevenue: number;
     currency: string;
@@ -164,6 +171,42 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
       refundedAt: (p.refunded_at as string) ?? (p.refundedAt as string) ?? null,
     }));
 
+
+    const eligibleRentals = this.bookingRentals.filter(
+      (r) => targetIds.has(r.reservation_id as string)
+    );
+    const targetRentalIds = new Set(eligibleRentals.map((r) => r.id as string));
+    const eligibleExtensions = this.rentalExtensions.filter(
+      (ext) => targetRentalIds.has(ext.rental_id as string)
+    );
+
+    const reportRentals: ReportRentalRecord[] = eligibleRentals.map((r) => {
+      const extList = eligibleExtensions.filter((e) => e.rental_id === r.id);
+      const extAmount = extList.reduce((sum, e) => sum + Number(e.additional_amount || 0), 0);
+      return {
+        rentalId: (r.id as string) || "RENT-01",
+        rentalCode: (r.rental_code as string) || "RC-01",
+        bookingReference: refCodeByResId.get(r.reservation_id as string) || "",
+        customerName: (r.customer_name as string) || "Customer",
+        customerEmail: (r.customer_email as string) || "customer@example.com",
+        spotName: (r.spot_name as string) || "Spot",
+        serviceName: (r.service_name as string) || "Equipment Rental",
+        serviceType: (r.service_type as any) || "rental",
+        billingMode: (r.billing_mode as any) || "hourly",
+        durationUnits: Number(r.duration_units || 1),
+        rateApplied: Number(r.rate_applied || 0),
+        totalAmount: Number(r.total_amount || 0),
+        extensionCount: extList.length,
+        extensionAmount: extAmount,
+        idVerified: Boolean(r.id_verified),
+        idNotes: (r.id_notes as string) || "",
+        status: (r.status as any) || "returned",
+        rentedAt: (r.rented_at as string) || new Date().toISOString(),
+        dueAt: (r.due_at as string) || new Date().toISOString(),
+        returnedAt: (r.returned_at as string) ?? null,
+        staffName: (r.staff_name as string) || "Staff Member",
+      };
+    });
     const approvedPayments = eligiblePayments.filter((p) => p.status === 'APPROVED');
     const totalRevenue = approvedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const currency = approvedPayments[0]?.currency || 'PHP';
@@ -171,12 +214,15 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
     return {
       reportReservations,
       reportPayments,
+      reportRentals,
       recordSet: {
         reservations: eligibleReservations,
         reservationCandidates: eligibleCandidates,
         paymentAttempts: eligiblePayments,
         paidCandidateRecovery: eligibleRecovery,
         storageProofPaths,
+        bookingRentals: eligibleRentals,
+        rentalExtensions: eligibleExtensions,
       },
       totalRevenue,
       currency,
@@ -245,6 +291,13 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
       (c) => !targetIds.has(c.reservation_id as string)
     );
 
+
+    // Delete booking rentals & extensions
+    const purgeRentalIds = new Set(
+      this.bookingRentals.filter((r) => targetIds.has(r.reservation_id as string)).map((r) => r.id as string)
+    );
+    this.rentalExtensions = this.rentalExtensions.filter((e) => !purgeRentalIds.has(e.rental_id as string));
+    this.bookingRentals = this.bookingRentals.filter((r) => !targetIds.has(r.reservation_id as string));
     // 8. Delete primary reservations
     const initialResCount = this.reservations.length;
     this.reservations = this.reservations.filter((r) => !targetIds.has(r.id));

@@ -90,6 +90,31 @@ export function TrackingPage({
           </div>
         </div>
 
+        {/* Contextual Services & Equipment Banner */}
+        <div
+          data-testid="services-guidance-banner"
+          className="mb-8 rounded-[20px] border border-[var(--da-border)] bg-gradient-to-r from-teal-50/70 via-white to-white p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+        >
+          <div className="flex items-start sm:items-center gap-3.5">
+            <span className="text-2xl" role="img" aria-label="Services">🖥️</span>
+            <div>
+              <p className="text-sm font-bold text-[var(--da-brand-dark)]">
+                Need an external monitor, keyboard, or printing?
+              </p>
+              <p className="text-xs text-[var(--da-text-secondary)] mt-0.5">
+                Explore high-performance peripherals and business amenities available on-site at the front desk.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/services"
+            data-testid="view-services-banner-link"
+            className="da-primary-button text-xs font-bold whitespace-nowrap shrink-0"
+          >
+            View Additional Services & Equipment Rentals
+          </Link>
+        </div>
+
         {/* Dual Paths: Side-by-side on desktop, stacked on mobile */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           {/* Path 1: Check a Reservation */}
@@ -222,8 +247,8 @@ export function TrackingPage({
                     <span
                       data-testid="tracking-status-badge"
                       className={`rounded-full px-4 py-2 text-xs font-bold ${isRejected
-                          ? "bg-red-100 text-red-700"
-                          : statusDisplay.badgeClass
+                        ? "bg-red-100 text-red-700"
+                        : statusDisplay.badgeClass
                         }`}
                     >
                       {isRejected ? "REJECTED" : statusDisplay.label}

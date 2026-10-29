@@ -275,3 +275,5 @@ export * from './paidRecoverySchema';
 export * from './companionNamesSchema';
 export * from './customerSchemas';
 export * from './preparedSupportSchema';
+export * from './additionalServices';
+export * from './rental';

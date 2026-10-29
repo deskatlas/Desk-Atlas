@@ -27,6 +27,7 @@ export class InMemorySettingsRepository implements SettingsRepository {
     kioskAllowanceMinutes: 5,
     bookingEndAlertMinutes: 5,
     nearCheckoutThresholdMinutes: 15,
+    rentalAlertMinutes: 5,
     customerSessionTimeoutMinutes: 20,
     customerRescheduleCutoffHours: 12,
     rescheduleMaxAdvanceValue: 30,
@@ -149,6 +150,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
       nearCheckoutThresholdMinutes: input.nearCheckoutThresholdMinutes !== undefined && input.nearCheckoutThresholdMinutes !== null
         ? input.nearCheckoutThresholdMinutes
         : (this.businessSettings.nearCheckoutThresholdMinutes ?? 15),
+      rentalAlertMinutes: input.rentalAlertMinutes !== undefined && input.rentalAlertMinutes !== null
+        ? input.rentalAlertMinutes
+        : (this.businessSettings.rentalAlertMinutes ?? 5),
       customerSessionTimeoutMinutes: input.customerSessionTimeoutMinutes ?? 20,
       customerRescheduleCutoffHours: input.customerRescheduleCutoffHours ?? 12,
       rescheduleMaxAdvanceValue: input.rescheduleMaxAdvanceValue !== undefined && input.rescheduleMaxAdvanceValue !== null

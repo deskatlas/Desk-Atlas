@@ -1,4 +1,4 @@
-import { ReportReservationRecord, ReportPaymentAttemptRecord } from '../models/reports';
+import { ReportReservationRecord, ReportPaymentAttemptRecord, ReportRentalRecord } from '../models/reports';
 import { RetentionPurgeRecordSet } from '../models/retention';
 
 export interface RetentionPurgeRepository {
@@ -8,6 +8,7 @@ export interface RetentionPurgeRepository {
   getPurgeEligibleRecords(cutoffTimestamp: Date): Promise<{
     reportReservations: ReportReservationRecord[];
     reportPayments: ReportPaymentAttemptRecord[];
+    reportRentals?: ReportRentalRecord[];
     recordSet: RetentionPurgeRecordSet;
     totalRevenue: number;
     currency: string;
@@ -49,4 +50,3 @@ export interface RetentionPurgeRepository {
    */
   listCustomerProfiles(): Promise<Array<Record<string, unknown>>>;
 }
-

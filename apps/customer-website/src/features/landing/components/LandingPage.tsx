@@ -74,6 +74,7 @@ export function LandingPage() {
           </Link>
           <nav className="flex items-center gap-4 text-sm font-semibold text-[var(--da-text-secondary)]">
             <Link href="/reserve">Reserve</Link>
+            <Link href="/services">Services</Link>
             <Link href="/track">Track Reservation</Link>
           </nav>
         </div>
@@ -109,9 +110,8 @@ export function LandingPage() {
                 return (
                   <div
                     key={photo.id || index}
-                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                      isActive ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
-                    }`}
+                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${isActive ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
+                      }`}
                   >
                     <img
                       src={photo.url}
@@ -130,13 +130,12 @@ export function LandingPage() {
               {Array.from({ length: 12 }).map((_, index) => (
                 <div
                   key={index}
-                  className={`aspect-square rounded-2xl ${
-                    index === 2 || index === 9
+                  className={`aspect-square rounded-2xl ${index === 2 || index === 9
                       ? "bg-[var(--da-soft)]"
                       : index === 5
                         ? "bg-[var(--da-attention)]"
                         : "bg-[var(--da-info)]"
-                  }`}
+                    }`}
                 />
               ))}
             </div>

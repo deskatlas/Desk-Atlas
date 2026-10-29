@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from '@/features/auth';
 import { AssistantLauncher } from '@/features/assistant/AssistantLauncher';
 import { NotificationCenter, UrgentPaymentModal } from '@/features/notifications';
 import { SearchProvider, useSearch, ProfileDropdown, useActiveTabPolling } from '@deskatlas/ui';
+import { NearRentalEndAlertToasts } from '../../../../staff-dashboard/src/features/alerts';
 
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -105,6 +106,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     { id: '/manage/scan', label: 'QR Scanner', iconType: 'scan' },
     { id: '/manage/kiosk-confirm', label: 'Kiosk Queue', iconType: 'kiosk', badge: kioskCount > 0 ? kioskCount : undefined },
     { id: '/manage/workspaces', label: 'Workspaces', iconType: 'workspaces' },
+    { id: '/manage/services', label: 'Additional Services', iconType: 'services' },
+    { id: '/manage/rentals', label: 'Equipment Rentals', iconType: 'rentals' },
     { id: '/manage/promotions', label: 'Promotions', iconType: 'promotions' },
     { id: '/manage/map', label: 'Map Builder', iconType: 'map' },
     { id: '/manage/staff', label: 'Staff', iconType: 'staff' },
@@ -160,6 +163,23 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <div style={{ width: '15px', height: '15px', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '2px', flexShrink: 0 }}>
             <div style={{ border: `2px solid ${color}`, borderRadius: '2px' }}></div><div style={{ border: `2px solid ${color}`, borderRadius: '2px' }}></div>
             <div style={{ border: `2px solid ${color}`, borderRadius: '2px' }}></div><div style={{ background: color, borderRadius: '2px' }}></div>
+          </div>
+        );
+      case 'services':
+        return (
+          <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+          </div>
+        );
+      case 'rentals':
+        return (
+          <div style={{ width: '15px', height: '15px', border: `2px solid ${color}`, borderRadius: '3px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: '7px', height: '2px', background: color, marginBottom: '1px' }}></div>
+            <div style={{ width: '9px', height: '2px', background: color }}></div>
           </div>
         );
       case 'promotions':
@@ -381,6 +401,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
         {/* URGENT PAYMENT NOTIFICATION MODAL */}
         <UrgentPaymentModal />
+        <NearRentalEndAlertToasts apiPrefix="/api/admin/rentals" />
       </div>
     </div>
   );

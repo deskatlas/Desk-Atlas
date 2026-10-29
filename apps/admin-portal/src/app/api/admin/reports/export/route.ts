@@ -10,6 +10,7 @@ const allowedExportTypes = new Set<AdminReportExportType>([
   "booking-activity",
   "cancellation",
   "checkin",
+  "rentals",
 ]);
 
 const validRanges = new Set<AdminReportRange>(["today", "7days", "30days", "month", "year"]);

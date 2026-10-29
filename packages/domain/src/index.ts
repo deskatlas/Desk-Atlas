@@ -149,6 +149,7 @@ export * from './models/reports';
 export * from './services/reportsRepository';
 export * from './services/reportsService';
 export * from './services/excelReportBuilder';
+export * from './services/excelReportStyles';
 export * from './services/chartRenderer';
 export * from './models/dashboard';
 export * from './services/adminDashboardService';
@@ -284,3 +285,24 @@ export * from './services/retentionPurgeRepository';
 export * from './services/retentionPurgeMemoryRepository';
 export * from './services/retentionPurgeSupabaseRepository';
 export * from './services/retentionPurgeService';
+
+export * from './models/additionalService';
+export * from './services/additionalServiceRepository';
+export * from './services/additionalServiceMemoryRepository';
+export * from './services/additionalServiceSupabaseRepository';
+export * from './services/additionalServiceService';
+
+export * from './models/rental';
+export * from './services/rentalRepository';
+export * from './services/rentalMemoryRepository';
+export * from './services/rentalSupabaseRepository';
+export * from './services/rentalService';
+export {
+  assignRentalSchema,
+  extendRentalSchema,
+  returnRentalSchema,
+  rentalBillingModeSchema,
+  type AssignRentalDto,
+  type ExtendRentalDto,
+  type ReturnRentalDto,
+} from '@deskatlas/validation';

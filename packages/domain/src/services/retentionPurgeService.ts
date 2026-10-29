@@ -88,6 +88,7 @@ export class RetentionPurgeService {
     const {
       reportReservations,
       reportPayments,
+      reportRentals = [],
       recordSet,
       totalRevenue,
       currency,
@@ -97,6 +98,7 @@ export class RetentionPurgeService {
     const adhocReportsRepo: ReportsRepository = {
       listReportReservations: async () => reportReservations,
       listReportPaymentAttempts: async () => reportPayments,
+      listReportRentals: async () => reportRentals,
     };
     const reportsService = new ReportsService(adhocReportsRepo, () => bounds.cutoff);
     const snapshot = await reportsService.getAdminReportsSnapshot('month');
@@ -107,6 +109,7 @@ export class RetentionPurgeService {
       snapshot,
       reservations: reportReservations,
       payments: reportPayments,
+      rentals: reportRentals,
       now: bounds.cutoff,
     });
 
@@ -123,12 +126,16 @@ export class RetentionPurgeService {
         reservationCount: recordSet.reservations.length,
         paymentAttemptCount: recordSet.paymentAttempts.length,
         storageProofCount: recordSet.storageProofPaths.length,
+        rentalCount: recordSet.bookingRentals?.length ?? 0,
+        rentalExtensionCount: recordSet.rentalExtensions?.length ?? 0,
       },
       reservations: recordSet.reservations,
       reservationCandidates: recordSet.reservationCandidates,
       paymentAttempts: recordSet.paymentAttempts,
       paidCandidateRecovery: recordSet.paidCandidateRecovery,
       storageProofPaths: recordSet.storageProofPaths,
+      bookingRentals: recordSet.bookingRentals ?? [],
+      rentalExtensions: recordSet.rentalExtensions ?? [],
     };
 
     const jsonBuffer = Buffer.from(JSON.stringify(backupPayload, null, 2), 'utf-8');

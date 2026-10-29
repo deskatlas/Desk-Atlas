@@ -788,6 +788,18 @@ function normalizeBusinessSettingsInput(
   }
 
   if (
+    input.rentalAlertMinutes !== undefined &&
+    input.rentalAlertMinutes !== null &&
+    (!Number.isInteger(input.rentalAlertMinutes) ||
+      input.rentalAlertMinutes < 1 ||
+      input.rentalAlertMinutes > 60)
+  ) {
+    throw new SettingsValidationError(
+      'Rental expiration alert threshold must be an integer between 1 and 60 minutes'
+    );
+  }
+
+  if (
     input.customerSessionTimeoutMinutes !== undefined &&
     input.customerSessionTimeoutMinutes !== null &&
     (!Number.isInteger(input.customerSessionTimeoutMinutes) ||
@@ -985,6 +997,10 @@ function normalizeBusinessSettingsInput(
       input.nearCheckoutThresholdMinutes !== undefined && input.nearCheckoutThresholdMinutes !== null
         ? input.nearCheckoutThresholdMinutes
         : (input.bookingEndAlertMinutes ?? 15),
+    rentalAlertMinutes:
+      input.rentalAlertMinutes !== undefined && input.rentalAlertMinutes !== null
+        ? input.rentalAlertMinutes
+        : 5,
     customerSessionTimeoutMinutes:
       input.customerSessionTimeoutMinutes !== undefined && input.customerSessionTimeoutMinutes !== null
         ? input.customerSessionTimeoutMinutes

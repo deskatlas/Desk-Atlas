@@ -2873,12 +2873,12 @@ export class TransactionalEmailService {
             text: input.text,
             ...(input.attachments && input.attachments.length > 0
               ? {
-                  attachments: input.attachments.map((att) => ({
-                    filename: att.filename,
-                    content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
-                    ...(att.contentType ? { contentType: att.contentType } : {}),
-                  })),
-                }
+                attachments: input.attachments.map((att) => ({
+                  filename: att.filename,
+                  content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+                  ...(att.contentType ? { contentType: att.contentType } : {}),
+                })),
+              }
               : {}),
           }),
         });
@@ -2912,12 +2912,12 @@ export class TransactionalEmailService {
             text: input.text,
             ...(input.attachments && input.attachments.length > 0
               ? {
-                  attachments: input.attachments.map((att) => ({
-                    filename: att.filename,
-                    content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
-                    ...(att.contentType ? { contentType: att.contentType } : {}),
-                  })),
-                }
+                attachments: input.attachments.map((att) => ({
+                  filename: att.filename,
+                  content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+                  ...(att.contentType ? { contentType: att.contentType } : {}),
+                })),
+              }
               : {}),
           }),
         });
@@ -3674,6 +3674,76 @@ export class TransactionalEmailService {
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         console.warn('[TransactionalEmail] Admin cancellation receipt webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendRentalConfirmationEmail(
+    input: RentalConfirmationEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: RentalConfirmationEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderRentalConfirmationEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'rental-confirmation',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-rental-confirmation' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Rental confirmation webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendRentalEndingAlertEmail(
+    input: RentalEndingAlertEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: RentalEndingAlertEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderRentalEndingAlertEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'rental-ending-alert',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-rental-ending-alert' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Rental ending alert webhook dispatch error:', errorMsg);
       }
     }
 
@@ -5207,6 +5277,316 @@ Timestamp: ${nowIso}
   `.trim();
 
   return { subject, html, text };
+}
+
+export interface RentalConfirmationEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerName?: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  rentalCode: string;
+  referenceCode?: string;
+  spotName?: string;
+  itemName: string;
+  billingMode: 'hourly' | 'daily' | string;
+  durationUnits: number;
+  rateApplied: number;
+  totalAmount: number;
+  currency?: string;
+  rentedAt: string;
+  dueAt: string;
+  idVerified?: boolean;
+  idNotes?: string;
+  notes?: string;
+}
+
+export interface RentalEndingAlertEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerName?: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  rentalCode: string;
+  referenceCode?: string;
+  spotName?: string;
+  itemName: string;
+  dueAt: string;
+  timeRemainingMinutes: number;
+  currency?: string;
+  isOverdue?: boolean;
+}
+
+export function renderRentalConfirmationEmail(input: RentalConfirmationEmailInput): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName =
+    input.customerName ||
+    [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') ||
+    'Customer';
+  const subject = `Your Equipment Rental Confirmation [${input.rentalCode}] - ${input.itemName}`;
+  const formattedRentedAt = formatEmailTime(input.rentedAt, profile.timezone);
+  const formattedDueAt = formatEmailTime(input.dueAt, profile.timezone);
+  const currencySymbol = input.currency || 'PHP';
+  const formattedTotal = `${currencySymbol === 'PHP' ? '₱' : `${currencySymbol} `}${Number(input.totalAmount || 0).toFixed(2)}`;
+  const rateLabel = `${currencySymbol === 'PHP' ? '₱' : `${currencySymbol} `}${Number(input.rateApplied || 0).toFixed(2)} / ${input.billingMode === 'hourly' ? 'hr' : 'day'}`;
+  const unitLabel =
+    input.billingMode === 'hourly'
+      ? `${input.durationUnits} ${input.durationUnits === 1 ? 'hour' : 'hours'}`
+      : `${input.durationUnits} ${input.durationUnits === 1 ? 'day' : 'days'}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .badge { display: inline-block; background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .summary-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-label { color: #64748b; }
+    .summary-value { font-weight: 600; color: #0f172a; text-align: right; }
+    .notice-box { background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 16px; margin: 18px 0; font-size: 14px; color: #1e40af; line-height: 1.5; }
+    .due-highlight { background-color: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 14px 16px; margin: 18px 0; font-size: 14px; color: #854d0e; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <span class="badge">Rental Confirmed</span>
+      <div class="title">Equipment Rental Receipt</div>
+      <div style="font-size: 13px; color: #64748b;">Rental Code: <strong>${escapeHtml(input.rentalCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Your equipment rental for <strong>${escapeHtml(input.itemName)}</strong> has been confirmed at the front desk. Here are the details of your rental:</p>
+
+      <div class="summary-box">
+        <div class="summary-row">
+          <span class="summary-label">Item Rented: </span>
+          <span class="summary-value">${escapeHtml(input.itemName)}</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Rental Code: </span>
+          <span class="summary-value" style="font-family: monospace; color: #0284c7;">${escapeHtml(input.rentalCode)}</span>
+        </div>
+        ${input.referenceCode ? `
+        <div class="summary-row">
+          <span class="summary-label">Workspace Booking: </span>
+          <span class="summary-value">${escapeHtml(input.referenceCode)}</span>
+        </div>` : ''}
+        ${input.spotName ? `
+        <div class="summary-row">
+          <span class="summary-label">Assigned Spot: </span>
+          <span class="summary-value">${escapeHtml(input.spotName)}</span>
+        </div>` : ''}
+        <div class="summary-row">
+          <span class="summary-label">Duration: </span>
+          <span class="summary-value">${escapeHtml(unitLabel)} (${escapeHtml(input.billingMode === 'hourly' ? 'Hourly' : 'Daily')})</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Applied Rate: </span>
+          <span class="summary-value">${escapeHtml(rateLabel)}</span>
+        </div>
+        <div class="summary-row" style="padding-top: 8px;">
+          <span class="summary-label" style="font-weight: 700; color: #0f172a;">Total Paid: </span>
+          <span class="summary-value" style="font-size: 16px; font-weight: 700; color: #166534;">${escapeHtml(formattedTotal)}</span>
+        </div>
+      </div>
+
+      <div class="due-highlight">
+        <div style="font-weight: 700; margin-bottom: 4px;">Return Deadline (Due Time):</div>
+        <div style="font-size: 16px; font-weight: 700; color: #a16207;">${escapeHtml(formattedDueAt)}</div>
+        <div style="font-size: 12px; margin-top: 4px; color: #713f12;">Started: ${escapeHtml(formattedRentedAt)}</div>
+      </div>
+
+      <div class="notice-box">
+        <strong>Front Desk ID Deposit:</strong> A valid ID has been deposited and securely held at the front desk. Please bring the equipment back to the front desk before the due time to retrieve your ID. If you need more time, please speak with our staff before expiration to extend your rental.
+      </div>
+
+      <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
+        Need assistance or have questions regarding your rental? Visit the staff kiosk or contact our support team.
+      </p>
+    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace System : Equipment Rental Receipt`)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const textLines: string[] = [
+    `EQUIPMENT RENTAL RECEIPT`,
+    `Rental Code: ${input.rentalCode}`,
+    `----------------------------------------`,
+    `Hello ${customerName},`,
+    ``,
+    `Your equipment rental for ${input.itemName} has been confirmed.`,
+    ``,
+    `RENTAL DETAILS:`,
+    `- Item: ${input.itemName}`,
+    `- Rental Code: ${input.rentalCode}`,
+    ...(input.referenceCode ? [`- Workspace Booking: ${input.referenceCode}`] : []),
+    ...(input.spotName ? [`- Assigned Spot: ${input.spotName}`] : []),
+    `- Duration: ${unitLabel} (${input.billingMode === 'hourly' ? 'Hourly' : 'Daily'})`,
+    `- Applied Rate: ${rateLabel}`,
+    `- Total Paid: ${formattedTotal}`,
+    `- Rented At: ${formattedRentedAt}`,
+    `- Due At: ${formattedDueAt}`,
+    ``,
+    `SECURITY DEPOSIT NOTICE:`,
+    `A valid ID has been deposited at the front desk. Please return the equipment in good condition to retrieve your ID. If you need to extend, please speak with staff before the deadline.`,
+    ``,
+    renderBusinessFooterText(profile, `${businessName} Workspace System : Equipment Rental Receipt`),
+  ];
+
+  return {
+    subject,
+    html,
+    text: textLines.join('\n'),
+  };
+}
+
+export function renderRentalEndingAlertEmail(input: RentalEndingAlertEmailInput): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const customerName =
+    input.customerName ||
+    [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') ||
+    'Customer';
+  const formattedDueAt = formatEmailTime(input.dueAt, profile.timezone);
+  const timeLabel =
+    input.timeRemainingMinutes <= 1
+      ? '1 minute'
+      : `${input.timeRemainingMinutes} minutes`;
+  const subject = `Reminder: Your Equipment Rental for ${input.itemName} is Ending Soon [${input.rentalCode}]`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .badge { display: inline-block; background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .title { font-size: 20px; font-weight: 700; color: #92400e; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .alert-box { background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
+    .summary-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-label { color: #64748b; }
+    .summary-value { font-weight: 600; color: #0f172a; text-align: right; }
+    .action-step { display: flex; align-items: flex-start; margin-bottom: 12px; font-size: 14px; }
+    .step-number { background-color: #e0f2fe; color: #0369a1; font-weight: 700; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 12px; margin-right: 10px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <span class="badge">Expiring Soon</span>
+      <div class="title">Equipment Rental Ending Soon</div>
+      <div style="font-size: 13px; color: #64748b;">Rental Code: <strong>${escapeHtml(input.rentalCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      
+      <div class="alert-box">
+        <div style="font-size: 15px; font-weight: 700; color: #92400e; margin-bottom: 4px;">
+          Your rental is ending in approximately ${escapeHtml(timeLabel)}
+        </div>
+        <div style="font-size: 14px; color: #78350f;">
+          Return deadline is <strong>${escapeHtml(formattedDueAt)}</strong>.
+        </div>
+      </div>
+
+      <div class="summary-box">
+        <div class="summary-row">
+          <span class="summary-label">Item Rented</span>
+          <span class="summary-value">${escapeHtml(input.itemName)}</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Rental Code</span>
+          <span class="summary-value" style="font-family: monospace; color: #0284c7;">${escapeHtml(input.rentalCode)}</span>
+        </div>
+        ${input.referenceCode ? `
+        <div class="summary-row">
+          <span class="summary-label">Workspace Booking</span>
+          <span class="summary-value">${escapeHtml(input.referenceCode)}</span>
+        </div>` : ''}
+        ${input.spotName ? `
+        <div class="summary-row">
+          <span class="summary-label">Assigned Spot</span>
+          <span class="summary-value">${escapeHtml(input.spotName)}</span>
+        </div>` : ''}
+        <div class="summary-row">
+          <span class="summary-label">Due Time</span>
+          <span class="summary-value" style="color: #b45309; font-weight: 700;">${escapeHtml(formattedDueAt)}</span>
+        </div>
+      </div>
+
+      <div style="margin: 20px 0;">
+        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 10px;">What to do next:</div>
+        <div class="action-step">
+          <div class="step-number">1</div>
+          <div><strong>Return the item to the front desk:</strong> Bring ${escapeHtml(input.itemName)} back to the reception or staff kiosk to complete your return and retrieve your deposited ID.</div>
+        </div>
+        <div class="action-step">
+          <div class="step-number">2</div>
+          <div><strong>Need more time?</strong> Speak with front-desk staff before ${escapeHtml(formattedDueAt)} to request a time extension.</div>
+        </div>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b; margin-top: 20px;">
+        Thank you for choosing ${escapeHtml(businessName)}!
+      </p>
+    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Workspace System : Equipment Rental Alert`)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const textLines: string[] = [
+    `EQUIPMENT RENTAL EXPIRATION REMINDER`,
+    `Rental Code: ${input.rentalCode}`,
+    `----------------------------------------`,
+    `Hello ${customerName},`,
+    ``,
+    `Your equipment rental for ${input.itemName} is scheduled to end in approximately ${timeLabel} at ${formattedDueAt}.`,
+    ``,
+    `RENTAL SUMMARY:`,
+    `- Item: ${input.itemName}`,
+    `- Rental Code: ${input.rentalCode}`,
+    ...(input.referenceCode ? [`- Workspace Booking: ${input.referenceCode}`] : []),
+    ...(input.spotName ? [`- Assigned Spot: ${input.spotName}`] : []),
+    `- Due At: ${formattedDueAt}`,
+    ``,
+    `WHAT TO DO NEXT:`,
+    `1. Return the item: Bring ${input.itemName} back to the front desk to retrieve your deposited ID.`,
+    `2. Need more time: Speak with front-desk staff before ${formattedDueAt} to extend your rental.`,
+    ``,
+    renderBusinessFooterText(profile, `${businessName} Workspace System : Equipment Rental Alert`),
+  ];
+
+  return {
+    subject,
+    html,
+    text: textLines.join('\n'),
+  };
 }
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {

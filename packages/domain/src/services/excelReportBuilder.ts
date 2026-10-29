@@ -7,7 +7,9 @@ import {
   AdminReportsSnapshot,
   AdminTopWorkspaceSummary,
   ReportPaymentAttemptRecord,
+  ReportRentalRecord,
   ReportReservationRecord,
+  RentalAnalyticsSnapshot,
 } from "../models/reports";
 import {
   generateRevenueTrendChartPng,
@@ -21,6 +23,7 @@ export async function buildAdminExcelWorkbook(params: {
   snapshot: AdminReportsSnapshot;
   reservations: ReportReservationRecord[];
   payments: ReportPaymentAttemptRecord[];
+  rentals?: ReportRentalRecord[];
   now: Date;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -29,11 +32,11 @@ export async function buildAdminExcelWorkbook(params: {
   workbook.created = params.now;
   workbook.modified = params.now;
 
-  const { exportType, snapshot, reservations, payments, now, range } = params;
+  const { exportType, snapshot, reservations, payments, rentals = [], now, range } = params;
 
   if (exportType === "operations-summary") {
     // 1. Executive Dashboard Sheet
-    await buildExecutiveDashboardSheet(workbook, snapshot, reservations, now, range);
+    await buildExecutiveDashboardSheet(workbook, snapshot, reservations, now, range, rentals);
 
     // 2. Dedicated Data Sheets
     buildReservationsSheet(workbook, reservations);
@@ -41,24 +44,28 @@ export async function buildAdminExcelWorkbook(params: {
     buildWorkspaceSheet(workbook, reservations);
     buildCheckinSheet(workbook, reservations);
     buildCancellationSheet(workbook, reservations, payments);
+    buildRentalsSheet(workbook, rentals);
   } else {
     // Focused Category Export
     switch (exportType) {
       case "reservations":
       case "booking-activity":
-        await buildFocusedCategorySheet(workbook, "Reservations & Booking Activity", reservations, payments, snapshot, "reservations");
+        await buildFocusedCategorySheet(workbook, "Reservations & Booking Activity", reservations, payments, snapshot, "reservations", rentals);
         break;
       case "payment":
-        await buildFocusedCategorySheet(workbook, "Payment Records & Revenue", reservations, payments, snapshot, "payment");
+        await buildFocusedCategorySheet(workbook, "Payment Records & Revenue", reservations, payments, snapshot, "payment", rentals);
         break;
       case "workspace":
-        await buildFocusedCategorySheet(workbook, "Workspace Utilization", reservations, payments, snapshot, "workspace");
+        await buildFocusedCategorySheet(workbook, "Workspace Utilization", reservations, payments, snapshot, "workspace", rentals);
         break;
       case "checkin":
-        await buildFocusedCategorySheet(workbook, "Check-in & Check-out Records", reservations, payments, snapshot, "checkin");
+        await buildFocusedCategorySheet(workbook, "Check-in & Check-out Records", reservations, payments, snapshot, "checkin", rentals);
         break;
       case "cancellation":
-        await buildFocusedCategorySheet(workbook, "Cancellations & Resolutions", reservations, payments, snapshot, "cancellation");
+        await buildFocusedCategorySheet(workbook, "Cancellations & Resolutions", reservations, payments, snapshot, "cancellation", rentals);
+        break;
+      case "rentals":
+        await buildFocusedCategorySheet(workbook, "Additional Services & Rentals", reservations, payments, snapshot, "rentals", rentals);
         break;
       default:
         buildReservationsSheet(workbook, reservations);
@@ -78,7 +85,8 @@ async function buildExecutiveDashboardSheet(
   snapshot: AdminReportsSnapshot,
   reservations: ReportReservationRecord[],
   now: Date,
-  range?: AdminReportRange
+  range?: AdminReportRange,
+  rentals: ReportRentalRecord[] = []
 ) {
   const sheet = workbook.addWorksheet("Executive Dashboard", {
     views: [{ showGridLines: true }],
@@ -270,7 +278,80 @@ async function buildExecutiveDashboardSheet(
     styleTableRow(sheet, `F${curURow}:H${curURow}`, false);
     curURow++;
   }
+
+  // 6. Additional Services & Rental Analytics Section
+  const rentalAnalytics = getRentalAnalytics(snapshot, rentals);
+  const nextSectionRow = Math.max(curWsRow, curURow) + 2;
+
+  // Rental Revenue KPI Card (Columns B to D)
+  sheet.mergeCells(`B${nextSectionRow}:D${nextSectionRow + 3}`);
+  const rentalCardCell = sheet.getCell(`B${nextSectionRow}`);
+  const formattedRentalRevenue = `PHP ${rentalAnalytics.totalRentalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  rentalCardCell.value = {
+    richText: [
+      { text: "RENTAL & SERVICE REVENUE\n", font: { name: FONT_NAME, size: 9, bold: true, color: { argb: COLORS.TEXT_SECONDARY } } },
+      { text: `${formattedRentalRevenue}\n`, font: { name: FONT_NAME, size: 16, bold: true, color: { argb: COLORS.BRAND_DARK } } },
+      { text: `${rentalAnalytics.totalRentalsCount} transactions (${rentalAnalytics.activeRentalsCount} currently active)`, font: { name: FONT_NAME, size: 8.5, color: { argb: COLORS.TEXT_PRIMARY } } },
+    ],
+  };
+  rentalCardCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: COLORS.CARD_BG },
+  };
+  rentalCardCell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  applyCardBorder(sheet, `B${nextSectionRow}:D${nextSectionRow + 3}`, COLORS.BORDER);
+
+  // Top Rented Equipment Mini-Table (Columns E to H)
+  sheet.mergeCells(`E${nextSectionRow}:H${nextSectionRow}`);
+  const topRentalsHeader = sheet.getCell(`E${nextSectionRow}`);
+  topRentalsHeader.value = "TOP RENTED EQUIPMENT";
+  styleSectionHeader(topRentalsHeader);
+
+  const rTableCols = ["E", "F", "G", "H"];
+  const rHeaders = ["Item / Service Name", "Rentals Count", "Total Revenue", "% Share"];
+  rHeaders.forEach((h, i) => {
+    const cell = sheet.getCell(`${rTableCols[i]}${nextSectionRow + 1}`);
+    cell.value = h;
+    styleTableHeaderCell(cell);
+  });
+
+  let curRRow = nextSectionRow + 2;
+  const topItems = rentalAnalytics.topRentedItems.slice(0, 3);
+  if (topItems.length > 0) {
+    topItems.forEach((item, idx) => {
+      sheet.getCell(`E${curRRow}`).value = item.serviceName;
+
+      const countCell = sheet.getCell(`F${curRRow}`);
+      countCell.value = item.rentalsCount;
+      countCell.numFmt = "#,##0";
+      countCell.alignment = { horizontal: "center" };
+
+      const revCell = sheet.getCell(`G${curRRow}`);
+      revCell.value = item.totalRevenue;
+      revCell.numFmt = "₱#,##0.00";
+      revCell.alignment = { horizontal: "right" };
+
+      const shareCell = sheet.getCell(`H${curRRow}`);
+      const sharePct = rentalAnalytics.totalRentalRevenue > 0
+        ? Math.round((item.totalRevenue / rentalAnalytics.totalRentalRevenue) * 100)
+        : 0;
+      shareCell.value = `${sharePct}%`;
+      shareCell.alignment = { horizontal: "center" };
+
+      styleTableRow(sheet, `E${curRRow}:H${curRRow}`, idx % 2 === 1);
+      curRRow++;
+    });
+  } else {
+    sheet.mergeCells(`E${curRRow}:H${curRRow}`);
+    const emptyCell = sheet.getCell(`E${curRRow}`);
+    emptyCell.value = "No equipment rentals recorded in this period.";
+    emptyCell.alignment = { horizontal: "center" };
+    styleTableRow(sheet, `E${curRRow}:H${curRRow}`, false);
+    curRRow++;
+  }
 }
+
 
 /**
  * Builds the Detailed Reservations Sheet with rich styling, status badges, and formulas.
@@ -642,13 +723,214 @@ export function buildCancellationSheet(
 /**
  * Builds a Focused Category Sheet for standalone category exports.
  */
+
+/**
+ * Builds the Dedicated Additional Services & Rentals Sheet with canonical styling.
+ */
+export function buildRentalsSheet(workbook: ExcelJS.Workbook, rentals: ReportRentalRecord[]) {
+  const sheet = workbook.addWorksheet("Additional Services & Rentals", {
+    views: [{ showGridLines: true }],
+  });
+
+  sheet.properties.tabColor = { argb: COLORS.BRAND_DARK };
+
+  sheet.columns = [
+    { key: "rentalCode", width: 18 },
+    { key: "bookingReference", width: 18 },
+    { key: "customerName", width: 24 },
+    { key: "spotName", width: 18 },
+    { key: "serviceName", width: 24 },
+    { key: "serviceType", width: 16 },
+    { key: "billingMode", width: 14 },
+    { key: "durationUnits", width: 14 },
+    { key: "rateApplied", width: 16 },
+    { key: "totalAmount", width: 18 },
+    { key: "rentedAt", width: 20 },
+    { key: "dueAt", width: 20 },
+    { key: "returnedAt", width: 20 },
+    { key: "status", width: 16 },
+    { key: "staffName", width: 20 },
+  ];
+
+  // 1. Title Banner (Rows 2 to 3)
+  sheet.mergeCells("A2:O3");
+  const titleCell = sheet.getCell("A2");
+  titleCell.value = {
+    richText: [
+      { text: "DESKATLAS  ", font: { name: FONT_NAME, size: 14, bold: true, color: { argb: COLORS.BRAND_ACCENT } } },
+      { text: "ADDITIONAL SERVICES & EQUIPMENT RENTALS REPORT\n", font: { name: FONT_NAME, size: 13, bold: true, color: { argb: COLORS.WHITE } } },
+      { text: "Live Operational Records  •  System: LIVE DATABASE", font: { name: FONT_NAME, size: 9, color: { argb: COLORS.INFO_SOFT } } },
+    ],
+  };
+  titleCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: COLORS.BRAND_DARK },
+  };
+  titleCell.alignment = { vertical: "middle", horizontal: "left", indent: 1, wrapText: true };
+  applyCardBorder(sheet, "A2:O3", COLORS.BRAND_DARK);
+
+  // 2. Table Headers (Row 4)
+  const headerRow = sheet.getRow(4);
+  headerRow.height = 28;
+  const headers = [
+    "Rental Code",
+    "Booking Ref",
+    "Customer Name",
+    "Assigned Spot",
+    "Item / Service Name",
+    "Service Type",
+    "Billing Mode",
+    "Duration",
+    "Rate (PHP)",
+    "Total Fee (PHP)",
+    "Rented At",
+    "Due At",
+    "Returned At",
+    "Status",
+    "Staff Handler",
+  ];
+
+  headers.forEach((h, idx) => {
+    const colLetter = String.fromCharCode(65 + idx);
+    const cell = sheet.getCell(`${colLetter}4`);
+    cell.value = h;
+    styleTableHeaderCell(cell);
+  });
+
+  sheet.autoFilter = "A4:O4";
+
+  // 3. Data Rows (Starting at Row 5)
+  rentals.forEach((r, idx) => {
+    const rowNum = 5 + idx;
+    const row = sheet.getRow(rowNum);
+    row.height = 22;
+    const isZebra = idx % 2 === 1;
+
+    const totalFee = r.totalAmount + (r.extensionAmount || 0);
+
+    const values: Array<string | number> = [
+      r.rentalCode,
+      r.bookingReference,
+      r.customerName,
+      r.spotName,
+      r.serviceName,
+      r.serviceType,
+      r.billingMode,
+      `${r.durationUnits} ${r.billingMode === "daily" ? "day(s)" : "hr(s)"}`,
+      r.rateApplied,
+      totalFee,
+      formatDateTime(r.rentedAt),
+      formatDateTime(r.dueAt),
+      r.returnedAt ? formatDateTime(r.returnedAt) : "N/A",
+      r.status.toUpperCase(),
+      r.staffName || "Staff",
+    ];
+
+    values.forEach((v, vIdx) => {
+      const colLetter = String.fromCharCode(65 + vIdx);
+      const cell = sheet.getCell(`${colLetter}${rowNum}`);
+      cell.value = v;
+      styleDataCell(cell, isZebra);
+
+      // Status Badge (Col 14: N)
+      if (vIdx === 13) {
+        applyStatusBadgeStyle(cell, String(v));
+      }
+      // Rate (Col 9: I) & Total Fee (Col 10: J)
+      if (vIdx === 8 || vIdx === 9) {
+        cell.numFmt = "₱#,##0.00";
+        cell.alignment = { horizontal: "right", vertical: "middle" };
+      }
+      // Center aligned cols
+      if ([0, 1, 3, 5, 6, 7, 10, 11, 12].includes(vIdx)) {
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+      }
+    });
+  });
+
+  // 4. Summary Totals Row
+  if (rentals.length > 0) {
+    const totalRowNum = 5 + rentals.length;
+    const totalRow = sheet.getRow(totalRowNum);
+    totalRow.height = 24;
+
+    for (let c = 0; c < 15; c++) {
+      const colLetter = String.fromCharCode(65 + c);
+      const cell = sheet.getCell(`${colLetter}${totalRowNum}`);
+      styleTotalRowCell(cell);
+    }
+
+    const labelCell = sheet.getCell(`A${totalRowNum}`);
+    labelCell.value = "TOTAL / SUMMARY";
+
+    const countCell = sheet.getCell(`B${totalRowNum}`);
+    countCell.value = { formula: `COUNTA(A5:A${4 + rentals.length})` };
+    countCell.alignment = { horizontal: "center", vertical: "middle" };
+
+    const revenueCell = sheet.getCell(`J${totalRowNum}`);
+    revenueCell.value = { formula: `SUM(J5:J${4 + rentals.length})` };
+    revenueCell.numFmt = "₱#,##0.00";
+    revenueCell.alignment = { horizontal: "right", vertical: "middle" };
+  }
+}
+
+function getRentalAnalytics(snapshot: AdminReportsSnapshot, rentals: ReportRentalRecord[]): RentalAnalyticsSnapshot {
+  if (snapshot.rentalAnalytics) {
+    return snapshot.rentalAnalytics;
+  }
+  let totalRevenue = 0;
+  let activeRentalsCount = 0;
+  let returnedRentalsCount = 0;
+  let overdueRentalsCount = 0;
+  let totalDurationHours = 0;
+  const itemMap = new Map<string, { serviceId: string; serviceName: string; rentalsCount: number; totalRevenue: number }>();
+
+  for (const r of rentals) {
+    if (r.status === "active") activeRentalsCount++;
+    if (r.status === "returned") returnedRentalsCount++;
+    if (r.status === "overdue") overdueRentalsCount++;
+    const fee = r.totalAmount + (r.extensionAmount || 0);
+    if (r.status !== "cancelled") {
+      totalRevenue += fee;
+    }
+    const durationInHours = r.billingMode === "daily" ? r.durationUnits * 24 : r.durationUnits;
+    totalDurationHours += durationInHours;
+    const key = r.serviceName;
+    const existing = itemMap.get(key) ?? {
+      serviceId: r.serviceName,
+      serviceName: r.serviceName,
+      rentalsCount: 0,
+      totalRevenue: 0,
+    };
+    existing.rentalsCount++;
+    if (r.status !== "cancelled") {
+      existing.totalRevenue += fee;
+    }
+    itemMap.set(key, existing);
+  }
+
+  const topRentedItems = Array.from(itemMap.values()).sort((a, b) => b.rentalsCount - a.rentalsCount);
+
+  return {
+    totalRentalsCount: rentals.length,
+    activeRentalsCount,
+    returnedRentalsCount,
+    overdueRentalsCount,
+    totalRentalRevenue: totalRevenue,
+    averageDurationHours: rentals.length > 0 ? Number((totalDurationHours / rentals.length).toFixed(1)) : 0,
+    topRentedItems,
+  };
+}
+
 async function buildFocusedCategorySheet(
   workbook: ExcelJS.Workbook,
   categoryTitle: string,
   reservations: ReportReservationRecord[],
   payments: ReportPaymentAttemptRecord[],
   snapshot: AdminReportsSnapshot,
-  type: string
+  type: string,
+  rentals: ReportRentalRecord[] = []
 ) {
   if (type === "reservations") {
     buildReservationsSheet(workbook, reservations);
@@ -660,6 +942,8 @@ async function buildFocusedCategorySheet(
     buildCheckinSheet(workbook, reservations);
   } else if (type === "cancellation") {
     buildCancellationSheet(workbook, reservations, payments);
+  } else if (type === "rentals") {
+    buildRentalsSheet(workbook, rentals);
   }
 }
 

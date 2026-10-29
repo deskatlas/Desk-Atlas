@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/features/auth';
 import { AssistantLauncher } from '../../../../admin-portal/src/features/assistant/AssistantLauncher';
 import { SearchProvider, useSearch, ProfileDropdown } from '@deskatlas/ui';
-import { NotificationBell, BookingEndAlertModal, NearCheckoutAlertToasts, AlertsProvider } from '@/features/alerts';
+import { NotificationBell, BookingEndAlertModal, NearCheckoutAlertToasts, NearRentalEndAlertToasts, AlertsProvider } from '@/features/alerts';
 
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -38,6 +38,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { id: '/manage', label: 'Dashboard', iconType: 'dashboard', exact: true },
     { id: '/manage/reservations', label: 'Reservations', iconType: 'reservations', exact: false },
+    { id: '/manage/rentals', label: 'Rentals', iconType: 'rentals', exact: false },
     { id: '/manage/workspace-map', label: 'Workspace Map', iconType: 'map', exact: false },
     { id: '/manage/scan', label: 'QR Scanner', iconType: 'scan', exact: false },
     { id: '/manage/kiosk-confirm', label: 'Kiosk Queue', iconType: 'kiosk', exact: false },
@@ -77,7 +78,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
       case 'kiosk':
         return (
           <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-             <div style={{ width: '11px', height: '11px', border: `2.5px solid ${color}`, borderRadius: '2px' }}></div>
+            <div style={{ width: '11px', height: '11px', border: `2.5px solid ${color}`, borderRadius: '2px' }}></div>
           </div>
         );
       case 'activity':
@@ -86,6 +87,13 @@ function StaffShell({ children }: { children: React.ReactNode }) {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
             </svg>
+          </div>
+        );
+      case 'rentals':
+        return (
+          <div style={{ width: '15px', height: '15px', border: `2px solid ${color}`, borderRadius: '3px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: '7px', height: '2px', background: color, marginBottom: '1px' }}></div>
+            <div style={{ width: '9px', height: '2px', background: color }}></div>
           </div>
         );
       default:
@@ -134,7 +142,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
           {navItems.map((item, idx) => {
             const isActive = item.exact ? pathname === item.id : pathname?.startsWith(item.id);
             const navStyle = isActive ? { background: 'var(--da-brand-accent)', color: 'var(--da-brand-dark)' } : { color: 'rgba(255,255,255,.85)' };
-            
+
             return (
               <React.Fragment key={item.id}>
                 {sidebarOpen && idx === 1 && (
@@ -142,9 +150,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
                     OPERATIONS
                   </div>
                 )}
-                <div 
-                  onClick={() => { router.push(item.id); setMobileMenuOpen(false); }} 
-                  title={item.label} 
+                <div
+                  onClick={() => { router.push(item.id); setMobileMenuOpen(false); }}
+                  title={item.label}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'flex-start' : 'center', gap: sidebarOpen ? '11px' : '0', padding: sidebarOpen ? '10px 12px' : '10px 0', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...navStyle }}
                 >
                   {getIcon(item.iconType, isActive)}
@@ -205,6 +213,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
         {/* BOOKING END-TIME ALERT MODAL & NEAR CHECKOUT TOASTS */}
         <BookingEndAlertModal />
         <NearCheckoutAlertToasts />
+        <NearRentalEndAlertToasts />
       </div>
     </div>
   );

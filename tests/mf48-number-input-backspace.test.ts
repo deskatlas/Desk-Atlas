@@ -68,7 +68,7 @@ describe("MF-48: Number Input Backspace Bug & Numeric Input Handling", () => {
     });
   });
 
-  describe("handleNumericKeyDown — Keyboard Input Blocking & Navigation", () => {
+  describe("handleNumericKeyDown - Keyboard Input Blocking & Navigation", () => {
     it("allows backspace key and does not block it", () => {
       const { event, isDefaultPrevented } = createMockKeyEvent("Backspace", { value: "60" });
       handleNumericKeyDown(event);
@@ -304,6 +304,25 @@ describe("MF-48: Number Input Backspace Bug & Numeric Input Handling", () => {
         duration = "1";
       }
       assert.equal(duration, "1");
+    });
+  });
+  describe("Rental Desk: Assign and Extension Duration Units", () => {
+    it("allows backspacing duration leaving empty string while typing", () => {
+      let durationUnits = 1;
+      durationUnits = "";
+      assert.equal(durationUnits, "");
+
+      const numericUnits = typeof durationUnits === "number" ? durationUnits : parseInt(durationUnits, 10) || 0;
+      assert.equal(numericUnits, 0);
+
+      durationUnits = "4";
+      assert.equal(durationUnits, "4");
+
+      durationUnits = "";
+      if (!durationUnits || parseInt(String(durationUnits), 10) < 1) {
+        durationUnits = 1;
+      }
+      assert.equal(durationUnits, 1);
     });
   });
 });

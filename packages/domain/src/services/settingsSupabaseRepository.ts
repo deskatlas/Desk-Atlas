@@ -39,6 +39,7 @@ type BusinessSettingsRow = {
   kiosk_allowance_minutes?: number | null;
   booking_end_alert_minutes?: number | null;
   near_checkout_threshold_minutes?: number | null;
+  rental_alert_minutes?: number | null;
   customer_session_timeout_minutes?: number | null;
   customer_reschedule_cutoff_hours?: number | null;
   reschedule_max_advance_value?: number | null;
@@ -138,7 +139,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
 
   private async loadBusinessSettings(): Promise<BusinessSettings> {
     const rows = await this.request<BusinessSettingsRow[]>(
-      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,near_checkout_threshold_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,customer_cancellation_cutoff_value,customer_cancellation_cutoff_unit,max_advance_booking_days,day_pass_start_time,day_pass_end_time,night_pass_start_time,night_pass_end_time,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
+      '/business_settings?select=id,business_name,timezone,contact_email,contact_phone,facebook_url,instagram_url,twitter_url,website_url,booking_interval_minutes,payment_expiry_minutes,kiosk_timeout_minutes,kiosk_allowance_minutes,booking_end_alert_minutes,near_checkout_threshold_minutes,rental_alert_minutes,customer_session_timeout_minutes,customer_reschedule_cutoff_hours,reschedule_max_advance_value,reschedule_max_advance_unit,customer_cancellation_cutoff_value,customer_cancellation_cutoff_unit,max_advance_booking_days,day_pass_start_time,day_pass_end_time,night_pass_start_time,night_pass_end_time,landing_preview_photos,status_colors,cancellation_policy_pdf_url,cancellation_policy_pdf_filename,cancellation_policy_updated_at,updated_at&id=eq.1&limit=1'
     ).catch(async () => {
       // Fallback if pass windows or max_advance_booking_days are not yet present on remote
       return this.request<BusinessSettingsRow[]>(
@@ -193,6 +194,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
         kioskAllowanceMinutes: 5,
         bookingEndAlertMinutes: 5,
         nearCheckoutThresholdMinutes: 15,
+        rentalAlertMinutes: 5,
         customerSessionTimeoutMinutes: 20,
         customerRescheduleCutoffHours: 12,
         rescheduleMaxAdvanceValue: 30,
@@ -237,6 +239,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       kioskAllowanceMinutes: row.kiosk_allowance_minutes ?? 5,
       bookingEndAlertMinutes: row.booking_end_alert_minutes ?? 5,
       nearCheckoutThresholdMinutes: row.near_checkout_threshold_minutes ?? row.booking_end_alert_minutes ?? 15,
+      rentalAlertMinutes: row.rental_alert_minutes ?? 5,
       customerSessionTimeoutMinutes: row.customer_session_timeout_minutes ?? 20,
       customerRescheduleCutoffHours: row.customer_reschedule_cutoff_hours ?? 12,
       rescheduleMaxAdvanceValue: row.reschedule_max_advance_value ?? 30,
@@ -283,6 +286,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       kiosk_allowance_minutes: input.kioskAllowanceMinutes ?? 5,
       booking_end_alert_minutes: input.bookingEndAlertMinutes ?? 5,
       near_checkout_threshold_minutes: input.nearCheckoutThresholdMinutes ?? input.bookingEndAlertMinutes ?? 15,
+      rental_alert_minutes: input.rentalAlertMinutes ?? 5,
       customer_session_timeout_minutes: input.customerSessionTimeoutMinutes ?? 20,
       customer_reschedule_cutoff_hours: input.customerRescheduleCutoffHours ?? 12,
       reschedule_max_advance_value: input.rescheduleMaxAdvanceValue ?? 30,
@@ -350,6 +354,7 @@ export class SupabaseSettingsRepository implements SettingsRepository {
       delete fallbackPayload.kiosk_allowance_minutes;
       delete fallbackPayload.booking_end_alert_minutes;
       delete fallbackPayload.near_checkout_threshold_minutes;
+      delete fallbackPayload.rental_alert_minutes;
       delete fallbackPayload.cancellation_policy_pdf_url;
       delete fallbackPayload.cancellation_policy_pdf_filename;
       delete fallbackPayload.cancellation_policy_updated_at;

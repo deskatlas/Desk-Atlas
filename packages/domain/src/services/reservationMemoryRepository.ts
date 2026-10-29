@@ -60,6 +60,7 @@ import { BookingAccessRecord, BookingAccessRepository } from "./bookingAccessRep
 import { CounterPaymentRepository } from "./counterPaymentRepository";
 import {
   ReportPaymentAttemptRecord,
+  ReportRentalRecord,
   ReportReservationRecord,
 } from "../models/reports";
 import {
@@ -1116,6 +1117,20 @@ export class ReservationMemoryRepository
         } satisfies ReportReservationRecord;
       })
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  private reportRentals: ReportRentalRecord[] = [];
+
+  setReportRentals(rentals: ReportRentalRecord[]): void {
+    this.reportRentals = [...rentals];
+  }
+
+  addReportRental(rental: ReportRentalRecord): void {
+    this.reportRentals.push(rental);
+  }
+
+  async listReportRentals(): Promise<ReportRentalRecord[]> {
+    return [...this.reportRentals];
   }
 
   async listReportPaymentAttempts(): Promise<ReportPaymentAttemptRecord[]> {

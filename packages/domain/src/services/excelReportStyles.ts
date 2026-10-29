@@ -62,12 +62,10 @@ export function applyStatusBadgeStyle(cell: ExcelJS.Cell, status: string) {
   } else if (["NEEDS_MANUAL_RESOLUTION", "PENDING", "PROCESSING", "PAUSED"].includes(st)) {
     bg = COLORS.WARNING_BG;
     fg = COLORS.WARNING_FG;
-  } else if (["CANCELLED", "FAILED", "EXPIRED", "REJECTED"].includes(st)) {
+  } else if (["CANCELLED", "FAILED", "EXPIRED", "REJECTED", "OVERDUE"].includes(st)) {
     bg = COLORS.DANGER_BG;
     fg = COLORS.DANGER_FG;
-  }
-
-  if (["DRAFT", "ARCHIVED"].includes(st)) {
+  } else if (["DRAFT", "ARCHIVED", "RETURNED"].includes(st)) {
     bg = COLORS.CANVAS;
     fg = COLORS.TEXT_SECONDARY;
   }
@@ -86,4 +84,3 @@ export function styleTotalRowCell(cell: ExcelJS.Cell) {
   };
   cell.alignment = { vertical: "middle" };
 }
-

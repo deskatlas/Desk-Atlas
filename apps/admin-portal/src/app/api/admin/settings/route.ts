@@ -55,6 +55,10 @@ export async function PATCH(request: NextRequest) {
             : body.bookingEndAlertMinutes !== undefined && body.bookingEndAlertMinutes !== null
               ? Number(body.bookingEndAlertMinutes)
               : 15,
+        rentalAlertMinutes:
+          body.rentalAlertMinutes !== undefined && body.rentalAlertMinutes !== null
+            ? Number(body.rentalAlertMinutes)
+            : undefined,
         customerSessionTimeoutMinutes:
           body.customerSessionTimeoutMinutes !== undefined && body.customerSessionTimeoutMinutes !== null
             ? Number(body.customerSessionTimeoutMinutes)
