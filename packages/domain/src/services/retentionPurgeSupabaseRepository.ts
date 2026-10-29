@@ -328,6 +328,11 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
         await this.client.from('paid_candidate_recovery').delete().in('reservation_id', chunk);
       } catch {}
 
+      // f2. Delete booking_rentals (and cascading rental_extensions)
+      try {
+        await this.client.from('booking_rentals').delete().in('reservation_id', chunk);
+      } catch {}
+
       // g. Delete payment_attempts
       const { data: delPayments } = await this.client
         .from('payment_attempts')
