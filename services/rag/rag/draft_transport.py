@@ -40,6 +40,55 @@ def restore_draft(value, schema):
                                        for block in value.b])
 
 
+def canonical_access_blocks(blocks, proof, originals=None):
+    """Protect QR identities/roles with mapped ORIGINAL wording before review.
+
+    A positive model verdict cannot authorize swapping payment and booking QR
+    roles. Reuse the already-selected exact evidence, never a canned policy.
+    Independent relevance, completeness and source checks still run afterward.
+    """
+    result = []
+    for block in blocks:
+        if re.search(r'\bQR(?:s| codes?)?\b', block['text'], re.I):
+            exact = '\n\n'.join(proof[index]['text'] for index in block['support'])
+            if not re.search(r'\bQR(?:s| codes?)?\b', exact, re.I):
+                # A draft may cite adjacent check-in prose while misstating
+                # the QR identity. Recover exact QR rules from the SAME fully
+                # selected originals, then independently check applicability.
+                rules = [u for u in originals or [] if re.search(r'\bQR(?:s| codes?)?\b', u['text'], re.I)]
+                if not rules:
+                    from fastapi import HTTPException
+                    raise HTTPException(503, detail='INVALID_MODEL_OUTPUT')
+                seen = set()
+                for rule in rules:
+                    if rule['text'] in seen:
+                        continue
+                    seen.add(rule['text'])
+                    address = next((i for i, u in enumerate(proof) if u['i'] == rule['i']), None)
+                    if address is None:
+                        address = len(proof)
+                        proof.append(rule)
+                    result.append({'kind': 'text', 'text': rule['text'], 'support': [address]})
+                continue
+            block = {**block, 'text': exact}
+        result.append(block)
+    return result
+
+
+def requested_scope(query, proposed):
+    """A draft label cannot turn one task into an entire-document request."""
+    if proposed == 'DOCUMENT_WIDE' and not re.search(
+            r'\b(?:entire|whole|full|complete)\s+(?:source|document|manual|sop|handbook)\b', query, re.I):
+        return 'MULTI_PART'
+    return proposed
+
+
+def overview_requested(query):
+    return bool(re.search(r'\b(?:big picture|overview|where (?:do|should) (?:i|we) start|'
+                          r'what should (?:i|we) (?:focus on|prioritize)|'
+                          r'what (?:are|should be) (?:my|our) priorities)\b', query, re.I))
+
+
 NO_HOLD = re.compile(r"\b(?:(?:does|do|will|can)(?: not|n['’]t)\s+(?:hold|reserve|secure)|never\s+(?:hold|reserve|secure)|no inventory holds?)\b", re.I)
 
 

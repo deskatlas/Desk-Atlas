@@ -493,6 +493,9 @@ async def document_answer(query, sources, generate, synthesis=True, *, customer_
                 raise HTTPException(503, detail='INVALID_MODEL_OUTPUT')
             blocks.append(block.model_copy(update={'text': text}))
         candidate = candidate.model_copy(update={'blocks': blocks})
+    from .draft_transport import canonical_access_blocks, requested_scope
+    candidate = Composition(scope=requested_scope(query, candidate.scope), blocks=canonical_access_blocks(
+        [block.model_dump() for block in candidate.blocks], proof, units))
     if (not candidate.blocks or wire_length('\n\n'.join(b.text for b in candidate.blocks)) > BUDGET['answer_utf16']
             or any(len(set(b.support)) != len(b.support) or any(i < 0 or i >= len(proof) for i in b.support) for b in candidate.blocks)):
         raise HTTPException(503, detail='INVALID_MODEL_OUTPUT')
@@ -516,8 +519,9 @@ async def document_answer(query, sources, generate, synthesis=True, *, customer_
     # AFTER all independent full-document checks, return cited original spans
     # and remap indexes to the gateway's strict all-spans-referenced contract.
     used = {i for block in candidate.blocks for i in block.support}
-    remap = {old: new for new, old in enumerate(i for i in range(len(proof)) if i in used)}
-    proof = [unit for i, unit in enumerate(proof) if i in used]
+    order = sorted(used, key=lambda i: proof[i]['i'])
+    remap = {old: new for new, old in enumerate(order)}
+    proof = [proof[i] for i in order]
     candidate = candidate.model_copy(update={'blocks': [block.model_copy(update={
         'support': [remap[i] for i in block.support]}) for block in candidate.blocks]})
     spans = [{'chunk_id': u['chunk_id'], 'quote': u['text'], 'start': u['start'], 'end': u['end']} for u in proof]

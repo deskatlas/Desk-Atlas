@@ -1,0 +1,40 @@
+
+> deskatlas-monorepo@ test C:\Users\reyna\Desk-Atlas
+> vitest run
+
+
+ RUN  v5.0.0 C:/Users/reyna/Desk-Atlas
+
+ ❯ tests/ms98-admin-rag-broad-repair.test.ts (11 tests | 1 failed) 73ms
+   ❯ admin conversational snapshot routing (10)
+     × asks for the missing payment channel without blocking explicitly online questions 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ms98-admin-rag-broad-repair.test.ts > admin conversational snapshot routing > asks for the missing payment channel without blocking explicitly online questions
+AssertionError: expected 'Was the payment made online through t…' to contain 'pay online'
+
+Expected: "pay online"
+Received: "Was the payment made online through the website, or at the kiosk counter? The review steps depend on the payment channel."
+
+ ❯ tests/ms98-admin-rag-broad-repair.test.ts:9:131
+      7| describe('admin conversational snapshot routing', () => {
+      8|   it('asks for the missing payment channel without blocking explicitly…
+      9|     expect(assistantTroubleshootingClarification("Someone says they pa…
+       |                                                                                                                                   ^
+     10|     expect(assistantTroubleshootingClarification("They paid online, bu…
+     11|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 300 passed | 7 skipped (308)
+      Tests  1 failed | 2805 passed | 1 expected fail | 43 skipped (2850)
+   Start at  13:06:18
+   Duration  187.26s (import 92%, transform 5%, tests 3%, worker 1%)
+
+     Import  643 modules were evaluated 3208 times · 1692.93s total, 92% of tracked time
+             ~32.10s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation
+
+ ELIFECYCLE  Test failed. See above for more details.

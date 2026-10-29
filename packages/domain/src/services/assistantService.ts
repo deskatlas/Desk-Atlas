@@ -43,12 +43,26 @@ export function guidanceDocumentPlan(message: string): AssistantPlan | undefined
 }
 
 export function currentOperationalPlan(message: string): AssistantPlan | undefined {
-  const text = message.normalize('NFKC').toLowerCase();
+  let text = message.normalize('NFKC').toLowerCase();
+  // PRD-F26 / QAD-TC44/46: bounded current snapshot grammar avoids inference.
+  if (/^how are (?:things|operations) (?:looking|going) (?:today|right now)\?\s*(?:anything (?:i|we) need to (?:deal with|know|check)\?)?$/.test(text.trim())) return { kind: 'OPERATIONAL', query: '', tools: [assistantToolSchema.parse({ name: 'operational_snapshot', args: {} })] };
+  // Only conjuncts naming another metric in the SAME fixed-day snapshot may
+  // disappear for this shortcut. Advice, other metrics and filters still defer.
+  text = text.replace(/\s+and\s+(?:current\s+)?(?:check[ -]?ins?|bookings?|reservations?)(?=\s|[?.!]|$)/g, '');
   // MS44-TC04: the existing snapshot shortcut must also defer mixed intent.
   if (/[;\n]|\b(and|also|then|how|procedure|policy|sop|paano|at|saka|report|ulat)\b/.test(text.replace(/how many/g, 'count'))) return undefined;
   if (/history|yesterday|last|previous|noong|kahapon|nakaraan|revenue|payment|kita|magkano|compare|comparison|floor|desk|template|\d/.test(text)) return undefined;
   if (!/how many|count|number of|\bilang\b|\bilan\b/.test(text) || !/bookings?|reservations?|reserbasyon|check[ -]?ins?|checked[ -]?in/.test(text) || !/today|ngayong araw|ngayon|right now|currently/.test(text)) return undefined;
   return { kind: 'OPERATIONAL', query: '', tools: [assistantToolSchema.parse({ name: 'operational_snapshot', args: {} })] };
+}
+
+// No subject means no source can establish which incident procedure applies.
+export function assistantTroubleshootingClarification(message: string): string | undefined {
+  if (/^what (?:usually|typically|commonly) goes wrong[?,]?\s*(?:and how (?:should|do|can) (?:i|we) handle (?:it|that)\??)?$/i.test(message.trim())) return 'Which kind of problem do you mean: guest complaints, bookings and payments, or facilities and equipment?';
+  if (/\b(?:paid|payment)\b/i.test(message)
+    && /\b(?:not|isn['’]t|hasn['’]t been|still isn['’]t)\s+confirmed\b/i.test(message)
+    && !/\b(?:online|website|kiosk|counter|walk.in|front desk)\b/i.test(message)) return 'Did they pay online through the website, or at the kiosk counter?';
+  return undefined;
 }
 
 // QAD-TC44: previous user intent qualifies references, never a new named task.
@@ -166,6 +180,16 @@ export function authorizeAssistantTool(actor: AssistantActor, input: unknown): A
   return tool;
 }
 export async function executeAssistantTool(repository: AssistantRepository, actor: AssistantActor, input: unknown, timezone: string, asOf: string): Promise<AssistantToolResult> {
+  // Normalize only redundant current-day arguments, using the trusted business
+  // clock. Conflicting days remain rejected by the ordinary authorization path.
+  const candidate = assistantToolSchema.safeParse(input);
+  if (candidate.success && candidate.data.name === 'operational_snapshot') {
+    const args = candidate.data.args, today = businessDate(asOf, timezone);
+    if (args.period === 'today' && args.start_date === today && args.end_date === today) {
+      delete args.start_date; delete args.end_date;
+      input = candidate.data;
+    }
+  }
   const tool = authorizeAssistantTool(actor, input);
   if (tool.name === 'workspace_availability' && Date.parse(tool.args.start_at!) < Date.parse(asOf)) throw new AssistantError('UNSUPPORTED_HISTORY', 'Historical availability cannot be reconstructed. Specify a current or future interval.');
   if (tool.args.metric && ['booked_hours', 'booked_occupancy', 'actual_usage', 'cancellation_events'].includes(tool.args.metric)) throw new AssistantError('UNSUPPORTED_HISTORY', 'Reliable historical allocation, operating availability, attendance, or event coverage is unavailable. This metric is N/A.');

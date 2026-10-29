@@ -1,0 +1,50 @@
+{
+  "service": "deskatlas-rag-chat-production",
+  "url": "https://conv1029-q35---deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app",
+  "tag": "conv1029-q35",
+  "latest_ready_revision": "deskatlas-rag-chat-production-conv1029-q35",
+  "implementation_fingerprint": "307f0a7dc710e652eb25718907bcc834f2f57b93269bef6dbbc6447a44cab433",
+  "checks": [
+    {
+      "stage": "no_google_identity",
+      "status": 403,
+      "elapsed_ms": 328
+    },
+    {
+      "stage": "google_identity_only",
+      "status": 401,
+      "elapsed_ms": 297
+    },
+    {
+      "stage": "invalid_capability",
+      "status": 401,
+      "elapsed_ms": 281
+    },
+    {
+      "stage": "authenticated_health",
+      "status": 200,
+      "elapsed_ms": 266
+    },
+    {
+      "stage": "internal_capability_on_customer_route",
+      "status": 401,
+      "elapsed_ms": 250
+    },
+    {
+      "stage": "legacy_customer_plan",
+      "status": 200,
+      "elapsed_ms": 4531
+    },
+    {
+      "stage": "constraints_v1_customer_plan",
+      "status": 200,
+      "elapsed_ms": 2141
+    },
+    {
+      "stage": "private_record_routing",
+      "status": 200,
+      "elapsed_ms": 281
+    }
+  ],
+  "passed": true
+}

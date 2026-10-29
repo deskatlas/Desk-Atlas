@@ -202,6 +202,27 @@ describe('MS-65: General Document RAG Reliability and Evidence Contract Repair',
     });
   }
 
+  it('clarifies subject-free troubleshooting without model or document reads', async () => {
+    vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
+    vi.stubEnv('RAG_INTERNAL_CATALOG_DISCOVERY', 'true');
+    const response = await assistantQuery(paymentRequest('What usually goes wrong, and how should I handle it?'));
+    const answer = (await response.json()).data;
+    expect(response.status).toBe(200);
+    expect(answer.kind).toBe('CLARIFY');
+    expect(answer.summary).toContain('Which kind of problem');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(db.rpc.mock.calls.some(([name]) => name === 'assistant_document_evidence')).toBe(false);
+  });
+
+  it('returns a schema-valid payment-channel clarification without model calls', async () => {
+    const response = await assistantQuery(paymentRequest("Someone says they paid, but their booking isn't confirmed. What should I do?"));
+    const answer = (await response.json()).data;
+    expect(response.status).toBe(200);
+    expect(answer.kind).toBe('CLARIFY');
+    expect(answer.summary).toBe('Did they pay online through the website, or at the kiosk counter?');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('ragfix embeds original wording and deterministic search aids in one bounded batch', async () => {
     vi.stubEnv('RAG_EVIDENCE_CONTRACT', 'ms65-v1');
     vi.stubEnv('RAG_GUIDANCE_FAST_PATH', 'true');

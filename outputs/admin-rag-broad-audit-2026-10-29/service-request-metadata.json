@@ -1,0 +1,444 @@
+[
+  {
+    "httpRequest": {
+      "latency": "2.816772423s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:31:43.857605Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "5.381360261s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:31:38.217934Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "5.242241852s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:54.854928Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.319269954s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/context",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:53.996522Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.619295237s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/embed-queries",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:52.549474Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.716231679s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:50.586884Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.995071050s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:49.341947Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "4.250427154s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:15.054462Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.326723897s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/context",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:13.771436Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.297099111s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/embed-queries",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:12.491810Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "2.341664589s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:09.926445Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.043737769s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:30:08.643702Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.631773233s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:51.947005Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.348280055s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/context",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:50.663885Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "2.156562818s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/embed-queries",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:47.717103Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "4.829959827s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:42.641262Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "3.811466104s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:38.568345Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "2.540623586s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:16.796005Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.852152616s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:15.004663Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "3.980363719s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 503
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:01.631627Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.014617952s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:29:00.379274Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "3.272921635s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:43.070666Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.352386838s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/context",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:41.691267Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.175297961s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/embed-queries",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:39.668310Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "3.881611754s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:35.533249Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "0.811148318s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:34.485624Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "5.735574189s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:17.004122Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.033311880s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:28:14.803933Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "4.709586031s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 400
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:27:47.000294Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "15.175904057s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/embed-queries",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:27:30.116175Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "3.509370726s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:27:26.380141Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.596662646s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:27:24.519645Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "7.189436526s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/document-support",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:27:07.141979Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "1.649422212s",
+      "requestUrl": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app/v1/catalog-plan",
+      "status": 200
+    },
+    "resource": {
+      "labels": {
+        "revision_name": "deskatlas-rag-chat-production-conv1029-q35"
+      }
+    },
+    "timestamp": "2026-10-29T04:27:04.491997Z"
+  }
+]

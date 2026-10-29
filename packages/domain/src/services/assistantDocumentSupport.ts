@@ -16,6 +16,10 @@ export function validateDocumentSupport(value: unknown, binding: string, sources
     const referenced = new Set(result.synthesis.blocks.flatMap(b => b.support));
     if (referenced.size !== result.spans.length) return undefined;
     if (result.synthesis.blocks.some(block => /https?:\/\/|<\/?\w|\]\(/i.test(block.text))) return undefined;
+    // QAD-TC44/46: require source wording for QR roles even if an upstream
+    // semantic verifier approved a substituted QR identity or negated action.
+    if (result.synthesis.blocks.some(block => /\bQR(?:s| codes?)?\b/i.test(block.text)
+      && block.text !== block.support.map(index => result.spans[index]?.quote).join('\n\n'))) return undefined;
   }
   return result;
 }

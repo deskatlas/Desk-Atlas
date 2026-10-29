@@ -1059,6 +1059,9 @@ def data_continuation(message):
 def measured_data_request(message, history=()):
     """Admit measured data from the user's request, never a prior tool result."""
     text = message.casefold()
+    if re.fullmatch(r'how are (?:things|operations) (?:looking|going) (?:today|right now)\?\s*'
+                    r'(?:anything (?:i|we) need to (?:deal with|know|check)\?)?', text.strip()):
+        return True
     measured = bool(re.search(r'\b(?:how many|count(?:s)?|number of|totals?|revenue|trends?|compare|comparison|'
                               r'occupancy|vacant|occupied|ilang|bilang|kita)\b', text)
                     or re.search(r'\b(?:show|give|get|list|check|fetch|what|which|are|is)\b[^?]*'
@@ -1086,6 +1089,13 @@ def workflow_question(message):
 
 
 def scope_clarification(message, fresh):
+    if re.fullmatch(r'what (?:usually|typically|commonly) goes wrong[?,]?\s*'
+                    r'(?:and how (?:should|do|can) (?:i|we) handle (?:it|that)\??)?', message.strip(), re.I):
+        return 'Which kind of problem do you mean: guest complaints, bookings and payments, or facilities and equipment?'
+    if (re.search(r'\b(?:paid|payment)\b', message, re.I)
+            and re.search(r"\b(?:not|isn['’]t|hasn['’]t been|still isn['’]t)\s+confirmed\b", message, re.I)
+            and not re.search(r'\b(?:online|website|kiosk|counter|walk.in|front desk)\b', message, re.I)):
+        return 'Did they pay online through the website, or at the kiosk counter?'
     text = message.strip().casefold()
     if (re.search(r'\b(?:i.m|i am|we.re|we are|my)\b.*\b(?:finish|finishing|done|ending)\b.*\b(?:day|shift)\b', text)
             and not re.search(r'\b(?:clos(?:e|ing)|handover|hand over|next shift)\b', text)):

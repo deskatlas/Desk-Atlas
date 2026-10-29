@@ -1,0 +1,164 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+.........F.............................................................. [ 24%]
+........................................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 58%]
+........................................................................ [ 66%]
+........................................................................ [ 74%]
+........................................................................ [ 83%]
+..........ssssssssssssssss.............................................. [ 91%]
+......................................................................F. [ 99%]
+...                                                                      [100%]
+================================== FAILURES ===================================
+___________ test_startup_canary_requires_real_structured_completion ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002B88C6B7D10>
+
+    def test_startup_canary_requires_real_structured_completion(monkeypatch):
+        monkeypatch.setenv('KB_ENABLED', 'false')
+        monkeypatch.setenv('RAG_SERVICE_TOKEN', 's' * 32)
+        monkeypatch.setenv('RAG_CAPABILITY_SECRET', 'c' * 32)
+        monkeypatch.setenv('RAG_SCOPE_ID', 'synthetic')
+        real_client = httpx.AsyncClient
+        for valid in (True, False):
+            calls = []
+            def handler(request):
+                calls.append(request.url)
+                return httpx.Response(200, json=completion(reason='stop' if valid else 'length'))
+            def client_factory(**kwargs):
+                assert kwargs['base_url'] == 'https://api.deepinfra.com'
+                assert kwargs['follow_redirects'] is False
+                assert kwargs['trust_env'] is False
+                client = real_client(**kwargs, transport=httpx.MockTransport(handler))
+                clients.append(client)
+                return client
+            async def start():
+                async with api.lifespan(api.app):
+                    assert valid
+            clients = []
+            with patch.object(api.httpx, 'AsyncClient', side_effect=client_factory):
+                if valid:
+>                   asyncio.run(start())
+
+services\rag\tests\test_deepinfra.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+services\rag\tests\test_deepinfra.py:250: in start
+    async with api.lifespan(api.app):
+               ^^^^^^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+app = <fastapi.applications.FastAPI object at 0x000002B88C036C90>
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        progress = getattr(app.state, 'startup_progress', lambda _stage: None)
+        progress('configuration')
+        for name in ('RAG_SERVICE_TOKEN', 'RAG_CAPABILITY_SECRET'):
+            if len(required(name)) < 32:
+                raise RuntimeError('Service credentials must be at least 32 characters')
+        required('RAG_SCOPE_ID')
+        selected_provider = provider()
+        model = answer_model()
+        headers = {}
+        if selected_provider == 'deepinfra':
+            parsed = urlparse(DEEPINFRA_ORIGIN)
+            headers = deepinfra_headers()
+        else:
+            if not re.fullmatch(r'[a-f0-9]{64}', required('RAG_ANSWER_DIGEST')):
+                raise RuntimeError('Full pinned model digests are required')
+            parsed = urlparse(os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434'))
+        if parsed.scheme != 'https' and parsed.hostname not in ('127.0.0.1', 'localhost', '::1'):
+            raise RuntimeError('Model transport must be local or private TLS')
+        progress('private transport')
+        app.state.client = httpx.AsyncClient(base_url=parsed.geturl(), headers=headers, timeout=httpx.Timeout(45, connect=3), follow_redirects=False, trust_env=False)
+        try:
+            progress('transport ready')
+            # MS65 candidate: at most three internal partition passes; aggregate
+            # work and request deadlines remain independently enforced.
+            app.state.slots = asyncio.Semaphore(DOCUMENT_BUDGET['concurrency'])
+            app.state.internal_batch_slots = asyncio.Semaphore(8)
+            app.state.customer_slots = asyncio.Semaphore(2)
+            app.state.requests = 0
+            app.state.encoder = None
+            if os.environ.get('KB_ENABLED') == 'true':
+                progress('embedding model')
+                # Use exactly the same pinned encoder as SPEC-5 ingestion. Quantized
+                # Ollama query vectors must never be mixed with this float32 generation.
+                from rag.encoder import Encoder
+                root = Path(__file__).resolve().parent
+                manifest = json.loads((root / 'models.json').read_text(encoding='utf-8'))
+                fingerprint = embedding_fingerprint(manifest)
+                if required('RAG_EMBEDDING_FINGERPRINT') != fingerprint:
+                    raise RuntimeError('Embedding fingerprint mismatch')
+                app.state.encoder = HostedEncoder() if embedding_provider() == 'deepinfra' else Encoder(manifest, root / '.cache' / 'models')
+                if embedding_provider() == 'deepinfra':
+                    await verify_embedding_readiness(app.state.encoder)
+                progress('embedding ready')
+            batched_support = (os.environ.get('RAG_INTERNAL_BATCHED_SUPPORT', 'false') == 'true'
+                or os.environ.get('RAG_PREPARED_SUPPORT') == 'true'
+                or os.environ.get('RAG_CUSTOMER_BATCHED_SUPPORT', 'false') == 'true')
+            if os.environ.get('RAG_PREPARED_SUPPORT') == 'true' and selected_provider != 'deepinfra':
+                raise RuntimeError('PREPARED_SUPPORT_REQUIRES_EXPLICIT_HOSTED_PROVIDER')
+            if selected_provider == 'deepinfra':
+                planning_limits(internal=True)
+                if batched_support and (not document_limits()['byte_tokens'] or not planning_limits()['byte_tokens']):
+                    from rag.hosted_tokenizer import tokenizer
+                    tokenizer()
+                progress('hosted answer model verification')
+                # Synthetic schema canary exercises credentials and constrained output.
+                # No source text is used and readiness fails if the provider is unusable.
+                result = await generate('Return JSON with p=[] and c=false.', {}, PassageSelection)
+                if result.passages or result.conflicting_sources:
+                    raise RuntimeError('Hosted answer model canary failed')
+                if document_model() != answer_model():
+                    if not batched_support:
+>                       raise RuntimeError('DOCUMENT_MODEL_REQUIRES_BATCHED_SUPPORT')
+E                       RuntimeError: DOCUMENT_MODEL_REQUIRES_BATCHED_SUPPORT
+
+services\rag\app.py:584: RuntimeError
+______ test_health_exposes_imported_identity_without_echoing_credentials ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002B8CAE543B0>
+
+    def test_health_exposes_imported_identity_without_echoing_credentials(monkeypatch):
+        import app
+        loaded = app.LOADED_IMPLEMENTATION
+        monkeypatch.setattr(app, 'implementation_fingerprint', lambda: 'new-source-not-loaded')
+        result = asyncio.run(app.health(None))
+>       assert result == {'ready': True, 'implementation_fingerprint': loaded,
+                          'answer_provider': 'ollama', 'answer_model': 'qwen3:4b',
+                          'document_answer_model': 'qwen3:4b',
+                          'evidence_contracts': ['ms65-v1']}
+E       AssertionError: assert {'answer_mode...s65-v1'], ...} == {'answer_mode...s65-v1'], ...}
+E         
+E         Omitting 4 identical items, use -vv to show
+E         Differing items:
+E         {'answer_model': 'Qwen/Qwen3.6-35B-A3B'} != {'answer_model': 'qwen3:4b'}
+E         {'document_answer_model': 'Qwen/Qwen3.6-35B-A3B'} != {'document_answer_model': 'qwen3:4b'}
+E         Use -v to get more diff
+
+services\rag\tests\test_runtime_identity.py:27: AssertionError
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_deepinfra.py::test_startup_canary_requires_real_structured_completion
+FAILED services/rag/tests/test_runtime_identity.py::test_health_exposes_imported_identity_without_echoing_credentials
+2 failed, 849 passed, 16 skipped, 1 warning in 25.65s

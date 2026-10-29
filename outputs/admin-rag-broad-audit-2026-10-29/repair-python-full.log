@@ -1,0 +1,201 @@
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 58%]
+........................................................................ [ 66%]
+........................................................................ [ 74%]
+........................................................................ [ 83%]
+..........ssssssssssssssss...............................F..........F... [ 91%]
+........................................................................ [ 99%]
+...                                                                      [100%]
+================================== FAILURES ===================================
+_______ test_cancelled_discovery_cancels_inference_and_restores_limits ________
+
+fut = <coroutine object Event.wait at 0x00000209BD405620>, timeout = 1
+
+    async def wait_for(fut, timeout):
+        """Wait for the single Future or coroutine to complete, with timeout.
+    
+        Coroutine will be wrapped in Task.
+    
+        Returns result of the Future or coroutine.  When a timeout occurs,
+        it cancels the task and raises TimeoutError.  To avoid the task
+        cancellation, wrap it in shield().
+    
+        If the wait is cancelled, the task is also cancelled.
+    
+        If the task suppresses the cancellation and returns a value instead,
+        that value is returned.
+    
+        This function is a coroutine.
+        """
+        # The special case for timeout <= 0 is for the following case:
+        #
+        # async def test_waitfor():
+        #     func_started = False
+        #
+        #     async def func():
+        #         nonlocal func_started
+        #         func_started = True
+        #
+        #     try:
+        #         await asyncio.wait_for(func(), 0)
+        #     except asyncio.TimeoutError:
+        #         assert not func_started
+        #     else:
+        #         assert False
+        #
+        # asyncio.run(test_waitfor())
+    
+    
+        if timeout is not None and timeout <= 0:
+            fut = ensure_future(fut)
+    
+            if fut.done():
+                return fut.result()
+    
+            await _cancel_and_wait(fut)
+            try:
+                return fut.result()
+            except exceptions.CancelledError as exc:
+                raise TimeoutError from exc
+    
+        async with timeouts.timeout(timeout):
+>           return await fut
+                   ^^^^^^^^^
+
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\tasks.py:520: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asyncio.locks.Event object at 0x00000209BD6210D0 [unset]>
+
+    async def wait(self):
+        """Block until the internal flag is true.
+    
+        If the internal flag is true on entry, return True
+        immediately.  Otherwise, block until another coroutine calls
+        set() to set the flag to true, then return True.
+        """
+        if self._value:
+            return True
+    
+        fut = self._get_loop().create_future()
+        self._waiters.append(fut)
+        try:
+>           await fut
+E           asyncio.exceptions.CancelledError
+
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\locks.py:212: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000209FB705AC0>
+
+    def test_cancelled_discovery_cancels_inference_and_restores_limits(monkeypatch):
+        monkeypatch.setattr(api,'authenticate',AsyncMock(return_value=SimpleNamespace(ops=['answer'],role='ADMIN')))
+        monkeypatch.setenv('RAG_PREPARED_SUPPORT','true')
+        monkeypatch.setenv('RAG_MODEL_PROVIDER','deepinfra')
+        monkeypatch.setenv('RAG_DOCUMENT_ANSWER_MODEL','Qwen/Qwen3-32B')
+        async def run():
+            started,cancelled=asyncio.Event(),asyncio.Event()
+            async def generate(*args):
+                started.set()
+                try:
+                    await asyncio.Future()
+                finally:
+                    cancelled.set()
+            monkeypatch.setattr(api,'generate',generate)
+            task=asyncio.create_task(api.prepared_selection(body(),request()))
+            await asyncio.wait_for(started.wait(),1)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert cancelled.is_set()
+            assert api.request_timing.model_limits.get() is None
+>       asyncio.run(run())
+
+services\rag\tests\test_prepared_endpoints.py:66: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+services\rag\tests\test_prepared_endpoints.py:60: in run
+    await asyncio.wait_for(started.wait(),1)
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\tasks.py:519: in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Timeout [expired]>
+exc_type = <class 'asyncio.exceptions.CancelledError'>
+exc_val = CancelledError(), exc_tb = <traceback object at 0x00000209BD63E540>
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+    
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+    
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+    
+            if self._task.uncancel() <= self._cancelling and exc_type is exceptions.CancelledError:
+                # Since there are no new cancel requests, we're
+                # handling this.
+>               raise TimeoutError from exc_val
+E               TimeoutError
+
+..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\timeouts.py:115: TimeoutError
+____ test_compiler_identity_binds_transport_mode_without_a_model_fallback _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000209BD623D40>
+
+    def test_compiler_identity_binds_transport_mode_without_a_model_fallback(monkeypatch):
+        monkeypatch.setenv('RAG_MODEL_PROVIDER','deepinfra')
+        monkeypatch.setenv('RAG_DOCUMENT_ANSWER_MODEL','Qwen/Qwen3-32B')
+        monkeypatch.setenv('RAG_PREPARATION_FORMAT','json_schema')
+>       strict = compiler_fingerprint()
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+services\rag\tests\test_prepared_runtime.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+services\rag\knowledge\support_runtime.py:27: in compiler_fingerprint
+    'model': document_model(), 'format': preparation_format(),
+             ^^^^^^^^^^^^^^^^
+services\rag\rag\answer_provider.py:42: in document_model
+    model = os.environ.get('RAG_DOCUMENT_ANSWER_MODEL', answer_model())
+                                                        ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def answer_model():
+        model = os.environ.get('RAG_ANSWER_MODEL', DEEPINFRA_MODEL if provider() == 'deepinfra' else 'qwen3:4b')
+        if provider() == 'deepinfra' and not allowed_model(model):
+>           raise HTTPException(503, detail='MODEL_REVISION_MISMATCH')
+E           fastapi.exceptions.HTTPException: 503: MODEL_REVISION_MISMATCH
+
+services\rag\rag\answer_provider.py:37: HTTPException
+============================== warnings summary ===============================
+services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51
+  C:\Users\reyna\Desk-Atlas\services\rag\.venv-service\Lib\site-packages\starlette\testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED services/rag/tests/test_prepared_endpoints.py::test_cancelled_discovery_cancels_inference_and_restores_limits
+FAILED services/rag/tests/test_prepared_runtime.py::test_compiler_identity_binds_transport_mode_without_a_model_fallback
+2 failed, 849 passed, 16 skipped, 1 warning in 62.86s (0:01:02)

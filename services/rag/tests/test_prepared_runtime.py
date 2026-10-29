@@ -30,6 +30,7 @@ def test_invalid_or_duplicate_json_cannot_enter_prepared_storage(content):
 
 def test_compiler_identity_binds_transport_mode_without_a_model_fallback(monkeypatch):
     monkeypatch.setenv('RAG_MODEL_PROVIDER','deepinfra')
+    monkeypatch.setenv('RAG_ANSWER_MODEL','Qwen/Qwen3-32B')
     monkeypatch.setenv('RAG_DOCUMENT_ANSWER_MODEL','Qwen/Qwen3-32B')
     monkeypatch.setenv('RAG_PREPARATION_FORMAT','json_schema')
     strict = compiler_fingerprint()

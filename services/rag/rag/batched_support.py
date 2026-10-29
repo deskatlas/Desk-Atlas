@@ -33,6 +33,9 @@ def verification_schema(unit_count):
 
 
 def clean_draft_text(text):
+    # Generated navigation markers are not canonical proof. Exact source units
+    # and their offsets are untouched, and cleaned prose is independently checked.
+    text = re.sub(r'\s*\[\d+(?:\.\d+)+(?:\s*,\s*\d+(?:\.\d+)*)*\]', '', text)
     # Internal source addresses are never user-facing prose. Cleaning happens
     # before the independent verifier so it checks exactly the released text.
     return re.sub(r'\s*\[(?:\d+(?:\s*,\s*\d+)*|i:\s*\d+(?:\s*[-,]\s*\d+)*)\]', '', text).strip()
@@ -101,6 +104,9 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
                 'Read EVERY row and duplicate heading context. Support addresses are original_i, NEVER row or heading indexes.'
                 if indexed else 'Within this packet, heading applies to every following unit until the next heading field. also_at keeps each duplicate occurrence in its own heading context.'),
             'selected_documents': list(dict.fromkeys(source.get('title', '') for source in sources))}
+    from .draft_transport import overview_requested
+    overview = overview_requested(query)
+    base['requested_detail'] = 'OVERVIEW' if overview else 'TASK'
     prepared_context = {}
     if prepared_index is not None:
         base['selected_workflows'] = selected_workflows
@@ -110,6 +116,7 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
     customer_boundary = ' If explaining workspace selection, submission or pending approval/payment, explicitly state that it does not hold inventory when the supplied originals establish that rule. A final-confirmation sentence alone does not express the no-hold rule. Preserve the documented role responsible for payment-proof review in the SAME block as that review; do not replace an explicit administrator-only condition with unspecified staff or payment verification.'
     participants = ' Preserve the participants in the ORIGINAL question. A person reporting a problem is not necessarily the person causing it. Address the reporter with acknowledgement and assistance; direct corrective instructions only to the actor responsible for the documented problem. Never transfer blame or obligations to an uninvolved complainant.'
     draft_prompt = (CUSTOMER_DRAFT + customer_boundary if customer_reference else WHOLE_DRAFT) + participants
+    draft_prompt += ' Keep the ENTIRE visible draft concise: aim for 80-140 words TOTAL across all blocks, not per block. Prioritize the original task and material conditions. Do not repeat a summary as a second detailed checklist. More words are permitted only when necessary to retain decision-changing conditions. QR identity and scan permissions will use mapped exact original wording before independent review.'
     framed = not customer_reference and os.environ.get('RAG_TASK_FRAMED_DRAFT') == 'true'
     if framed:
         from .document_support import framed_composition_schema
@@ -221,6 +228,9 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
                 address = len(proof)
                 proof.append(rule)
             blocks.append({'kind': 'text', 'text': rule['text'], 'support': [address]})
+    from .draft_transport import canonical_access_blocks, requested_scope
+    scope = requested_scope(query, scope)
+    blocks = canonical_access_blocks(blocks, proof, units)
     if len(blocks) > 12 or not blocks or wire_length('\n\n'.join(block['text'] for block in blocks)) > BUDGET['answer_utf16']:
         raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED')
     evidence = [{'i': i, 'original_i': unit['i'], 'text': unit['text']} for i, unit in enumerate(proof)]
@@ -233,16 +243,89 @@ async def batched_document_answer(query, sources, generate, synthesis=True, *, a
     cited_generations = {generations[unit['chunk_id']] for unit in proof}
     uncited = list(dict.fromkeys(source.get('title', '') for source in sources if generations[source['chunk_id']] not in cited_generations))
     payload = lambda batch: {'units': transport(batch), **prepared_context, **base, 'uncited_documents': uncited, 'answer': candidate.model_dump(), 'evidence': evidence}
-    verifier_schema = verification_schema(len(units)) if prepared_index is not None else Verification
-    verifier_prompt = (CUSTOMER_VERIFY + customer_boundary if customer_reference else VERIFY) + participants + (' Return reason_code=NONE and missing_originals=[] only when all verdicts pass. On failure, give the reason_code and exact ORIGINAL unit i addresses for omitted necessary rules, at most eight. Evidence original_i identifies its original occurrence. Do not demand an optional neighboring task just because a draft mislabeled its scope DOCUMENT_WIDE. Missing normal modes or decision-changing conditions remain failures.' if prepared_index is not None else '')
+    detailed = prepared_index is not None or not customer_reference
+    verifier_schema = verification_schema(len(units)) if detailed else Verification
+    verifier_prompt = (CUSTOMER_VERIFY + customer_boundary if customer_reference else VERIFY) + participants + (' Return reason_code=NONE and missing_originals=[] only when all verdicts pass. On failure, give the reason_code and exact ORIGINAL unit i addresses for omitted necessary rules, at most eight. Evidence original_i identifies its original occurrence. Do not demand an optional neighboring task just because a draft mislabeled its scope DOCUMENT_WIDE. Missing normal modes or decision-changing conditions remain failures.' if detailed else '')
+    verifier_prompt += ' Source lists of example incident types are alternatives, not a checklist of tasks for every complaint. A question about named symptoms does not require discussing every other complaint category. Equivalent rules already covered in the answer are not omissions. Require every applicable action, escalation condition and safety restriction; do not expand the user task to unrelated examples.'
+    if overview:
+        verifier_prompt += (' The ORIGINAL user requested an OVERVIEW or priorities, not detailed instructions '
+            'for executing every workflow. Completeness requires the main relevant stages and responsibilities '
+            'at that level. Do not demand every dashboard field, navigation click, checklist item, or optional '
+            'recovery procedure. A daily orientation covers opening, ordinary service/monitoring, and '
+            'closing or handover. Preserve any decision-changing conditions for actions the answer actually '
+            'instructs, including payment authority, allocation and active-window access when discussed. '
+            'Never excuse an unsupported or unsafe instruction because this is an overview.')
     checks = packets(projection, verifier_prompt, payload, verifier_schema)
     # Each verifier sees every mapped claim AND its exact proof, plus an
     # original partition. Together they cover the ENTIRE original source.
     verdicts = await parallel([infer(verifier_prompt, payload(batch), verifier_schema) for batch in checks])
+    if (overview and not customer_reference and all(v.relevant and v.supported and v.consistent and v.safe for v in verdicts)
+            and any(not v.complete for v in verdicts)):
+        return {'outcome': 'CLARIFY', 'spans': [], 'synthesis': None,
+                'clarification': 'Which part would you like to focus on first so I can give you a complete, verified answer?',
+                'counts': {'bundles': len(drafts), 'calls': calls, 'units': len(units)}}
+    # At most two bounded repairs add omitted ORIGINAL rules, never an invented
+    # model answer. Recheck every original partition and the complete candidate.
+    # Unsupported, unsafe, irrelevant or conflicting drafts cannot use this path.
+    exact_added = set()
+    for _ in range(2):
+        if (customer_reference or not all(v.relevant and v.supported and v.consistent and v.safe for v in verdicts)
+                or all(v.complete for v in verdicts)):
+            break
+        missing = {i for v in verdicts if not v.complete for i in getattr(v, 'missing_originals', [])}
+        # A flagged fragment can have prerequisites in the same original
+        # section. Bring that section's remaining exact units together instead
+        # of discovering one omitted neighboring condition per model round.
+        sections = {(generations[u['chunk_id']], u['heading']) for u in units if u['i'] in missing}
+        present = {p['i'] for p in proof}
+        additions = [u for u in units if (generations[u['chunk_id']], u['heading']) in sections
+                     and u['i'] not in exact_added and (u['i'] in missing or u['i'] not in present)]
+        if wire_length('\n\n'.join([*(b['text'] for b in blocks), *(u['text'] for u in additions)])) > BUDGET['answer_utf16']:
+            # Do not widen a large section beyond admission. The verifier's
+            # exact flagged rules remain the minimum bounded repair proposal.
+            additions = [u for u in units if u['i'] in missing and u['i'] not in exact_added]
+        groups = []
+        for unit in additions:
+            if (not groups or groups[-1][-1]['heading'] != unit['heading']
+                    or wire_length('\n\n'.join(u['text'] for u in [*groups[-1], unit])) > 1500):
+                groups.append([])
+            groups[-1].append(unit)
+        if additions and len(blocks) + len(groups) <= 12:
+            for group in groups:
+                support = []
+                for unit in group:
+                    address = next((i for i, p in enumerate(proof) if p['i'] == unit['i']), None)
+                    if address is None:
+                        address = len(proof)
+                        proof.append(unit)
+                    support.append(address)
+                    exact_added.add(unit['i'])
+                blocks.append({'kind': 'text', 'text': '\n\n'.join(u['text'] for u in group), 'support': support})
+            evidence = [{'i': i, 'original_i': u['i'], 'text': u['text']} for i, u in enumerate(proof)]
+            if (len(proof) > BUDGET['proof_spans'] or len(wire(evidence)) > BUDGET['selected_bytes']
+                    or wire_length('\n\n'.join(b['text'] for b in blocks)) > BUDGET['answer_utf16']):
+                raise HTTPException(400, detail='OUTPUT_BUDGET_EXCEEDED')
+            candidate = Composition(scope=scope, blocks=blocks)
+            cited_generations = {generations[u['chunk_id']] for u in proof}
+            uncited = list(dict.fromkeys(s.get('title', '') for s in sources if generations[s['chunk_id']] not in cited_generations))
+            model_metric('evidence_packed', len(proof))
+            model_metric('evidence_bytes', len(wire(evidence)))
+            checks = packets(projection, verifier_prompt, payload, verifier_schema)
+            verdicts = await parallel([infer(verifier_prompt, payload(batch), verifier_schema) for batch in checks])
+        else:
+            break
     if any(not verdict.consistent for verdict in verdicts):
         raise HTTPException(400, detail='CONFLICTING_SOURCES')
     if any(not all((v.relevant, v.supported, v.complete, v.safe)) for v in verdicts):
         raise HTTPException(400, detail='UNRESOLVED_CONTEXT')
+    # Recovery may have appended an earlier original paragraph. Canonical span
+    # order is required by the gateway; remap integers without changing claims.
+    used = {i for block in candidate.blocks for i in block.support}
+    order = sorted(used, key=lambda i: proof[i]['i'])
+    remap = {old: new for new, old in enumerate(order)}
+    proof = [proof[i] for i in order]
+    candidate = Composition(scope=candidate.scope, blocks=[
+        {**b.model_dump(), 'support': [remap[i] for i in b.support]} for b in candidate.blocks])
     return {'outcome': 'COMPLETE', 'spans': [{'chunk_id': u['chunk_id'], 'quote': u['text'], 'start': u['start'], 'end': u['end']} for u in proof],
             'synthesis': {'version': 'ms57-v1', 'scope': candidate.scope, 'outcome': 'COMPLETE', 'blocks': [block.model_dump() for block in candidate.blocks], 'gaps': []},
             'clarification': None, 'counts': {'bundles': len(drafts), 'calls': calls, 'units': len(units)}}

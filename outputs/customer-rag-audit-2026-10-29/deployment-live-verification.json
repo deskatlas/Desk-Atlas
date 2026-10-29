@@ -1,0 +1,52 @@
+{
+  "service": "deskatlas-rag-chat-production",
+  "url": "https://deskatlas-rag-chat-production-2ttaxxsoaa-uc.a.run.app",
+  "tag": null,
+  "latest_ready_revision": "deskatlas-rag-chat-production-conv1029-q35",
+  "implementation_fingerprint": "307f0a7dc710e652eb25718907bcc834f2f57b93269bef6dbbc6447a44cab433",
+  "checks": [
+    {
+      "stage": "no_google_identity",
+      "status": 403,
+      "elapsed_ms": 407
+    },
+    {
+      "stage": "google_identity_only",
+      "status": 401,
+      "elapsed_ms": 281
+    },
+    {
+      "stage": "invalid_capability",
+      "status": 401,
+      "elapsed_ms": 297
+    },
+    {
+      "stage": "authenticated_health",
+      "status": 200,
+      "elapsed_ms": 281
+    },
+    {
+      "stage": "internal_capability_on_customer_route",
+      "status": 401,
+      "elapsed_ms": 250
+    },
+    {
+      "stage": "legacy_customer_plan",
+      "status": 200,
+      "elapsed_ms": 1187
+    },
+    {
+      "stage": "constraints_v1_customer_plan",
+      "status": 200,
+      "elapsed_ms": 1860
+    },
+    {
+      "stage": "private_record_routing",
+      "status": 200,
+      "elapsed_ms": 265
+    }
+  ],
+  "passed": true,
+  "answer_model": "Qwen/Qwen3.6-35B-A3B",
+  "document_answer_model": "Qwen/Qwen3.6-35B-A3B"
+}

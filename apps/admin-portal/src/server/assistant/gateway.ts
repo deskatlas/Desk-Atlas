@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { AssistantError, assistantAnswerLanguage, assistantCopy, executeAssistantTool, businessDate, currentOperationalPlan, guidanceDocumentPlan, assistantToolNarrative, type AssistantActor, type AssistantRepository, type AssistantToolResult } from '@deskatlas/domain';
+import { AssistantError, assistantAnswerLanguage, assistantCopy, executeAssistantTool, businessDate, currentOperationalPlan, guidanceDocumentPlan, assistantTroubleshootingClarification, assistantToolNarrative, type AssistantActor, type AssistantRepository, type AssistantToolResult } from '@deskatlas/domain';
 import { assistantAvailabilitySchema, assistantContextSelectionSchema, assistantEvidenceSchema, assistantKnowledgeAvailabilitySchema, assistantAnswerSchema, assistantCancelSchema, assistantExtractSchema, assistantPlanSchema, assistantQuerySchema, assistantSearchSchema, assistantSourceSchema, assistantIdSchema, assistantSourcesSchema, assistantToolResultSchema, type AssistantAnswer, type AssistantQuery, type AssistantSource } from '../../../../../packages/validation/src/assistantSchema';
 import { verifyAdminSession } from '../../app/api/admin/auth/_lib/adminSession';
 import { verifyStaffAssistantSession } from './session';
@@ -197,7 +197,7 @@ async function model(path: string, payload: unknown, cap: string, signal: AbortS
       if (['CONTEXT_BUDGET_EXCEEDED','OUTPUT_BUDGET_EXCEEDED'].includes(String(detail))) throw new AssistantError('INCOMPLETE_EVIDENCE', `${detail}: ${path === '/v1/context' ? 'Evidence comparison could not be completed within the supported capacity. Please retry.' : 'Complete applicable evidence could not be prepared within the verified capacity. Please retry.'}`, 400);
       if (detail === 'UNRESOLVED_CONTEXT') throw new AssistantError('INCOMPLETE_CONTEXT', 'Required procedure context could not be verified.', 400);
       if (detail === 'CONFLICTING_SOURCES') throw new AssistantError('CONFLICTING_SOURCES', 'The applicable published sources conflict. Ask an administrator to resolve the policy.', 400);
-      if (detail === 'INVALID_MODEL_OUTPUT') throw new AssistantError('INVALID_MODEL_OUTPUT', 'The model returned an incomplete selection.', 503);
+      if (detail === 'INVALID_MODEL_OUTPUT') throw new AssistantError('INVALID_MODEL_OUTPUT', 'I could not verify the answer service response. Please retry or rephrase your question.', 503);
       if (detail === 'MODEL_TIMEOUT' || detail === 'REQUEST_TIMEOUT') throw new AssistantError(detail, 'Answer preparation took too long.', 408);
       throw new AssistantError(res.status === 429 ? 'CAPACITY_BUSY' : 'MODEL_UNAVAILABLE', res.status === 429 ? 'Assistant is at capacity. Retry shortly.' : 'The answer service is temporarily unavailable. Please retry.', res.status === 429 ? 429 : 503);
     }
@@ -325,9 +325,11 @@ export async function assistantQuery(request: Request): Promise<Response> {
     diagnostics.count('epoch', knowledgeEpoch);
     const fastPlan = (process.env.RAG_GUIDANCE_FAST_PATH === 'true' ? guidanceDocumentPlan(input.message) : undefined) ?? (process.env.RAG_SOP_FAST_PATH === 'true' ? proceduralDocumentPlan(input.message, input.recent_context) : undefined);
     const operationalPlan = currentOperationalPlan(input.message);
+    const missingSubject = assistantTroubleshootingClarification(input.message);
+    const clarificationPlan = missingSubject ? { kind: 'CLARIFY', query: '', tools: [], clarification: missingSubject } : undefined;
     let catalogSeeds: AssistantSource[] | undefined;
     let catalogPlan: unknown;
-    if (documentContract && process.env.KB_ENABLED === 'true' && process.env.RAG_INTERNAL_CATALOG_DISCOVERY === 'true' && !operationalPlan) {
+    if (documentContract && process.env.KB_ENABLED === 'true' && process.env.RAG_INTERNAL_CATALOG_DISCOVERY === 'true' && !operationalPlan && !clarificationPlan) {
       const catalog = await measure('catalog', () => readInternalDiscoveryCatalog(verified.client, verified.actor.role,
         config('RAG_SCOPE_ID'), knowledgeEpoch, signal, {
           authorize: () => recheck(verified.client, verified.actor),
@@ -351,7 +353,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     }
     diagnostics.count('shortcut', fastPlan || currentOperationalPlan(input.message) ? 1 : 0);
     const hybrid = process.env.RAG_HYBRID_RETRIEVAL === 'true';
-    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => catalogPlan ?? fastPlan ?? operationalPlan ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true, ...(documentContract ? {evidence_contract: 'ms65-v1'} : {}) }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
+    const planResult = assistantPlanSchema.safeParse(await measure('plan', async () => clarificationPlan ?? operationalPlan ?? catalogPlan ?? fastPlan ?? await model('/v1/plan', { message: input.message, recent_context: input.recent_context ?? { user_turns: [] }, business_date: businessDate(asOf, timezone), timezone, search_enabled: true, ...(documentContract ? {evidence_contract: 'ms65-v1'} : {}) }, entry!.capability, signal, timing, budget, diagnostics, cloudIdentity)));
     if (!planResult.success) {
       diagnostics.fail('INVALID_PLAN', 'plan');
       diagnostics.count('plan_invalid_filters', planResult.error.issues.filter(issue => issue.path.includes('args')).length);
@@ -362,6 +364,7 @@ export async function assistantQuery(request: Request): Promise<Response> {
     if (plan.kind === 'CLARIFY' || plan.kind === 'UNSUPPORTED') diagnostics.fail(plan.kind, 'plan');
     entry.stage = 'retrieving';
     const tables: AssistantAnswer['tables'] = [], interpretation: string[] = [], limitations: string[] = [], narratives: string[] = [];
+    if (operationalPlan && /^how are\b/i.test(input.message.trim())) limitations.push('This snapshot covers scheduled bookings, check-ins and reserved or in-use desks. It does not include pending payment reviews or maintenance issues. Check Payments and the dashboard Maintenance Overview for those.');
     const repo: AssistantRepository = { execute: async (actor, tool, period, frozen) => {
       // Revalidate before each tool. SQL also checks the current profile in its snapshot.
       await recheck(verified.client, actor);
@@ -503,7 +506,10 @@ export async function assistantQuery(request: Request): Promise<Response> {
               diagnostics.count('support_passes', result.counts.calls);
               diagnostics.count('support_units', result.counts.units);
               if (result.outcome === 'CONFLICT') throw new AssistantError('CONFLICTING_SOURCES', copy.conflict, 400);
-              if (result.outcome === 'CLARIFY') throw new AssistantError('AMBIGUOUS_SCOPE', result.clarification!, 400);
+              if (result.outcome === 'CLARIFY') {
+                documentClarification = result.clarification!;
+                throw new AssistantError('AMBIGUOUS_SCOPE', result.clarification!, 400);
+              }
               if (result.outcome === 'COMPLETE') {
                 synthesis = synthesisEnabled ? result.synthesis! : undefined;
                 synthesisStatus = synthesisEnabled ? 'ACCEPTED' : 'DISABLED';

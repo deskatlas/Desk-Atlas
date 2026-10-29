@@ -46,6 +46,7 @@ def test_cancelled_discovery_cancels_inference_and_restores_limits(monkeypatch):
     monkeypatch.setattr(api,'authenticate',AsyncMock(return_value=SimpleNamespace(ops=['answer'],role='ADMIN')))
     monkeypatch.setenv('RAG_PREPARED_SUPPORT','true')
     monkeypatch.setenv('RAG_MODEL_PROVIDER','deepinfra')
+    monkeypatch.setenv('RAG_ANSWER_MODEL','Qwen/Qwen3-32B')
     monkeypatch.setenv('RAG_DOCUMENT_ANSWER_MODEL','Qwen/Qwen3-32B')
     async def run():
         started,cancelled=asyncio.Event(),asyncio.Event()
