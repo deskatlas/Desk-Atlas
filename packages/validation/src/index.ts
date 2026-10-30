@@ -277,3 +277,4 @@ export * from './customerSchemas';
 export * from './preparedSupportSchema';
 export * from './additionalServices';
 export * from './rental';
+export * from './customerEmailChange';

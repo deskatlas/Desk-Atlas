@@ -7,6 +7,8 @@ import {
   type RewardsSession,
 } from "../context/RewardsSessionContext";
 import { ForgotCustomerIdModal } from "./ForgotCustomerIdModal";
+import { isValidEmail } from "@deskatlas/validation";
+import { ChangeCustomerEmailModal } from "./ChangeCustomerEmailModal";
 
 export const STORAGE_KEY_VERIFY_LOCKOUT = "deskatlas_customer_verify_lockout";
 
@@ -36,6 +38,7 @@ export function RewardsAccessCard({
   const [customerCode, setCustomerCode] = useState("");
   const [email, setEmail] = useState("");
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [isChangeEmailModalOpen, setIsChangeEmailModalOpen] = useState(false);
   const customerCodeInputRef = useRef<HTMLInputElement>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(initialError);
@@ -252,7 +255,7 @@ export function RewardsAccessCard({
         </p>
       </div>
 
-      <form onSubmit={handleVerify} className={`${compact ? 'mt-3 gap-3' : 'mt-6 gap-4'} grid w-full`}>
+      <form noValidate onSubmit={handleVerify} className={`${compact ? 'mt-3 gap-3' : 'mt-6 gap-4'} grid w-full`}>
         <label className="grid gap-2 text-xs font-bold text-[var(--da-brand-dark)]">
           <div className="flex items-center justify-between">
             <span>Customer ID</span>
@@ -280,7 +283,17 @@ export function RewardsAccessCard({
         </label>
 
         <label className="grid gap-2 text-xs font-bold text-[var(--da-brand-dark)]">
-          Email address
+          <div className="flex items-center justify-between">
+            <span>Email address</span>
+            <button
+              type="button"
+              onClick={() => setIsChangeEmailModalOpen(true)}
+              className="text-xs font-semibold text-[var(--da-primary)] hover:underline focus:outline-none transition-colors"
+              data-testid="change-email-bound-trigger"
+            >
+              Change email bound to Customer ID
+            </button>
+          </div>
           <input
             type="email"
             value={email}
@@ -391,6 +404,18 @@ export function RewardsAccessCard({
           </div>
         )}
       </form>
+      <ChangeCustomerEmailModal
+        isOpen={isChangeEmailModalOpen}
+        onClose={() => setIsChangeEmailModalOpen(false)}
+        initialEmail={email}
+        onProceedToForgotCustomerId={() => {
+          setIsChangeEmailModalOpen(false);
+          setIsForgotModalOpen(true);
+        }}
+        onEmailChanged={(newEmailVal) => {
+          setEmail(newEmailVal);
+        }}
+      />
       <ForgotCustomerIdModal
         isOpen={isForgotModalOpen}
         onClose={() => setIsForgotModalOpen(false)}

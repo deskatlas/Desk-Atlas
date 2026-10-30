@@ -137,7 +137,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       maxDiscountAmount: 300,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 
@@ -239,7 +239,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       rewardValue: 50,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 
@@ -283,7 +283,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       rewardValue: 50,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 
@@ -353,7 +353,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       rewardValue: 20,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 
@@ -416,7 +416,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       maxDiscountAmount: 100,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 
@@ -498,7 +498,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       rewardValue: 50,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 
@@ -568,7 +568,7 @@ describe('SPEC-3: Customer Booking & Rewards Portal and Promo Code Redemption (Q
       rewardValue: 50,
       status: 'AVAILABLE',
       startsAt: new Date('2026-10-01T00:00:00Z'),
-      expiresAt: new Date('2026-10-30T00:00:00Z'),
+      expiresAt: new Date('2026-12-31T00:00:00Z'),
       metadata: {},
     });
 

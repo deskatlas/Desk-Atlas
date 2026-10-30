@@ -11,3 +11,4 @@ export {
   type RewardsSession,
   type CustomerProfile,
 } from "./context/RewardsSessionContext";
+export { ChangeCustomerEmailModal } from "./components/ChangeCustomerEmailModal";

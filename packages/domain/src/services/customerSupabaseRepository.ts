@@ -137,6 +137,15 @@ export class CustomerSupabaseRepository implements CustomerRepository {
     return this.mapCustomer(rows[0]);
   }
 
+  
+  async updateCustomerEmail(customerId: string, newEmail: string): Promise<void> {
+    const normalized = normalizeEmail(newEmail);
+    await this.request(`/customers?id=eq.${customerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ email: normalized, updated_at: new Date().toISOString() }),
+    });
+  }
+
   async linkCustomerToReservation(reservationId: string, customerId: string): Promise<void> {
     await this.request(`/reservations?id=eq.${encodeURIComponent(reservationId)}`, {
       method: 'PATCH',

@@ -306,3 +306,8 @@ export {
   type ExtendRentalDto,
   type ReturnRentalDto,
 } from '@deskatlas/validation';
+
+export * from './services/customerEmailChangeRepository';
+export * from './services/customerEmailChangeMemoryRepository';
+export * from './services/customerEmailChangeSupabaseRepository';
+export * from './services/customerEmailChangeService';

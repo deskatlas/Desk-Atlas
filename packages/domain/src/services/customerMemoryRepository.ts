@@ -95,6 +95,23 @@ export class CustomerMemoryRepository implements CustomerRepository {
     return { ...customer };
   }
 
+  
+  async updateCustomerEmail(customerId: string, newEmail: string): Promise<void> {
+    const customer = this.customers.get(customerId);
+    if (!customer) {
+      throw new Error(`Customer ${customerId} not found`);
+    }
+    const normalizedNewEmail = normalizeEmail(newEmail);
+    const existing = this.customersByEmail.get(normalizedNewEmail);
+    if (existing && existing.id !== customerId) {
+      throw new Error(`Email ${normalizedNewEmail} is already bound to another customer`);
+    }
+    this.customersByEmail.delete(customer.email);
+    customer.email = normalizedNewEmail;
+    customer.updatedAt = this.nowProvider().toISOString();
+    this.customersByEmail.set(normalizedNewEmail, customer);
+  }
+
   async linkCustomerToReservation(reservationId: string, customerId: string): Promise<void> {
     this.reservationCustomerLinks.set(reservationId, customerId);
   }

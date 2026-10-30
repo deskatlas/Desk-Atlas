@@ -54,6 +54,7 @@ export interface CustomerRepository {
   findByEmail?(email: string): Promise<Customer | null>;
   findById?(id: string): Promise<Customer | null>;
   createCustomer(data: CreateCustomerData): Promise<Customer>;
+  updateCustomerEmail?(customerId: string, newEmail: string): Promise<void>;
   linkCustomerToReservation(reservationId: string, customerId: string): Promise<void>;
   enqueueOutboxJob(job: EnqueueOutboxJobData): Promise<NotificationOutboxJob>;
   getDueOutboxJobs(limit?: number): Promise<NotificationOutboxJob[]>;

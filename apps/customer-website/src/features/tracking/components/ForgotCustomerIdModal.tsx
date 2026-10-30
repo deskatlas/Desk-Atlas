@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isValidEmail } from "@deskatlas/validation";
 
 export interface ForgotCustomerIdModalProps {
   isOpen: boolean;
@@ -204,7 +205,7 @@ export function ForgotCustomerIdModal({
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="mt-5 grid gap-4">
+            <form noValidate onSubmit={handleSubmit} className="mt-5 grid gap-4">
               <label className="grid gap-1.5 text-xs font-bold text-[var(--da-brand-dark)]">
                 Email address
                 <input

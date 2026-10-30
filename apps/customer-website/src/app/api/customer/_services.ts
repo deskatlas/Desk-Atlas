@@ -7,6 +7,9 @@ import {
   VoucherSupabaseRepository,
   VoucherService,
   createTransactionalEmailService,
+  CustomerEmailChangeMemoryRepository,
+  CustomerEmailChangeSupabaseRepository,
+  CustomerEmailChangeService,
 } from '@deskatlas/domain';
 
 export const runtime = 'nodejs';
@@ -14,11 +17,13 @@ export const runtime = 'nodejs';
 // Shared in-memory instances for memory mode / testing
 const sharedCustomerMemoryRepo = new CustomerMemoryRepository();
 const sharedVoucherMemoryRepo = new VoucherMemoryRepository();
+const sharedEmailChangeMemoryRepo = new CustomerEmailChangeMemoryRepository(sharedCustomerMemoryRepo);
 
 export function getSharedMemoryRepos() {
   return {
     customerRepo: sharedCustomerMemoryRepo,
     voucherRepo: sharedVoucherMemoryRepo,
+    emailChangeRepo: sharedEmailChangeMemoryRepo,
   };
 }
 
@@ -40,18 +45,33 @@ export function getCustomerServices() {
       })
     : sharedVoucherMemoryRepo;
 
+  const emailChangeRepo = supabaseUrl && supabaseKey
+    ? new CustomerEmailChangeSupabaseRepository({
+        supabaseUrl,
+        serviceRoleKey: supabaseKey,
+      })
+    : sharedEmailChangeMemoryRepo;
+
   const customerService = new CustomerService(customerRepo);
   const rateLimiterService = new RateLimiterService(customerRepo);
   const emailService = createTransactionalEmailService();
   const voucherService = new VoucherService(voucherRepo, customerRepo, emailService);
+  const emailChangeService = new CustomerEmailChangeService(
+    emailChangeRepo,
+    customerRepo,
+    rateLimiterService,
+    emailService
+  );
 
   return {
     customerRepo,
     voucherRepo,
+    emailChangeRepo,
     customerService,
     rateLimiterService,
     voucherService,
     emailService,
+    emailChangeService,
   };
 }
 

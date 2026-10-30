@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { useEffect, useState } from "react";
 import type { RewardsSession } from "../context/RewardsSessionContext";
+import { ChangeCustomerEmailModal } from "./ChangeCustomerEmailModal";
 
 interface BookingItem {
   id: string;
@@ -87,6 +88,7 @@ export function RewardsVoucherDashboard({
   const [emailingVoucherId, setEmailingVoucherId] = useState<string | null>(null);
   const [emailStatusMessage, setEmailStatusMessage] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [isChangeEmailModalOpen, setIsChangeEmailModalOpen] = useState(false);
 
   // Load vouchers and bookings when accessToken changes or tab changes
   useEffect(() => {
@@ -290,9 +292,19 @@ export function RewardsVoucherDashboard({
             <h2 className="mt-2.5 text-2xl sm:text-3xl font-extrabold tracking-[-0.03em] text-[var(--da-brand-dark)]">
               {customer.firstName} {customer.lastName}
             </h2>
-            <p className="mt-1 text-xs sm:text-sm font-mono text-[var(--da-text-secondary)]">
-              {customer.email}
-            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-mono text-[var(--da-text-secondary)]">
+                {customer.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsChangeEmailModalOpen(true)}
+                className="text-xs font-semibold text-[var(--da-primary)] hover:underline focus:outline-none transition-colors"
+                data-testid="dashboard-change-email-trigger"
+              >
+                Change Email
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -674,6 +686,11 @@ export function RewardsVoucherDashboard({
           )}
         </div>
       </div>
+      <ChangeCustomerEmailModal
+        isOpen={isChangeEmailModalOpen}
+        onClose={() => setIsChangeEmailModalOpen(false)}
+        initialEmail={customer.email}
+      />
     </div>
   );
 }

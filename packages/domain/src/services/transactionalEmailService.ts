@@ -2767,6 +2767,32 @@ ${renderBusinessFooterText(profile, `${businessName} Workspace Reservation Syste
   return { subject, html, text };
 }
 
+
+export interface EmailChangeOtpEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerCode?: string;
+  otpCode: string;
+}
+
+export interface EmailChangeConfirmationEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerCode: string;
+  confirmationUrl: string;
+  newEmail: string;
+}
+
+export interface EmailChangePastEmailNoticeInput extends BaseEmailBusinessFields {
+  to: string;
+  customerCode: string;
+  maskedNewEmail: string;
+}
+
+export interface EmailChangeNewEmailNoticeInput extends BaseEmailBusinessFields {
+  to: string;
+  customerCode: string;
+  portalUrl?: string;
+}
+
 export class TransactionalEmailService {
   private readonly apiKey?: string;
   private readonly fromEmail: string;
@@ -3759,6 +3785,147 @@ export class TransactionalEmailService {
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         console.warn('[TransactionalEmail] Rental confirmation webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+
+  async sendEmailChangeOtpEmail(
+    input: EmailChangeOtpEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: EmailChangeOtpEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderEmailChangeOtpEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'customer-email-change-otp',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-customer-email-change-otp' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Email change OTP webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendEmailChangeConfirmationEmail(
+    input: EmailChangeConfirmationEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: EmailChangeConfirmationEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderEmailChangeConfirmationEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'customer-email-change-confirmation',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-customer-email-change-confirmation' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Email change confirmation webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendEmailChangePastEmailNotice(
+    input: EmailChangePastEmailNoticeInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: EmailChangePastEmailNoticeInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderEmailChangePastEmailNotice(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'customer-email-change-past-notice',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-customer-email-change-past-notice' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Email change past notice webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendEmailChangeNewEmailNotice(
+    input: EmailChangeNewEmailNoticeInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: EmailChangeNewEmailNoticeInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderEmailChangeNewEmailNotice(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'customer-email-change-new-notice',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-customer-email-change-new-notice' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Email change new notice webhook dispatch error:', errorMsg);
       }
     }
 
@@ -5627,6 +5794,274 @@ export function renderRentalEndingAlertEmail(input: RentalEndingAlertEmailInput)
     html,
     text: textLines.join('\n'),
   };
+}
+
+
+export function maskEmail(email: string): string {
+  const parts = email.split('@');
+  if (parts.length !== 2) return email;
+  const [local, domain] = parts;
+  if (local.length <= 2) {
+    return `${local[0] || '*'}***@${domain}`;
+  }
+  return `${local[0]}***${local[local.length - 1]}@${domain}`;
+}
+
+export function renderEmailChangeOtpEmail(input: EmailChangeOtpEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = `Your DeskAtlas Verification Code: ${input.otpCode}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-box { text-align: center; margin: 28px 0; background-color: #ecfdf5; padding: 24px 20px; border-radius: 12px; border: 1px solid #a7f3d0; }
+    .code-label { font-size: 12px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .code-value { font-family: monospace; font-size: 36px; font-weight: 800; color: #0c3b27; letter-spacing: 8px; margin: 8px 0; }
+    .warning { font-size: 13px; color: #b45309; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin: 20px 0; }
+    .footer { font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Email Verification</p>
+    </div>
+    <div class="content">
+      <p>Hello,</p>
+      <p>We received a request to change the email bound to your DeskAtlas Customer ID${input.customerCode ? ' (' + escapeHtml(input.customerCode) + ')' : ''}.</p>
+      
+      <div class="code-box">
+        <div class="code-label">Verification Code</div>
+        <div class="code-value">${escapeHtml(input.otpCode)}</div>
+      </div>
+
+      <div class="warning">
+        <strong>Notice:</strong> This verification code will expire in 5 minutes (300 seconds).
+      </div>
+
+      <p class="footer">
+        If you did not request this verification code, someone may have entered your email by mistake. Your Customer ID and vouchers remain secure.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    `VERIFY YOUR EMAIL ADDRESS`,
+    `Business: ${businessName}`,
+    `----------------------------------------`,
+    `Your 6-digit verification code: ${input.otpCode}`,
+    ``,
+    `This verification code will expire in 5 minutes (300 seconds).`,
+    ``,
+    `If you did not request this verification code, someone may have entered your email by mistake. Your Customer ID and vouchers remain secure.`,
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
+export function renderEmailChangeConfirmationEmail(input: EmailChangeConfirmationEmailInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = `Confirm Email Change for DeskAtlas Customer ID ${input.customerCode}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .btn-container { text-align: center; margin: 28px 0; }
+    .btn { display: inline-block; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; background-color: #0c3b27; color: #ffffff !important; }
+    .info-box { background-color: #f8fafc; border-radius: 10px; padding: 16px; margin: 20px 0; border: 1px solid #e2e8f0; font-size: 13px; color: #475569; }
+    .footer { font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Confirm New Email Address</p>
+    </div>
+    <div class="content">
+      <p>Hello,</p>
+      <p>You requested to transfer your DeskAtlas Customer ID <strong>${escapeHtml(input.customerCode)}</strong> and its active vouchers to this email address.</p>
+      
+      <div class="btn-container">
+        <a href="${escapeHtml(input.confirmationUrl)}" class="btn">Confirm Email Change</a>
+      </div>
+
+      <div class="info-box">
+        <strong>Notice:</strong> This confirmation link expires in 24 hours. Your Customer ID will not change until this link is opened.
+      </div>
+
+      <p class="footer">
+        If you did not make this request, simply ignore this email. No changes will be applied to your account.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    `CONFIRM NEW EMAIL ADDRESS`,
+    `Business: ${businessName}`,
+    `----------------------------------------`,
+    `You requested to transfer your DeskAtlas Customer ID ${input.customerCode} and its active vouchers to this email address.`,
+    ``,
+    `Confirmation link:`,
+    input.confirmationUrl,
+    ``,
+    `This confirmation link expires in 24 hours. If you did not make this request, simply ignore this email.`,
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
+export function renderEmailChangePastEmailNotice(input: EmailChangePastEmailNoticeInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = 'Security Alert: Your DeskAtlas Customer ID Email Has Changed';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .shield-box { background-color: #f1f5f9; border-radius: 10px; padding: 18px; margin: 20px 0; border: 1px solid #cbd5e1; }
+    .shield-title { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+    .footer { font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Security Notification</p>
+    </div>
+    <div class="content">
+      <p>Hello,</p>
+      <div class="shield-box">
+        <div class="shield-title">Your Bound Email Was Updated</div>
+        <p style="margin: 0; font-size: 13px; color: #334155;">
+          Your DeskAtlas Customer ID <strong>${escapeHtml(input.customerCode)}</strong> is no longer bound to this email address. It has been transferred to a new verified address (${escapeHtml(input.maskedNewEmail)}).
+        </p>
+      </div>
+
+      <p class="footer">
+        If you did not authorize this change, please contact DeskAtlas support immediately so our team can lock and investigate the account.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    `SECURITY ALERT: EMAIL ADDRESS CHANGED`,
+    `Business: ${businessName}`,
+    `----------------------------------------`,
+    `Your DeskAtlas Customer ID ${input.customerCode} is no longer bound to this email address.`,
+    `It has been transferred to a new verified address (${input.maskedNewEmail}).`,
+    ``,
+    `If you did not authorize this change, please contact DeskAtlas support immediately so our team can lock and investigate the account.`,
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
+export function renderEmailChangeNewEmailNotice(input: EmailChangeNewEmailNoticeInput): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const subject = 'Email Change Confirmed: Access Your Customer ID and Vouchers';
+  const portalUrl = input.portalUrl || resolveCustomerRewardsPortalUrl();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; text-align: center; }
+    .title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; }
+    .subtitle { font-size: 14px; color: #64748b; margin: 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .code-box { text-align: center; margin: 24px 0; background-color: #ecfdf5; padding: 20px; border-radius: 12px; border: 1px solid #86efac; }
+    .code-label { font-size: 12px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .code-value { font-family: monospace; font-size: 32px; font-weight: 800; color: #166534; letter-spacing: 4px; margin: 6px 0; }
+    .btn-container { text-align: center; margin: 28px 0; }
+    .btn { display: inline-block; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; background-color: #15803d; color: #ffffff !important; }
+    .footer { font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">${escapeHtml(businessName)}</h1>
+      <p class="subtitle">Email Successfully Updated</p>
+    </div>
+    <div class="content">
+      <p>Hello,</p>
+      <p>Your DeskAtlas Customer ID is now active on this email address. All your historical bookings and earned vouchers are immediately available.</p>
+      
+      <div class="code-box">
+        <div class="code-label">Your Customer ID</div>
+        <div class="code-value">${escapeHtml(input.customerCode)}</div>
+      </div>
+
+      <div class="btn-container">
+        <a href="${escapeHtml(portalUrl)}" class="btn">Log In to My Bookings & Rewards</a>
+      </div>
+
+      <p class="footer">
+        You can use this Customer ID along with your email to view your confirmed bookings, access passes, and promotional loyalty rewards.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+  const text = [
+    `EMAIL CHANGE CONFIRMED`,
+    `Business: ${businessName}`,
+    `----------------------------------------`,
+    `Your DeskAtlas Customer ID is now active on this email address: ${input.customerCode}`,
+    `All your historical bookings and earned vouchers are immediately available.`,
+    ``,
+    `Log in to My Bookings & Rewards: ${portalUrl}`,
+  ].join('\n');
+
+  return { subject, html, text };
 }
 
 export function createTransactionalEmailService(config?: ResendEmailConfig): TransactionalEmailService {
