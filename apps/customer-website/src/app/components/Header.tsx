@@ -2,10 +2,28 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
-export function Header() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+export function Header({
+  defaultMobileMenuOpen = false,
+  currentPathname,
+}: {
+  defaultMobileMenuOpen?: boolean;
+  currentPathname?: string;
+} = {}) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(defaultMobileMenuOpen);
+  let hookPathname = "";
+  try {
+    hookPathname = usePathname() || "";
+  } catch {
+    hookPathname = "";
+  }
+  const pathname = currentPathname !== undefined ? currentPathname : hookPathname;
+
+  const isReserveActive = pathname === "/reserve" || pathname.startsWith("/reserve/");
+  const isServicesActive = pathname === "/services" || pathname.startsWith("/services/");
+  const isTrackActive = pathname === "/track" || pathname.startsWith("/track/");
 
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--da-border)] bg-white/95 backdrop-blur">
@@ -22,28 +40,46 @@ export function Header() {
 
         {/* Desktop Navigation */}
         <nav
-          className="hidden md:flex items-center gap-6 text-sm font-semibold text-[var(--da-text-secondary)]"
+          className="hidden md:flex items-center gap-2 text-sm"
           data-testid="header-desktop-nav"
         >
+          {/* Reserve */}
           <Link
             href="/reserve"
-            className="hover:text-[var(--da-brand-dark)] transition-colors"
+            className={`px-4 py-2 rounded-full font-bold transition-all text-xs uppercase tracking-wider ${
+              isReserveActive
+                ? "bg-[#0C3B27] text-white shadow-sm"
+                : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+            }`}
             data-testid="nav-link-reserve"
           >
             Reserve
           </Link>
+
+          {/* Services */}
           <Link
             href="/services"
-            className="hover:text-[var(--da-brand-dark)] transition-colors"
+            className={`px-4 py-2 rounded-full font-bold transition-all text-xs uppercase tracking-wider ${
+              isServicesActive
+                ? "bg-[#0C3B27] text-white shadow-sm"
+                : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+            }`}
             data-testid="nav-link-services"
           >
             Services
           </Link>
+
+          {/* Track Reservation (Distinct Status Utility Treatment) */}
           <Link
             href="/track"
-            className="hover:text-[var(--da-brand-dark)] transition-colors"
+            className={`ml-2 px-4 py-2 rounded-full font-bold transition-all text-xs uppercase tracking-wider flex items-center gap-1.5 ${
+              isTrackActive
+                ? "bg-[#0C3B27] text-[#C8F451] shadow-sm border border-[#0C3B27]"
+                : "bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+            }`}
             data-testid="nav-link-track"
           >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Track Reservation
           </Link>
         </nav>
@@ -66,11 +102,15 @@ export function Header() {
           className="md:hidden border-t border-[var(--da-border)] bg-white px-6 py-4 shadow-lg"
           data-testid="mobile-nav-drawer"
         >
-          <nav className="flex flex-col gap-3 text-sm font-semibold text-[var(--da-text-secondary)]">
+          <nav className="flex flex-col gap-2 text-sm font-semibold">
             <Link
               href="/reserve"
               onClick={() => setMobileMenuOpen(false)}
-              className="py-1 hover:text-[var(--da-brand-dark)]"
+              className={`min-h-[44px] flex items-center px-4 py-2.5 rounded-xl font-bold transition-all text-xs uppercase tracking-wider ${
+                isReserveActive
+                  ? "bg-[#0C3B27] text-white shadow-sm"
+                  : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+              }`}
               data-testid="mobile-nav-link-reserve"
             >
               Reserve
@@ -78,7 +118,11 @@ export function Header() {
             <Link
               href="/services"
               onClick={() => setMobileMenuOpen(false)}
-              className="py-1 hover:text-[var(--da-brand-dark)]"
+              className={`min-h-[44px] flex items-center px-4 py-2.5 rounded-xl font-bold transition-all text-xs uppercase tracking-wider ${
+                isServicesActive
+                  ? "bg-[#0C3B27] text-white shadow-sm"
+                  : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+              }`}
               data-testid="mobile-nav-link-services"
             >
               Services
@@ -86,9 +130,14 @@ export function Header() {
             <Link
               href="/track"
               onClick={() => setMobileMenuOpen(false)}
-              className="py-1 hover:text-[var(--da-brand-dark)]"
+              className={`min-h-[44px] flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-all text-xs uppercase tracking-wider ${
+                isTrackActive
+                  ? "bg-[#0C3B27] text-[#C8F451] shadow-sm border border-[#0C3B27]"
+                  : "bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+              }`}
               data-testid="mobile-nav-link-track"
             >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Track Reservation
             </Link>
           </nav>
@@ -99,4 +148,3 @@ export function Header() {
 }
 
 export default Header;
-

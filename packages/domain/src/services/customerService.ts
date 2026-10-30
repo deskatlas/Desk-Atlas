@@ -118,9 +118,18 @@ export class CustomerService {
     return { customer, isNew: true };
   }
 
+  async createCustomerIdentityAndEnqueueOutbox(
+    reservation: ReservationIdentityInput,
+    bookingDetailsPayload?: Record<string, unknown>,
+    options?: { rewardsPortalUrl?: string }
+  ) {
+    return this.handleReservationConfirmation(reservation, bookingDetailsPayload, options);
+  }
+
   async handleReservationConfirmation(
     reservation: ReservationIdentityInput,
-    bookingDetailsPayload?: Record<string, unknown>
+    bookingDetailsPayload?: Record<string, unknown>,
+    options?: { rewardsPortalUrl?: string }
   ): Promise<{
     customer: Customer;
     isNew: boolean;
@@ -164,6 +173,7 @@ export class CustomerService {
         customerEmail: normalizedEmail,
         customerFirstName: customer.firstName,
         customerLastName: customer.lastName,
+        rewardsPortalUrl: options?.rewardsPortalUrl,
       };
 
       idJob = await this.repository.enqueueOutboxJob({
@@ -178,6 +188,14 @@ export class CustomerService {
     }
 
     return { customer, isNew, bookingJob, idJob };
+  }
+
+  async processPendingOutboxJobs(options?: {
+    limit?: number;
+    leaseSeconds?: number;
+    requireSenderConfig?: boolean;
+  }): Promise<OutboxProcessBatchResult> {
+    return this.processOutboxBatch(options);
   }
 
   async processOutboxBatch(options?: {
@@ -311,6 +329,7 @@ export class CustomerService {
   async completeDirectBookingEmailHandoff(input: {
     reservationId: string;
     bookingProviderMessageId?: string | null;
+    rewardsPortalUrl?: string;
   }): Promise<DirectBookingEmailHandoffResult> {
     const bookingJob = await this.repository.getOutboxJobByDedupeKey(
       `booking-confirmed:${input.reservationId}`
@@ -385,9 +404,10 @@ export class CustomerService {
       customerLastName: String(customerIdJob.payload.customerLastName || ''),
       customerEmail: customerIdJob.recipientEmail,
       rewardsPortalUrl:
-        typeof customerIdJob.payload.rewardsPortalUrl === 'string'
+        input.rewardsPortalUrl ||
+        (typeof customerIdJob.payload.rewardsPortalUrl === 'string'
           ? customerIdJob.payload.rewardsPortalUrl
-          : undefined,
+          : undefined),
     });
 
     if (!sendResult.success) {

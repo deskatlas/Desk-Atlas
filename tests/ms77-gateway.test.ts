@@ -1,9 +1,9 @@
 // MS77-TC01/02/05/10/11/12/15: real gateway with isolated provider/storage seams.
 import { randomUUID, createHash } from 'node:crypto';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn(), resolveContext: vi.fn(), overview: vi.fn(), workspaceTypes: vi.fn() }));
+const seams = vi.hoisted(() => ({ rpc: vi.fn(), candidates: vi.fn(), availability: vi.fn(), prices: vi.fn(), catalog: vi.fn(), resolveContext: vi.fn(), resolveComparison: vi.fn(), overview: vi.fn(), workspaceTypes: vi.fn() }));
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ rpc: seams.rpc }) }));
-vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }), resolvePublicWorkspaceContext: seams.resolveContext, publicWorkspaceOverview: seams.overview, publicWorkspaceTypes: seams.workspaceTypes }));
+vi.mock('../apps/customer-website/src/server/customer-assistant/spots', () => ({ publicSpotRepository: () => ({ candidates: seams.candidates, availability: seams.availability, prices: seams.prices }), resolvePublicComparison: seams.resolveComparison, resolvePublicWorkspaceContext: seams.resolveContext, publicWorkspaceOverview: seams.overview, publicWorkspaceTypes: seams.workspaceTypes }));
 vi.mock('../apps/customer-website/src/server/customer-assistant/catalog', () => ({ readCustomerDiscoveryCatalog: seams.catalog }));
 import { customerAssistantQuery, customerAssistantSession, customerAssistantSource } from '../apps/customer-website/src/server/customer-assistant/gateway';
 
@@ -32,7 +32,7 @@ beforeEach(async () => {
     name === 'customer_document_evidence' ? { contract: 'ms65-v1', epoch: 2, sources: [source] } : source,
   }));
   seams.candidates.mockResolvedValue({ spots: [], has_more: false });
-  seams.resolveContext.mockReset(); seams.overview.mockReset();
+  seams.resolveContext.mockReset(); seams.resolveComparison.mockReset(); seams.overview.mockReset();
   seams.workspaceTypes.mockReset().mockResolvedValue([]);
   provider = vi.fn(async (url: URL, init: RequestInit) => {
     const path = String(url);
@@ -148,6 +148,54 @@ it('asks only for missing duration after applying conversational schedule constr
   expect(answer.discovery.preferences.group_size).toBe(1);
   expect(seams.availability).not.toHaveBeenCalled();
 });
+it('resolves the exact comparison prompt without saved selection even if the planner drops the names', async () => {
+  const spots = ['Focus Pod 8', 'Sky Link 1', 'Think Spot 1'].map(name => ({
+    workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(), name, capacity: 1, hourly_rate: 50,
+  }));
+  seams.candidates.mockResolvedValue({ spots, has_more: false });
+  seams.resolveComparison.mockResolvedValue(spots.map(s => s.workspace_id));
+  provider.mockImplementation(async () => Response.json({ kind: 'KNOWLEDGE', workspace_mode: 'CATALOG', operations: [{ name: 'customer_knowledge' }] }));
+  const response = await customerAssistantQuery(req(query('Compare these workspaces for me: Focus Pod 8, Sky Link 1, Think Spot 1. Explain their capacity, pricing, power access, and suitability.')));
+  expect(response.status).toBe(200);
+  expect((await response.json()).summary).toContain('Think Spot 1');
+  expect(seams.resolveComparison).toHaveBeenCalledWith(spots.map(s => s.name));
+  expect(seams.candidates).toHaveBeenCalledWith(expect.objectContaining({ compared_ids: spots.map(s => s.workspace_id) }));
+  expect(seams.overview).not.toHaveBeenCalled();
+});
+it('does not let saved comparison IDs hijack a new general catalog question', async () => {
+  provider.mockImplementation(async () => Response.json({ kind: 'KNOWLEDGE', workspace_mode: 'CATALOG', operations: [{ name: 'customer_knowledge' }] }));
+  seams.overview.mockResolvedValue('Published workspace types and base rates.');
+  const response = await customerAssistantQuery(req({ ...query('What workspace types do you have?'), discovery: { compared_ids: [randomUUID()] } }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).summary).toBe('Published workspace types and base rates.');
+  expect(seams.candidates).not.toHaveBeenCalled();
+});
+it('uses newly named comparison spots instead of a stale selection and workspace type', async () => {
+  const spots = ['Focus Pod 8', 'Think Spot 1'].map(name => ({
+    workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(), name, capacity: 1, hourly_rate: 50,
+  }));
+  seams.resolveComparison.mockResolvedValue(spots.map(s => s.workspace_id));
+  seams.candidates.mockResolvedValue({ spots, has_more: false });
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', workspace_mode: 'CATALOG', comparison_names: spots.map(s => s.name), operations: [{ name: 'public_workspace' }] }));
+  const response = await customerAssistantQuery(req({ ...query('Compare Focus Pod 8 and Think Spot 1'), discovery: { compared_ids: [randomUUID()], template_id: randomUUID() } }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).summary).toContain('Think Spot 1');
+  expect(seams.candidates).toHaveBeenCalledWith(expect.objectContaining({ compared_ids: spots.map(s => s.workspace_id) }));
+});
+it('omits a selected spot and its details when its published facts change before release', async () => {
+  const spots = ['Focus Pod 8', 'Sky Link 1', 'Think Spot 1'].map(name => ({
+    workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(), name, capacity: 1, hourly_rate: 50,
+  }));
+  seams.candidates.mockResolvedValueOnce({ spots, has_more: false }).mockResolvedValueOnce({ spots: spots.map((s, i) => i === 1 ? { ...s, hourly_rate: 999 } : s), has_more: false });
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', workspace_mode: 'CATALOG', operations: [{ name: 'public_workspace' }] }));
+  const response = await customerAssistantQuery(req({ ...query('Compare these spots'), discovery: { compared_ids: spots.map(s => s.workspace_id) } }));
+  const answer = await response.json();
+  expect(response.status).toBe(200);
+  expect(answer.summary).toContain('Focus Pod 8');
+  expect(answer.summary).not.toContain('Sky Link 1');
+  expect(answer.limitations.join(' ')).toContain('changed');
+  expect(answer.suggestions).toHaveLength(2);
+});
 it('resolves Focus Pod into a template before checking the candidate bound', async () => {
   const template_id = randomUUID();
   seams.resolveContext.mockImplementation(async context => ({ context: { ...context, template_id } }));
@@ -165,6 +213,79 @@ it('answers type/rate overviews from the current public map and refuses changed 
   seams.overview.mockResolvedValueOnce('old rate').mockResolvedValueOnce('new rate');
   result = await customerAssistantQuery(req(query('What types and rates?')));
   expect(result.status).toBe(409);
+});
+// PRD-F26 / MS77-TC05/08/09 / QAD-TC44/46: comparison must beat a broad catalog plan.
+it.each(['CATALOG', 'GUIDANCE', 'LIVE'].flatMap(workspace_mode => [
+  { workspace_mode, preferenceInput: 'omitted' }, { workspace_mode, preferenceInput: 'empty' },
+]))('answers all four default comparison details with $preferenceInput preferences ($workspace_mode)', async ({ workspace_mode, preferenceInput }) => {
+  const spots = ['Focus Pod 8', 'Sky Link 1', 'Think Spot 1'].map((name, i) => ({
+    workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(),
+    name, capacity: [1, 10, 1][i], hourly_rate: [50, 500, 17][i], tags: i === 0 ? ['Quiet', 'Power Outlet'] : [],
+  }));
+  seams.candidates.mockResolvedValue({ spots, has_more: false });
+  seams.resolveComparison.mockResolvedValue(spots.map(s => s.workspace_id));
+  seams.overview.mockResolvedValue('Published workspace types and base rates: ALL TYPES');
+  provider.mockImplementation(async () => Response.json({ kind: 'WORKSPACE', workspace_mode, operations: [{ name: 'public_workspace' }] }));
+  const result = await customerAssistantQuery(req({ ...query('Compare these workspaces for me: Focus Pod 8, Sky Link 1, Think Spot 1. Explain their capacity, pricing, power access, and suitability.'),
+    discovery: { compared_ids: spots.map(s => s.workspace_id), ...(preferenceInput === 'empty' ? { preferences: {} } : {}) } }));
+  const answer = await result.json();
+  expect(result.status).toBe(200);
+  expect(answer.kind).toBe('ANSWER');
+  expect(answer.summary).toContain('Focus Pod 8');
+  expect(answer.summary).toContain('Sky Link 1');
+  expect(answer.summary).toContain('Think Spot 1');
+  expect(answer.summary).toContain('PHP 17 per hour');
+  expect(answer.summary).toMatch(/power outlet/i);
+  expect(answer.summary).toMatch(/power access.*not.*(?:verified|published)/i);
+  expect(answer.summary).toMatch(/10 people/);
+  expect(answer.summary).toMatch(/suitability/i);
+  for (const spot of spots) {
+    const explanation = answer.summary.split('\n\n').find((paragraph: string) => paragraph.startsWith(`${spot.name}:`));
+    expect(explanation).toContain(`capacity ${spot.capacity}`);
+    expect(explanation).toContain(`PHP ${spot.hourly_rate} per hour`);
+    expect(explanation).toContain('Power access:');
+    expect(explanation).toContain('Suitability:');
+  }
+  expect(answer.summary).not.toMatch(/save.*preferences|which.*preferences|what.*preferences/i);
+  expect(answer.suggestions).toHaveLength(3);
+  expect(answer.suggestions.every((s: { availability: string; quote?: unknown }) => s.availability === 'NOT_CHECKED' && !s.quote)).toBe(true);
+  expect(seams.overview).not.toHaveBeenCalled();
+  expect(seams.availability).not.toHaveBeenCalled();
+  expect(provider).toHaveBeenCalledOnce();
+});
+// PRD-F26 / QAD-TC44/46: comparison dimensions are not booking constraints.
+it.each(['omitted', 'empty', 'saved'])('does not autofill comparison schedule or preferences (%s)', async inputMode => {
+  const spots = ['Focus Pod 8', 'Sky Link 1', 'Think Spot 1'].map((name, i) => ({
+    workspace_id: randomUUID(), template_id: randomUUID(), floor_id: randomUUID(), map_version_id: randomUUID(),
+    name, capacity: [1, 10, 1][i], hourly_rate: [50, 500, 17][i],
+  }));
+  const saved = inputMode === 'saved' ? { date: '2026-11-01', start_time: '09:00', duration_minutes: 120,
+    preferences: { group_size: 1, budget: 2000, power: true } } : inputMode === 'empty' ? { preferences: {} } : {};
+  seams.candidates.mockResolvedValue({ spots, has_more: false });
+  seams.resolveComparison.mockResolvedValue(spots.map(s => s.workspace_id));
+  seams.availability.mockResolvedValue(new Set(spots.map(s => s.workspace_id)));
+  seams.prices.mockResolvedValue(new Map(spots.map(s => [s.workspace_id, s.hourly_rate * 2])));
+  provider.mockImplementation(async (url: URL) => String(url).endsWith('/characteristics')
+    ? Response.json({ characteristics: [] })
+    : String(url).endsWith('/embed') ? Response.json({ vector: [1, ...Array(1023).fill(0)] })
+    : Response.json({ kind: 'WORKSPACE', operations: [{ name: 'public_workspace' }], constraints: {
+      date: '2026-12-25', start_time: '18:00', duration_minutes: 60,
+      preferences: { group_size: 1, budget: 0, focus: true, calls: false, power: true },
+    } }));
+  const result = await customerAssistantQuery(req({
+    ...query('Compare these workspaces for me: Focus Pod 8, Sky Link 1, Think Spot 1. Explain their capacity, pricing, power access, and suitability.'),
+    discovery: { compared_ids: spots.map(s => s.workspace_id), ...saved },
+  }));
+  const answer = await result.json();
+  expect(result.status).toBe(200);
+  expect(answer.discovery).toEqual({ compared_ids: spots.map(s => s.workspace_id), preferences: {}, ...saved });
+  expect(answer.kind).toBe('ANSWER');
+  for (const spot of spots) expect(answer.summary).toContain(`${spot.name}: capacity ${spot.capacity}`);
+  expect(answer.suggestions).toHaveLength(3);
+  if (inputMode !== 'saved') {
+    expect(seams.availability).not.toHaveBeenCalled();
+    expect(seams.prices).not.toHaveBeenCalled();
+  }
 });
 it('offers inert exact map labels when the scoped live catalog still exceeds twelve', async () => {
   const template_id = randomUUID(), floor_id = randomUUID();

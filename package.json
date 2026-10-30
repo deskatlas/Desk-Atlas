@@ -15,6 +15,8 @@
     "bootstrap:staff": "tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --outDir node_modules/.cache/deskatlas-bootstrap-staff --rootDir . scripts/bootstrap-staff.ts && node node_modules/.cache/deskatlas-bootstrap-staff/scripts/bootstrap-staff.js",
     "admin:recovery": "tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --outDir node_modules/.cache/deskatlas-unseal-admin --rootDir . scripts/unseal-admin-setup.ts && node node_modules/.cache/deskatlas-unseal-admin/scripts/unseal-admin-setup.js",
     "test": "vitest run",
+    "test:ms97": "vitest run tests/ms97-rewards-action-button-sizing.test.ts",
+    "test:ms95": "vitest run tests/ms95-assistant-comparison-tray-ux.test.ts",
     "test:ms86": "vitest run tests/ms86-forgot-customer-id.test.ts",
     "test:ms85": "vitest run tests/ms85-rebook-companion-names.test.ts",
     "test:ms82": "vitest run tests/ms82-database-interruption-recovery.test.ts tests/ms80-reservation-query-contracts.test.ts tests/ms80-closure-routes.test.ts tests/ms81-staff-rpc-ambiguity.test.ts tests/ms35-query-amplification.test.ts tests/t05-payment-session-and-review.test.ts tests/t11-auth-and-security.test.ts",

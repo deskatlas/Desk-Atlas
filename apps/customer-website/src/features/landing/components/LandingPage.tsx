@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { PublicLandingPreviewPhoto } from "@deskatlas/domain";
 import { PrivacyNoticeLink } from "@/app/components/privacy";
+import { Header } from "@/app/components/Header";
 
 const steps = [
   "Browse the published workspace map",
@@ -62,23 +63,7 @@ export function LandingPage() {
 
   return (
     <main className="min-h-screen bg-[var(--da-canvas)] text-[var(--da-text-primary)]">
-      <header className="border-b border-[var(--da-border)] bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--da-brand-accent)] flex-shrink-0">
-              <div className="h-3 w-3 rounded-[3px] bg-[var(--da-brand-dark)]" />
-            </div>
-            <span className="text-xl font-extrabold tracking-[-0.02em] text-[var(--da-brand-dark)]">
-              DeskAtlas
-            </span>
-          </Link>
-          <nav className="flex items-center gap-4 text-sm font-semibold text-[var(--da-text-secondary)]">
-            <Link href="/reserve">Reserve</Link>
-            <Link href="/services">Services</Link>
-            <Link href="/track">Track Reservation</Link>
-          </nav>
-        </div>
-      </header>
+      <Header />
 
       <section className="mx-auto grid max-w-6xl gap-10 px-6 py-16 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
         <div>
@@ -93,7 +78,11 @@ export function LandingPage() {
             choose backup options, and finish payment from a secure one-hour link.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Link href="/reserve" className="da-primary-button">
+            <Link
+              href="/reserve"
+              className="da-primary-button text-white"
+              data-testid="landing-explore-workspaces-btn"
+            >
               Explore Workspaces
             </Link>
             <Link href="/track" className="da-secondary-button">

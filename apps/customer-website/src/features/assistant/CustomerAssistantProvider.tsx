@@ -9,13 +9,26 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useRewardsSession } from '../tracking/context/RewardsSessionContext';
 import { VerifiedBookingActions, VerifiedReservationControls } from './VerifiedReservationControls';
 import { DiscoveryPreferences } from './DiscoveryPreferences';
+import { ComparisonTray, type ComparisonSpotInfo } from './ComparisonTray';
 
 type SpotAction = Required<Extract<PublicCustomerResponse['actions'][number], { id?: 'VIEW_SPOT' }>>;
-interface AssistantContext {
+export interface AssistantContext {
+  discovery: CustomerDiscoveryContext;
+  spotsInfo: Record<string, ComparisonSpotInfo>;
   setDiscovery: (context: CustomerDiscoveryContext) => void;
   askSpot: (context: CustomerDiscoveryContext) => void;
-  compareSpot: (context: CustomerDiscoveryContext) => void;
-  handoff: SpotAction | null; consumeHandoff: () => void;
+  compareSpot: (context: CustomerDiscoveryContext & {
+    name?: string;
+    workspace_name?: string;
+    code?: string;
+    capacity?: number;
+    pricePerHour?: number;
+    rate?: number;
+  }) => void;
+  removeComparedSpot: (workspaceId: string) => void;
+  clearComparedSpots: () => void;
+  handoff: SpotAction | null;
+  consumeHandoff: () => void;
 }
 const Context = createContext<AssistantContext | null>(null);
 const emptyDiscovery: CustomerDiscoveryContext = {};
@@ -28,6 +41,8 @@ export function CustomerAssistantProvider({ children }: { children: ReactNode })
   const owner = session?.accessToken ?? 'public';
   const [open, setOpen] = useState(false);
   const [discovery, setContext] = useState<{ owner: string; value: CustomerDiscoveryContext } | null>(null);
+  const [spotsInfo, setSpotsInfo] = useState<Record<string, ComparisonSpotInfo>>({});
+  const [comparisonToast, setComparisonToast] = useState<string | null>(null);
   const [reservation, setReservation] = useState<{ owner: string; id: string } | null>(null);
   const [handoff, setHandoff] = useState<SpotAction | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -35,6 +50,7 @@ export function CustomerAssistantProvider({ children }: { children: ReactNode })
   const router = useRouter();
   const pathname = usePathname();
   const enabled = process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true';
+
   const setDiscovery = (value: CustomerDiscoveryContext) => {
     const parsed = customerDiscoveryContextSchema.safeParse(value);
     if (parsed.success) setContext(previous => {
@@ -44,10 +60,30 @@ export function CustomerAssistantProvider({ children }: { children: ReactNode })
         compared_ids: parsed.data.compared_ids ?? saved.compared_ids } };
     });
   };
+
+  const removeComparedSpot = (workspaceId: string) => {
+    setContext(previous => {
+      const current = previous?.owner === owner ? previous.value : {};
+      const compared_ids = (current.compared_ids ?? []).filter(id => id !== workspaceId);
+      return { owner, value: { ...current, compared_ids } };
+    });
+    setComparisonToast(null);
+  };
+
+  const clearComparedSpots = () => {
+    setContext(previous => {
+      const current = previous?.owner === owner ? previous.value : {};
+      return { owner, value: { ...current, compared_ids: [] } };
+    });
+    setComparisonToast(null);
+  };
+
   const begin = () => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setOpen(true); };
   const changeOpen = (next: boolean) => {
     if (next) { begin(); return; }
-    setOpen(false); setContext(null); setReservation(null);
+    // PRD-F26 / MS77-TC03/04/13: comparison candidates end with the chat.
+    clearComparedSpots(); setSpotsInfo({});
+    setOpen(false); setReservation(null);
   };
   useEffect(() => { setReservation(null); }, [pathname]);
   useEffect(() => {
@@ -61,37 +97,125 @@ export function CustomerAssistantProvider({ children }: { children: ReactNode })
     window.addEventListener('pagehide', clear);
     return () => { window.removeEventListener('deskatlas:assistant:reservation', ask); window.removeEventListener('pagehide', clear); };
   }, [owner]);
-  return <Context.Provider value={{ setDiscovery, askSpot: value => { setDiscovery({ ...value, compared_ids: [] }); setReservation(null); begin(); },
+
+  const activeDiscovery = discovery?.owner === owner ? discovery.value : emptyDiscovery;
+  const comparedCount = activeDiscovery.compared_ids?.length ?? 0;
+
+  return <Context.Provider value={{
+    discovery: activeDiscovery,
+    spotsInfo,
+    setDiscovery,
+    askSpot: value => { setDiscovery({ ...value, compared_ids: [] }); setReservation(null); begin(); },
     compareSpot: value => {
-      const parsed = customerDiscoveryContextSchema.safeParse(value);
-      if (!parsed.success || !parsed.data.workspace_id) return;
+      const targetId = value.workspace_id;
+      if (!targetId || typeof targetId !== 'string') return;
+
+      const spotName = value.workspace_name
+        ?? value.name
+        ?? targetId;
+
+      if (value.name || value.workspace_name) {
+        setSpotsInfo(previous => ({
+          ...previous,
+          [targetId]: {
+            workspaceId: targetId,
+            name: value.workspace_name ?? value.name ?? targetId,
+            code: value.code,
+            capacity: value.capacity,
+            pricePerHour: value.pricePerHour ?? value.rate,
+          },
+        }));
+      }
+
       setContext(previous => {
         const current = previous?.owner === owner ? previous.value : {};
-        const compared_ids = [...new Set([...(current.compared_ids ?? []), parsed.data.workspace_id!])];
-        if (compared_ids.length > 3) return previous;
-        return { owner, value: { date: current.date, start_time: current.start_time, duration_minutes: current.duration_minutes,
-          preferences: current.preferences, compared_ids } };
+        const currentList = current.compared_ids ?? [];
+        if (currentList.length >= 3 && !currentList.includes(targetId)) {
+          setComparisonToast('Comparison limit reached (maximum 3 workspaces). Remove a spot to add another.');
+          return previous;
+        }
+        const compared_ids = [...new Set([...currentList, targetId])];
+        setComparisonToast(`Added ${spotName} to comparison (${compared_ids.length}/3)`);
+        return {
+          owner,
+          value: {
+            ...current,
+            compared_ids,
+          },
+        };
       });
-      setReservation(null); begin();
-    }, handoff, consumeHandoff: () => setHandoff(null) }}>
+      setReservation(null);
+      begin();
+    },
+    removeComparedSpot,
+    clearComparedSpots,
+    handoff,
+    consumeHandoff: () => setHandoff(null),
+  }}>
     {children}
     {enabled && <Sheet modal={false} open={open} onOpenChange={changeOpen}>
-      <SheetTrigger asChild><button ref={trigger} type="button" className="da-primary-button fixed bottom-6 right-6 z-40" aria-label="Ask DeskAtlas">Ask DeskAtlas</button></SheetTrigger>
+      <SheetTrigger asChild>
+        <button
+          ref={trigger}
+          type="button"
+          className="da-primary-button fixed bottom-6 right-6 z-40"
+          aria-label={comparedCount > 0 ? `Ask DeskAtlas (${comparedCount})` : 'Ask DeskAtlas'}
+        >
+          <span>Ask DeskAtlas</span>
+          {comparedCount > 0 && (
+            <span
+              data-testid="assistant-trigger-badge"
+              className="ml-2 rounded-full bg-[#C8F451] text-[#0C3B27] px-2 py-0.5 text-xs font-extrabold inline-flex items-center justify-center align-middle"
+            >
+              {comparedCount}
+            </span>
+          )}
+        </button>
+      </SheetTrigger>
       <SheetContent className="customer-assistant-panel bg-[var(--da-canvas)] text-[var(--da-text-primary)]" onInteractOutside={event => event.preventDefault()} onCloseAutoFocus={event => {
         event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : trigger.current)?.focus();
       }}>
         <SheetHeader className="shrink-0 border-b border-[var(--da-border)] pr-12"><SheetTitle>Ask DeskAtlas</SheetTitle><SheetDescription>Ask about spaces, prices and booking policies. No verification needed.</SheetDescription></SheetHeader>
-        {open && <Conversation key={owner} token={token} discovery={discovery?.owner === owner ? discovery.value : emptyDiscovery}
+        {open && <Conversation
+          key={owner}
+          token={token}
+          discovery={activeDiscovery}
+          spotsInfo={spotsInfo}
+          comparisonToast={comparisonToast}
+          onDismissToast={() => setComparisonToast(null)}
+          onRemoveSpot={removeComparedSpot}
+          onClearAll={clearComparedSpots}
           initialReservation={reservation?.owner === owner ? reservation.id : undefined}
-          onDiscovery={value => { const parsed = customerDiscoveryContextSchema.safeParse(value); if (parsed.success) setContext({ owner, value: parsed.data }); }} onViewSpot={action => { setHandoff(action); changeOpen(false); router.push('/reserve'); }} />}
+          onDiscovery={value => { const parsed = customerDiscoveryContextSchema.safeParse(value); if (parsed.success) setContext({ owner, value: parsed.data }); }}
+          onViewSpot={action => { setHandoff(action); changeOpen(false); router.push('/reserve'); }}
+        />}
       </SheetContent>
     </Sheet>}
   </Context.Provider>;
 }
 
-function Conversation({ token, discovery, initialReservation, onDiscovery, onViewSpot }: {
-  token?: string; discovery: CustomerDiscoveryContext; initialReservation?: string;
-  onDiscovery: (context: CustomerDiscoveryContext) => void; onViewSpot: (action: SpotAction) => void;
+function Conversation({
+  token,
+  discovery,
+  spotsInfo = {},
+  comparisonToast,
+  onDismissToast,
+  onRemoveSpot,
+  onClearAll,
+  initialReservation,
+  onDiscovery,
+  onViewSpot,
+}: {
+  token?: string;
+  discovery: CustomerDiscoveryContext;
+  spotsInfo?: Record<string, ComparisonSpotInfo>;
+  comparisonToast?: string | null;
+  onDismissToast?: () => void;
+  onRemoveSpot?: (spotId: string) => void;
+  onClearAll?: () => void;
+  initialReservation?: string;
+  onDiscovery: (context: CustomerDiscoveryContext) => void;
+  onViewSpot: (action: SpotAction) => void;
 }) {
   const { clearSession } = useRewardsSession();
   const [selected, setSelected] = useState(initialReservation);
@@ -138,6 +262,14 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
   useEffect(() => { setTurns([]); }, [selected, reservationFilter]);
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'nearest' }); }, [turns, pendingQuestion, notice]);
   useEffect(() => { setSelected(initialReservation); }, [initialReservation]);
+
+  const comparedIds = discovery.compared_ids ?? [];
+
+  const handleCompareNow = (ids: string[]) => {
+    const names = ids.map(id => spotsInfo[id]?.name || id).join(', ');
+    const question = `Compare these workspaces for me: ${names}. Explain their capacity, pricing, power access, and suitability.`;
+    void ask(question);
+  };
 
   async function ask(question: string) {
     if (busy || !question.trim()) return;
@@ -215,6 +347,41 @@ function Conversation({ token, discovery, initialReservation, onDiscovery, onVie
     } catch { if (mounted.current && !abort.signal.aborted) setNotice('This source is no longer available.'); }
   }
   return <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
+    {comparisonToast && (
+      <div
+        role="status"
+        data-testid="comparison-toast"
+        className="shrink-0 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-900 flex items-center justify-between shadow-xs"
+      >
+        <span>{comparisonToast}</span>
+        <button
+          type="button"
+          onClick={onDismissToast}
+          className="ml-2 text-emerald-700 hover:text-emerald-950 p-0.5 text-xs font-bold"
+          aria-label="Dismiss message"
+        >
+          ✕
+        </button>
+      </div>
+    )}
+    {comparedIds.length > 0 && (
+      <div className="shrink-0">
+        <ComparisonTray
+          spotIds={comparedIds}
+          spotsInfo={spotsInfo}
+          onRemoveSpot={(spotId) => {
+            if (onRemoveSpot) onRemoveSpot(spotId);
+            else onDiscovery({ ...discovery, compared_ids: comparedIds.filter(id => id !== spotId) });
+          }}
+          onClearAll={() => {
+            if (onClearAll) onClearAll();
+            else onDiscovery({ ...discovery, compared_ids: [] });
+          }}
+          onCompareNow={handleCompareNow}
+          busy={busy}
+        />
+      </div>
+    )}
     <div className="customer-assistant-scroll min-h-0 flex-1 overflow-y-auto space-y-4">
     {!turns.length && <div className="space-y-3 rounded-2xl border border-[var(--da-border)] bg-white p-4 text-sm">
       <p className="font-bold">How can I help?</p>

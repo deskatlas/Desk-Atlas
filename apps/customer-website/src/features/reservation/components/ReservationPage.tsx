@@ -1559,38 +1559,46 @@ export function ReservationPage() {
               </div>
 
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 w-full pt-4 border-t border-[var(--da-border-light)]">
-                <button
-                  type="button"
-                  onClick={() => router.push("/")}
-                  className="da-primary-button w-full sm:w-auto text-sm font-extrabold px-8 py-3.5 shadow-md flex items-center justify-center gap-2"
-                >
-                  <span>Return to Home</span>
-                  <span>→</span>
-                </button>
-
                 {submittedReservation?.referenceCode ? (
                   <button
                     type="button"
                     onClick={() => {
                       const emailParam = (submittedReservation.customerEmail || customerEmail.trim().toLowerCase());
                       router.replace(
-                        `/track?code=${encodeURIComponent(submittedReservation.referenceCode)}${emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""
+                        `/track?code=${encodeURIComponent(submittedReservation.referenceCode)}${
+                          emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""
                         }`
                       );
                     }}
-                    className="da-secondary-button w-full sm:w-auto text-sm font-bold px-6 py-3.5"
+                    className="da-primary-button w-full sm:w-auto text-sm font-extrabold px-8 py-3.5 shadow-md flex items-center justify-center gap-2"
+                    data-testid="track-submitted-status-btn"
                   >
-                    Track Reservation Status
+                    <span>Track Reservation Status</span>
+                    <span className="text-xs font-mono bg-white/20 px-2 py-0.5 rounded">
+                      {submittedReservation.referenceCode}
+                    </span>
+                    <span>→</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => router.replace("/track")}
-                    className="da-secondary-button w-full sm:w-auto text-sm font-bold px-6 py-3.5"
+                    className="da-primary-button w-full sm:w-auto text-sm font-extrabold px-8 py-3.5 shadow-md flex items-center justify-center gap-2"
+                    data-testid="track-submitted-status-btn"
                   >
-                    Track Reservation
+                    <span>Track Reservation Status</span>
+                    <span>→</span>
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => router.push("/")}
+                  className="da-secondary-button w-full sm:w-auto text-sm font-bold px-6 py-3.5 flex items-center justify-center gap-2"
+                  data-testid="return-home-btn"
+                >
+                  <span>Return to Home</span>
+                </button>
               </div>
             </div>
           </section>

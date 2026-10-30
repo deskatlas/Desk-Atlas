@@ -7,6 +7,7 @@ import { extractBookingToken, formatBookingAccessState, formatBookingCheckInStat
 interface KioskScannerProps {
   onCancel: () => void;
   onSwitchToReference?: () => void;
+  initialBookingData?: BookingScanResult | null;
 }
 
 function formatBookingTime(isoString?: string): string {
@@ -19,14 +20,14 @@ function formatBookingTime(isoString?: string): string {
   }
 }
 
-export function KioskScanner({ onCancel, onSwitchToReference }: KioskScannerProps) {
+export function KioskScanner({ onCancel, onSwitchToReference, initialBookingData }: KioskScannerProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [bookingData, setBookingData] = useState<BookingScanResult | null>(null);
+  const [bookingData, setBookingData] = useState<BookingScanResult | null>(initialBookingData ?? null);
   const scannerInstanceRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
 
-  const [isScanning, setIsScanning] = useState(true);
+  const [isScanning, setIsScanning] = useState(!initialBookingData);
 
   const startScanner = async () => {
     if (scannerInstanceRef.current?.isScanning) {
@@ -111,7 +112,9 @@ export function KioskScanner({ onCancel, onSwitchToReference }: KioskScannerProp
   };
 
   useEffect(() => {
-    startScanner();
+    if (!initialBookingData) {
+      startScanner();
+    }
 
     return () => {
       if (scannerInstanceRef.current) {
@@ -253,6 +256,72 @@ export function KioskScanner({ onCancel, onSwitchToReference }: KioskScannerProp
                 </div>
               </div>
             </div>
+
+            {bookingData.companionNames &&
+              bookingData.companionNames
+                .map((name) => (typeof name === "string" ? name.trim() : ""))
+                .filter((name) => name.length > 0).length > 0 && (() => {
+                const validCompanions = bookingData.companionNames
+                  .map((name) => (typeof name === "string" ? name.trim() : ""))
+                  .filter((name) => name.length > 0);
+                return (
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      marginBottom: "20px",
+                      padding: "16px",
+                      background: "#F8FAFC",
+                      borderRadius: "14px",
+                      border: "1px solid #E2E8F0",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#64748B",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: "10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span>Companions ({validCompanions.length})</span>
+                      <span style={{ fontSize: "11px", fontWeight: 600, color: "#0C3B27" }}>Group Check-In</span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                      }}
+                      data-testid="kiosk-companion-roster"
+                    >
+                      {validCompanions.map((name, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "6px 12px",
+                            borderRadius: "9999px",
+                            background: "#FFFFFF",
+                            border: "1px solid #CBD5E1",
+                            fontSize: "14px",
+                            fontWeight: 600,
+                            color: "#1E293B",
+                          }}
+                          data-testid={`kiosk-companion-badge-${idx}`}
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
             <div style={{ display: "flex", gap: "12px" }}>
               <button 

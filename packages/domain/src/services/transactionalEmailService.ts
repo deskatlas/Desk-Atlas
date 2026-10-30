@@ -126,6 +126,56 @@ export function resolveCustomerAppBaseUrl(
   return candidate.trim().replace(/\/+$/, '');
 }
 
+export const CANONICAL_PRODUCTION_CUSTOMER_URL = 'https://www.thedeskatlas.com';
+
+export function resolveCustomerAppOrigin(customOrigin?: string): string {
+  const formatCandidate = (val?: string) => {
+    if (!val) return undefined;
+    const trimmed = val.trim();
+    if (!trimmed) return undefined;
+    return trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? trimmed
+      : `https://${trimmed}`;
+  };
+
+  const candidate = (
+    customOrigin ||
+    process.env.DESKATLAS_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
+    formatCandidate(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
+    formatCandidate(process.env.NEXT_PUBLIC_SITE_URL) ||
+    formatCandidate(process.env.NEXT_PUBLIC_VERCEL_URL) ||
+    ''
+  ).trim().replace(/\/+$/, '');
+
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!candidate) {
+    return isProduction ? CANONICAL_PRODUCTION_CUSTOMER_URL : 'http://localhost:3001';
+  }
+
+  if (isProduction && /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(candidate)) {
+    return CANONICAL_PRODUCTION_CUSTOMER_URL;
+  }
+
+  return candidate;
+}
+
+export function resolveCustomerRewardsPortalUrl(customUrl?: string, customOrigin?: string): string {
+  if (customUrl && customUrl.trim()) {
+    const clean = customUrl.trim().replace(/\/+$/, '');
+    if (process.env.NODE_ENV === 'production' && /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(clean)) {
+      return `${CANONICAL_PRODUCTION_CUSTOMER_URL}/track/rewards`;
+    }
+    return clean;
+  }
+  const origin = resolveCustomerAppOrigin(customOrigin);
+  return `${origin}/track/rewards`;
+}
+
+export const resolveCustomerPortalUrl = resolveCustomerRewardsPortalUrl;
+
+
 export async function getOrResolveBusinessProfile(
   input?: BaseEmailBusinessFields,
   defaultProfile?: BusinessEmailProfile
@@ -4172,12 +4222,7 @@ export function renderSaveCustomerIdEmail(input: SaveCustomerIdEmailInput): { su
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
   const subject = `Your DeskAtlas Customer ID: ${input.customerCode}`;
 
-  let customerOrigin =
-    process.env.DESKATLAS_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
-    'https://deskatlas.test';
-
-  const portalUrl = input.rewardsPortalUrl || `${customerOrigin}/rewards`;
+  const portalUrl = resolveCustomerRewardsPortalUrl(input.rewardsPortalUrl);
 
   const html = `
 <!DOCTYPE html>
@@ -4224,7 +4269,7 @@ export function renderSaveCustomerIdEmail(input: SaveCustomerIdEmailInput): { su
       </div>
 
       <div class="btn-container">
-        <a href="${escapeHtml(portalUrl)}" class="btn">Access My Bookings & Rewards</a>
+        <a href="${escapeHtml(portalUrl)}" class="btn">Log In to My Bookings & Rewards</a>
       </div>
     </div>
     ${renderBusinessFooter(profile)}
@@ -4248,7 +4293,7 @@ Important Information:
 - This Customer ID is permanently bound to ${input.customerEmail}. Future bookings made with this email will automatically associate with your loyalty profile.
 - You can use this Customer ID along with your email on My Bookings & Rewards to track your reservations and view your loyalty rewards.
 
-Access My Bookings & Rewards:
+Log In to My Bookings & Rewards:
 ${portalUrl}
 
 ${renderBusinessFooterText(profile)}
@@ -4272,12 +4317,7 @@ export function renderCustomerIdReminderEmail(input: CustomerIdReminderEmailInpu
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Coworker';
   const subject = `Your DeskAtlas Customer ID: ${input.customerCode}`;
 
-  let customerOrigin =
-    process.env.DESKATLAS_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_CUSTOMER_URL ||
-    'https://deskatlas.test';
-
-  const portalUrl = input.rewardsPortalUrl || `${customerOrigin}/track`;
+  const portalUrl = resolveCustomerRewardsPortalUrl(input.rewardsPortalUrl);
 
   const html = `
 <!DOCTYPE html>

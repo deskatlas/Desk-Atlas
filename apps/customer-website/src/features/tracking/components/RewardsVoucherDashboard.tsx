@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { AskReservationButton } from '../../assistant/AskReservationButton';
 
 import { useEffect, useState } from "react";
 import type { RewardsSession } from "../context/RewardsSessionContext";
@@ -281,51 +280,57 @@ export function RewardsVoucherDashboard({
   return (
     <div className="mt-8 grid gap-8" data-testid="rewards-portal-view">
       {/* Customer Header Card */}
-      <div className="rounded-[24px] border border-[var(--da-border)] bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="rounded-[28px] border border-[var(--da-border)] bg-white p-6 sm:p-8 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-6">
           <div>
-            <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-[11px] font-bold text-emerald-300 border border-emerald-500/30">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
               Verified Guest
             </span>
-            <h2 className="mt-2 text-2xl font-black text-white">
+            <h2 className="mt-2.5 text-2xl sm:text-3xl font-extrabold tracking-[-0.03em] text-[var(--da-brand-dark)]">
               {customer.firstName} {customer.lastName}
             </h2>
-            <p className="text-xs text-slate-300 font-mono mt-0.5">{customer.email}</p>
+            <p className="mt-1 text-xs sm:text-sm font-mono text-[var(--da-text-secondary)]">
+              {customer.email}
+            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-sm border border-white/10 text-center">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-[20px] border border-[var(--da-border)] bg-[var(--da-canvas)] px-5 py-3.5 text-center min-w-[130px] flex-1 sm:flex-initial">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
                 Customer ID
               </span>
-              <span className="font-mono text-xl font-extrabold tracking-widest text-emerald-400">
+              <span className="mt-1.5 block font-mono text-xl font-black tracking-widest text-[var(--da-primary)]">
                 {customer.customerCode}
               </span>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-sm border border-white/10 text-center">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
+            <div className="rounded-[20px] border border-[var(--da-border)] bg-[var(--da-canvas)] px-5 py-3.5 text-center min-w-[130px] flex-1 sm:flex-initial">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
                 Customer ID issued
               </span>
-              <span className="text-sm font-semibold text-white">
+              <span className="mt-1.5 block text-sm font-bold text-[var(--da-brand-dark)]">
                 {formattedIssuedDate}
               </span>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-3.5 backdrop-blur-sm border border-white/10 text-center">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
+            <div className="rounded-[20px] border border-[var(--da-border)] bg-[var(--da-canvas)] px-5 py-3.5 text-center min-w-[130px] flex-1 sm:flex-initial">
+              <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--da-text-secondary)]">
                 Qualifying Bookings
               </span>
-              <span className="text-xl font-black text-emerald-400">
+              <span className="mt-1.5 block text-xl font-black text-[var(--da-primary)]">
                 {qualifyingCount}
               </span>
             </div>
           </div>
         </div>
 
-        <p className="mt-4 text-[11px] text-slate-400 border-t border-white/10 pt-3">
-          Notice: Customer ID is an identifier permanently bound to your email address. Individual promotional campaigns may evaluate a narrower count.
-        </p>
+        <div className="mt-6 border-t border-[var(--da-border-light)] pt-4 flex items-start sm:items-center gap-2.5">
+          <span className="text-xs text-[var(--da-text-secondary)] shrink-0" aria-hidden="true">ℹ️</span>
+          <p className="text-xs text-[var(--da-text-secondary)] leading-relaxed">
+            Notice: Customer ID is an identifier permanently bound to your email address. Individual promotional campaigns may evaluate a narrower count.
+          </p>
+        </div>
       </div>
 
       {/* Rewards Vouchers Section */}
@@ -359,18 +364,18 @@ export function RewardsVoucherDashboard({
 
         {/* Live campaign progress if available */}
         {eligibilityProgress && eligibilityProgress.length > 0 && (
-          <div className="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+          <div className="mt-5 rounded-2xl bg-[var(--da-canvas)] border border-[var(--da-border)] p-5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--da-text-secondary)] mb-3">
               Active Campaign Progress
             </h4>
             <div className="grid gap-3">
               {eligibilityProgress.map((prog) => (
                 <div
                   key={prog.rule_id}
-                  className="rounded-xl bg-white border border-slate-200 p-3.5 text-xs"
+                  className="rounded-xl bg-white border border-[var(--da-border)] p-3.5 text-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">{prog.label}</span>
+                    <span className="font-bold text-[var(--da-brand-dark)]">{prog.label}</span>
                     {prog.completed ? (
                       <span className="rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-0.5 text-[10px] font-bold">
                         Completed
@@ -398,7 +403,7 @@ export function RewardsVoucherDashboard({
         )}
 
         {/* Filter Tabs */}
-        <div className="mt-6 flex gap-2 border-b border-slate-200 pb-2">
+        <div className="mt-6 flex gap-2 border-b border-[var(--da-border-light)] pb-2">
           {(["AVAILABLE", "USED", "EXPIRED"] as const).map((tab) => (
             <button
               key={tab}
@@ -407,7 +412,7 @@ export function RewardsVoucherDashboard({
               className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${
                 activeTab === tab
                   ? "bg-[var(--da-primary)] text-white shadow-sm"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  : "bg-[var(--da-canvas)] text-[var(--da-text-secondary)] hover:text-[var(--da-brand-dark)] hover:bg-[#e7eee9]"
               }`}
               data-testid={`voucher-tab-${tab.toLowerCase()}`}
             >
@@ -421,7 +426,7 @@ export function RewardsVoucherDashboard({
           {isLoadingData ? (
             <p className="text-center text-xs text-slate-400 py-8">Loading vouchers...</p>
           ) : vouchers.length === 0 ? (
-            <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <div className="text-center py-10 bg-[var(--da-canvas)] rounded-2xl border border-dashed border-[var(--da-border)]">
               <p className="text-sm font-semibold text-slate-500">
                 No {activeTab.toLowerCase()} vouchers found.
               </p>
@@ -448,14 +453,14 @@ export function RewardsVoucherDashboard({
                 return (
                   <div
                     key={v.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden"
+                    className="rounded-2xl border border-[var(--da-border)] bg-white p-5 shadow-sm hover:shadow-[var(--da-shadow-md)] transition-shadow relative overflow-hidden"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
                           {v.campaign_name_snapshot}
                         </span>
-                        <h4 className="text-lg font-black text-slate-900 mt-0.5">
+                        <h4 className="text-lg font-black text-[var(--da-brand-dark)] mt-0.5">
                           {discountText}
                         </h4>
                       </div>
@@ -488,14 +493,14 @@ export function RewardsVoucherDashboard({
                       </div>
                     )}
 
-                    <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 p-2.5">
-                      <span className="font-mono text-sm font-black tracking-widest text-slate-900 select-all">
+                    <div className="mt-4 flex items-center justify-between rounded-xl bg-[var(--da-canvas)] border border-[var(--da-border)] p-2.5">
+                      <span className="font-mono text-sm font-black tracking-widest text-[var(--da-brand-dark)] select-all">
                         {v.promo_code}
                       </span>
                       <button
                         type="button"
                         onClick={() => copyToClipboard(v.promo_code)}
-                        className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 border border-slate-300 hover:bg-slate-100 transition-colors"
+                        className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-[var(--da-brand-dark)] border border-[var(--da-border)] hover:bg-[var(--da-canvas)] transition-colors shadow-xs"
                         title={v.status === "PENDING_REDEMPTION" ? "This code is currently on hold for an unconfirmed reservation." : "Copy promo code"}
                       >
                         {copiedCode === v.promo_code ? "Copied!" : "Copy Code"}
@@ -536,7 +541,7 @@ export function RewardsVoucherDashboard({
         </div>
 
         {emailStatusMessage && (
-          <div className="mt-4 rounded-xl bg-slate-900 text-white p-3 text-xs font-semibold text-center">
+          <div className="mt-4 rounded-xl bg-[var(--da-primary)] text-white p-3 text-xs font-semibold text-center shadow-sm">
             {emailStatusMessage}
           </div>
         )}
@@ -583,9 +588,8 @@ export function RewardsVoucherDashboard({
 
                       return (
                         <tr key={b.id} className="hover:bg-slate-50/50">
-                          <td className="p-3 font-mono font-bold text-slate-900">
+                          <td className="p-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                             {b.reference_code}
-                            <AskReservationButton reservationId={b.id} />
                           </td>
                           <td className="p-3 font-semibold">{b.source}</td>
                           <td className="p-3">
@@ -600,10 +604,11 @@ export function RewardsVoucherDashboard({
                           <td className="p-3 text-slate-500">
                             {new Date(b.start_at).toLocaleDateString()}
                           </td>
-                          <td className="p-3 text-right">
+                          <td className="p-3 text-right whitespace-nowrap">
                             <Link
                               href={`/reserve?${rebookQuery.toString()}`}
-                              className="da-secondary-button inline-flex items-center text-[11px] font-bold py-1.5 px-3"
+                              className="da-rebook-pill inline-flex items-center px-3 py-1 text-xs font-bold rounded-full bg-[#0C3B27] text-white !text-white hover:brightness-110 transition-all shadow-sm"
+                              style={{ color: "#ffffff" }}
                               data-testid={`rebook-btn-${b.reference_code}`}
                             >
                               Rebook
@@ -651,11 +656,11 @@ export function RewardsVoucherDashboard({
                           {b.currency} {b.amount_due}
                         </span>
                       </div>
-                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <AskReservationButton reservationId={b.id} />
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-end">
                         <Link
                           href={`/reserve?${rebookQuery.toString()}`}
-                          className="da-secondary-button text-[11px] font-bold py-1.5 px-3"
+                          className="da-rebook-pill inline-flex items-center justify-center px-4 py-1.5 text-xs font-bold rounded-full bg-[#0C3B27] text-white !text-white hover:brightness-110 transition-all shadow-sm"
+                          style={{ color: "#ffffff" }}
                           data-testid={`rebook-card-btn-${b.reference_code}`}
                         >
                           Rebook

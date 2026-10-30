@@ -14,6 +14,7 @@ import {
   redeemReservationVoucher,
   releaseHeldReservationVoucher,
   ReservationSupabaseRepository,
+  resolveCustomerRewardsPortalUrl,
   SupabaseSettingsRepository,
   VoucherSupabaseRepository,
 } from "@deskatlas/domain";
@@ -169,9 +170,11 @@ export async function POST(
                 serviceRoleKey,
               });
               const customerService = createCustomerService(customerRepository, emailService);
+              const rewardsPortalUrl = resolveCustomerRewardsPortalUrl(undefined, defaultCustomerOrigin);
               const handoff = await customerService.completeDirectBookingEmailHandoff({
                 reservationId: result.reservationId,
                 bookingProviderMessageId: emailResult.id,
+                rewardsPortalUrl,
               });
               customerIdEmailDispatched = handoff.customerIdJobFound
                 ? handoff.customerIdEmailSent

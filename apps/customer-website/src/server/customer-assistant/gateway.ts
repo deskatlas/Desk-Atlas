@@ -14,6 +14,7 @@ import { buildVerifiedPolicyAddendum } from './verifiedKnowledge';
 import { publicSpotRepository, resolvePublicComparison, resolvePublicWorkspaceContext, publicWorkspaceOverview, publicWorkspaceTypes } from './spots';
 import { requestsPrivateRecord, mergeConversationConstraints, missingScheduleQuestion, customerConversationTask } from './conversation';
 import { readCustomerDiscoveryCatalog } from './catalog';
+import { workspaceComparisonSummary } from './comparison';
 
 const headers = { 'Cache-Control': 'no-store, private', Vary: 'Authorization, Cookie, Origin', 'X-Content-Type-Options': 'nosniff' };
 const currentPublishedMaps = new QueryCache<PublishedFloorMap | null>(0);
@@ -204,10 +205,21 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       const knowledgeQuestion = plan.search_query && task.question.length + searchQuery.length < 2900
         ? `${task.question}\nSearch interpretation (not evidence): ${searchQuery}` : task.question;
       if (plan.kind === 'REFUSE') return { ...answer, kind: 'UNSUPPORTED' as const, summary: 'I can explain published customer information and help you compare spots. Use the normal booking screens to make changes.' };
+      // PRD-F26 / MS77-TC05/08: an explicit physical comparison wins over a
+      // provisional broad CATALOG/GUIDANCE classification. Saved IDs alone do
+      // not turn a new general question into a comparison.
+      const trayNames = input.message.match(/^Compare these workspaces for me: (.+)\. Explain their capacity, pricing, power access, and suitability\.$/i)?.[1].split(',').map(name => name.trim());
+      const comparisonNames = trayNames?.length && trayNames.length <= 3 && trayNames.every(name => name.length > 0 && name.length <= 200) ? trayNames : plan.comparison_names;
+      const selectedComparison = Boolean(input.discovery?.compared_ids?.length && /\bcompar(?:e|ing|ison)\b/i.test(input.message));
+      const comparing = selectedComparison || Boolean(comparisonNames?.length);
+      if (comparing) plan = { ...plan, kind: 'WORKSPACE', workspace_mode: 'LIVE',
+        comparison_names: comparisonNames, operations: [{ name: 'public_workspace' }] };
       const spotRepository = publicSpotRepository(db, workSignal);
       const workspaceGuidance = (plan.kind === 'WORKSPACE' && plan.workspace_mode === 'GUIDANCE') || (plan.kind === 'KNOWLEDGE'
         && /\b(?:recommend\w*|suitab\w*|capacity|capacities|how many people|quiet (?:study|work)|video calls?|online interview)\b/i.test(task.question));
-      let context = mergeConversationConstraints(input.discovery, plan.constraints);
+      // PRD-F26 / QAD-TC44/46: requested comparison dimensions are not customer
+      // preferences. Preserve explicit saved values without model autofill.
+      let context = mergeConversationConstraints(input.discovery, comparing ? undefined : plan.constraints);
       let floorChoices: string[] = [];
       let offeredNames: string[] = [];
       if (plan.kind === 'WORKSPACE' && plan.workspace_mode === 'GUIDANCE' && !context.workspace_id && !context.compared_ids?.length) {
@@ -221,7 +233,7 @@ export async function customerAssistantQuery(request: Request): Promise<Response
         if (overview !== await publicWorkspaceOverview()) throw new Error('KNOWLEDGE_CHANGED');
         return reader.release(state.knowledge_epoch, async () => ({ ...answer, summary: overview }));
       }
-      if (plan.kind === 'WORKSPACE' && (plan.constraints?.template_name || plan.constraints?.floor_name || context.template_id || context.floor_id)) {
+      if (plan.kind === 'WORKSPACE' && !comparing && (plan.constraints?.template_name || plan.constraints?.floor_name || context.template_id || context.floor_id)) {
         const resolved = await resolvePublicWorkspaceContext(context, plan.constraints?.template_name, plan.constraints?.floor_name, plan.comparison_names, input.message);
         context = resolved.context;
         floorChoices = resolved.floor_choices ?? [];
@@ -247,7 +259,7 @@ export async function customerAssistantQuery(request: Request): Promise<Response
       if (plan.kind === 'WORKSPACE') {
         answer.discovery = context;
         const missing = missingScheduleQuestion(context);
-        if (plan.constraints && missing && (context.date || context.start_time || context.duration_minutes)) {
+        if (!comparing && plan.constraints && missing && (context.date || context.start_time || context.duration_minutes)) {
           return { ...answer, kind: 'CLARIFY' as const, summary: missing };
         }
         candidateSnapshot = await spotRepository.candidates(context);
@@ -316,14 +328,24 @@ export async function customerAssistantQuery(request: Request): Promise<Response
           ? `No spots could be confirmed${context.preferences.group_size ? ` for your group of ${context.preferences.group_size}` : ''} with these constraints. Try another schedule or narrow your preferences.`
           : missingSchedule ? `These spots match your saved constraints${context.preferences.group_size ? ` for your group of ${context.preferences.group_size}` : ''}. Availability and prices have not been checked. Which business date, start time and duration should I check? Save them below.`
           : `${recommendation} I used your saved date, start time, duration${context.preferences.group_size ? `, group size (${context.preferences.group_size})` : ''}${context.preferences.budget !== undefined ? ` and total budget (PHP ${context.preferences.budget})` : ''}. Matches are shown below.`;
+        if (comparing && ranked.length && !decision.narrow) {
+          const ids = context.compared_ids ?? [];
+          const stableSpots = candidates.spots.filter(spot => ranked.some(s => s.workspace_id === spot.workspace_id))
+            .sort((a, b) => ids.indexOf(a.workspace_id) - ids.indexOf(b.workspace_id));
+          answer.kind = 'ANSWER';
+          answer.summary = workspaceComparisonSummary(stableSpots, characteristics, !missingSchedule);
+        }
         answer.limitations = ['Suggestions are provisional and create no inventory hold. Quotes are base totals for the requested duration; checkout determines any applicable promotion.'];
         if (context.compared_ids?.some(id => !ranked.some(spot => spot.workspace_id === id))) answer.limitations.push('Some selected spots do not pass the current availability, capacity, budget or published-catalog checks and are not suggested.');
-        if (ranked.some(spot => spot.catalog_reasons?.length)) answer.limitations.push('Published map tags describe expected conditions, which may vary. They do not guarantee quietness or a working outlet.');
+        if (comparing || ranked.some(spot => spot.catalog_reasons?.length)) answer.limitations.push('Published map tags describe expected conditions, which may vary. They do not guarantee quietness or a working outlet.');
         if (decision.changed) answer.limitations.push('Some spots changed during checking and were omitted. Please retry for current options.');
-        if (answer.suggestions.some(s => !s.quote)) answer.limitations.push('An authoritative price quote is unavailable for some spots.');
+        if (answer.suggestions.some(s => !s.quote)) answer.limitations.push(comparing && missingSchedule ? 'Published hourly base rates are shown for comparison. A price quote requires a complete schedule.' : 'An authoritative price quote is unavailable for some spots.');
         if (Object.keys(context.preferences ?? {}).some(k => ['focus', 'calls', 'power'].includes(k)) && !answer.suggestions.some(s => s.reasons.length || s.catalog_reasons?.length)) answer.limitations.push('Approved characteristic evidence is missing or contradictory; no preference match is claimed.');
         answer.actions = answer.suggestions.map(s => ({ id: 'VIEW_SPOT', workspace_id: s.workspace_id, floor_id: s.floor_id, map_version_id: s.map_version_id }));
         const used = new Set(answer.suggestions.flatMap(s => s.reasons.map(r => r.chunk_id)));
+        if (comparing) for (const fact of characteristics) {
+          if (ranked.some(spot => spot.workspace_id === fact.workspace_id)) used.add(fact.chunk_id);
+        }
         answer.citations = sources.filter(s => used.has(s.chunk_id)).map(({ content: _content, ...citation }) => citation);
       } else if (sources.length) {
         currentTypes = await workspaceCatalog;

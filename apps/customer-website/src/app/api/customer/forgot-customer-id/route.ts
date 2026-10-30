@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { forgotCustomerIdSchema } from '@deskatlas/validation';
+import { resolveCustomerRewardsPortalUrl } from '@deskatlas/domain';
 import { getCustomerServices } from '../_services';
 
 export const runtime = 'nodejs';
@@ -12,10 +13,16 @@ export async function POST(request: NextRequest) {
   try {
     const origin = request.headers.get('origin');
     const url = new URL(request.url);
-    const host = request.headers.get('host');
-    const requestOrigin = host ? `${url.protocol}//${host}` : url.origin;
+    const protoHeader = request.headers.get('x-forwarded-proto');
+    const forwardedHost = request.headers.get('x-forwarded-host');
+    const host = forwardedHost || request.headers.get('host');
+    let proto = protoHeader || (url.protocol ? url.protocol.replace(':', '') : 'http');
+    if (!protoHeader && host && !/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(host)) {
+      proto = 'https';
+    }
+    const requestOrigin = host ? `${proto}://${host}` : url.origin;
 
-    if (origin && origin !== requestOrigin && origin !== url.origin) {
+    if (origin && origin !== requestOrigin && origin !== url.origin && origin !== `${url.protocol}//${host}`) {
       return NextResponse.json(
         { error: { code: 'FORBIDDEN', message: 'Cross-origin request forbidden.' } },
         { status: 403, headers: responseHeaders }
@@ -91,12 +98,14 @@ export async function POST(request: NextRequest) {
     // Lookup customer by email (zero mutation invariant)
     const customer = await customerRepo.findCustomerByEmail(normalizedEmail);
     if (customer) {
+      const rewardsPortalUrl = resolveCustomerRewardsPortalUrl(undefined, requestOrigin);
       await emailService.sendCustomerIdReminderEmail({
         to: customer.email,
         customerCode: customer.customerCode,
         customerFirstName: customer.firstName,
         customerLastName: customer.lastName,
         customerEmail: customer.email,
+        rewardsPortalUrl,
       });
     }
 

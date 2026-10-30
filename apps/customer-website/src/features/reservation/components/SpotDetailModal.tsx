@@ -39,6 +39,29 @@ export function SpotDetailModal({
   if (!workspace) return null;
 
   const isAvailable = workspace.status === "available";
+  const comparedIds = assistant?.discovery?.compared_ids ?? [];
+  const isCompared = Boolean(comparedIds.includes(workspace.workspaceInstanceId));
+  const isComparisonFull = !isCompared && comparedIds.length >= 3;
+
+  const handleAddToComparison = () => {
+    if (isComparisonFull) return;
+    onOpenChange(false);
+    setTimeout(() => {
+      assistant?.compareSpot({
+        workspace_id: workspace.workspaceInstanceId,
+        template_id: workspace.templateId,
+        floor_id: workspace.floorId,
+        name: workspace.displayName,
+        workspace_name: workspace.displayName,
+        capacity: workspace.capacity,
+        pricePerHour: workspace.rateAmount,
+      });
+    }, 0);
+  };
+
+  const handleRemoveFromComparison = () => {
+    assistant?.removeComparedSpot(workspace.workspaceInstanceId);
+  };
 
   const getStatusBadgeStyle = () => {
     switch (workspace.status) {
@@ -160,14 +183,45 @@ export function SpotDetailModal({
           </div>
         </div>
 
-        {!paidRecovery && process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
-          onOpenChange(false);
-          setTimeout(() => assistant?.askSpot({ workspace_id: workspace.workspaceInstanceId, template_id: workspace.templateId, floor_id: workspace.floorId }), 0);
-        }}>Ask about this spot</button>}
-        {!paidRecovery && process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && <button type="button" className="da-secondary-button mt-3" onClick={() => {
-          onOpenChange(false);
-          setTimeout(() => assistant?.compareSpot({ workspace_id: workspace.workspaceInstanceId }), 0);
-        }}>Add to comparison (up to 3 spots)</button>}
+        {!paidRecovery && process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && (
+          <button
+            type="button"
+            className="da-secondary-button mt-3"
+            onClick={() => {
+              onOpenChange(false);
+              setTimeout(() => assistant?.askSpot({ workspace_id: workspace.workspaceInstanceId, template_id: workspace.templateId, floor_id: workspace.floorId }), 0);
+            }}
+          >
+            Ask about this spot
+          </button>
+        )}
+        {!paidRecovery && process.env.NEXT_PUBLIC_CUSTOMER_ASSISTANT_ENABLED === 'true' && (
+          <div className="mt-2">
+            {!isCompared ? (
+              <button
+                type="button"
+                className="da-secondary-button w-full justify-center text-xs font-bold py-2.5"
+                disabled={isComparisonFull}
+                onClick={handleAddToComparison}
+              >
+                + Add to comparison (up to 3 spots)
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="flex-1 rounded-full bg-emerald-50 border border-emerald-200 py-2 px-3 text-xs font-bold text-emerald-800 text-center flex items-center justify-center gap-1.5">
+                  ✓ In comparison set
+                </span>
+                <button
+                  type="button"
+                  className="text-xs font-bold text-rose-600 hover:text-rose-800 underline px-2 py-1"
+                  onClick={handleRemoveFromComparison}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {/* Recommendation Tags */}
         {workspace.tags && workspace.tags.length > 0 ? (
           <div className="mt-3">

@@ -25,6 +25,7 @@ interface ScannedBooking {
   checkedIn?: boolean;
   checkedOut?: boolean;
   temporaryCheckout?: boolean;
+  companionNames?: string[];
 }
 
 export function QRScanFlow({ onBack, allDesks, onSwitchToReferenceCode }: QRScanFlowProps) {
@@ -49,6 +50,7 @@ export function QRScanFlow({ onBack, allDesks, onSwitchToReferenceCode }: QRScan
             rentType: 'hourly' as const,
             total: 20,
             alternatives: ['A2', 'A3'],
+            companionNames: ['Maria Clara', 'Crisostomo Ibarra'],
             checkedIn: false,
             checkedOut: false,
             temporaryCheckout: false
@@ -372,6 +374,34 @@ export function QRScanFlow({ onBack, allDesks, onSwitchToReferenceCode }: QRScan
                   <p className="text-gray-600">Total:</p>
                   <p className="font-medium text-right">${scannedData.total}</p>
                 </div>
+
+                {scannedData.companionNames &&
+                  scannedData.companionNames
+                    .map((name) => (typeof name === "string" ? name.trim() : ""))
+                    .filter((name) => name.length > 0).length > 0 && (() => {
+                    const validCompanions = scannedData.companionNames
+                      .map((name) => (typeof name === "string" ? name.trim() : ""))
+                      .filter((name) => name.length > 0);
+                    return (
+                      <div className="pt-3 border-t border-gray-200 mt-3">
+                        <div className="flex items-center justify-between text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                          <span>Companions ({validCompanions.length})</span>
+                          <span className="text-emerald-800 font-semibold">Group Check-In</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2" data-testid="kiosk-legacy-companion-roster">
+                          {validCompanions.map((name, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-3 py-1 rounded-full bg-white border border-gray-300 text-sm font-medium text-gray-800"
+                              data-testid={`kiosk-legacy-companion-badge-${idx}`}
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
               </div>
 
               {/* Status Badge */}
@@ -459,7 +489,7 @@ export function QRScanFlow({ onBack, allDesks, onSwitchToReferenceCode }: QRScan
               ) : null}
 
               {/*
-                Reschedule and Cancel removed from the kiosk flow — see the
+                Reschedule and Cancel removed from the kiosk flow - see the
                 identical note in ReferenceCodeFlow.tsx. Same review
                 finding (Section 7.2), same architecture rule against
                 duplicating business logic per frontend.
