@@ -6,6 +6,14 @@ import { getHumanReadableMetadata, type ActivityActor, type ActivityLogEntry } f
 const ACTION_GROUPS: { label: string; value: string; types?: string[] }[] = [
   { label: "All Actions", value: "ALL" },
   {
+    label: "Rescheduled Bookings",
+    value: "RESCHEDULED",
+    types: [
+      "reservation_rescheduled",
+      "RESERVATION_RESCHEDULED",
+    ],
+  },
+  {
     label: "Workspace Operations",
     value: "WORKSPACE",
     types: [
@@ -194,6 +202,9 @@ export default function AdminActivityLogPage() {
     if (r === "STAFF") {
       return { background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
     }
+    if (r === "CUSTOMER") {
+      return { background: "#F5F3FF", color: "#6D28D9", border: "1px solid #DDD6FE" };
+    }
     return { background: "#F3F4F6", color: "#4B5563", border: "1px solid #E5E7EB" };
   };
 
@@ -241,7 +252,7 @@ export default function AdminActivityLogPage() {
               <button
                 key={preset.id}
                 onClick={() => {
-                  setDatePreset(preset.id as any);
+                  setDatePreset(preset.id as "all" | "today" | "7d" | "30d" | "custom");
                   setPage(1);
                 }}
                 style={{
@@ -265,6 +276,7 @@ export default function AdminActivityLogPage() {
             {/* Actor Filter */}
             <select
               value={selectedActor}
+              data-testid="activity-log-actor-filter"
               onChange={(e) => {
                 setSelectedActor(e.target.value);
                 setPage(1);
@@ -283,6 +295,7 @@ export default function AdminActivityLogPage() {
             >
               <option value="">All Actors & Roles</option>
               <option value="SYSTEM">System Automations</option>
+              <option value="CUSTOMER">Customer (Self-Service)</option>
               {actors.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name} ({a.role})
@@ -293,6 +306,7 @@ export default function AdminActivityLogPage() {
             {/* Action Group Filter */}
             <select
               value={selectedGroup}
+              data-testid="activity-log-action-filter"
               onChange={(e) => {
                 setSelectedGroup(e.target.value);
                 setPage(1);
@@ -521,7 +535,7 @@ export default function AdminActivityLogPage() {
         {/* PAGINATION FOOTER */}
         <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--da-border)", background: "var(--da-canvas)" }}>
           <div style={{ fontSize: "12px", color: "var(--da-text-secondary)", fontWeight: 500 }}>
-            Showing {entries.length > 0 ? (page - 1) * limit + 1 : 0}–
+            Showing {entries.length > 0 ? (page - 1) * limit + 1 : 0}-
             {Math.min(page * limit, total)} of {total} records
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

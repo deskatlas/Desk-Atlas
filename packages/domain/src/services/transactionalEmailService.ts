@@ -712,18 +712,47 @@ export interface ReservationRelocatedEmailInput extends BaseEmailBusinessFields 
   customerFirstName?: string;
   customerLastName?: string;
   referenceCode: string;
-  schedule: string;
+  schedule?: string;
   duration?: string;
-  oldWorkspaceDisplayName: string;
-  newWorkspaceDisplayName: string;
+  oldWorkspaceDisplayName?: string;
+  newWorkspaceDisplayName?: string;
+  oldWorkspace?: string;
+  newWorkspace?: string;
   workspaceTemplateName?: string;
   floorName?: string;
-  relocationReason: string;
+  relocationReason?: string;
+  reason?: string;
   relocationNotes?: string;
   bookingAccessUrl?: string;
   bookingToken?: string;
   trackingUrl?: string;
   qrImageUrl?: string;
+  actorRole?: "ADMIN" | "STAFF" | "CUSTOMER" | "SUPERADMIN" | "SUPER_ADMIN" | "SYSTEM" | string;
+  initiatedBy?: "CUSTOMER" | "ADMIN" | "STAFF" | "SYSTEM";
+}
+
+export interface ReservationRelocationRequestedEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  currentWorkspaceDisplayName: string;
+  requestedWorkspaceDisplayName: string;
+  requestedFloorName?: string;
+  relocationReason: string;
+  relocationNotes?: string;
+  trackingUrl: string;
+}
+
+export interface ReservationRelocationDeclinedEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  referenceCode: string;
+  currentWorkspaceDisplayName: string;
+  requestedWorkspaceDisplayName: string;
+  declineReason?: string;
+  trackingUrl: string;
 }
 
 export interface ReservationExtendedEmailInput extends BaseEmailBusinessFields {
@@ -2082,9 +2111,44 @@ ${renderBusinessFooterText(profile)}
 export function renderReservationRelocatedEmail(input: ReservationRelocatedEmailInput): { subject: string; html: string; text: string } {
   const profile = resolveBusinessProfile(input);
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
-  const subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Spot Has Been Relocated [${input.referenceCode}]`;
-  const formattedSchedule = formatEmailSchedule(input.schedule);
-  const reasonText = input.relocationNotes ? `${input.relocationReason} - ${input.relocationNotes}` : input.relocationReason;
+
+  const initiatedBy =
+    input.initiatedBy ||
+    (input.actorRole === 'CUSTOMER'
+      ? 'CUSTOMER'
+      : input.actorRole === 'STAFF'
+      ? 'STAFF'
+      : input.actorRole === 'ADMIN' || input.actorRole === 'SUPERADMIN' || input.actorRole === 'SUPER_ADMIN'
+      ? 'ADMIN'
+      : undefined);
+
+  let subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Spot Has Been Relocated [${input.referenceCode}]`;
+  let title = 'Workspace Spot Relocation Notice';
+  let introHtml = `Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been relocated to a new conflict-free spot for your exact scheduled time slot.`;
+  let introText = 'Your workspace reservation has been relocated:';
+
+  if (initiatedBy === 'CUSTOMER') {
+    subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Spot Relocation is Confirmed [${input.referenceCode}]`;
+    title = 'Spot Relocation Confirmed';
+    introHtml = `You have successfully relocated your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> to a new spot for your scheduled time slot.`;
+    introText = `You have successfully relocated your workspace reservation ${input.referenceCode} to a new spot for your scheduled time slot:`;
+  } else if (initiatedBy === 'ADMIN') {
+    subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Spot Has Been Relocated by Administration [${input.referenceCode}]`;
+    title = 'Workspace Spot Relocation Notice';
+    introHtml = `Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been relocated to a new conflict-free spot by DeskAtlas Administration.`;
+    introText = `Your workspace reservation ${input.referenceCode} has been relocated to a new conflict-free spot by DeskAtlas Administration:`;
+  } else if (initiatedBy === 'STAFF') {
+    subject = `Your ${profile.businessName || 'DeskAtlas'} Reservation Spot Has Been Relocated by Front-Desk Staff [${input.referenceCode}]`;
+    title = 'Front-Desk Spot Relocation Notice';
+    introHtml = `Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been relocated to a new spot by our front-desk team.`;
+    introText = `Your workspace reservation ${input.referenceCode} has been relocated to a new spot by our front-desk team:`;
+  }
+
+  const oldSpotName = input.oldWorkspaceDisplayName || input.oldWorkspace || 'Previous Spot';
+  const newSpotName = input.newWorkspaceDisplayName || input.newWorkspace || 'New Spot';
+  const formattedSchedule = input.schedule ? formatEmailSchedule(input.schedule) : 'Preserved Schedule';
+  const rawReason = input.relocationReason || input.reason || 'Operational Adjustment';
+  const reasonText = input.relocationNotes ? `${rawReason} - ${input.relocationNotes}` : rawReason;
   const qrImageUrl =
     input.qrImageUrl ||
     `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
@@ -2105,6 +2169,7 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
     .relocate-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 18px 0; }
     .transaction-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0; font-size: 13px; }
     .reason-box { background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 14px; color: #92400e; }
+    .continuity-banner { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #166534; }
     .qr-box { text-align: center; margin: 24px 0; background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px dashed #cbd5e1; }
     .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; text-align: center; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
@@ -2113,25 +2178,29 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
 <body>
   <div class="card">
     <div class="header">
-      <div class="title">Workspace Spot Relocation Notice</div>
+      <div class="title">${escapeHtml(title)}</div>
       <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
     </div>
     <div class="content">
       <p>Hello ${escapeHtml(customerName)},</p>
-      <p>Your workspace reservation <strong>${escapeHtml(input.referenceCode)}</strong> has been relocated to a new conflict-free spot for your exact scheduled time slot.</p>
+      <p>${introHtml}</p>
       
       <div class="reason-box">
         <strong>Reason for Relocation:</strong><br>
         ${escapeHtml(reasonText)}
       </div>
 
+      <div class="continuity-banner" style="background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #166534;">
+        <strong>Digital QR Pass Continuity:</strong> Your existing digital QR pass and check-in link remain active and valid for your newly relocated spot. No new pass is required.
+      </div>
+
       <div class="relocate-box">
         <div style="font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 8px;">Updated Spot Assignment</div>
         <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
-          <strong>New Spot:</strong> ${escapeHtml(input.newWorkspaceDisplayName)}${input.workspaceTemplateName ? ` (${escapeHtml(input.workspaceTemplateName)})` : ''}${input.floorName ? ` &bull; ${escapeHtml(input.floorName)}` : ''}
+          <strong>New Spot:</strong> ${escapeHtml(newSpotName)}${input.workspaceTemplateName ? ` (${escapeHtml(input.workspaceTemplateName)})` : ''}${input.floorName ? ` &bull; ${escapeHtml(input.floorName)}` : ''}
         </div>
         <div style="font-size: 13px; color: #64748b;">
-          <strong>Previous Spot:</strong> ${escapeHtml(input.oldWorkspaceDisplayName)}
+          <strong>Previous Spot:</strong> ${escapeHtml(oldSpotName)}
         </div>
         <div style="font-size: 13px; color: #334155; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #bbf7d0;">
           <strong>Preserved Schedule:</strong> ${escapeHtml(formattedSchedule)}${input.duration ? ` (${escapeHtml(input.duration)})` : ''}
@@ -2150,11 +2219,11 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span style="color: #64748b;">New Assigned Spot:</span>
-          <strong style="color: #0f172a;">${escapeHtml(input.newWorkspaceDisplayName)}</strong>
+          <strong style="color: #0f172a;">${escapeHtml(newSpotName)}</strong>
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span style="color: #64748b;">Previous Spot:</span>
-          <span style="color: #64748b;">${escapeHtml(input.oldWorkspaceDisplayName)}</span>
+          <span style="color: #64748b;">${escapeHtml(oldSpotName)}</span>
         </div>
         ${input.workspaceTemplateName ? `
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
@@ -2198,22 +2267,198 @@ export function renderReservationRelocatedEmail(input: ReservationRelocatedEmail
   `.trim();
 
   const text = `
-Workspace Spot Relocation Notice - ${profile.businessName || 'DeskAtlas'}
+${title} - ${profile.businessName || 'DeskAtlas'}
 Reference: ${input.referenceCode}
 
 Hello ${customerName},
 
-Your workspace reservation has been relocated:
+${introText}
 Transaction: Spot Relocation
-New Spot: ${input.newWorkspaceDisplayName}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}${input.floorName ? ` - ${input.floorName}` : ''}
-Previous Spot: ${input.oldWorkspaceDisplayName}
+New Spot: ${newSpotName}${input.workspaceTemplateName ? ` (${input.workspaceTemplateName})` : ''}${input.floorName ? ` - ${input.floorName}` : ''}
+Previous Spot: ${oldSpotName}
 Schedule: ${formattedSchedule}${input.duration ? ` (${input.duration})` : ''}
 Reason: ${reasonText}
 
+Digital QR Pass Continuity: Your existing digital QR pass remains active and valid for your newly relocated spot. No new pass is required.
 Digital Access QR Pass: ${qrImageUrl}
 Your existing digital QR pass remains active and valid for your newly relocated spot.
 
 ${input.trackingUrl ? `Track Reservation: ${input.trackingUrl}\n` : ''}
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderReservationRelocationRequestedEmail(
+  input: ReservationRelocationRequestedEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `${profile.businessName || 'DeskAtlas'} Spot Relocation Request Received [${input.referenceCode}]`;
+  const reasonText = input.relocationNotes
+    ? `${input.relocationReason} (${input.relocationNotes})`
+    : input.relocationReason;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #0284c7; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .summary-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0; font-size: 13px; }
+    .status-badge { display: inline-block; background-color: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; }
+    .reassurance-box { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #166534; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Relocation Request Received</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>We have received your request to relocate your reservation <strong>${escapeHtml(input.referenceCode)}</strong> to a new spot. Our front-desk team will review your request shortly.</p>
+      
+      <div class="summary-box">
+        <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 10px;">Request Comparison Summary</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="color: #64748b;">Current Assigned Spot:</span>
+          <strong style="color: #0f172a;">${escapeHtml(input.currentWorkspaceDisplayName)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="color: #64748b;">Requested Spot:</span>
+          <strong style="color: #0284c7;">${escapeHtml(input.requestedWorkspaceDisplayName)}${input.requestedFloorName ? ` (${escapeHtml(input.requestedFloorName)})` : ''}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="color: #64748b;">Reason:</span>
+          <span style="color: #0f172a;">${escapeHtml(reasonText)}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; align-items: center;">
+          <span style="color: #64748b;">Status:</span>
+          <span class="status-badge">Pending Review by Staff</span>
+        </div>
+      </div>
+
+      <div class="reassurance-box">
+        <strong>Current Spot Secured:</strong> Your current spot assignment (${escapeHtml(input.currentWorkspaceDisplayName)}) remains confirmed and secured while your request is being reviewed.
+      </div>
+
+      <div style="text-align: center; margin: 20px 0;">
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">View Reservation Status</a>
+      </div>
+      <p style="font-size: 13px; color: #64748b; margin-top: 8px; text-align: center;">
+        Direct link: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
+      </p>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Spot Relocation Request Received - ${profile.businessName || 'DeskAtlas'}
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+We have received your request to relocate your reservation ${input.referenceCode} to a new spot. Our front-desk team will review your request shortly.
+
+Current Assigned Spot: ${input.currentWorkspaceDisplayName}
+Requested Spot: ${input.requestedWorkspaceDisplayName}${input.requestedFloorName ? ` (${input.requestedFloorName})` : ''}
+Reason: ${reasonText}
+Status: Pending Review by Staff
+
+Your current spot assignment remains confirmed and secured while your request is being reviewed.
+
+Track Reservation: ${input.trackingUrl}
+
+${renderBusinessFooterText(profile)}
+  `.trim();
+
+  return { subject, html, text };
+}
+
+export function renderReservationRelocationDeclinedEmail(
+  input: ReservationRelocationDeclinedEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Customer';
+  const subject = `Update on Your ${profile.businessName || 'DeskAtlas'} Spot Relocation Request [${input.referenceCode}]`;
+  const reasonText = input.declineReason?.trim() || 'Target spot is unavailable for the selected time window.';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 560px; margin: 0 auto; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; color: #d97706; margin: 0 0 6px 0; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .decline-box { background-color: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 18px 0; }
+    .reassurance-box { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px 18px; margin: 18px 0; font-size: 14px; color: #166534; }
+    .btn { display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 14px; margin: 16px 0; text-align: center; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">Spot Relocation Request Update</div>
+      <div style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(input.referenceCode)}</strong></div>
+    </div>
+    <div class="content">
+      <p>Hello ${escapeHtml(customerName)},</p>
+      <p>Our front-desk team reviewed your request to relocate reservation <strong>${escapeHtml(input.referenceCode)}</strong>. Unfortunately, we are unable to relocate your booking to <strong>${escapeHtml(input.requestedWorkspaceDisplayName)}</strong> at this time.</p>
+      
+      <div class="decline-box">
+        <div style="font-size: 12px; font-weight: 700; color: #92400e; text-transform: uppercase; margin-bottom: 6px;">Staff Note</div>
+        <div style="font-size: 14px; color: #78350f;">${escapeHtml(reasonText)}</div>
+      </div>
+
+      <div class="reassurance-box">
+        <strong>Original Spot Confirmed:</strong> Your original booking at <strong>${escapeHtml(input.currentWorkspaceDisplayName)}</strong> remains fully confirmed and active for your scheduled time slot.
+      </div>
+
+      <div style="text-align: center; margin: 20px 0;">
+        <a href="${escapeHtml(input.trackingUrl)}" class="btn">Track My Reservation</a>
+      </div>
+      <p style="font-size: 13px; color: #64748b; margin-top: 8px; text-align: center;">
+        Direct link: <a href="${escapeHtml(input.trackingUrl)}" style="color: #0284c7;">${escapeHtml(input.trackingUrl)}</a>
+      </p>
+    </div>
+    ${renderBusinessFooter(profile)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Spot Relocation Request Update - ${profile.businessName || 'DeskAtlas'}
+Reference: ${input.referenceCode}
+
+Hello ${customerName},
+
+Our front-desk team reviewed your request to relocate reservation ${input.referenceCode}. Unfortunately, we are unable to relocate your booking to ${input.requestedWorkspaceDisplayName} at this time.
+
+Staff Note: ${reasonText}
+
+Your original booking at ${input.currentWorkspaceDisplayName} remains fully confirmed and active for your scheduled time slot.
+
+Track Reservation: ${input.trackingUrl}
+
 ${renderBusinessFooterText(profile)}
   `.trim();
 
@@ -3269,6 +3514,40 @@ export class TransactionalEmailService {
 
   async sendReservationRelocationEmail(input: ReservationRelocatedEmailInput): Promise<EmailSendResult> {
     return this.sendReservationRelocatedEmail(input);
+  }
+
+  async sendReservationRelocationRequestedEmail(
+    input: ReservationRelocationRequestedEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: ReservationRelocationRequestedEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderReservationRelocationRequestedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
+
+  async sendReservationRelocationDeclinedEmail(
+    input: ReservationRelocationDeclinedEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: ReservationRelocationDeclinedEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderReservationRelocationDeclinedEmail(mergedInput);
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
   }
 
   async sendReservationExtendedEmail(input: ReservationExtendedEmailInput): Promise<EmailSendResult> {

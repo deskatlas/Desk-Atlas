@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   ReservationSupabaseRepository,
+  createTransactionalEmailService,
+  buildReservationTrackingUrl,
 } from "@deskatlas/domain";
 
 export const runtime = "nodejs";
@@ -94,6 +96,31 @@ export async function POST(request: NextRequest) {
       reason,
       notes,
     });
+
+    try {
+      const emailService = createTransactionalEmailService();
+      const defaultCustomerOrigin = request.nextUrl.origin.replace(/\/$/, "");
+      const trackingBaseUrl =
+        process.env.TRACKING_BASE_URL ??
+        process.env.DESKATLAS_PUBLIC_APP_URL ??
+        defaultCustomerOrigin;
+      const trackingUrl = buildReservationTrackingUrl(trackingBaseUrl, trackingRecord.referenceCode);
+
+      await emailService.sendReservationRelocationRequestedEmail({
+        to: trackingRecord.customerEmail,
+        customerFirstName: trackingRecord.customerFirstName,
+        customerLastName: trackingRecord.customerLastName,
+        referenceCode: trackingRecord.referenceCode,
+        currentWorkspaceDisplayName:
+          trackingRecord.finalAssignment?.workspaceDisplayName || "Current Spot",
+        requestedWorkspaceDisplayName: pendingRequest.targetWorkspaceDisplayName,
+        relocationReason: reason,
+        relocationNotes: notes,
+        trackingUrl,
+      });
+    } catch (emailErr: unknown) {
+      console.warn("[TrackRelocateRoute] Failed to dispatch relocation requested email:", emailErr);
+    }
 
     return NextResponse.json({
       success: true,

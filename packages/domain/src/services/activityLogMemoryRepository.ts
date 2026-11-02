@@ -107,10 +107,13 @@ export class ActivityLogMemoryRepository implements ActivityLogRepository {
     }
 
     if (actorId) {
-      if (actorId.toUpperCase() === "SYSTEM") {
+      const upperActor = actorId.toUpperCase();
+      if (upperActor === "SYSTEM") {
         filtered = filtered.filter(
-          (row) => row.actor_role === "SYSTEM" || row.actor_user_id === null
+          (row) => row.actor_role === "SYSTEM"
         );
+      } else if (upperActor === "CUSTOMER") {
+        filtered = filtered.filter((row) => row.actor_role === "CUSTOMER");
       } else {
         filtered = filtered.filter((row) => row.actor_user_id === actorId);
       }
@@ -169,7 +172,11 @@ export class ActivityLogMemoryRepository implements ActivityLogRepository {
           actorName = row.actor_role ? `${row.actor_role} User` : "Staff Member";
         }
       } else if (row.actor_role === "CUSTOMER") {
-        actorName = "Customer";
+        const meta = (row.metadata ?? {}) as Record<string, unknown>;
+        actorName =
+          (typeof meta.customer_name === "string" && meta.customer_name) ||
+          (typeof meta.guest_name === "string" && meta.guest_name) ||
+          "Customer";
       } else if (row.actor_role === "SYSTEM") {
         actorName = "System";
       }

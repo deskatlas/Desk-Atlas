@@ -330,7 +330,7 @@ export class StaffOperationsService {
     const previousSpotName = result.previousSpotName || result.oldWorkspaceDisplayName || "Previous Spot";
     const newSpotName = result.newSpotName || result.newWorkspaceDisplayName || "New Spot";
 
-    if (result.reservation && result.reservation.customerEmail) {
+    if (this.emailService && result.reservation && result.reservation.customerEmail) {
       try {
         const trackingUrl = buildReservationTrackingUrl(
           process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
@@ -359,9 +359,11 @@ export class StaffOperationsService {
           bookingAccessUrl: result.reservation.bookingAccessUrl || undefined,
           bookingToken: result.reservation.bookingToken || undefined,
           trackingUrl,
+          actorRole: (input.actorRole ?? "STAFF") as any,
+          initiatedBy: "STAFF",
         });
-      } catch (emailErr: any) {
-        console.warn("[StaffOperationsService] Failed to send relocated email:", emailErr?.message);
+      } catch (emailErr: unknown) {
+        console.warn("[StaffOperationsService] Failed to send relocated email:", emailErr instanceof Error ? emailErr.message : emailErr);
       }
     }
 
@@ -386,6 +388,14 @@ export class StaffOperationsService {
       throw new StaffOperationsError("Deciding relocation is not supported by repository.");
     }
 
+    const currentReservation = await this.getOperationalReservation(input.reservationId.trim());
+    const beforeSpot =
+      currentReservation?.workspaceDisplayName ||
+      (currentReservation as any)?.assignedCandidate?.workspaceDisplayName ||
+      (currentReservation as any)?.candidates?.[0]?.workspaceDisplayName;
+    const requestedSpot =
+      (currentReservation as any)?.pendingRelocationRequest?.targetWorkspaceDisplayName;
+
     const result = await this.staffOperationsRepository.decideCustomerRelocation({
       reservationId: input.reservationId.trim(),
       decision: input.decision,
@@ -394,7 +404,7 @@ export class StaffOperationsService {
       actorRole: input.actorRole ?? "STAFF",
     });
 
-    if (result.decision === "APPROVE" && result.reservation && result.reservation.customerEmail) {
+    if (this.emailService && result.decision === "APPROVE" && result.reservation && result.reservation.customerEmail) {
       try {
         const trackingUrl = buildReservationTrackingUrl(
           process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
@@ -406,6 +416,16 @@ export class StaffOperationsService {
           (assigned?.startAt && assigned?.endAt
             ? formatDurationFromDates(assigned.startAt, assigned.endAt)
             : undefined);
+        const previousSpot =
+          result.previousSpotName ||
+          result.oldWorkspaceDisplayName ||
+          beforeSpot ||
+          "Previous Spot";
+        const newSpot =
+          result.newSpotName ||
+          result.newWorkspaceDisplayName ||
+          assigned?.workspaceDisplayName ||
+          "New Spot";
 
         await this.emailService.sendReservationRelocatedEmail({
           to: result.reservation.customerEmail,
@@ -414,8 +434,8 @@ export class StaffOperationsService {
           referenceCode: result.reservation.referenceCode,
           schedule: result.reservation.schedule,
           duration,
-          oldWorkspaceDisplayName: "Previous Spot",
-          newWorkspaceDisplayName: assigned?.workspaceDisplayName || "New Spot",
+          oldWorkspaceDisplayName: previousSpot,
+          newWorkspaceDisplayName: newSpot,
           workspaceTemplateName: assigned?.workspaceTemplateName || undefined,
           floorName: assigned?.floorName || undefined,
           relocationReason: "Relocation Request Approved",
@@ -423,9 +443,39 @@ export class StaffOperationsService {
           bookingAccessUrl: result.reservation.bookingAccessUrl || undefined,
           bookingToken: result.reservation.bookingToken || undefined,
           trackingUrl,
+          actorRole: input.actorRole ?? "STAFF",
+          initiatedBy: "CUSTOMER",
         });
-      } catch (emailErr: any) {
-        console.warn("[StaffOperationsService] Failed to send relocated email on approval:", emailErr?.message);
+      } catch (emailErr: unknown) {
+        console.warn("[StaffOperationsService] Failed to send relocated email on approval:", emailErr instanceof Error ? emailErr.message : emailErr);
+      }
+    } else if (this.emailService && result.decision === "DECLINE" && result.reservation && result.reservation.customerEmail) {
+      try {
+        const trackingUrl = buildReservationTrackingUrl(
+          process.env.DESKATLAS_PUBLIC_APP_URL || "https://deskatlas.test",
+          result.reservation.referenceCode
+        );
+        const currentSpot =
+          result.reservation.assignedCandidate?.workspaceDisplayName ||
+          beforeSpot ||
+          "Current Spot";
+        const targetSpot =
+          result.requestedWorkspaceDisplayName ||
+          requestedSpot ||
+          "Requested Spot";
+
+        await this.emailService.sendReservationRelocationDeclinedEmail({
+          to: result.reservation.customerEmail,
+          customerFirstName: result.reservation.customerFirstName,
+          customerLastName: result.reservation.customerLastName,
+          referenceCode: result.reservation.referenceCode,
+          currentWorkspaceDisplayName: currentSpot,
+          requestedWorkspaceDisplayName: targetSpot,
+          declineReason: input.notes?.trim() || "Target spot is unavailable.",
+          trackingUrl,
+        });
+      } catch (emailErr: unknown) {
+        console.warn("[StaffOperationsService] Failed to send relocation declined email:", emailErr instanceof Error ? emailErr.message : emailErr);
       }
     }
 

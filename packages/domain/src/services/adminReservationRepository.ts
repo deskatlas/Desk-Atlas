@@ -115,6 +115,11 @@ export interface AdminReservationRepository {
     decision: "APPROVE" | "DECLINE";
     reservation: AdminReservationDetail;
     message?: string;
+    previousSpotName?: string;
+    newSpotName?: string;
+    oldWorkspaceDisplayName?: string;
+    newWorkspaceDisplayName?: string;
+    requestedWorkspaceDisplayName?: string;
   }>;
   extendReservation?(input: ExtendReservationInput): Promise<ExtendReservationResult>;
   checkExtendAvailability?(input: CheckExtendAvailabilityInput): Promise<ExtendAvailabilityResult>;

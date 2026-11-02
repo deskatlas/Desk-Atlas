@@ -340,7 +340,8 @@ describe('MF-140: In-Session Active Reservation Reallocation for Remaining Time'
       expect(sentEmails.length).toBe(1);
       const email = sentEmails[0];
       expect(email.body.to).toContain('alex.staff-op@example.com');
-      expect(email.body.subject).toContain(`Relocated [${resA.referenceCode}]`);
+      expect(email.body.subject).toContain('Relocated');
+      expect(email.body.subject).toContain(resA.referenceCode);
       expect(email.body.html).toContain('Desk 4');
       expect(email.body.html).toContain('Noise / Disturbance');
       expect(email.body.html).toContain('Your existing digital QR pass remains active and valid for your newly relocated spot.');
@@ -505,7 +506,7 @@ describe('MF-140: In-Session Active Reservation Reallocation for Remaining Time'
 
       // Relocation email dispatched
       expect(sentEmails.length).toBe(1);
-      expect(sentEmails[0].body.subject).toContain('Your DeskAtlas Reservation Spot Has Been Relocated');
+      expect(sentEmails[0].body.subject).toContain('Relocation is Confirmed');
       expect(sentEmails[0].body.to).toContain('clara.approved@example.com');
 
       // Pending request is cleared
@@ -549,8 +550,11 @@ describe('MF-140: In-Session Active Reservation Reallocation for Remaining Time'
       // Original spot remains unchanged
       expect(result.reservation.assignedCandidate?.workspaceInstanceId).toBe(resA.assignedCandidate?.workspaceInstanceId);
 
-      // No relocation email dispatched
-      expect(sentEmails.length).toBe(0);
+      // Relocation decline email dispatched per MS-100
+      expect(sentEmails.length).toBe(1);
+      expect(sentEmails[0].body.subject).toContain('Spot Relocation Request');
+      expect(sentEmails[0].body.to).toContain('dave.declined@example.com');
+      expect(sentEmails[0].body.html).toContain('Target desk is reserved for an incoming group booking');
 
       // Pending request is cleared
       expect(result.reservation.pendingRelocationRequest).toBeNull();

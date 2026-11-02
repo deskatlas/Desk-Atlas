@@ -348,6 +348,18 @@ export function formatMetadataKey(key: string): string {
     wasReconsidered: "Reconsidered After Rejection",
     manual_resolution_required: "Requires Manual Resolution",
     manualResolutionRequired: "Requires Manual Resolution",
+    old_schedule: "Previous Schedule",
+    oldSchedule: "Previous Schedule",
+    new_schedule: "New Schedule",
+    newSchedule: "New Schedule",
+    rescheduled_at: "Rescheduled At",
+    rescheduledAt: "Rescheduled At",
+    reschedule_reason: "Reschedule Reason",
+    rescheduleReason: "Reschedule Reason",
+    rescheduled_by: "Rescheduled By",
+    rescheduledBy: "Rescheduled By",
+    reschedule_count: "Reschedule Count",
+    rescheduleCount: "Reschedule Count",
   };
 
   if (KEY_MAP[key]) return KEY_MAP[key];
@@ -502,6 +514,46 @@ export function formatMetadataValue(key: string, value: unknown): string {
     }
     if (keyLower === "blocking_reason" || keyLower === "blockingreason") {
       return formatBlockingReason(value);
+    }
+
+    if (
+      (keyLower.includes("schedule") || value.includes(" - ")) &&
+      value.includes(" - ")
+    ) {
+      const parts = value.split(" - ");
+      if (parts.length === 2) {
+        const [startPart, endPart] = parts;
+        const startDate = new Date(startPart.trim());
+        const endDate = new Date(endPart.trim());
+        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+          const startDateStr = startDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+          const endDateStr = endDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+          const startTimeStr = startDate.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
+          const endTimeStr = endDate.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
+
+          if (startDateStr === endDateStr) {
+            return `${startDateStr}, ${startTimeStr} - ${endTimeStr}`;
+          }
+          return `${startDateStr}, ${startTimeStr} - ${endDateStr}, ${endTimeStr}`;
+        }
+      }
+      return value.replace(/(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)/g, "$1 $2");
     }
 
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {

@@ -1690,11 +1690,22 @@ export class ReservationMemoryRepository
     const schedule = formatSchedule(effective?.startAt, effective?.endAt);
     const duration = formatDuration(effective?.startAt, effective?.endAt);
 
+    let catalogInstances: any[] = [];
+    if (this.workspaceRepository) {
+      try {
+        const cat = await this.workspaceRepository.listCatalog();
+        catalogInstances = cat.instances ?? [];
+      } catch {
+        // ignore
+      }
+    }
+
     const getWorkspaceMeta = (instanceId: string) => {
+      const found = catalogInstances.find((i) => i.id === instanceId);
       return {
-        displayName: instanceId,
-        code: instanceId,
-        templateName: "Workspace",
+        displayName: found?.displayName || found?.instanceCode || instanceId,
+        code: found?.instanceCode || instanceId,
+        templateName: found?.template?.name || "Workspace",
         floorName: "Floor 1",
       };
     };
@@ -3221,6 +3232,11 @@ export class ReservationMemoryRepository
     decision: "APPROVE" | "DECLINE";
     reservation: AdminReservationDetail;
     message?: string;
+    previousSpotName?: string;
+    newSpotName?: string;
+    oldWorkspaceDisplayName?: string;
+    newWorkspaceDisplayName?: string;
+    requestedWorkspaceDisplayName?: string;
   }> {
     const r = this.reservations.find(
       (entry) => entry.id === input.reservationId || entry.referenceCode.toLowerCase() === input.reservationId.toLowerCase()
@@ -3250,12 +3266,18 @@ export class ReservationMemoryRepository
         actorRole: input.actorRole,
       });
 
+      const requestedSpot = pending.targetWorkspaceDisplayName;
       (r as any).pendingRelocationRequest = null;
       return {
         success: true,
         decision: "APPROVE",
         reservation: relocRes.reservation,
         message: "Customer relocation request approved and completed successfully",
+        previousSpotName: relocRes.previousSpotName,
+        newSpotName: relocRes.newSpotName,
+        oldWorkspaceDisplayName: relocRes.oldWorkspaceDisplayName || relocRes.previousSpotName,
+        newWorkspaceDisplayName: relocRes.newWorkspaceDisplayName || relocRes.newSpotName,
+        requestedWorkspaceDisplayName: requestedSpot,
       };
     } else {
       pending.status = "DECLINED";
@@ -3264,6 +3286,7 @@ export class ReservationMemoryRepository
       pending.decisionRole = input.actorRole;
       pending.decisionAt = nowIso;
 
+      const requestedSpot = pending.targetWorkspaceDisplayName;
       (r as any).pendingRelocationRequest = null;
       (r as any).declinedRelocationRequest = pending;
 
@@ -3276,6 +3299,7 @@ export class ReservationMemoryRepository
         decision: "DECLINE",
         reservation: detail,
         message: "Customer relocation request was declined",
+        requestedWorkspaceDisplayName: requestedSpot,
       };
     }
   }

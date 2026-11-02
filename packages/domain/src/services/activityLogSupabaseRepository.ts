@@ -141,8 +141,11 @@ export class ActivityLogSupabaseRepository implements ActivityLogRepository {
     });
 
     if (actorId) {
-      if (actorId.toUpperCase() === "SYSTEM") {
+      const upperActor = actorId.toUpperCase();
+      if (upperActor === "SYSTEM") {
         queryParams.set("actor_role", "eq.SYSTEM");
+      } else if (upperActor === "CUSTOMER") {
+        queryParams.set("actor_role", "eq.CUSTOMER");
       } else {
         queryParams.set("actor_user_id", `eq.${actorId}`);
       }
@@ -307,9 +310,13 @@ export class ActivityLogSupabaseRepository implements ActivityLogRepository {
           actorName = row.actor_role ? `${row.actor_role} User` : "Staff Member";
         }
       } else if (row.actor_role === "CUSTOMER") {
-        actorName = "Customer";
+        const meta = (row.metadata ?? {}) as Record<string, unknown>;
+        actorName =
+          (typeof meta.customer_name === "string" && meta.customer_name) ||
+          (typeof meta.guest_name === "string" && meta.guest_name) ||
+          "Customer (Self-Service)";
       } else if (row.actor_role === "SYSTEM") {
-        actorName = "System";
+        actorName = "System Automation";
       }
 
       const metadata: Record<string, unknown> = { ...(row.metadata ?? {}) };

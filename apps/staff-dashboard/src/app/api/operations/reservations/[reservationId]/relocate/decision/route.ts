@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createStaffOperationsService,
+  createTransactionalEmailService,
   ReservationSupabaseRepository,
   StaffOperationsError,
 } from "@deskatlas/domain";
@@ -42,7 +43,12 @@ export async function POST(
         ? body.actorUserId.trim()
         : request.headers.get("x-user-id") ?? undefined;
 
-    const service = createStaffOperationsService(new ReservationSupabaseRepository());
+    const emailService = createTransactionalEmailService();
+    const service = createStaffOperationsService(
+      new ReservationSupabaseRepository(),
+      undefined,
+      emailService
+    );
     const result = await service.decideCustomerRelocation({
       reservationId: reservationId.trim(),
       decision,

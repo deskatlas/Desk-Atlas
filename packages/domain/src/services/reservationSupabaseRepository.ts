@@ -4609,6 +4609,11 @@ export class ReservationSupabaseRepository
     decision: "APPROVE" | "DECLINE";
     reservation: AdminReservationDetail;
     message?: string;
+    previousSpotName?: string;
+    newSpotName?: string;
+    oldWorkspaceDisplayName?: string;
+    newWorkspaceDisplayName?: string;
+    requestedWorkspaceDisplayName?: string;
   }> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.reservationId);
     const filter = isUuid
@@ -4717,6 +4722,11 @@ export class ReservationSupabaseRepository
         decision: "APPROVE",
         reservation: relocRes.reservation,
         message: "Customer relocation request approved and executed successfully",
+        previousSpotName: relocRes.previousSpotName,
+        newSpotName: relocRes.newSpotName,
+        oldWorkspaceDisplayName: relocRes.oldWorkspaceDisplayName || relocRes.previousSpotName,
+        newWorkspaceDisplayName: relocRes.newWorkspaceDisplayName || relocRes.newSpotName,
+        requestedWorkspaceDisplayName: latestReq.metadata?.target_workspace_name,
       };
     } else {
       await this.request("/audit_logs", {
@@ -4745,6 +4755,7 @@ export class ReservationSupabaseRepository
         decision: "DECLINE",
         reservation: detail,
         message: "Customer relocation request was declined",
+        requestedWorkspaceDisplayName: latestReq.metadata?.target_workspace_name,
       };
     }
   }
