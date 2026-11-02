@@ -138,11 +138,7 @@ export function isRotatedElementWithinBounds(
     aabb.minX >= -tolerance &&
     aabb.maxX <= canvasWidth + tolerance &&
     aabb.minY >= -tolerance &&
-    aabb.maxY <= canvasHeight + tolerance &&
-    element.x >= -tolerance &&
-    element.y >= -tolerance &&
-    element.x + element.width <= canvasWidth + tolerance &&
-    element.y + element.height <= canvasHeight + tolerance
+    aabb.maxY <= canvasHeight + tolerance
   );
 }
 
@@ -152,7 +148,7 @@ export function isRotatedElementWithinBounds(
  * 2. If it is already within bounds, it pivots around the element's center point with ZERO displacement.
  * 3. If rotation or movement causes any part of the rotated element to exceed canvas boundaries,
  *    it is pushed inward by the exact necessary offset to fit flush against the edge.
- * 4. Both the rotated AABB and the unrotated coordinates respect non-negative and canvas limits.
+ * 4. Rotated elements are permitted to move flush to the canvas perimeter.
  */
 export function clampRotatedElementToBounds(
   element: ClampElementInput,
@@ -170,11 +166,11 @@ export function clampRotatedElementToBounds(
   const overflowTop = Math.max(0, -aabb.minY);
   const overflowBottom = Math.max(0, aabb.maxY - canvasHeight);
 
-  // Maximum half-extent in X and Y taking both rotated AABB and unrotated box into account
+  // Extents in X and Y reflect the rotated AABB
   const halfAabbW = aabb.width / 2;
   const halfAabbH = aabb.height / 2;
-  const extentX = Math.max(element.width / 2, halfAabbW);
-  const extentY = Math.max(element.height / 2, halfAabbH);
+  const extentX = halfAabbW;
+  const extentY = halfAabbH;
 
   let clampedCx = cx;
   let clampedCy = cy;
@@ -221,6 +217,7 @@ export interface CollidingElementCandidate {
   width?: number;
   h?: number;
   height?: number;
+  rotation?: number;
   bookable?: boolean;
   role?: string;
   elementRole?: string;
@@ -229,52 +226,69 @@ export interface CollidingElementCandidate {
   name?: string;
 }
 
+export function isStructureElement(item: CollidingElementCandidate): boolean {
+  return Boolean(
+    item.category === 'structure' ||
+    item.role === 'STRUCTURE' ||
+    item.elementRole === 'STRUCTURE' ||
+    item.elementType === 'wall' ||
+    item.elementType === 'divider' ||
+    item.elementType === 'thin_wall' ||
+    item.elementType === 'thin-wall' ||
+    item.elementType === 'glass' ||
+    item.name?.toLowerCase().includes('wall') ||
+    item.name?.toLowerCase().includes('divider')
+  );
+}
+
+export function checkElementsOverlap(
+  a: CollidingElementCandidate,
+  b: CollidingElementCandidate
+): boolean {
+  const aw = a.w ?? a.width ?? 0;
+  const ah = a.h ?? a.height ?? 0;
+  const bw = b.w ?? b.width ?? 0;
+  const bh = b.h ?? b.height ?? 0;
+
+  const aRot = a.rotation ?? 0;
+  const bRot = b.rotation ?? 0;
+
+  // Fast path: if both elements are unrotated (0 or 360), use standard AABB
+  if (aRot % 180 === 0 && bRot % 180 === 0 && aRot % 360 === 0 && bRot % 360 === 0) {
+    return (
+      a.x < b.x + bw &&
+      a.x + aw > b.x &&
+      a.y < b.y + bh &&
+      a.y + ah > b.y
+    );
+  }
+
+  // Compute rotated AABB for elements
+  const boxA = computeRotatedAABB(a.x, a.y, aw, ah, aRot);
+  const boxB = computeRotatedAABB(b.x, b.y, bw, bh, bRot);
+
+  return (
+    boxA.minX < boxB.maxX &&
+    boxA.maxX > boxB.minX &&
+    boxA.minY < boxB.maxY &&
+    boxA.maxY > boxB.minY
+  );
+}
+
 export function findCollidingElements(elements: CollidingElementCandidate[]): Set<string> {
   const colliding = new Set<string>();
   for (let i = 0; i < elements.length; i++) {
     for (let j = i + 1; j < elements.length; j++) {
       const a = elements[i];
       const b = elements[j];
-      const aw = a.w ?? a.width ?? 0;
-      const ah = a.h ?? a.height ?? 0;
-      const bw = b.w ?? b.width ?? 0;
-      const bh = b.h ?? b.height ?? 0;
 
       const isAWorkspace = Boolean(a.bookable || a.role === 'WORKSPACE' || a.elementRole === 'WORKSPACE');
       const isBWorkspace = Boolean(b.bookable || b.role === 'WORKSPACE' || b.elementRole === 'WORKSPACE');
-      const isAWall = !isAWorkspace && Boolean(
-        a.category === 'structure' ||
-        a.role === 'STRUCTURE' ||
-        a.elementRole === 'STRUCTURE' ||
-        a.elementType === 'wall' ||
-        a.elementType === 'divider' ||
-        a.elementType === 'thin_wall' ||
-        a.elementType === 'thin-wall' ||
-        a.elementType === 'glass' ||
-        a.name?.toLowerCase().includes('wall') ||
-        a.name?.toLowerCase().includes('divider')
-      );
-      const isBWall = !isBWorkspace && Boolean(
-        b.category === 'structure' ||
-        b.role === 'STRUCTURE' ||
-        b.elementRole === 'STRUCTURE' ||
-        b.elementType === 'wall' ||
-        b.elementType === 'divider' ||
-        b.elementType === 'thin_wall' ||
-        b.elementType === 'thin-wall' ||
-        b.elementType === 'glass' ||
-        b.name?.toLowerCase().includes('wall') ||
-        b.name?.toLowerCase().includes('divider')
-      );
+      const isAWall = !isAWorkspace && isStructureElement(a);
+      const isBWall = !isBWorkspace && isStructureElement(b);
 
       if ((isAWorkspace && isBWorkspace) || (isAWorkspace && isBWall) || (isBWorkspace && isAWall)) {
-        const overlaps =
-          a.x < b.x + bw &&
-          a.x + aw > b.x &&
-          a.y < b.y + bh &&
-          a.y + ah > b.y;
-
-        if (overlaps) {
+        if (checkElementsOverlap(a, b)) {
           colliding.add(a.id);
           colliding.add(b.id);
         }

@@ -253,16 +253,18 @@ async function normalizeElements(
     for (let i = 0; i < normalized.length; i++) {
       const a = normalized[i];
       if (a.elementRole !== BOOKABLE_ROLE) continue;
+      const aabbA = computeRotatedAABB(a.x, a.y, a.width, a.height, a.rotation ?? 0);
 
       for (let j = i + 1; j < normalized.length; j++) {
         const b = normalized[j];
         if (b.elementRole !== BOOKABLE_ROLE) continue;
+        const aabbB = computeRotatedAABB(b.x, b.y, b.width, b.height, b.rotation ?? 0);
 
         if (
-          a.x < b.x + b.width &&
-          a.x + a.width > b.x &&
-          a.y < b.y + b.height &&
-          a.y + a.height > b.y
+          aabbA.minX < aabbB.maxX &&
+          aabbA.maxX > aabbB.minX &&
+          aabbA.minY < aabbB.maxY &&
+          aabbA.maxY > aabbB.minY
         ) {
           if (a.id) wsCollidingIds.add(a.id);
           if (b.id) wsCollidingIds.add(b.id);
@@ -279,6 +281,7 @@ async function normalizeElements(
     const wallCollidingIds = new Set<string>();
     for (const ws of normalized) {
       if (ws.elementRole !== BOOKABLE_ROLE) continue;
+      const aabbWs = computeRotatedAABB(ws.x, ws.y, ws.width, ws.height, ws.rotation ?? 0);
 
       for (const wall of normalized) {
         if (
@@ -289,11 +292,13 @@ async function normalizeElements(
             wall.elementType.toLowerCase() === 'thin-wall' ||
             wall.elementType.toLowerCase().includes('glass'))
         ) {
+          const aabbWall = computeRotatedAABB(wall.x, wall.y, wall.width, wall.height, wall.rotation ?? 0);
+
           if (
-            ws.x < wall.x + wall.width &&
-            ws.x + ws.width > wall.x &&
-            ws.y < wall.y + wall.height &&
-            ws.y + ws.height > wall.y
+            aabbWs.minX < aabbWall.maxX &&
+            aabbWs.maxX > aabbWall.minX &&
+            aabbWs.minY < aabbWall.maxY &&
+            aabbWs.maxY > aabbWall.minY
           ) {
             if (ws.id) wallCollidingIds.add(ws.id);
             if (wall.id) wallCollidingIds.add(wall.id);
@@ -346,10 +351,6 @@ function normalizeElementGeometry(
   const rawX = requireFiniteNumber(element.x, `${label} x`);
   const rawY = requireFiniteNumber(element.y, `${label} y`);
 
-  if (rawX < 0 || rawY < 0) {
-    throw new MapValidationError(`${label} coordinates must be non-negative`);
-  }
-
   const isWall = isWallElement(elementType, elementRole);
   const isThinWall = isThinWallElement(elementType, elementRole);
   const isWindow = isWindowElement(elementType, elementRole);
@@ -369,8 +370,6 @@ function normalizeElementGeometry(
 
   const aabb = computeRotatedAABB(x, y, width, height, rotation);
   if (
-    x + width > canvasWidth ||
-    y + height > canvasHeight ||
     aabb.minX < -1e-2 ||
     aabb.minY < -1e-2 ||
     aabb.maxX > canvasWidth + 1e-2 ||

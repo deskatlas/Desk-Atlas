@@ -33,6 +33,8 @@ import {
   type WorkspaceStatusColors,
   resolveWorkspaceStatusColor,
   normalizeWorkspaceStatusColors,
+  findCollidingElements as domainFindCollidingElements,
+  type CollidingElementCandidate,
 } from '@deskatlas/domain';
 import { useNavigationGuard } from '../hooks/useNavigationGuard';
 import { MarqueeLabel } from '@deskatlas/ui';
@@ -209,66 +211,10 @@ export interface BuilderObject {
   properties?: Record<string, unknown>;
 }
 
-export function findCollidingElements(elements: Array<{
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  bookable?: boolean;
-  role?: string;
-  elementRole?: string;
-  category?: string;
-  elementType?: string;
-  name?: string;
-}>): Set<string> {
-  const colliding = new Set<string>();
-  for (let i = 0; i < elements.length; i++) {
-    for (let j = i + 1; j < elements.length; j++) {
-      const a = elements[i];
-      const b = elements[j];
-      const isAWorkspace = Boolean(a.bookable || a.role === 'WORKSPACE' || a.elementRole === 'WORKSPACE');
-      const isBWorkspace = Boolean(b.bookable || b.role === 'WORKSPACE' || b.elementRole === 'WORKSPACE');
-      const isAWall = !isAWorkspace && Boolean(
-        a.category === 'structure' ||
-        a.role === 'STRUCTURE' ||
-        a.elementRole === 'STRUCTURE' ||
-        a.elementType === 'wall' ||
-        a.elementType === 'divider' ||
-        a.elementType === 'thin_wall' ||
-        a.elementType === 'thin-wall' ||
-        a.elementType === 'glass' ||
-        a.name?.toLowerCase().includes('wall') ||
-        a.name?.toLowerCase().includes('divider')
-      );
-      const isBWall = !isBWorkspace && Boolean(
-        b.category === 'structure' ||
-        b.role === 'STRUCTURE' ||
-        b.elementRole === 'STRUCTURE' ||
-        b.elementType === 'wall' ||
-        b.elementType === 'divider' ||
-        b.elementType === 'thin_wall' ||
-        b.elementType === 'thin-wall' ||
-        b.elementType === 'glass' ||
-        b.name?.toLowerCase().includes('wall') ||
-        b.name?.toLowerCase().includes('divider')
-      );
-
-      if ((isAWorkspace && isBWorkspace) || (isAWorkspace && isBWall) || (isBWorkspace && isAWall)) {
-        const overlaps =
-          a.x < b.x + b.w &&
-          a.x + a.w > b.x &&
-          a.y < b.y + b.h &&
-          a.y + a.h > b.y;
-
-        if (overlaps) {
-          colliding.add(a.id);
-          colliding.add(b.id);
-        }
-      }
-    }
-  }
-  return colliding;
+export function findCollidingElements(
+  elements: CollidingElementCandidate[]
+): Set<string> {
+  return domainFindCollidingElements(elements);
 }
 
 export function MapEditor() {
@@ -1476,17 +1422,11 @@ export function MapEditor() {
           if (rot === 90) {
             const visualTop = resizeState.startObjY + (thickness - resizeState.startObjW) / 2;
             const maxW_bottom = canvasH - visualTop;
-            const maxW_left = resizeState.startObjW + 2 * resizeState.startObjX;
-            const maxW_right = resizeState.startObjW + 2 * (canvasW - resizeState.startObjW - resizeState.startObjX);
-            const maxW = Math.min(maxW_bottom, Math.max(20, maxW_left), Math.max(20, maxW_right));
-            newW = Math.min(newW, maxW);
+            newW = Math.min(newW, maxW_bottom);
           } else if (rot === 270) {
             const visualBottom = resizeState.startObjY + (thickness + resizeState.startObjW) / 2;
             const maxW_top = visualBottom;
-            const maxW_left = resizeState.startObjW + 2 * resizeState.startObjX;
-            const maxW_right = resizeState.startObjW + 2 * (canvasW - resizeState.startObjW - resizeState.startObjX);
-            const maxW = Math.min(maxW_top, Math.max(20, maxW_left), Math.max(20, maxW_right));
-            newW = Math.min(newW, maxW);
+            newW = Math.min(newW, maxW_top);
           } else if (rot === 180) {
             const visualRight = resizeState.startObjX + resizeState.startObjW;
             newW = Math.min(newW, visualRight);
@@ -2913,6 +2853,8 @@ useEffect(() => {
                             pointerEvents: 'none',
                             boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
                             lineHeight: '14px',
+                            transform: obj.rotation ? `rotate(-${obj.rotation}deg)` : undefined,
+                            transformOrigin: 'bottom left',
                           }}
                         >
                           Overlap Conflict
