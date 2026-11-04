@@ -89,7 +89,7 @@ export function Header({
           type="button"
           aria-label="Toggle navigation menu"
           data-testid="mobile-menu-toggle"
-          className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-[var(--da-brand-dark)]"
+          className="md:hidden min-h-11 min-w-11 p-2 rounded-lg hover:bg-gray-100 text-[var(--da-brand-dark)]"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

@@ -101,7 +101,7 @@ export function ActiveRentalsTable({
         }}
       >
         {/* Tabs */}
-        <div style={{ display: "flex", gap: "6px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {(["active", "overdue", "returned", "all"] as const).map((tab) => {
             const count = rentals.filter((r) => {
               if (tab === "active") return r.status === "active";
@@ -115,6 +115,7 @@ export function ActiveRentalsTable({
                 key={tab}
                 type="button"
                 data-testid={`rental-tab-${tab}`}
+                className="mobile-touch-target"
                 onClick={() => setFilterTab(tab)}
                 style={{
                   padding: "6px 12px",
@@ -138,6 +139,7 @@ export function ActiveRentalsTable({
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <input
             data-testid="rentals-table-search-input"
+            className="mobile-touch-target"
             placeholder="Search code, guest, spot..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -437,4 +439,3 @@ export function ActiveRentalsTable({
     </div>
   );
 }
-

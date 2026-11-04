@@ -27,14 +27,14 @@ type PrivacyNoticeModalProps = {
 export function PrivacyNoticeModal({ open, onOpenChange }: PrivacyNoticeModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] w-[calc(100%-2rem)] flex-col gap-0 p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b px-6 py-4 text-left">
+      <DialogContent className="flex max-h-[85dvh] w-[calc(100%-2rem)] flex-col gap-0 p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-4 py-4 text-left sm:px-6">
           <DialogTitle>Privacy Notice</DialogTitle>
           <DialogDescription>Last updated: {PRIVACY_LAST_UPDATED}</DialogDescription>
         </DialogHeader>
 
         <div
-          className="flex-1 space-y-6 overflow-y-auto px-6 py-5 text-sm leading-relaxed"
+          className="min-w-0 flex-1 space-y-6 overflow-y-auto break-words px-4 py-5 text-sm leading-relaxed sm:px-6"
           tabIndex={0}
           aria-label="Privacy Notice content"
         >
@@ -85,8 +85,8 @@ export function PrivacyNoticeModal({ open, onOpenChange }: PrivacyNoticeModalPro
           </section>
         </div>
 
-        <DialogFooter className="border-t px-6 py-4">
-          <Button type="button" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="border-t px-4 py-4 sm:px-6">
+          <Button className="min-h-11" type="button" onClick={() => onOpenChange(false)}>
             I Understand
           </Button>
         </DialogFooter>

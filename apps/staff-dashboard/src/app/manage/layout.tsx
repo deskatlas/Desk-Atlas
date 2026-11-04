@@ -127,7 +127,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
             <button className="desktop-only" onClick={toggleSidebar} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,.65)', borderRadius: '8px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
               &laquo;
             </button>
-            <button className="mobile-only" onClick={() => setMobileMenuOpen(false)} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,.65)', borderRadius: '8px', fontSize: '24px', cursor: 'pointer' }}>
+            <button className="mobile-only" onClick={() => setMobileMenuOpen(false)} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '44px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,.65)', borderRadius: '8px', fontSize: '24px', cursor: 'pointer' }}>
               &times;
             </button>
           </div>
@@ -152,6 +152,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
                 )}
                 <div
                   onClick={() => { router.push(item.id); setMobileMenuOpen(false); }}
+                  className="mobile-nav-item"
                   title={item.label}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'flex-start' : 'center', gap: sidebarOpen ? '11px' : '0', padding: sidebarOpen ? '10px 12px' : '10px 0', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--da-font-family)', ...navStyle }}
                 >
@@ -168,7 +169,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
         {/* TOP BAR */}
         <div className="mobile-w-full" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '12px 28px', background: '#fff', borderBottom: '1px solid var(--da-border)', position: 'sticky', top: 0, zIndex: 40 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-            <button className="mobile-only" onClick={() => setMobileMenuOpen(true)} style={{ background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+            <button className="mobile-only" onClick={() => setMobileMenuOpen(true)} style={{ width: '44px', height: '44px', flexShrink: 0, background: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
               ☰
             </button>
             {isReservationsPage && (

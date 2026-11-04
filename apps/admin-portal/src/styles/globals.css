@@ -62,6 +62,9 @@ input::placeholder, textarea::placeholder {
 
 /* Responsive Utilities */
 @media (max-width: 768px) {
+  .mobile-nav-item {
+    min-height: 44px;
+  }
   .desktop-only { display: none !important; }
   .mobile-flex-col { flex-direction: column !important; }
   .mobile-w-full { width: 100% !important; }
