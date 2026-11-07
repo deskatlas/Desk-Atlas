@@ -84,6 +84,10 @@ textarea::placeholder {
 
 /* Responsive Utilities */
 @media (max-width: 768px) {
+  .mobile-nav-item,
+  .mobile-touch-target {
+    min-height: 44px;
+  }
   .desktop-only {
     display: none !important;
   }
