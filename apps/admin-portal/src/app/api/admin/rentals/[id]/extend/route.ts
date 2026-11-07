@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { extendRentalSchema } from '@deskatlas/validation';
+import { RentalValidationError } from '@deskatlas/domain';
 import { getAdminRentalService } from '../../_lib/rentalService';
 
 export const runtime = 'nodejs';
@@ -42,7 +43,9 @@ export async function POST(
       message.includes('required') ||
       message.includes('not found') ||
       message.includes('returned') ||
-      message.includes('mode');
+      message.includes('overdue') ||
+      message.includes('mode') ||
+      error instanceof RentalValidationError;
     return NextResponse.json({ error: message }, { status: isValidationError ? 400 : 500 });
   }
 }

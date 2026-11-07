@@ -68,6 +68,10 @@ import {
   GuestReservationTrackingRepository,
 } from "./guestReservationTrackingRepository";
 import { BookingSurveyRepository, EndedReservationForSurvey } from "./bookingSurveyService";
+import {
+  AdvanceReminderRepository,
+  ReminderCandidateReservation,
+} from "./reservationReminderService";
 import { zonedDateTimeToUtc } from "./availabilityService";
 import { ReservationPaymentRepository, CreateWebPaymentSessionInput } from "./paymentSessionRepository";
 import { PaymentReviewRepository } from "./paymentReviewRepository";
@@ -112,7 +116,8 @@ export class ReservationMemoryRepository
   GuestReservationTrackingRepository,
   ReportsRepository,
   AdminReservationRepository,
-  BookingSurveyRepository {
+  BookingSurveyRepository,
+  AdvanceReminderRepository {
   private reservations: ReservationResponseDTO[] = [];
   private paymentAttempts = new Map<string, StoredPaymentAttempt>();
   private bookingScanEvents: Array<{
@@ -238,16 +243,41 @@ export class ReservationMemoryRepository
     const referenceCode = `DA-${currentNow.getFullYear()}-${randomUUID().split("-")[0].toUpperCase()}`;
     const now = currentNow.toISOString();
 
-    const candidates: ReservationCandidate[] = request.candidates.map((c) => ({
-      id: randomUUID(),
-      reservationId,
-      rank: c.rank,
-      workspaceInstanceId: c.workspaceInstanceId,
-      startAt: c.startAt,
-      endAt: c.endAt,
-      isAssigned: false,
-      rateType: c.rateType,
-    }));
+    const candidates: ReservationCandidate[] = await Promise.all(
+      request.candidates.map(async (c) => {
+        let displayName: string | undefined;
+        let instanceCode: string | undefined;
+        let templateName: string | undefined;
+        let floorName: string | undefined;
+
+        if (this.workspaceRepository) {
+          try {
+            const inst = await this.workspaceRepository.getInstance(c.workspaceInstanceId);
+            displayName = inst.displayName || inst.instanceCode || inst.template?.name || undefined;
+            instanceCode = inst.instanceCode || undefined;
+            templateName = inst.template?.name || undefined;
+            floorName = inst.floor?.name || undefined;
+          } catch {
+            // ignore if not found
+          }
+        }
+
+        return {
+          id: randomUUID(),
+          reservationId,
+          rank: c.rank,
+          workspaceInstanceId: c.workspaceInstanceId,
+          startAt: c.startAt,
+          endAt: c.endAt,
+          isAssigned: false,
+          rateType: c.rateType,
+          workspaceDisplayName: displayName,
+          workspaceInstanceCode: instanceCode,
+          workspaceTemplateName: templateName,
+          floorName,
+        };
+      })
+    );
 
     const reservation: ReservationResponseDTO = {
       id: reservationId,
@@ -1824,14 +1854,63 @@ export class ReservationMemoryRepository
       timeline.push(`${formatTimelineDate(r.updatedAt)} - Needs manual resolution`);
     }
 
-    if ((r as any).rescheduledAt) {
-      const actorLabel = (r as any).rescheduledByRole === "CUSTOMER" ? "Customer" : "Admin";
-      timeline.push(
-        `${formatTimelineDate((r as any).rescheduledAt)} - Rescheduled by ${actorLabel} to ${schedule}`
-      );
+    const dynamicEvents: Array<{ timestamp: string; text: string }> = [];
+
+    const record = r as unknown as Record<string, unknown>;
+    const reschedEvents = (record.rescheduleEvents as Array<{
+      rescheduledAt: string;
+      actorRole: string;
+      oldSchedule?: string;
+      newSchedule?: string;
+    }> | undefined) ?? [];
+
+    if (reschedEvents.length > 0) {
+      for (const res of reschedEvents) {
+        const actorRole = res.actorRole || "ADMIN";
+        const actorLabel =
+          actorRole === "STAFF"
+            ? "Staff"
+            : actorRole === "CUSTOMER"
+              ? "Customer"
+              : actorRole === "SUPERADMIN" || actorRole === "SUPER_ADMIN"
+                ? "Super Admin"
+                : "Admin";
+        const targetSchedule = res.newSchedule || schedule;
+        const sourceSchedule = res.oldSchedule ? ` from ${res.oldSchedule}` : "";
+        dynamicEvents.push({
+          timestamp: res.rescheduledAt,
+          text: `${formatTimelineDate(res.rescheduledAt)} - Rescheduled by ${actorLabel}${sourceSchedule} to ${targetSchedule}`,
+        });
+      }
+    } else if (record.rescheduledAt) {
+      const actorRole = (record.rescheduledByRole as string) || "ADMIN";
+      const actorLabel =
+        actorRole === "STAFF"
+          ? "Staff"
+          : actorRole === "CUSTOMER"
+            ? "Customer"
+            : actorRole === "SUPERADMIN" || actorRole === "SUPER_ADMIN"
+              ? "Super Admin"
+              : "Admin";
+      const targetSchedule = (record.newSchedule as string | undefined) || schedule;
+      const sourceSchedule = record.oldSchedule ? ` from ${record.oldSchedule}` : "";
+      dynamicEvents.push({
+        timestamp: record.rescheduledAt as string,
+        text: `${formatTimelineDate(record.rescheduledAt as string)} - Rescheduled by ${actorLabel}${sourceSchedule} to ${targetSchedule}`,
+      });
     }
 
-    const relocations = (r as any).relocations ?? [];
+    const relocations = (record.relocations as Array<{
+      relocatedAt: string;
+      actorRole?: string;
+      inSession?: boolean;
+      remainingMinutes?: number;
+      oldWorkspaceDisplayName?: string;
+      newWorkspaceDisplayName?: string;
+      reason?: string;
+      notes?: string;
+    }> | undefined) ?? [];
+
     for (const rel of relocations) {
       const actorLabel =
         rel.actorRole === "STAFF"
@@ -1850,45 +1929,56 @@ export class ReservationMemoryRepository
             ? `${remainingHours}h${remMins > 0 ? ` ${remMins}m` : ""}`
             : `${remMins}m`;
 
-        timeline.push(
-          `${formatTimelineDate(rel.relocatedAt)} - In-session spot relocated from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} by ${actorLabel} for remaining time (${remText} remaining). Reason: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`
-        );
+        dynamicEvents.push({
+          timestamp: rel.relocatedAt,
+          text: `${formatTimelineDate(rel.relocatedAt)} - In-session spot relocated from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} by ${actorLabel} for remaining time (${remText} remaining). Reason: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`,
+        });
       } else {
-        timeline.push(
-          `${formatTimelineDate(rel.relocatedAt)} - Relocated by ${actorLabel} from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} due to: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`
-        );
+        dynamicEvents.push({
+          timestamp: rel.relocatedAt,
+          text: `${formatTimelineDate(rel.relocatedAt)} - Relocated by ${actorLabel} from ${rel.oldWorkspaceDisplayName} to ${rel.newWorkspaceDisplayName} due to: ${rel.reason}${rel.notes ? ` (${rel.notes})` : ""}`,
+        });
       }
     }
 
-    if ((r as any).pendingRelocationRequest) {
-      const preq = (r as any).pendingRelocationRequest as CustomerRelocationRequest;
-      timeline.push(
-        `${formatTimelineDate(preq.requestedAt)} - Customer requested spot relocation to ${preq.targetWorkspaceDisplayName}. Reason: ${preq.reason}${preq.notes ? ` (${preq.notes})` : ""}`
-      );
+    if (record.pendingRelocationRequest) {
+      const preq = record.pendingRelocationRequest as CustomerRelocationRequest;
+      dynamicEvents.push({
+        timestamp: preq.requestedAt,
+        text: `${formatTimelineDate(preq.requestedAt)} - Customer requested spot relocation to ${preq.targetWorkspaceDisplayName}. Reason: ${preq.reason}${preq.notes ? ` (${preq.notes})` : ""}`,
+      });
     }
 
-    if ((r as any).declinedRelocationRequest) {
-      const dreq = (r as any).declinedRelocationRequest as CustomerRelocationRequest;
+    if (record.declinedRelocationRequest) {
+      const dreq = record.declinedRelocationRequest as CustomerRelocationRequest;
       const decActor = dreq.decisionRole === "STAFF" ? "Staff" : "Admin";
-      timeline.push(
-        `${formatTimelineDate(dreq.decisionAt || dreq.requestedAt)} - Customer spot relocation request declined by ${decActor}. Reason: ${dreq.decisionNotes || "Unavailable"}`
-      );
+      dynamicEvents.push({
+        timestamp: dreq.decisionAt || dreq.requestedAt,
+        text: `${formatTimelineDate(dreq.decisionAt || dreq.requestedAt)} - Customer spot relocation request declined by ${decActor}. Reason: ${dreq.decisionNotes || "Unavailable"}`,
+      });
     }
 
-    const extEvents = ((r as any).extensionEvents || []) as Array<{
+    const extEvents = (record.extensionEvents as Array<{
       occurredAt: string;
       actorRole: string;
       addedMinutes: number;
       newEndTime: string;
-    }>;
+    }> | undefined) ?? [];
+
     for (const ext of extEvents) {
       const actor = ext.actorRole === "STAFF" ? "Staff" : "Admin";
       const durationText = ext.addedMinutes
         ? `${ext.addedMinutes >= 60 && ext.addedMinutes % 60 === 0 ? `${ext.addedMinutes / 60} hour${ext.addedMinutes / 60 > 1 ? 's' : ''}` : `${ext.addedMinutes} mins`}`
         : "time";
-      timeline.push(
-        `${formatTimelineDate(ext.occurredAt)} - Time extended by ${actor} by ${durationText}`
-      );
+      dynamicEvents.push({
+        timestamp: ext.occurredAt,
+        text: `${formatTimelineDate(ext.occurredAt)} - Time extended by ${actor} by ${durationText}`,
+      });
+    }
+
+    dynamicEvents.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    for (const event of dynamicEvents) {
+      timeline.push(event.text);
     }
 
     const formattedPaymentStatus = `${pres.payment} (${formatAmountWithCurrency(r.amountDue, r.currency)})`;
@@ -2227,11 +2317,24 @@ export class ReservationMemoryRepository
       assigned.isAssigned = true;
     }
 
+    const newSchedule = formatSchedule(input.startAt, input.endAt);
     r.updatedAt = nowIso;
     r.rescheduleCount = isClosureWaiver ? currentRescheduleCount : currentRescheduleCount + 1;
-    (r as any).rescheduledAt = nowIso;
-    (r as any).rescheduledByRole = input.actorRole ?? "ADMIN";
-    (r as any).rescheduleCount = r.rescheduleCount;
+    const rRecord = r as unknown as Record<string, unknown>;
+    rRecord.rescheduledAt = nowIso;
+    rRecord.rescheduledByRole = input.actorRole ?? "ADMIN";
+    rRecord.rescheduleCount = r.rescheduleCount;
+    rRecord.oldSchedule = oldSchedule;
+    rRecord.newSchedule = newSchedule;
+    if (!Array.isArray(rRecord.rescheduleEvents)) {
+      rRecord.rescheduleEvents = [];
+    }
+    (rRecord.rescheduleEvents as Array<Record<string, unknown>>).push({
+      rescheduledAt: nowIso,
+      actorRole: input.actorRole ?? "ADMIN",
+      oldSchedule,
+      newSchedule,
+    });
     if (r.isClosureImpacted) {
       r.closureImpactStatus = isCustomerActor ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED";
     }
@@ -2247,7 +2350,13 @@ export class ReservationMemoryRepository
       occurredAt: nowIso,
       actorUserId: input.actorUserId ?? null,
       actorRole: isCustomerActor ? "CUSTOMER" : ((input.actorRole as "ADMIN" | "STAFF" | "SYSTEM") ?? "ADMIN"),
-      actorName: isCustomerActor ? "Customer" : (input.actorRole === "STAFF" ? "Staff" : "Admin"),
+      actorName: isCustomerActor
+        ? "Customer"
+        : input.actorRole === "STAFF"
+        ? "Staff"
+        : input.actorRole === "SUPERADMIN" || input.actorRole === "SUPER_ADMIN"
+        ? "Super Admin"
+        : "Admin",
     };
     this.operationalAuditEvents.unshift(activityEvent);
 
@@ -2627,6 +2736,53 @@ export class ReservationMemoryRepository
       res.checkedOutAt = completedAt;
       res.updatedAt = completedAt;
     }
+  }
+
+  async updateReservationReminderSentAt(reservationId: string, sentAt: string): Promise<void> {
+    const res = this.reservations.find(
+      (r) => r.id === reservationId || r.referenceCode === reservationId
+    );
+    if (res) {
+      res.reminderSentAt = sentAt;
+      res.updatedAt = new Date().toISOString();
+    }
+  }
+
+  async listUpcomingReservationsForReminder(nowIso?: string): Promise<ReminderCandidateReservation[]> {
+    const nowMs = nowIso ? new Date(nowIso).getTime() : Date.now();
+    return this.reservations
+      .filter((r) => (r.status === "CONFIRMED" || (r as unknown as { reservationStatus?: string }).reservationStatus === "CONFIRMED") && !r.reminderSentAt)
+      .map((r) => {
+        const item = r as unknown as ReservationResponseDTO & {
+          assignedCandidate?: ReservationCandidate;
+          startAt?: string;
+          endAt?: string;
+          workspaceDisplayName?: string;
+          workspaceTemplateName?: string;
+        };
+        const assignedCandidate =
+          item.candidates?.find((c) => c.isAssigned) ||
+          item.assignedCandidate ||
+          item.candidates?.[0];
+        return {
+          id: item.id,
+          reservationId: item.id,
+          referenceCode: item.referenceCode,
+          customerFirstName: item.customerFirstName,
+          customerLastName: item.customerLastName,
+          customerEmail: item.customerEmail,
+          customerPhone: item.customerContactNumber ?? null,
+          reservationStatus: item.status,
+          status: item.status,
+          amountDue: item.amountDue,
+          bookingStartAt: assignedCandidate?.startAt || item.startAt || null,
+          bookingEndAt: assignedCandidate?.endAt || item.endAt || null,
+          workspaceDisplayName: assignedCandidate?.workspaceDisplayName || item.workspaceDisplayName || "Workspace Spot",
+          workspaceTemplateName: assignedCandidate?.workspaceTemplateName || item.workspaceTemplateName || "Workspace",
+          reminderSentAt: item.reminderSentAt ?? null,
+          attendanceReconfirmedAt: item.attendanceReconfirmedAt ?? null,
+        };
+      });
   }
 
   seedOperatingHours(dayOfWeek: number, intervals: Array<{ opensAt: string; closesAt: string; isActive?: boolean }>) {

@@ -174,29 +174,47 @@ export function NotificationCenter() {
         const data = await res.json();
         if (Array.isArray(data.notifications)) {
           const incoming: AdminNotificationItem[] = data.notifications;
-          if (
-            seenNotificationIdsRef.current !== null &&
-            typeof window !== "undefined" &&
-            "Notification" in window &&
-            Notification.permission === "granted"
-          ) {
+          if (seenNotificationIdsRef.current !== null) {
             const newItems = incoming.filter((item) => !seenNotificationIdsRef.current!.has(item.id));
             for (const item of newItems) {
-              try {
-                const notif = new Notification(item.title, {
-                  body: item.description,
-                  icon: "/icons/deskatlas-alert-icon.png",
-                  data: { url: item.link },
-                });
-                notif.onclick = () => {
-                  window.focus();
-                  if (item.link) {
-                    router.push(item.link);
-                  }
-                };
-              } catch {
-                // Ignore notification construction errors
+              if (
+                typeof window !== "undefined" &&
+                "Notification" in window &&
+                Notification.permission === "granted"
+              ) {
+                try {
+                  const notif = new Notification(item.title, {
+                    body: item.description,
+                    icon: "/icons/deskatlas-alert-icon.png",
+                    data: { url: item.link },
+                  });
+                  notif.onclick = () => {
+                    window.focus();
+                    if (item.link) {
+                      router.push(item.link);
+                    }
+                  };
+                } catch {
+                  // Ignore notification construction errors
+                }
               }
+
+              // MS-104: Simultaneously mirror alert to admin email
+              fetch("/api/admin/notifications/mirror-email", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${user?.token ?? ""}`,
+                },
+                body: JSON.stringify({
+                  notificationId: item.id,
+                  title: item.title,
+                  description: item.description,
+                  type: item.type,
+                  link: item.link,
+                  time: item.timestamp,
+                }),
+              }).catch(() => { });
             }
           }
           seenNotificationIdsRef.current = new Set(incoming.map((item) => item.id));

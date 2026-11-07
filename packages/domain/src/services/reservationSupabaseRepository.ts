@@ -77,6 +77,10 @@ import {
   GuestReservationTrackingRepository,
 } from "./guestReservationTrackingRepository";
 import { BookingSurveyRepository, EndedReservationForSurvey } from "./bookingSurveyService";
+import {
+  AdvanceReminderRepository,
+  ReminderCandidateReservation,
+} from "./reservationReminderService";
 import { zonedDateTimeToUtc } from "./availabilityService";
 import { databaseRequest } from './databaseRequest';
 
@@ -311,7 +315,8 @@ export class ReservationSupabaseRepository
   GuestReservationTrackingRepository,
   ReportsRepository,
   AdminReservationRepository,
-  BookingSurveyRepository {
+  BookingSurveyRepository,
+  AdvanceReminderRepository {
   private readonly restUrl: string;
   private readonly serviceRoleKey: string;
   private readonly fetcher: typeof fetch;
@@ -857,28 +862,56 @@ export class ReservationSupabaseRepository
     await this.request(`/reservations?id=eq.${encodeURIComponent(reservationId)}`, {
       method: "PATCH",
       body: JSON.stringify(patchPayload),
-    }).catch(() => { });
+    }).catch((auditErr: unknown) => {
+      console.error("[rescheduleReservation] Failed to write audit log:", auditErr);
+    });
 
     if (request.requestedVoucherId) {
       await this.request('/rpc/hold_voucher_for_pending_reservation', {
         method: 'POST',
         body: JSON.stringify({ p_reservation_id: reservationId }),
-      }).catch(() => { });
+      }).catch((auditErr: unknown) => {
+      console.error("[rescheduleReservation] Failed to write audit log:", auditErr);
+    });
     }
 
-    const candidatesData = await this.request<any[]>(
+    const candidatesData = await this.request<ReservationCandidateRow[]>(
       `/reservation_candidates?select=*&reservation_id=eq.${encodeURIComponent(reservationId)}&order=rank.asc`
     );
 
-    const candidates: ReservationCandidate[] = candidatesData.map((c: any) => ({
-      id: c.id,
-      reservationId: c.reservation_id,
-      rank: c.rank,
-      workspaceInstanceId: c.workspace_instance_id,
-      startAt: c.start_at,
-      endAt: c.end_at,
-      isAssigned: c.is_assigned,
-    }));
+    const instanceIds = [...new Set((candidatesData ?? []).map((c) => c.workspace_instance_id).filter(Boolean))];
+    const [instancesRows, templatesRows, floorsRows] = await Promise.all([
+      instanceIds.length > 0
+        ? this.request<CatalogWorkspaceInstance[]>(`/workspace_instances?select=*&id=in.(${instanceIds.map(encodeURIComponent).join(",")})`).catch(() => [])
+        : Promise.resolve([]),
+      this.request<CatalogWorkspaceTemplate[]>("/workspace_templates?select=*").catch(() => []),
+      this.request<CatalogFloor[]>("/floors?select=*").catch(() => []),
+    ]);
+
+    const instancesById = new Map<string, CatalogWorkspaceInstance>((instancesRows ?? []).map((i) => [i.id, i]));
+    const templatesById = new Map<string, CatalogWorkspaceTemplate>((templatesRows ?? []).map((t) => [t.id, t]));
+    const floorsById = new Map<string, CatalogFloor>((floorsRows ?? []).map((f) => [f.id, f]));
+
+    const candidates: ReservationCandidate[] = (candidatesData ?? []).map((c) => {
+      const inst = instancesById.get(c.workspace_instance_id);
+      const tmpl = inst?.template_id ? templatesById.get(inst.template_id) : null;
+      const flr = inst?.floor_id ? floorsById.get(inst.floor_id) : null;
+      const displayName = inst?.display_name ?? inst?.instance_code ?? tmpl?.name ?? null;
+
+      return {
+        id: c.id,
+        reservationId: c.reservation_id,
+        rank: c.rank,
+        workspaceInstanceId: c.workspace_instance_id,
+        workspaceDisplayName: displayName,
+        workspaceInstanceCode: inst?.instance_code ?? null,
+        workspaceTemplateName: tmpl?.name ?? null,
+        floorName: flr?.name ?? null,
+        startAt: (c.start_at as string | null) ?? request.candidates?.[c.rank]?.startAt ?? new Date().toISOString(),
+        endAt: (c.end_at as string | null) ?? request.candidates?.[c.rank]?.endAt ?? new Date().toISOString(),
+        isAssigned: Boolean(c.is_assigned),
+      };
+    });
 
     const reservationRows = await this.request<any[]>(
       `/reservations?select=*&id=eq.${encodeURIComponent(reservationId)}&limit=1`
@@ -3056,14 +3089,27 @@ export class ReservationSupabaseRepository
       timeline.push(`${formatTimelineDate(r.checked_out_at)} - Customer checked out`);
     }
 
+    const dynamicEvents: Array<{ timestamp: string; text: string }> = [];
+
     const rescheduleEvents = (auditRows ?? []).filter(
       (a) => a.action === "reservation_rescheduled" || a.action === "RESERVATION_RESCHEDULED"
     );
     for (const res of rescheduleEvents) {
-      const actorLabel = res.actor_role === "CUSTOMER" ? "Customer" : "Admin";
-      timeline.push(
-        `${formatTimelineDate(res.created_at)} - Rescheduled by ${actorLabel} to ${res.metadata?.new_schedule || schedule}`
-      );
+      const actorRole = res.metadata?.actor_role || res.actor_role || "ADMIN";
+      const actorLabel =
+        actorRole === "STAFF"
+          ? "Staff"
+          : actorRole === "CUSTOMER"
+            ? "Customer"
+            : actorRole === "SUPERADMIN" || actorRole === "SUPER_ADMIN"
+              ? "Super Admin"
+              : "Admin";
+      const targetSchedule = res.metadata?.new_schedule || schedule;
+      const sourceSchedule = res.metadata?.old_schedule ? ` from ${res.metadata.old_schedule}` : "";
+      dynamicEvents.push({
+        timestamp: res.created_at || "",
+        text: `${formatTimelineDate(res.created_at)} - Rescheduled by ${actorLabel}${sourceSchedule} to ${targetSchedule}`,
+      });
     }
 
     const extensionEvents = (auditRows ?? []).filter(
@@ -3075,9 +3121,10 @@ export class ReservationSupabaseRepository
       const durationText = addedMinutes
         ? `${addedMinutes >= 60 && addedMinutes % 60 === 0 ? `${addedMinutes / 60} hour${addedMinutes / 60 > 1 ? 's' : ''}` : `${addedMinutes} mins`}`
         : "time";
-      timeline.push(
-        `${formatTimelineDate(ext.created_at)} - Time extended by ${actor} by ${durationText}`
-      );
+      dynamicEvents.push({
+        timestamp: ext.created_at || "",
+        text: `${formatTimelineDate(ext.created_at)} - Time extended by ${actor} by ${durationText}`,
+      });
     }
 
     const relocationEvents = (auditRows ?? []).filter(
@@ -3108,14 +3155,21 @@ export class ReservationSupabaseRepository
             ? `${remainingHours}h${remMins > 0 ? ` ${remMins}m` : ""}`
             : `${remMins}m`;
 
-        timeline.push(
-          `${formatTimelineDate(rel.created_at)} - In-session spot relocated from ${oldName} to ${newName} by ${actorLabel} for remaining time (${remText} remaining). Reason: ${reason}${notesStr}`
-        );
+        dynamicEvents.push({
+          timestamp: rel.created_at || "",
+          text: `${formatTimelineDate(rel.created_at)} - In-session spot relocated from ${oldName} to ${newName} by ${actorLabel} for remaining time (${remText} remaining). Reason: ${reason}${notesStr}`,
+        });
       } else {
-        timeline.push(
-          `${formatTimelineDate(rel.created_at)} - Relocated by ${actorLabel} from ${oldName} to ${newName} due to: ${reason}${notesStr}`
-        );
+        dynamicEvents.push({
+          timestamp: rel.created_at || "",
+          text: `${formatTimelineDate(rel.created_at)} - Relocated by ${actorLabel} from ${oldName} to ${newName} due to: ${reason}${notesStr}`,
+        });
       }
+    }
+
+    dynamicEvents.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    for (const event of dynamicEvents) {
+      timeline.push(event.text);
     }
 
     let pendingRelocationRequest: CustomerRelocationRequest | null = null;
@@ -3567,24 +3621,53 @@ export class ReservationSupabaseRepository
       }
     }
 
-    await this.request("/audit_logs", {
-      method: "POST",
-      body: JSON.stringify({
-        actor_user_id: input.actorUserId ?? null,
-        actor_role: input.actorRole ?? "ADMIN",
-        action: "reservation_rescheduled",
-        entity_type: "reservation",
-        entity_id: r.id,
-        metadata: {
-          old_schedule: oldSchedule,
-          new_schedule: newSchedule,
-          start_at: input.startAt,
-          end_at: input.endAt,
-          reference_code: r.reference_code,
-          rescheduled_at: nowIso,
-        },
-      }),
-    }).catch(() => { });
+    const auditActorRole: "ADMIN" | "STAFF" | "CUSTOMER" = isCustomerActor
+      ? "CUSTOMER"
+      : input.actorRole === "STAFF"
+      ? "STAFF"
+      : "ADMIN";
+    const auditUserId = isCustomerActor
+      ? null
+      : input.actorUserId && input.actorUserId.trim()
+      ? input.actorUserId.trim()
+      : null;
+
+    const auditPayload = {
+      actor_user_id: auditUserId,
+      actor_role: auditActorRole,
+      action: "reservation_rescheduled",
+      entity_type: "reservation",
+      entity_id: r.id,
+      metadata: {
+        old_schedule: oldSchedule,
+        new_schedule: newSchedule,
+        start_at: input.startAt,
+        end_at: input.endAt,
+        reference_code: r.reference_code,
+        rescheduled_at: nowIso,
+        actor_role: input.actorRole ?? (isCustomerActor ? "CUSTOMER" : "ADMIN"),
+      },
+    };
+
+    try {
+      await this.request("/audit_logs", {
+        method: "POST",
+        body: JSON.stringify(auditPayload),
+      });
+    } catch (auditErr: unknown) {
+      console.error("[rescheduleReservation] Failed to write audit log with actor_user_id, retrying without actor_user_id:", auditErr);
+      if (auditUserId) {
+        await this.request("/audit_logs", {
+          method: "POST",
+          body: JSON.stringify({
+            ...auditPayload,
+            actor_user_id: null,
+          }),
+        }).catch((fallbackErr: unknown) => {
+          console.error("[rescheduleReservation] Fallback audit log write also failed:", fallbackErr);
+        });
+      }
+    }
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -4001,6 +4084,68 @@ export class ReservationSupabaseRepository
     });
   }
 
+  async updateReservationReminderSentAt(reservationId: string, sentAt: string): Promise<void> {
+    await this.request(`/reservations?id=eq.${encodeURIComponent(reservationId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        reminder_sent_at: sentAt,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  }
+
+  async listUpcomingReservationsForReminder(nowIso?: string): Promise<ReminderCandidateReservation[]> {
+    const reservations = await this.request<any[]>(
+      `/reservations?select=id,reference_code,customer_email,customer_first_name,customer_last_name,customer_contact_number,status,amount_due,reminder_sent_at,attendance_reconfirmed_at&status=eq.CONFIRMED&reminder_sent_at=is.null&order=created_at.desc&limit=200`
+    );
+
+    if (!Array.isArray(reservations) || reservations.length === 0) {
+      return [];
+    }
+
+    const resIds = reservations.map((r) => r.id);
+    const candidates = await this.request<any[]>(
+      `/reservation_candidates?select=*&reservation_id=in.(${resIds.map(encodeURIComponent).join(",")})&is_assigned=eq.true`
+    );
+
+    const instances = await this.request<any[]>("/workspace_instances?select=id,display_name,instance_code,template_id,floor_id").catch(() => []);
+    const templates = await this.request<any[]>("/workspace_templates?select=id,name").catch(() => []);
+
+    const instanceMap = new Map((instances || []).map((i) => [i.id, i]));
+    const templateMap = new Map((templates || []).map((t) => [t.id, t]));
+    const candidateMap = new Map((candidates || []).map((c) => [c.reservation_id, c]));
+
+    const results: ReminderCandidateReservation[] = [];
+
+    for (const r of reservations) {
+      const cand = candidateMap.get(r.id);
+      const inst = cand ? instanceMap.get(cand.workspace_instance_id) : null;
+      const tpl = inst ? templateMap.get(inst.template_id) : null;
+
+      results.push({
+        id: r.id,
+        reservationId: r.id,
+        referenceCode: r.reference_code,
+        customerFirstName: r.customer_first_name,
+        customerLastName: r.customer_last_name,
+        customerEmail: r.customer_email,
+        customerPhone: r.customer_contact_number ?? null,
+        reservationStatus: r.status,
+        status: r.status,
+        amountDue: r.amount_due != null ? Number(r.amount_due) : undefined,
+        bookingStartAt: cand?.start_at ?? null,
+        bookingEndAt: cand?.end_at ?? null,
+        workspaceDisplayName: inst?.display_name || inst?.instance_code || "Workspace Spot",
+        workspaceTemplateName: tpl?.name || "Workspace",
+        reminderSentAt: r.reminder_sent_at ?? null,
+        attendanceReconfirmedAt: r.attendance_reconfirmed_at ?? null,
+      });
+    }
+
+    return results;
+  }
+
   async checkExtendAvailability(input: {
     reservationId: string;
     extensionMinutes?: number;
@@ -4245,7 +4390,7 @@ export class ReservationSupabaseRepository
     await this.request("/audit_logs", {
       method: "POST",
       body: JSON.stringify({
-        actor_user_id: input.actorUserId ?? null,
+        actor_user_id: input.actorUserId && input.actorUserId.trim() ? input.actorUserId.trim() : null,
         actor_role: input.actorRole ?? "ADMIN",
         action: "RESERVATION_TIME_EXTENDED",
         entity_type: "reservation",
@@ -4260,7 +4405,9 @@ export class ReservationSupabaseRepository
           workspace_instance_id: assigned.workspace_instance_id,
         },
       }),
-    }).catch(() => { });
+    }).catch((auditErr: unknown) => {
+      console.error("[rescheduleReservation] Failed to write audit log:", auditErr);
+    });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -4490,7 +4637,9 @@ export class ReservationSupabaseRepository
           closure_impact_status: input.actorRole === "CUSTOMER" ? "CUSTOMER_RESOLVED" : "STAFF_RESOLVED",
           updated_at: new Date().toISOString(),
         }),
-      }).catch(() => { });
+      }).catch((auditErr: unknown) => {
+      console.error("[rescheduleReservation] Failed to write audit log:", auditErr);
+    });
     }
 
     const detail = await this.getAdminReservationDetail(r.id);
@@ -4947,7 +5096,9 @@ export class ReservationSupabaseRepository
           logged_at: nowIso,
         },
       }),
-    }).catch(() => { });
+    }).catch((auditErr: unknown) => {
+      console.error("[rescheduleReservation] Failed to write audit log:", auditErr);
+    });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {
@@ -5042,7 +5193,9 @@ export class ReservationSupabaseRepository
           flagged_at: nowIso,
         },
       }),
-    }).catch(() => { });
+    }).catch((auditErr: unknown) => {
+      console.error("[rescheduleReservation] Failed to write audit log:", auditErr);
+    });
 
     const detail = await this.getAdminReservationDetail(r.id);
     if (!detail) {

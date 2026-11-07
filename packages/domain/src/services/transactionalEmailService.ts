@@ -115,15 +115,23 @@ export function resolveBusinessProfile(
 }
 
 export function resolveCustomerAppBaseUrl(
-  profile?: BusinessEmailProfile
+  profile?: BusinessEmailProfile,
+  explicitOrigin?: string
 ): string {
-  const candidate =
+  const candidate = (
+    explicitOrigin ||
     profile?.appUrl ||
     process.env.DESKATLAS_PUBLIC_APP_URL ||
     process.env.NEXT_PUBLIC_CUSTOMER_URL ||
-    'https://www.thedeskatlas.com';
+    CANONICAL_PRODUCTION_CUSTOMER_URL
+  ).trim().replace(/\/+$/, '');
 
-  return candidate.trim().replace(/\/+$/, '');
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(candidate)) {
+    return CANONICAL_PRODUCTION_CUSTOMER_URL;
+  }
+
+  return candidate || CANONICAL_PRODUCTION_CUSTOMER_URL;
 }
 
 export const CANONICAL_PRODUCTION_CUSTOMER_URL = 'https://www.thedeskatlas.com';
@@ -1481,15 +1489,20 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
       <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
         ${input.candidates.map((c) => {
     const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
-    const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
-    const floorInfo = c.floorName ? ` (${c.floorName})` : '';
+    const namePart = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
+    const templatePart = c.workspaceTemplateName && c.workspaceDisplayName && c.workspaceDisplayName !== c.workspaceTemplateName
+      ? ` (${c.workspaceTemplateName})`
+      : '';
+    const floorPart = c.floorName ? ` - ${c.floorName}` : '';
     const startTimeStr = formatEmailTimeOnly(c.startAt);
     const endTimeStr = formatEmailTimeOnly(c.endAt);
-    const timeInfo = startTimeStr && endTimeStr ? ` - ${startTimeStr} to ${endTimeStr}` : '';
+    const timeInfo = startTimeStr && endTimeStr ? ` (${startTimeStr} to ${endTimeStr})` : '';
+
+    const fullSpotText = `${namePart}${templatePart}${floorPart}${timeInfo}`;
     return `
           <tr style="border-bottom: 1px solid #f1f5f9;">
-            <td style="padding: 6px 0; font-weight: 600; color: ${c.rank === 0 ? '#0284c7' : '#64748b'}; width: 35%;">${escapeHtml(rankLabel)}</td>
-            <td style="padding: 6px 0; color: #1e293b;">${escapeHtml(spotInfo + floorInfo + timeInfo)}</td>
+            <td style="padding: 8px 0; font-weight: 700; color: ${c.rank === 0 ? '#0284c7' : '#64748b'}; width: 32%;">${escapeHtml(rankLabel)}</td>
+            <td style="padding: 8px 0; color: #1e293b; font-weight: 500;">${escapeHtml(fullSpotText)}</td>
           </tr>
           `;
   }).join('')}
@@ -1501,11 +1514,16 @@ export function renderReservationTrackingEmail(input: ReservationTrackingEmailIn
 Selected Candidates:
 ${input.candidates.map((c) => {
     const rankLabel = c.rank === 0 ? 'Main Spot' : `Backup Choice ${c.rank}`;
-    const spotInfo = c.workspaceDisplayName || c.workspaceTemplateName || `Option ${c.rank + 1}`;
+    const namePart = c.workspaceDisplayName || c.workspaceTemplateName || `Spot #${c.rank + 1}`;
+    const templatePart = c.workspaceTemplateName && c.workspaceDisplayName && c.workspaceDisplayName !== c.workspaceTemplateName
+      ? ` (${c.workspaceTemplateName})`
+      : '';
+    const floorPart = c.floorName ? ` - ${c.floorName}` : '';
     const startTimeStr = formatEmailTimeOnly(c.startAt);
     const endTimeStr = formatEmailTimeOnly(c.endAt);
     const timeInfo = startTimeStr && endTimeStr ? ` (${startTimeStr} to ${endTimeStr})` : '';
-    return `- ${rankLabel}: ${spotInfo}${timeInfo}`;
+    const fullSpotText = `${namePart}${templatePart}${floorPart}${timeInfo}`;
+    return `- ${rankLabel}: ${fullSpotText}`;
   }).join('\n')}
   `.trim() : '';
 
@@ -4250,6 +4268,41 @@ export class TransactionalEmailService {
       text: rendered.text,
     });
   }
+
+  async sendAdminNotificationAlertEmail(
+    input: AdminNotificationAlertEmailInput
+  ): Promise<EmailSendResult> {
+    const resolvedProfile = await this.resolveProfile(input);
+    const mergedInput: AdminNotificationAlertEmailInput = {
+      ...input,
+      businessSettings: resolvedProfile,
+    };
+    const rendered = renderAdminNotificationAlertEmail(mergedInput);
+
+    if (!this.apiKey && this.webhookUrl) {
+      try {
+        await this.fetcher(this.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'admin-notification-alert',
+            ...mergedInput,
+          }),
+        });
+        return { success: true, id: 'webhook-admin-notification-alert' };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[TransactionalEmail] Admin notification alert webhook dispatch error:', errorMsg);
+      }
+    }
+
+    return this.sendEmail({
+      to: input.to,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+    });
+  }
 }
 
 export interface ClosureImpactNoticeEmailInput extends BaseEmailBusinessFields {
@@ -4851,6 +4904,8 @@ export interface VoucherEmailInput extends BaseEmailBusinessFields {
   expiresAt: string;
   terms?: Record<string, unknown>;
   instructions?: string;
+  customerAppUrl?: string;
+  reserveUrl?: string;
 }
 
 export function renderVoucherEmail(input: VoucherEmailInput): { subject: string; html: string; text: string } {
@@ -4859,8 +4914,8 @@ export function renderVoucherEmail(input: VoucherEmailInput): { subject: string;
   const customerName = [input.customerFirstName, input.customerLastName].filter(Boolean).join(' ') || 'Valued Guest';
   const subject = `Your DeskAtlas Voucher: ${input.promoCode} - ${input.discountDescription}`;
   const expiryFormatted = formatEmailTime(input.expiresAt, profile.timezone || DEFAULT_TIMEZONE);
-  const fallbackBaseUrl = resolveCustomerAppBaseUrl(profile);
-  const reserveUrl = `${fallbackBaseUrl}/reserve`;
+  const fallbackBaseUrl = resolveCustomerAppBaseUrl(profile, input.customerAppUrl);
+  const reserveUrl = input.reserveUrl || `${fallbackBaseUrl}/reserve`;
 
   const html = `
 <!DOCTYPE html>
@@ -4948,6 +5003,8 @@ export interface VoucherAwardedEmailInput extends BaseEmailBusinessFields {
   campaignName: string;
   expiresAt: string;
   portalUrl?: string;
+  customerAppUrl?: string;
+  reserveUrl?: string;
   terms?: Record<string, unknown>;
   instructions?: string;
 }
@@ -4959,9 +5016,9 @@ export function renderVoucherAwardedEmail(input: VoucherAwardedEmailInput): { su
   const discountText = input.discountText || input.discountDescription || 'Reward Discount';
   const subject = `Your DeskAtlas Reward: ${input.promoCode} (${discountText})`;
   const expiryFormatted = formatEmailTime(input.expiresAt, profile.timezone || DEFAULT_TIMEZONE);
-  const fallbackBaseUrl = resolveCustomerAppBaseUrl(profile);
+  const fallbackBaseUrl = resolveCustomerAppBaseUrl(profile, input.customerAppUrl);
   const portalUrl = input.portalUrl || `${fallbackBaseUrl}/track/rewards`;
-  const reserveUrl = `${fallbackBaseUrl}/reserve`;
+  const reserveUrl = input.reserveUrl || `${fallbackBaseUrl}/reserve`;
 
   const html = `
 <!DOCTYPE html>
@@ -6339,6 +6396,117 @@ export function renderEmailChangeNewEmailNotice(input: EmailChangeNewEmailNotice
     ``,
     `Log in to My Bookings & Rewards: ${portalUrl}`,
   ].join('\n');
+
+  return { subject, html, text };
+}
+
+export interface AdminNotificationAlertEmailInput extends BaseEmailBusinessFields {
+  to: string;
+  adminName?: string;
+  notificationTitle: string;
+  notificationDescription: string;
+  notificationType: string;
+  occurredAt: string;
+  actionUrl?: string;
+  actionLabel?: string;
+}
+
+export function renderAdminNotificationAlertEmail(
+  input: AdminNotificationAlertEmailInput
+): { subject: string; html: string; text: string } {
+  const profile = resolveBusinessProfile(input);
+  const businessName = profile.businessName || 'DeskAtlas';
+  const adminName = input.adminName?.trim() || 'Administrator';
+  const subject = `[DeskAtlas Alert] ${input.notificationTitle}`;
+
+  const occurredFormatted = input.occurredAt
+    ? formatEmailTime(input.occurredAt)
+    : new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        hour12: true,
+      }).format(new Date());
+
+  const appBase = input.appUrl || profile.appUrl || 'https://admin.thedeskatlas.com';
+  let resolvedActionUrl = input.actionUrl;
+  if (resolvedActionUrl && resolvedActionUrl.startsWith('/')) {
+    resolvedActionUrl = `${appBase.replace(/\/$/, '')}${resolvedActionUrl}`;
+  }
+  const actionLabel = input.actionLabel || 'View Details in Admin Portal';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px; }
+    .card { background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 580px; margin: 0 auto; padding: 32px; }
+    .header { text-align: center; margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px; }
+    .brand { font-size: 20px; font-weight: 800; color: #064e3b; letter-spacing: -0.02em; }
+    .badge { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; background-color: #fee2e2; color: #991b1b; }
+    .greeting { font-size: 16px; font-weight: 600; color: #0f172a; margin-top: 16px; }
+    .content { font-size: 15px; line-height: 1.6; color: #334155; }
+    .alert-box { background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 10px; padding: 20px; margin: 20px 0; }
+    .alert-title { font-size: 16px; font-weight: 700; color: #9f1239; margin-bottom: 8px; }
+    .alert-desc { font-size: 14px; color: #4c0519; margin-bottom: 12px; line-height: 1.5; }
+    .info-row { display: flex; justify-content: space-between; font-size: 13px; color: #64748b; margin-top: 6px; }
+    .cta-container { text-align: center; margin: 28px 0; }
+    .cta-button { display: inline-block; background-color: #047857; color: #ffffff !important; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; }
+    .footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="brand">${escapeHtml(businessName)}</div>
+      <span class="badge">Real-Time Operational Alert</span>
+    </div>
+    <div class="content">
+      <div class="greeting">Hello ${escapeHtml(adminName)},</div>
+      <p>A new real-time operational notification was triggered on DeskAtlas:</p>
+      
+      <div class="alert-box">
+        <div class="alert-title">${escapeHtml(input.notificationTitle)}</div>
+        <div class="alert-desc">${escapeHtml(input.notificationDescription)}</div>
+        <div class="info-row">
+          <span>Event Type:</span>
+          <strong>${escapeHtml(input.notificationType)}</strong>
+        </div>
+        <div class="info-row">
+          <span>Occurred At:</span>
+          <span>${escapeHtml(occurredFormatted)}</span>
+        </div>
+      </div>
+
+      ${resolvedActionUrl ? `
+      <div class="cta-container">
+        <a href="${escapeHtml(resolvedActionUrl)}" class="cta-button">${escapeHtml(actionLabel)}</a>
+      </div>
+      ` : ''}
+    </div>
+    ${renderBusinessFooter(profile, `${escapeHtml(businessName)} Administrative Alert System : Operational Push Mirror`)}
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = [
+    `[${businessName} Alert] ${input.notificationTitle}`,
+    ``,
+    `Hello ${adminName},`,
+    ``,
+    `A new real-time operational notification was triggered on DeskAtlas:`,
+    ``,
+    `Title: ${input.notificationTitle}`,
+    `Description: ${input.notificationDescription}`,
+    `Event Type: ${input.notificationType}`,
+    `Occurred At: ${occurredFormatted}`,
+    resolvedActionUrl ? `Action Link: ${resolvedActionUrl}` : '',
+    ``,
+    renderBusinessFooterText(profile, `${businessName} Administrative Alert System : Operational Push Mirror`),
+  ].filter(Boolean).join('\n').trim();
 
   return { subject, html, text };
 }

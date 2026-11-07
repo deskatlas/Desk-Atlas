@@ -189,6 +189,7 @@ export function ActiveRentalsTable({
             ) : (
               filteredRentals.map((rental) => {
                 const isOverdue = rental.status === "overdue" || (rental.status === "active" && rental.isOverdue);
+                const isRentalOverdue = isOverdue || (rental.dueAt ? new Date(rental.dueAt).getTime() < Date.now() : false);
                 const isNearingEnd = rental.status === "active" && rental.isNearingEnd;
 
                 return (
@@ -282,23 +283,26 @@ export function ActiveRentalsTable({
                         <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
                           <button
                             type="button"
-                            data-testid={`extend-table-btn-${rental.id}`}
-                            onClick={() => setSelectedExtendRental(rental)}
+                            data-testid={`extend-rental-btn-${rental.id}`}
+                            data-legacy-testid={`extend-table-btn-${rental.id}`}
+                            disabled={isRentalOverdue}
+                            onClick={() => !isRentalOverdue && setSelectedExtendRental(rental)}
+                            title={isRentalOverdue ? "Overdue rentals cannot be extended. Please process item return." : "Extend rental duration"}
                             style={{
-                              padding: "6px 10px",
-                              background: "var(--da-brand-dark)",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "6px",
+                              padding: "6px 12px",
                               fontSize: "12px",
                               fontWeight: 700,
-                              cursor: "pointer",
+                              borderRadius: "6px",
+                              border: isRentalOverdue ? "1px solid var(--da-border)" : "none",
+                              background: isRentalOverdue ? "var(--da-canvas, #F3F4F6)" : "var(--da-brand-dark)",
+                              color: isRentalOverdue ? "var(--da-text-secondary, #9CA3AF)" : "#fff",
+                              cursor: isRentalOverdue ? "not-allowed" : "pointer",
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "4px",
                             }}
                           >
-                            <span>Extend</span>
+                            <span>Extend Time</span>
                             <ArrowUpRight size={12} />
                           </button>
                           <button

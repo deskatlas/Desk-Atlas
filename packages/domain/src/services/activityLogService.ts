@@ -360,6 +360,8 @@ export function formatMetadataKey(key: string): string {
     rescheduledBy: "Rescheduled By",
     reschedule_count: "Reschedule Count",
     rescheduleCount: "Reschedule Count",
+    actor_role: "Actor Role",
+    actorRole: "Actor Role",
   };
 
   if (KEY_MAP[key]) return KEY_MAP[key];

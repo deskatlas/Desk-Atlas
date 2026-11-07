@@ -48,7 +48,7 @@ export function Header({
             href="/reserve"
             className={`px-4 py-2 rounded-full font-bold transition-all text-xs uppercase tracking-wider ${
               isReserveActive
-                ? "bg-[#0C3B27] text-white shadow-sm"
+                ? "bg-[#0C3B27] !text-white shadow-sm"
                 : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
             }`}
             data-testid="nav-link-reserve"
@@ -61,7 +61,7 @@ export function Header({
             href="/services"
             className={`px-4 py-2 rounded-full font-bold transition-all text-xs uppercase tracking-wider ${
               isServicesActive
-                ? "bg-[#0C3B27] text-white shadow-sm"
+                ? "bg-[#0C3B27] !text-white shadow-sm"
                 : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
             }`}
             data-testid="nav-link-services"
@@ -74,7 +74,7 @@ export function Header({
             href="/track"
             className={`ml-2 px-4 py-2 rounded-full font-bold transition-all text-xs uppercase tracking-wider flex items-center gap-1.5 ${
               isTrackActive
-                ? "bg-[#0C3B27] text-[#C8F451] shadow-sm border border-[#0C3B27]"
+                ? "bg-[#0C3B27] !text-[#C8F451] shadow-sm border border-[#0C3B27]"
                 : "bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100 hover:border-slate-300"
             }`}
             data-testid="nav-link-track"
@@ -108,7 +108,7 @@ export function Header({
               onClick={() => setMobileMenuOpen(false)}
               className={`min-h-[44px] flex items-center px-4 py-2.5 rounded-xl font-bold transition-all text-xs uppercase tracking-wider ${
                 isReserveActive
-                  ? "bg-[#0C3B27] text-white shadow-sm"
+                  ? "bg-[#0C3B27] !text-white shadow-sm"
                   : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
               }`}
               data-testid="mobile-nav-link-reserve"
@@ -120,7 +120,7 @@ export function Header({
               onClick={() => setMobileMenuOpen(false)}
               className={`min-h-[44px] flex items-center px-4 py-2.5 rounded-xl font-bold transition-all text-xs uppercase tracking-wider ${
                 isServicesActive
-                  ? "bg-[#0C3B27] text-white shadow-sm"
+                  ? "bg-[#0C3B27] !text-white shadow-sm"
                   : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
               }`}
               data-testid="mobile-nav-link-services"
@@ -132,7 +132,7 @@ export function Header({
               onClick={() => setMobileMenuOpen(false)}
               className={`min-h-[44px] flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-all text-xs uppercase tracking-wider ${
                 isTrackActive
-                  ? "bg-[#0C3B27] text-[#C8F451] shadow-sm border border-[#0C3B27]"
+                  ? "bg-[#0C3B27] !text-[#C8F451] shadow-sm border border-[#0C3B27]"
                   : "bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100 hover:border-slate-300"
               }`}
               data-testid="mobile-nav-link-track"

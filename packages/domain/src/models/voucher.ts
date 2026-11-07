@@ -10,6 +10,8 @@ export interface VoucherRewardSnapshot {
   redemptionChannels?: ('WEB' | 'KIOSK')[];
   redemptionWorkspaceTypeIds?: string[];
   minimumBookingAmount?: number;
+  campaign_rule_version?: number;
+  campaignRuleVersion?: number;
 }
 
 export interface Voucher {

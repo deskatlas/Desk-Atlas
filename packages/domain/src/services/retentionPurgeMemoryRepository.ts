@@ -15,7 +15,9 @@ export interface MemoryReservationRecord {
   customer_last_name?: string;
   customer_email?: string;
   customer_phone?: string;
+  workspace_instance_id?: string;
   workspace_name?: string;
+  workspace_code?: string;
   workspace_type?: string;
   total_amount?: number;
   currency?: string;
@@ -34,6 +36,9 @@ export interface MemoryPaymentAttemptRecord {
   proof_storage_path?: string | null;
   proof_submitted_at?: string | null;
   payment_method?: string;
+  payment_method_id?: string | null;
+  payment_method_type?: 'GCASH' | 'BANK' | 'CASH' | string | null;
+  paymentMethodType?: 'GCASH' | 'BANK' | 'CASH' | string | null;
   channel?: 'WEB' | 'KIOSK' | string;
   currency?: string;
   processed_at?: string | null;
@@ -58,6 +63,34 @@ export interface MemoryCustomerRecord {
   [key: string]: unknown;
 }
 
+export interface MemoryWorkspaceInstanceRecord {
+  id: string;
+  display_name?: string;
+  instance_code: string;
+  template_id?: string;
+  floor_id?: string;
+  [key: string]: unknown;
+}
+
+export interface MemoryWorkspaceTemplateRecord {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface MemoryFloorRecord {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface MemoryPaymentMethodRecord {
+  id: string;
+  method_type: 'GCASH' | 'BANK' | 'CASH' | string;
+  display_name?: string;
+  [key: string]: unknown;
+}
+
 export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository {
   public customers: MemoryCustomerRecord[] = [];
   public reservations: MemoryReservationRecord[] = [];
@@ -69,6 +102,10 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
   public bookingRentals: Array<Record<string, unknown>> = [];
   public rentalExtensions: Array<Record<string, unknown>> = [];
   public qualifyingFacts: Array<Record<string, unknown>> = [];
+  public workspaceInstances: MemoryWorkspaceInstanceRecord[] = [];
+  public workspaceTemplates: MemoryWorkspaceTemplateRecord[] = [];
+  public floors: MemoryFloorRecord[] = [];
+  public paymentMethods: MemoryPaymentMethodRecord[] = [];
   public storageBucket: Set<string> = new Set();
   public auditLogs: Array<Record<string, unknown>> = [];
   public adminEmail = 'admin@deskatlas.com';
@@ -82,6 +119,10 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
     storageFiles?: string[];
     bookingRentals?: Array<Record<string, unknown>>;
     rentalExtensions?: Array<Record<string, unknown>>;
+    workspaceInstances?: MemoryWorkspaceInstanceRecord[];
+    workspaceTemplates?: MemoryWorkspaceTemplateRecord[];
+    floors?: MemoryFloorRecord[];
+    paymentMethods?: MemoryPaymentMethodRecord[];
     adminEmail?: string;
   }) {
     if (initialData?.customers) this.customers = [...initialData.customers];
@@ -92,6 +133,10 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
     if (initialData?.storageFiles) initialData.storageFiles.forEach((f) => this.storageBucket.add(f));
     if (initialData?.bookingRentals) this.bookingRentals = [...initialData.bookingRentals];
     if (initialData?.rentalExtensions) this.rentalExtensions = [...initialData.rentalExtensions];
+    if (initialData?.workspaceInstances) this.workspaceInstances = [...initialData.workspaceInstances];
+    if (initialData?.workspaceTemplates) this.workspaceTemplates = [...initialData.workspaceTemplates];
+    if (initialData?.floors) this.floors = [...initialData.floors];
+    if (initialData?.paymentMethods) this.paymentMethods = [...initialData.paymentMethods];
     if (initialData?.adminEmail) this.adminEmail = initialData.adminEmail;
   }
 
@@ -126,7 +171,46 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
       }
     }
 
-    const reportReservations: ReportReservationRecord[] = eligibleReservations.map((r) => ({
+    const instancesById = new Map<string, MemoryWorkspaceInstanceRecord>(
+      this.workspaceInstances.map((i) => [i.id, i])
+    );
+    const templatesById = new Map<string, MemoryWorkspaceTemplateRecord>(
+      this.workspaceTemplates.map((t) => [t.id, t])
+    );
+    const floorsById = new Map<string, MemoryFloorRecord>(
+      this.floors.map((f) => [f.id, f])
+    );
+    const paymentMethodsById = new Map<string, MemoryPaymentMethodRecord>(
+      this.paymentMethods.map((m) => [m.id, m])
+    );
+
+    const reportReservations: ReportReservationRecord[] = eligibleReservations.map((r) => {
+      const cList = this.candidates.filter((c) => (c.reservation_id as string) === r.id);
+      const assigned = (cList.find((c) => c.is_assigned) || cList[0] || null) as Record<string, unknown> | null;
+      const instanceId = (assigned?.workspace_instance_id as string) || (r.workspace_instance_id as string);
+      const instance = instanceId ? instancesById.get(instanceId) : null;
+      const template = instance?.template_id ? templatesById.get(instance.template_id as string) : null;
+      const floor = instance?.floor_id ? floorsById.get(instance.floor_id as string) : null;
+
+      const displayName =
+        (instance?.display_name as string) ??
+        (template?.name as string) ??
+        (instance?.instance_code as string) ??
+        r.workspace_name ??
+        'Workspace Spot';
+      const instanceCode =
+        (instance?.instance_code as string) ??
+        (r.workspace_code as string) ??
+        (r.workspace_name ? 'SPOT' : 'SPOT-01');
+      const templateName =
+        (template?.name as string) ??
+        r.workspace_type ??
+        'Dedicated Desk';
+      const floorName =
+        (floor?.name as string) ??
+        'Main Floor';
+
+      return {
       reservationId: r.id,
       referenceCode: r.reference_code,
       source: (r.source as any) || 'WEB',
@@ -140,20 +224,40 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
       confirmedAt: (r.confirmed_at as string) ?? null,
       checkedInAt: (r.checked_in_at as string) ?? null,
       checkedOutAt: (r.checked_out_at as string) ?? null,
-      bookingStartAt: r.start_at ?? null,
-      bookingEndAt: r.end_at ?? null,
-      assignedCandidateRank: 0,
-      workspaceDisplayName: r.workspace_name || 'Workspace Spot',
-      workspaceInstanceCode: r.workspace_name || 'SPOT-01',
-      workspaceTemplateName: r.workspace_type || 'Dedicated Desk',
-      floorName: 'Main Floor',
+      bookingStartAt: (assigned?.start_at as string) ?? r.start_at ?? null,
+      bookingEndAt: (assigned?.end_at as string) ?? r.end_at ?? null,
+      assignedCandidateRank: (assigned?.rank as 0 | 1 | 2) ?? 0,
+      workspaceDisplayName: displayName,
+      workspaceInstanceCode: instanceCode,
+      workspaceTemplateName: templateName,
+      floorName: floorName,
       rescheduleCount: 0,
       updatedAt: r.created_at,
-    }));
+    };
+    });
 
     const refCodeByResId = new Map(eligibleReservations.map((r) => [r.id, r.reference_code]));
 
-    const reportPayments: ReportPaymentAttemptRecord[] = eligiblePayments.map((p) => ({
+    const reportPayments: ReportPaymentAttemptRecord[] = eligiblePayments.map((p) => {
+      const methodId = (p.payment_method_id as string) || null;
+      const method = methodId ? paymentMethodsById.get(methodId) : null;
+      let methodType: 'GCASH' | 'BANK' | 'CASH' = 'BANK';
+
+      const candidateMethodType = ((method?.method_type as string) || (p.payment_method_type as string) || (p.paymentMethodType as string) || '');
+      if (candidateMethodType === 'CASH' || candidateMethodType === 'GCASH' || candidateMethodType === 'BANK') {
+        methodType = candidateMethodType as 'GCASH' | 'BANK' | 'CASH';
+      } else if (p.channel === 'KIOSK' || String(p.payment_method || '').toUpperCase().includes('CASH')) {
+        methodType = 'CASH';
+      } else if (p.channel === 'GCASH' || String(p.payment_method || '').toUpperCase().includes('GCASH')) {
+        methodType = 'GCASH';
+      }
+
+      const methodDisplayName =
+        (method?.display_name as string) ||
+        p.payment_method ||
+        (methodType === 'CASH' ? 'Cash at Counter' : methodType === 'GCASH' ? 'GCash QR' : 'Bank Transfer');
+
+      return {
       paymentAttemptId: p.id,
       reservationId: p.reservation_id,
       reservationReferenceCode: refCodeByResId.get(p.reservation_id) || '',
@@ -162,14 +266,15 @@ export class RetentionPurgeMemoryRepository implements RetentionPurgeRepository 
       refundStatus: ((p.refund_status as any) || 'NONE'),
       amount: Number(p.amount || 0),
       currency: (p.currency as any) || 'PHP',
-      paymentMethodId: null,
-      paymentMethodType: ((p.channel as any) === 'GCASH' ? 'GCASH' : 'BANK'),
-      paymentMethodDisplayName: p.payment_method || 'Online Payment',
+      paymentMethodId: methodId,
+      paymentMethodType: methodType,
+      paymentMethodDisplayName: methodDisplayName,
       createdAt: p.created_at,
       proofSubmittedAt: p.proof_submitted_at ?? null,
       processedAt: p.processed_at ?? null,
       refundedAt: (p.refunded_at as string) ?? (p.refundedAt as string) ?? null,
-    }));
+    };
+    });
 
 
     const eligibleRentals = this.bookingRentals.filter(

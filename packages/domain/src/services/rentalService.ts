@@ -123,6 +123,19 @@ export class RentalService {
       throw new RentalValidationError('Additional duration units must be a positive integer');
     }
 
+    const existing = await this.repo.getRentalById(input.rentalId.trim());
+    if (!existing) {
+      throw new RentalValidationError('Rental record not found');
+    }
+    if (existing.status === 'returned') {
+      throw new RentalValidationError('Cannot extend a returned rental');
+    }
+
+    const now = new Date();
+    if (existing.dueAt && new Date(existing.dueAt).getTime() < now.getTime()) {
+      throw new RentalValidationError('Cannot extend an overdue rental. Overdue items must be returned to the counter.');
+    }
+
     try {
       const updated = await this.repo.extendRental({
         ...input,

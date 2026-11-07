@@ -37,13 +37,23 @@ export async function POST(
     const maxAdvanceUnit = settingsOverview?.businessSettings?.rescheduleMaxAdvanceUnit ?? "DAYS";
     const maxAdvanceHours = maxAdvanceUnit === "HOURS" ? maxAdvanceValue : maxAdvanceValue * 24;
 
+    const actorUserId =
+      typeof body.actorUserId === "string" && body.actorUserId.trim()
+        ? body.actorUserId.trim()
+        : request.headers.get("x-user-id") ?? undefined;
+    const actorRole =
+      typeof body.actorRole === "string" && body.actorRole.trim()
+        ? body.actorRole.trim()
+        : "ADMIN";
+
     const service = getAdminReservationService();
     const result = await service.rescheduleReservation({
       reservationId: id,
       startAt,
       endAt,
       workspaceInstanceId,
-      actorRole: "ADMIN",
+      actorUserId,
+      actorRole,
       maxAdvanceValue,
       maxAdvanceUnit,
       maxAdvanceHours,

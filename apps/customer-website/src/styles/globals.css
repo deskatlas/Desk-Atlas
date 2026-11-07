@@ -58,15 +58,17 @@ body {
   box-sizing: border-box;
 }
 
-a {
-  color: var(--da-brand-dark);
-  text-decoration: none;
-}
+@layer base {
+  a {
+    color: var(--da-brand-dark);
+    text-decoration: none;
+  }
 
-/* Plain text links hover effect (excludes button-styled anchors) */
-a:not([class*="da-"]):not([class*="button"]):hover {
-  color: var(--da-primary, #009689);
-  text-decoration: underline;
+  /* Plain text links hover effect (excludes button-styled anchors) */
+  a:not([class*="da-"]):not([class*="button"]):hover {
+    color: var(--da-primary, #009689);
+    text-decoration: underline;
+  }
 }
 
 :focus-visible {
@@ -234,6 +236,23 @@ a:not([class*="da-"]):not([class*="button"]):hover {
 .da-inline-button:not(:disabled):active {
   color: #ffffff !important;
   transform: translateY(0px) scale(0.98);
+}
+
+/* MS96 / MS97: Navigation header contrast guarantee for active links */
+[data-testid="header-desktop-nav"] a.bg-\[\#0C3B27\],
+[data-testid="mobile-nav-drawer"] a.bg-\[\#0C3B27\],
+[data-testid="nav-link-reserve"].bg-\[\#0C3B27\],
+[data-testid="nav-link-services"].bg-\[\#0C3B27\],
+[data-testid="mobile-nav-link-reserve"].bg-\[\#0C3B27\],
+[data-testid="mobile-nav-link-services"].bg-\[\#0C3B27\] {
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+[data-testid="nav-link-track"].bg-\[\#0C3B27\],
+[data-testid="mobile-nav-link-track"].bg-\[\#0C3B27\] {
+  color: #c8f451 !important;
+  text-decoration: none !important;
 }
 
 /* MS97: Primary rebook pill button typography contrast guarantee */

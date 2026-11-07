@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
   try {
     const limitParam = Number(request.nextUrl.searchParams.get("limit") ?? "20");
     const typeParam = (request.nextUrl.searchParams.get("type") ?? request.nextUrl.searchParams.get("activityType"))?.toUpperCase();
-    const filter = (typeParam === "CHECK_IN" || typeParam === "REENTRY" || typeParam === "CHECK_OUT")
-      ? { activityType: typeParam as "CHECK_IN" | "REENTRY" | "CHECK_OUT" }
+    const filter = (typeParam === "CHECK_IN" || typeParam === "REENTRY" || typeParam === "CHECK_OUT" || typeParam === "RESCHEDULED")
+      ? { activityType: typeParam as "CHECK_IN" | "REENTRY" | "CHECK_OUT" | "RESCHEDULED" }
       : undefined;
     const service = createStaffOperationsService(new ReservationSupabaseRepository());
     const activity = await service.listOperationalActivity(limitParam, filter);

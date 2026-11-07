@@ -226,7 +226,7 @@ describe('MF-124: Admin Reservation Relocation for Sudden Maintenance or Spot In
       expect(relocEmail).toBeDefined();
       expect(relocEmail.body.to).toContain('alex.rivera.reloc-exec-1@example.com');
       expect(relocEmail.body.html).toContain('Desk 2');
-      expect(relocEmail.body.html).toContain('Floor 1');
+      expect(relocEmail.body.html).toContain('Ground Floor');
       expect(relocEmail.body.html).toContain('Spot Maintenance / Repairs');
     });
 

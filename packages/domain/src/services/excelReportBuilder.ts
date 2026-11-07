@@ -17,6 +17,25 @@ import {
   generateWorkspaceUtilizationChartPng,
 } from "./chartRenderer";
 
+/**
+ * Formats a workspace label to reflect both display name and instance code when distinct.
+ * e.g. "Focus Pod 02 (FP-02)"
+ */
+export function formatWorkspaceLabel(
+  displayName?: string | null,
+  instanceCode?: string | null
+): string {
+  const name = displayName?.trim();
+  const code = instanceCode?.trim();
+  if (name && code && name !== code) {
+    if (name.includes(`(${code})`)) {
+      return name;
+    }
+    return `${name} (${code})`;
+  }
+  return name || code || "Workspace Spot";
+}
+
 export async function buildAdminExcelWorkbook(params: {
   exportType: AdminReportExportType;
   range?: AdminReportRange;
@@ -219,7 +238,7 @@ async function buildExecutiveDashboardSheet(
   let curWsRow = startRow + 2;
   if (snapshot.topWorkspaces.length > 0) {
     snapshot.topWorkspaces.forEach((ws, idx) => {
-      sheet.getCell(`B${curWsRow}`).value = ws.name;
+      sheet.getCell(`B${curWsRow}`).value = formatWorkspaceLabel(ws.name, ws.id !== ws.name ? ws.id : undefined);
       sheet.getCell(`C${curWsRow}`).value = ws.templateName;
       sheet.getCell(`D${curWsRow}`).value = ws.floorName;
       const countCell = sheet.getCell(`E${curWsRow}`);
@@ -394,7 +413,7 @@ function buildReservationsSheet(workbook: ExcelJS.Workbook, reservations: Report
       customerName: `${r.customerFirstName} ${r.customerLastName}`.trim(),
       customerEmail: r.customerEmail,
       status: r.reservationStatus,
-      workspaceName: r.workspaceDisplayName ?? "",
+      workspaceName: formatWorkspaceLabel(r.workspaceDisplayName, r.workspaceInstanceCode),
       workspaceCode: r.workspaceInstanceCode ?? "",
       floorName: r.floorName ?? "",
       bookingStart: r.bookingStartAt ? formatDateTime(r.bookingStartAt) : "",
@@ -539,11 +558,12 @@ function buildWorkspaceSheet(workbook: ExcelJS.Workbook, reservations: ReportRes
 
   const usageByWs = new Map<string, { floor: string; name: string; code: string; template: string; count: number; hours: number }>();
   for (const r of reservations) {
-    if (!r.workspaceDisplayName) continue;
-    const key = r.workspaceInstanceCode ?? r.workspaceDisplayName;
+    if (!r.workspaceDisplayName && !r.workspaceInstanceCode) continue;
+    const key = r.workspaceInstanceCode || r.workspaceDisplayName || "Workspace Spot";
+    const workspaceLabel = formatWorkspaceLabel(r.workspaceDisplayName, r.workspaceInstanceCode);
     const existing = usageByWs.get(key) ?? {
       floor: r.floorName ?? "",
-      name: r.workspaceDisplayName,
+      name: workspaceLabel,
       code: r.workspaceInstanceCode ?? "",
       template: r.workspaceTemplateName ?? "",
       count: 0,
@@ -619,7 +639,7 @@ function buildCheckinSheet(workbook: ExcelJS.Workbook, reservations: ReportReser
     const row = sheet.addRow({
       ref: r.referenceCode,
       customerName: `${r.customerFirstName} ${r.customerLastName}`.trim(),
-      workspaceName: r.workspaceDisplayName ?? "",
+      workspaceName: formatWorkspaceLabel(r.workspaceDisplayName, r.workspaceInstanceCode),
       workspaceCode: r.workspaceInstanceCode ?? "",
       floorName: r.floorName ?? "",
       checkedInAt: r.checkedInAt ? formatDateTime(r.checkedInAt) : "",

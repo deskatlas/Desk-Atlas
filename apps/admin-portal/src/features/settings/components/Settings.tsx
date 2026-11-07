@@ -310,18 +310,20 @@ export function Settings() {
   >('Business Profile');
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('tab') === 'campaigns') {
-      setActiveTab('Campaigns & Rewards');
+      if (typeof window !== 'undefined') {
+        window.location.replace('/manage/campaigns');
+      }
+      return;
     }
     if (new URLSearchParams(window.location.search).get('tab') === 'knowledge') setActiveTab('Knowledge Base');
   }, []);
-  const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Campaigns & Rewards' | 'Knowledge Base'> = [
+  const tabs: Array<'Business Profile' | 'Business Hours' | 'Payment Methods' | 'Closures & Holidays' | 'Landing Preview' | 'Kiosk Settings' | 'Knowledge Base'> = [
     'Business Profile',
     'Business Hours',
     'Payment Methods',
     'Closures & Holidays',
     'Landing Preview',
     'Kiosk Settings',
-    'Campaigns & Rewards',
     'Knowledge Base',
   ];
 

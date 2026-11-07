@@ -178,6 +178,11 @@ export class InMemoryRentalRepository implements RentalRepository {
       throw new Error('Cannot extend a returned rental');
     }
 
+    const nowMs = Date.now();
+    if (rental.dueAt && new Date(rental.dueAt).getTime() < nowMs) {
+      throw new Error('Cannot extend an overdue rental. Overdue items must be returned to the counter.');
+    }
+
     if (!this.servicesRepo) {
       throw new Error('Service repository not configured');
     }

@@ -7,6 +7,14 @@ import { getHumanReadableMetadata, type ActivityLogEntry } from "@deskatlas/doma
 const ACTION_GROUPS: { label: string; value: string; types?: string[] }[] = [
   { label: "All Actions", value: "ALL" },
   {
+    label: "Rescheduled Bookings",
+    value: "RESCHEDULED",
+    types: [
+      "reservation_rescheduled",
+      "RESERVATION_RESCHEDULED",
+    ],
+  },
+  {
     label: "Check-ins & QR Scans",
     value: "SCANS",
     types: [
@@ -209,6 +217,7 @@ export default function StaffActivityLogPage() {
           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             {/* Action Group Filter */}
             <select
+              data-testid="activity-log-action-filter"
               value={selectedGroup}
               onChange={(e) => {
                 setSelectedGroup(e.target.value);
@@ -417,7 +426,7 @@ export default function StaffActivityLogPage() {
         {/* PAGINATION FOOTER */}
         <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--da-border)", background: "var(--da-canvas)" }}>
           <div style={{ fontSize: "12px", color: "var(--da-text-secondary)", fontWeight: 500 }}>
-            Showing {entries.length > 0 ? (page - 1) * limit + 1 : 0}–
+            Showing {entries.length > 0 ? (page - 1) * limit + 1 : 0}-
             {Math.min(page * limit, total)} of {total} records
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -510,6 +519,14 @@ export default function StaffActivityLogPage() {
 
             <div style={{ padding: "20px 24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", background: "var(--da-canvas)", padding: "14px", borderRadius: "8px" }}>
+                {selectedEntryForDetails.actorRole ? (
+                  <div>
+                    <div style={{ fontSize: "11px", color: "var(--da-text-secondary)", fontWeight: 700 }}>ACTOR</div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--da-text-primary)", marginTop: "2px" }}>
+                      {selectedEntryForDetails.actorName || (selectedEntryForDetails.actorRole === "CUSTOMER" ? "Customer" : "Staff")} ({selectedEntryForDetails.actorRole})
+                    </div>
+                  </div>
+                ) : null}
                 <div>
                   <div style={{ fontSize: "11px", color: "var(--da-text-secondary)", fontWeight: 700 }}>DATE & TIME</div>
                   <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--da-text-primary)", marginTop: "2px" }}>

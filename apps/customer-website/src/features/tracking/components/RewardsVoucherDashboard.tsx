@@ -35,6 +35,8 @@ interface VoucherItem {
     redemptionChannels?: string[];
     redemptionWorkspaceTypeIds?: string[];
     minimumBookingAmount?: number;
+    campaign_rule_version?: number;
+    campaignRuleVersion?: number;
   };
   issued_at: string;
   expires_at: string;
@@ -469,7 +471,7 @@ export function RewardsVoucherDashboard({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700">
                           {v.campaign_name_snapshot}
                         </span>
                         <h4 className="text-lg font-black text-[var(--da-brand-dark)] mt-0.5">

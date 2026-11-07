@@ -202,6 +202,21 @@ export class VoucherSupabaseRepository implements VoucherRepository {
     return this.mapVoucher(data as VoucherRow);
   }
 
+  async findVoucherByPendingReservationId(reservationId: string): Promise<Voucher | null> {
+    const { data, error } = await this.supabase
+      .from('vouchers')
+      .select('*')
+      .eq('pending_reservation_id', reservationId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to find voucher by pending reservation: ${error.message}`);
+    }
+    if (!data) return null;
+
+    return this.mapVoucher(data as VoucherRow);
+  }
+
   async createVoucher(data: Omit<Voucher, 'id' | 'createdAt' | 'updatedAt'>): Promise<Voucher> {
     const customer_id = data.customerId || data.customer_id;
     const campaign_id = data.campaignId || data.campaign_id;
@@ -302,7 +317,7 @@ export class VoucherSupabaseRepository implements VoucherRepository {
       })
       .eq('id', voucherId)
       .eq('status', 'PENDING_REDEMPTION')
-      .eq('pending_reservation_id', reservationId)
+      .or(`pending_reservation_id.eq.${reservationId},pending_reservation_id.is.null`)
       .is('redeemed_at', null)
       .select('*')
       .maybeSingle();

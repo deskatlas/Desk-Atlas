@@ -35,6 +35,7 @@ interface ReservationVoucherQueryResult {
   promo_code_used: string | null;
   discount_amount: number | string | null;
   customer_id: string | null;
+  customer_email?: string | null;
   confirmed_at: string | null;
 }
 
@@ -78,11 +79,22 @@ export async function redeemReservationVoucher(
     let discountAmount = input.discountAmount ?? 0;
     let confirmedAt = input.confirmedAt || new Date().toISOString();
 
+    // 1. Check if voucher is directly held by this reservation ID in memory repository
+    if (!targetVoucherId && voucherRepo.findVoucherByPendingReservationId) {
+      const held = await voucherRepo.findVoucherByPendingReservationId(reservationId);
+      if (held?.id) {
+        targetVoucherId = held.id;
+        if (input.discountAmount === undefined) {
+          discountAmount = Number(held.rewardSnapshot?.rewardValue || held.reward_snapshot?.rewardValue || 0);
+        }
+      }
+    }
+
     // Query reservation details from database if target voucher not fully provided
     if (supabase && (!targetVoucherId || input.discountAmount === undefined)) {
       const { data: resRow } = await supabase
         .from('reservations')
-        .select('id, status, requested_voucher_id, promo_code_used, discount_amount, customer_id, confirmed_at')
+        .select('id, status, requested_voucher_id, promo_code_used, discount_amount, customer_id, customer_email, confirmed_at')
         .eq('id', reservationId)
         .maybeSingle();
 
@@ -92,11 +104,57 @@ export async function redeemReservationVoucher(
         discountAmount = input.discountAmount ?? Number(row.discount_amount || 0);
         confirmedAt = input.confirmedAt || row.confirmed_at || confirmedAt;
 
-        // Fallback: resolve voucher by promo code and customer ID if requested_voucher_id was not populated
-        if (!targetVoucherId && row.promo_code_used && row.customer_id) {
-          const matched = await voucherRepo.findVoucherByCode(row.promo_code_used);
-          if (matched && (matched.customerId === row.customer_id || matched.customer_id === row.customer_id)) {
-            targetVoucherId = matched.id;
+        // 1. Check if voucher is directly held by this reservation ID
+        if (!targetVoucherId) {
+          const { data: heldVoucher } = await supabase
+            .from('vouchers')
+            .select('id')
+            .eq('pending_reservation_id', reservationId)
+            .maybeSingle();
+
+          if (heldVoucher?.id) {
+            targetVoucherId = (heldVoucher as { id: string }).id;
+          }
+        }
+
+        // 2. Fallback: match by promo code and customer ID or customer email
+        if (!targetVoucherId && row.promo_code_used) {
+          const cleanCode = String(row.promo_code_used).trim().toUpperCase();
+
+          if (row.customer_id) {
+            const matched = await voucherRepo.findVoucherByCode(cleanCode);
+            if (matched && (matched.customerId === row.customer_id || matched.customer_id === row.customer_id)) {
+              targetVoucherId = matched.id;
+            }
+          }
+
+          // Guest-First fallback: match promo code with customer email via join
+          if (!targetVoucherId && row.customer_email) {
+            const { data: matchedVoucher } = await supabase
+              .from('vouchers')
+              .select('id, customers!inner(email)')
+              .eq('promo_code', cleanCode)
+              .ilike('customers.email', row.customer_email.trim())
+              .in('status', ['AVAILABLE', 'PENDING_REDEMPTION'])
+              .maybeSingle();
+
+            if (matchedVoucher?.id) {
+              targetVoucherId = (matchedVoucher as { id: string }).id;
+            }
+          }
+
+          // Fallback: match promo code directly from vouchers table
+          if (!targetVoucherId) {
+            const { data: matchedVoucher } = await supabase
+              .from('vouchers')
+              .select('id, customer_id')
+              .eq('promo_code', cleanCode)
+              .in('status', ['AVAILABLE', 'PENDING_REDEMPTION'])
+              .maybeSingle();
+
+            if (matchedVoucher?.id) {
+              targetVoucherId = (matchedVoucher as { id: string }).id;
+            }
           }
         }
       }
@@ -238,10 +296,17 @@ export async function holdReservationVoucher(
     let targetVoucherId = input.voucherId || null;
     const heldAt = input.heldAt || new Date().toISOString();
 
+    if (!targetVoucherId && voucherRepo.findVoucherByPendingReservationId) {
+      const held = await voucherRepo.findVoucherByPendingReservationId(reservationId);
+      if (held?.id) {
+        targetVoucherId = held.id;
+      }
+    }
+
     if (supabase && !targetVoucherId) {
       const { data: resRow } = await supabase
         .from('reservations')
-        .select('id, status, requested_voucher_id, promo_code_used, customer_id')
+        .select('id, status, requested_voucher_id, promo_code_used, customer_id, customer_email')
         .eq('id', reservationId)
         .maybeSingle();
 
@@ -249,10 +314,36 @@ export async function holdReservationVoucher(
         const row = resRow as ReservationVoucherQueryResult;
         targetVoucherId = targetVoucherId || row.requested_voucher_id;
 
+        if (!targetVoucherId) {
+          const { data: heldVoucher } = await supabase
+            .from('vouchers')
+            .select('id')
+            .eq('pending_reservation_id', reservationId)
+            .maybeSingle();
+
+          if (heldVoucher?.id) {
+            targetVoucherId = (heldVoucher as { id: string }).id;
+          }
+        }
+
         if (!targetVoucherId && row.promo_code_used && row.customer_id) {
           const matched = await voucherRepo.findVoucherByCode(row.promo_code_used);
           if (matched && (matched.customerId === row.customer_id || matched.customer_id === row.customer_id)) {
             targetVoucherId = matched.id;
+          }
+        }
+
+        if (!targetVoucherId && row.promo_code_used) {
+          const cleanCode = String(row.promo_code_used).trim().toUpperCase();
+          const { data: matchedVoucher } = await supabase
+            .from('vouchers')
+            .select('id')
+            .eq('promo_code', cleanCode)
+            .in('status', ['AVAILABLE', 'PENDING_REDEMPTION'])
+            .maybeSingle();
+
+          if (matchedVoucher?.id) {
+            targetVoucherId = (matchedVoucher as { id: string }).id;
           }
         }
       }
@@ -378,6 +469,13 @@ export async function releaseHeldReservationVoucher(
 
   try {
     let targetVoucherId = input.voucherId || null;
+
+    if (!targetVoucherId && voucherRepo.findVoucherByPendingReservationId) {
+      const held = await voucherRepo.findVoucherByPendingReservationId(reservationId);
+      if (held?.id) {
+        targetVoucherId = held.id;
+      }
+    }
 
     if (supabase && !targetVoucherId) {
       // Find voucher directly held by this reservation

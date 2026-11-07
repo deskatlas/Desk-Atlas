@@ -29,6 +29,7 @@ export function ExtendRentalModal({
 
   if (!isOpen || !rental) return null;
 
+  const isRentalOverdue = Boolean(rental.isOverdue || (rental.dueAt && new Date(rental.dueAt).getTime() < Date.now()));
   const rate = rental.rateApplied || 50;
   const parsedUnits =
     typeof additionalUnits === "number"
@@ -56,6 +57,10 @@ export function ExtendRentalModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRentalOverdue) {
+      setErrorMsg("Cannot extend an overdue rental. Overdue items must be returned to the counter.");
+      return;
+    }
     const finalUnits = typeof additionalUnits === "number" ? additionalUnits : parseInt(additionalUnits, 10);
     if (isNaN(finalUnits) || finalUnits < 1) {
       setErrorMsg("Additional duration must be at least 1");
@@ -143,6 +148,27 @@ export function ExtendRentalModal({
           </button>
         </div>
 
+        {isRentalOverdue && (
+          <div
+            data-testid="extend-rental-overdue-warning"
+            style={{
+              marginBottom: "16px",
+              padding: "10px 14px",
+              background: "#FEF2F2",
+              border: "1px solid #FCA5A5",
+              borderRadius: "8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "13px",
+              color: "#991B1B",
+            }}
+          >
+            <AlertCircle size={16} color="#DC2626" />
+            <span>This rental is overdue. Overdue items cannot be extended and must be returned.</span>
+          </div>
+        )}
+
         {errorMsg && (
           <div
             data-testid="extend-rental-error-banner"
@@ -300,7 +326,7 @@ export function ExtendRentalModal({
             <button
               type="submit"
               data-testid="confirm-extend-submit-btn"
-              disabled={submitting || parsedUnits <= 0}
+              disabled={submitting || parsedUnits <= 0 || isRentalOverdue}
               style={{
                 padding: "10px 20px",
                 background: "var(--da-primary)",
@@ -309,7 +335,8 @@ export function ExtendRentalModal({
                 borderRadius: "8px",
                 fontSize: "13px",
                 fontWeight: 700,
-                cursor: submitting ? "not-allowed" : "pointer",
+                cursor: submitting || isRentalOverdue ? "not-allowed" : "pointer",
+                opacity: isRentalOverdue ? 0.6 : 1,
               }}
             >
               {submitting ? "Extending..." : "Confirm Extension"}

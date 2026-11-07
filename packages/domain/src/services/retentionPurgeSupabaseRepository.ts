@@ -1,5 +1,79 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ReportReservationRecord, ReportPaymentAttemptRecord } from '../models/reports';
+import { ReservationStatus } from '../models/reservation';
+
+interface RetentionCandidateRow {
+  id?: string;
+  reservation_id: string;
+  workspace_instance_id?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  rank?: 0 | 1 | 2 | null;
+  is_assigned?: boolean | null;
+}
+
+interface RetentionInstanceRow {
+  id: string;
+  template_id?: string | null;
+  floor_id?: string | null;
+  instance_code?: string | null;
+  display_name?: string | null;
+}
+
+interface RetentionTemplateRow {
+  id: string;
+  name?: string | null;
+}
+
+interface RetentionFloorRow {
+  id: string;
+  name?: string | null;
+}
+
+interface RetentionPaymentMethodRow {
+  id: string;
+  method_type?: 'GCASH' | 'BANK' | 'CASH' | string | null;
+  display_name?: string | null;
+}
+
+interface RetentionReservationRow {
+  id: string;
+  reference_code: string;
+  source?: 'WEB' | 'KIOSK' | null;
+  customer_first_name?: string | null;
+  customer_last_name?: string | null;
+  customer_email?: string | null;
+  status: ReservationStatus;
+  amount_due?: number | string | null;
+  currency?: string | null;
+  created_at: string;
+  confirmed_at?: string | null;
+  checked_in_at?: string | null;
+  checked_out_at?: string | null;
+  reschedule_count?: number | null;
+  updated_at?: string | null;
+  workspace_name?: string | null;
+  workspace_type?: string | null;
+}
+
+interface RetentionPaymentAttemptRow {
+  id: string;
+  reservation_id: string;
+  attempt_number?: number;
+  channel?: 'WEB' | 'KIOSK' | string | null;
+  status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED' | string | null;
+  refund_status?: 'NONE' | 'REQUIRED' | 'REFUNDED' | 'ELIGIBLE' | string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  payment_method_id?: string | null;
+  payment_method?: string | null;
+  payment_method_type?: 'GCASH' | 'BANK' | 'CASH' | string | null;
+  proof_storage_path?: string | null;
+  proof_submitted_at?: string | null;
+  processed_at?: string | null;
+  refunded_at?: string | null;
+  created_at: string;
+}
 import { RetentionPurgeRecordSet } from '../models/retention';
 import { RetentionPurgeRepository } from './retentionPurgeRepository';
 
@@ -50,7 +124,7 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
     }
 
     const futureReservationIds = new Set(
-      (futureCandidates || []).map((c: any) => c.reservation_id)
+      (futureCandidates || []).map((c: RetentionCandidateRow) => c.reservation_id)
     );
 
     // 2. Query reservations created on or before cutoff
@@ -66,9 +140,9 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
 
     // Eligible reservations: created <= cutoff AND not extending beyond cutoff
     const reservations = (rawReservations || []).filter(
-      (r: any) => !futureReservationIds.has(r.id)
+      (r: RetentionReservationRow) => !futureReservationIds.has(r.id)
     );
-    const targetIds = reservations.map((r: any) => r.id);
+    const targetIds = reservations.map((r: RetentionReservationRow) => r.id);
 
     if (targetIds.length === 0) {
       return {
@@ -88,9 +162,9 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
 
     // 3. Batch query candidates, payment attempts, and recovery in chunks of 50
     const targetChunks = chunkArray(targetIds, 50);
-    const candidates: any[] = [];
-    const payments: any[] = [];
-    const paidCandidateRecovery: any[] = [];
+    const candidates: RetentionCandidateRow[] = [];
+    const payments: RetentionPaymentAttemptRow[] = [];
+    const paidCandidateRecovery: Record<string, unknown>[] = [];
 
     for (const chunk of targetChunks) {
       const [candRes, payRes, recRes] = await Promise.all([
@@ -98,9 +172,9 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
         this.client.from('payment_attempts').select('*').in('reservation_id', chunk),
         this.client.from('paid_candidate_recovery').select('*').in('reservation_id', chunk),
       ]);
-      if (candRes.data) candidates.push(...candRes.data);
-      if (payRes.data) payments.push(...payRes.data);
-      if (recRes.data) paidCandidateRecovery.push(...recRes.data);
+      if (candRes.data) candidates.push(...(candRes.data as RetentionCandidateRow[]));
+      if (payRes.data) payments.push(...(payRes.data as RetentionPaymentAttemptRow[]));
+      if (recRes.data) paidCandidateRecovery.push(...(recRes.data as Record<string, unknown>[]));
     }
 
     const storageProofPaths: string[] = [];
@@ -110,21 +184,88 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
       }
     }
 
-    const refCodeByResId = new Map(reservations.map((r: any) => [r.id, r.reference_code]));
-    const candidatesByResId = new Map<string, any[]>();
+    const refCodeByResId = new Map(reservations.map((r) => [r.id, r.reference_code]));
+    const candidatesByResId = new Map<string, RetentionCandidateRow[]>();
     for (const c of candidates) {
       const list = candidatesByResId.get(c.reservation_id) || [];
       list.push(c);
       candidatesByResId.set(c.reservation_id, list);
     }
 
-    const reportReservations: ReportReservationRecord[] = reservations.map((r: any) => {
+    // MS-105: Query workspace instances, templates, floors, and payment methods
+    const candidateInstanceIds = [
+      ...new Set(
+        candidates
+          .map((c) => c.workspace_instance_id)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+
+    const instances: RetentionInstanceRow[] = [];
+    if (candidateInstanceIds.length > 0) {
+      const instanceChunks = chunkArray(candidateInstanceIds, 50);
+      for (const chunk of instanceChunks) {
+        const { data, error } = await this.client
+          .from('workspace_instances')
+          .select('id, template_id, floor_id, instance_code, display_name')
+          .in('id', chunk);
+        if (!error && data) {
+          instances.push(...(data as RetentionInstanceRow[]));
+        }
+      }
+    }
+
+    const [templatesRes, floorsRes, paymentMethodsRes] = await Promise.all([
+      this.client.from('workspace_templates').select('id, name'),
+      this.client.from('floors').select('id, name'),
+      this.client.from('payment_methods').select('id, method_type, display_name'),
+    ]);
+
+    const templates = (templatesRes.data || []) as RetentionTemplateRow[];
+    const floors = (floorsRes.data || []) as RetentionFloorRow[];
+    const paymentMethods = (paymentMethodsRes.data || []) as RetentionPaymentMethodRow[];
+
+    const instancesById = new Map<string, RetentionInstanceRow>(
+      instances.map((i) => [i.id, i])
+    );
+    const templatesById = new Map<string, RetentionTemplateRow>(
+      templates.map((t) => [t.id, t])
+    );
+    const floorsById = new Map<string, RetentionFloorRow>(
+      floors.map((f) => [f.id, f])
+    );
+    const paymentMethodsById = new Map<string, RetentionPaymentMethodRow>(
+      paymentMethods.map((m) => [m.id, m])
+    );
+
+    const reportReservations: ReportReservationRecord[] = reservations.map((r: RetentionReservationRow) => {
       const cList = candidatesByResId.get(r.id) || [];
-      const assigned = cList.find((c: any) => c.is_assigned) || cList[0] || null;
+      const assigned = cList.find((c) => c.is_assigned) || cList[0] || null;
+      const instance = assigned?.workspace_instance_id ? instancesById.get(assigned.workspace_instance_id) : null;
+      const template = instance?.template_id ? templatesById.get(instance.template_id) : null;
+      const floor = instance?.floor_id ? floorsById.get(instance.floor_id) : null;
+
+      const displayName =
+        instance?.display_name ??
+        template?.name ??
+        instance?.instance_code ??
+        r.workspace_name ??
+        'Workspace Spot';
+      const instanceCode =
+        instance?.instance_code ??
+        r.workspace_name ??
+        'SPOT-01';
+      const templateName =
+        template?.name ??
+        r.workspace_type ??
+        'Dedicated Desk';
+      const floorName =
+        floor?.name ??
+        'Main Floor';
       return {
         reservationId: r.id,
         referenceCode: r.reference_code,
-        source: r.source || 'WEB',
+        source: (r.source as 'WEB' | 'KIOSK') || 'WEB',
         customerFirstName: r.customer_first_name || 'Guest',
         customerLastName: r.customer_last_name || '',
         customerEmail: r.customer_email || 'guest@example.com',
@@ -137,36 +278,55 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
         checkedOutAt: r.checked_out_at ?? null,
         bookingStartAt: assigned?.start_at ?? null,
         bookingEndAt: assigned?.end_at ?? null,
-        assignedCandidateRank: assigned?.rank ?? 0,
-        workspaceDisplayName: r.workspace_name || 'Workspace Spot',
-        workspaceInstanceCode: r.workspace_name || 'SPOT-01',
-        workspaceTemplateName: r.workspace_type || 'Dedicated Desk',
-        floorName: 'Main Floor',
+        assignedCandidateRank: (assigned?.rank ?? 0) as 0 | 1 | 2,
+        workspaceDisplayName: displayName,
+        workspaceInstanceCode: instanceCode,
+        workspaceTemplateName: templateName,
+        floorName: floorName,
         rescheduleCount: Number(r.reschedule_count || 0),
         updatedAt: r.updated_at || r.created_at,
       };
     });
 
-    const reportPayments: ReportPaymentAttemptRecord[] = payments.map((p: any) => ({
+    const reportPayments: ReportPaymentAttemptRecord[] = payments.map((p: RetentionPaymentAttemptRow) => {
+      const method = p.payment_method_id ? paymentMethodsById.get(p.payment_method_id) : null;
+      let methodType: 'GCASH' | 'BANK' | 'CASH' = 'BANK';
+
+      const candidateMethodType = ((method?.method_type as string) || (p.payment_method_type as string) || '');
+      if (candidateMethodType === 'CASH' || candidateMethodType === 'GCASH' || candidateMethodType === 'BANK') {
+        methodType = candidateMethodType as 'GCASH' | 'BANK' | 'CASH';
+      } else if (p.channel === 'KIOSK' || String(p.payment_method || '').toUpperCase().includes('CASH')) {
+        methodType = 'CASH';
+      } else if (p.channel === 'GCASH' || String(p.payment_method || '').toUpperCase().includes('GCASH')) {
+        methodType = 'GCASH';
+      }
+
+      const methodDisplayName =
+        method?.display_name ||
+        p.payment_method ||
+        (methodType === 'CASH' ? 'Cash at Counter' : methodType === 'GCASH' ? 'GCash QR' : 'Bank Transfer');
+
+      return {
       paymentAttemptId: p.id,
       reservationId: p.reservation_id,
       reservationReferenceCode: refCodeByResId.get(p.reservation_id) || '',
-      channel: p.channel || 'WEB',
-      paymentStatus: p.status || 'PENDING',
-      refundStatus: p.refund_status || 'NONE',
+      channel: p.channel === 'KIOSK' ? 'KIOSK' : 'WEB',
+      paymentStatus: (['PENDING', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED'].includes(p.status as string) ? p.status : 'PENDING') as ReportPaymentAttemptRecord['paymentStatus'],
+      refundStatus: (p.refund_status as ReportPaymentAttemptRecord['refundStatus']) || 'NONE',
       amount: Number(p.amount || 0),
       currency: p.currency || 'PHP',
       paymentMethodId: p.payment_method_id ?? null,
-      paymentMethodType: p.channel === 'GCASH' ? 'GCASH' : 'BANK',
-      paymentMethodDisplayName: p.payment_method || 'Online Payment',
+      paymentMethodType: methodType,
+      paymentMethodDisplayName: methodDisplayName,
       createdAt: p.created_at,
       proofSubmittedAt: p.proof_submitted_at ?? null,
       processedAt: p.processed_at ?? null,
       refundedAt: p.refunded_at ?? null,
-    }));
+    };
+    });
 
-    const approvedPayments = payments.filter((p: any) => p.status === 'APPROVED');
-    const totalRevenue = approvedPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    const approvedPayments = payments.filter((p) => p.status === 'APPROVED');
+    const totalRevenue = approvedPayments.reduce((sum: number, p) => sum + Number(p.amount || 0), 0);
     const currency = approvedPayments[0]?.currency || 'PHP';
 
     return {
@@ -174,8 +334,8 @@ export class RetentionPurgeSupabaseRepository implements RetentionPurgeRepositor
       reportPayments,
       recordSet: {
         reservations,
-        reservationCandidates: candidates,
-        paymentAttempts: payments,
+        reservationCandidates: candidates as unknown as Record<string, unknown>[],
+        paymentAttempts: payments as unknown as Record<string, unknown>[],
         paidCandidateRecovery,
         storageProofPaths,
       },

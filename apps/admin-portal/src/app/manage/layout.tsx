@@ -108,6 +108,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     { id: '/manage/workspaces', label: 'Workspaces', iconType: 'workspaces' },
     { id: '/manage/services', label: 'Additional Services', iconType: 'services' },
     { id: '/manage/rentals', label: 'Equipment Rentals', iconType: 'rentals' },
+    { id: '/manage/campaigns', label: 'Campaigns & Rewards', iconType: 'campaigns' },
     { id: '/manage/promotions', label: 'Promotions', iconType: 'promotions' },
     { id: '/manage/map', label: 'Map Builder', iconType: 'map' },
     { id: '/manage/staff', label: 'Staff', iconType: 'staff' },
@@ -180,6 +181,18 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <div style={{ width: '15px', height: '15px', border: `2px solid ${color}`, borderRadius: '3px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <div style={{ width: '7px', height: '2px', background: color, marginBottom: '1px' }}></div>
             <div style={{ width: '9px', height: '2px', background: color }}></div>
+          </div>
+        );
+      case 'campaigns':
+        return (
+          <div style={{ width: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="20 12 20 22 4 22 4 12" />
+              <rect x="2" y="7" width="20" height="5" />
+              <line x1="12" y1="22" x2="12" y2="7" />
+              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+              <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+            </svg>
           </div>
         );
       case 'promotions':

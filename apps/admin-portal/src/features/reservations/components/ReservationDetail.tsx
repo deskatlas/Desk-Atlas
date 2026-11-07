@@ -537,7 +537,10 @@ export function ReservationDetail({ id }: { id: string }) {
     try {
       const response = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/cancel`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
           reason: cancelReason,
           notes: cancelNotes,
@@ -581,13 +584,19 @@ export function ReservationDetail({ id }: { id: string }) {
     try {
       const end = new Date(start.getTime() + rescheduleDuration * 60 * 60 * 1000);
 
+      const actorRole = user?.isSuperAdmin ? "SUPERADMIN" : (user?.role || "ADMIN").toUpperCase();
       const response = await fetch(`/api/admin/reservations/${encodeURIComponent(id)}/reschedule`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-user-id": user.id } : {}),
+        },
         body: JSON.stringify({
           startAt: start.toISOString(),
           endAt: end.toISOString(),
           workspaceInstanceId: selectedSpotId || undefined,
+          actorUserId: user?.id || undefined,
+          actorRole,
         }),
       });
 

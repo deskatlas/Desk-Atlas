@@ -45,6 +45,18 @@ export class VoucherMemoryRepository implements VoucherRepository {
     return this.vouchers.get(id) || null;
   }
 
+  async findVoucherByPendingReservationId(reservationId: string): Promise<Voucher | null> {
+    for (const voucher of this.vouchers.values()) {
+      if (
+        (voucher.pendingReservationId === reservationId || voucher.pending_reservation_id === reservationId) &&
+        (voucher.status === 'PENDING_REDEMPTION' || !voucher.redeemedAt)
+      ) {
+        return voucher;
+      }
+    }
+    return null;
+  }
+
   async createVoucher(
     data: Omit<Voucher, 'id' | 'createdAt' | 'updatedAt'> | (Partial<Voucher> & Record<string, unknown>)
   ): Promise<Voucher> {

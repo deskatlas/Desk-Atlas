@@ -153,6 +153,11 @@ export function verifyAttendanceReconfirmToken(
 }
 
 /**
+ * Spec alias for token validation.
+ */
+export const validateAttendanceReconfirmToken = verifyAttendanceReconfirmToken;
+
+/**
  * Constructs a secure reconfirmation link for transactional emails.
  */
 export function buildAttendanceReconfirmUrl(
@@ -412,5 +417,72 @@ export function processAttendanceReconfirmation(
     attendanceReconfirmedAt: nowIso,
     message: "Attendance reconfirmed successfully.",
     timelineEntry,
+  };
+}
+
+export interface AdvanceReminderRepository {
+  listUpcomingReservationsForReminder?(nowIso?: string): Promise<ReminderCandidateReservation[]>;
+  updateReservationReminderSentAt(reservationId: string, sentAt: string): Promise<void>;
+}
+
+export interface AdvanceReminderWorkerDependencies {
+  reservationRepo: AdvanceReminderRepository;
+  settingsRepo?: { getSettings(): Promise<BusinessSettings | null | undefined> };
+  emailService: TransactionalEmailService;
+  customerWebsiteUrl?: string;
+  now?: Date | number;
+  candidates?: ReminderCandidateReservation[];
+  settings?: BusinessSettings | null;
+  onNotificationTriggered?: (notification: AdminNotificationItem) => Promise<void> | void;
+}
+
+export interface AdvanceReminderWorkerResult {
+  processed: number;
+  dispatched: number;
+  skipped: number;
+  errors: number;
+  results: ReminderScanItemResult[];
+}
+
+/**
+ * Executes the advance reservation reminder cron run.
+ * Fetches eligible candidates, evaluates advance reminder windows,
+ * and idempotently dispatches transactional emails.
+ */
+export async function processAdvanceReservationReminders(
+  deps: AdvanceReminderWorkerDependencies
+): Promise<AdvanceReminderWorkerResult> {
+  const now = deps.now ? (deps.now instanceof Date ? deps.now : new Date(deps.now)) : new Date();
+  const settings = deps.settings ?? (deps.settingsRepo ? await deps.settingsRepo.getSettings() : null);
+
+  let candidates = deps.candidates;
+  if (!candidates && typeof deps.reservationRepo.listUpcomingReservationsForReminder === "function") {
+    candidates = await deps.reservationRepo.listUpcomingReservationsForReminder(now.toISOString());
+  }
+  candidates = candidates || [];
+
+  const results = await scanAndDispatchAdvanceReminders({
+    reservations: candidates,
+    settings,
+    emailService: deps.emailService,
+    customerWebsiteUrl:
+      deps.customerWebsiteUrl || process.env.NEXT_PUBLIC_CUSTOMER_URL || "https://www.thedeskatlas.com",
+    now,
+    onReminderSent: async (reservationId, sentAt) => {
+      await deps.reservationRepo.updateReservationReminderSentAt(reservationId, sentAt);
+    },
+    onNotificationTriggered: deps.onNotificationTriggered,
+  });
+
+  const dispatched = results.filter((r) => r.dispatched).length;
+  const errors = results.filter((r) => Boolean(r.error)).length;
+  const skipped = results.length - dispatched - errors;
+
+  return {
+    processed: results.length,
+    dispatched,
+    skipped,
+    errors,
+    results,
   };
 }

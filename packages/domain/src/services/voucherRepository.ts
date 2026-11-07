@@ -10,6 +10,7 @@ export interface VoucherRepository {
   findVoucherByCode(promoCode: string): Promise<Voucher | null>;
   findVouchersByCustomerId(customerId: string, status?: VoucherStatus): Promise<Voucher[]>;
   findVoucherById(id: string): Promise<Voucher | null>;
+  findVoucherByPendingReservationId?(reservationId: string): Promise<Voucher | null>;
   createVoucher(data: Omit<Voucher, 'id' | 'createdAt' | 'updatedAt'>): Promise<Voucher>;
   updateVoucher(id: string, updates: Partial<Voucher>): Promise<Voucher>;
   redeemVoucher(

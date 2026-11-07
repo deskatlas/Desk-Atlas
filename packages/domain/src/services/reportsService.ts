@@ -14,7 +14,7 @@ import {
   RentalAnalyticsSnapshot,
 } from "../models/reports";
 import { ReportsRepository } from "./reportsRepository";
-import { buildAdminExcelWorkbook, formatDateTime } from "./excelReportBuilder";
+import { buildAdminExcelWorkbook, formatDateTime, formatWorkspaceLabel } from "./excelReportBuilder";
 
 const REPORT_CATEGORY_DEFINITIONS: Array<{
   id: AdminReportCategorySummary["id"];
@@ -684,14 +684,14 @@ function buildTopWorkspaces(
   >();
 
   for (const reservation of reservations) {
-    if (!reservation.workspaceDisplayName) {
+    if (!reservation.workspaceDisplayName && !reservation.workspaceInstanceCode) {
       continue;
     }
 
-    const key = reservation.workspaceInstanceCode ?? reservation.workspaceDisplayName;
+    const key = reservation.workspaceInstanceCode || reservation.workspaceDisplayName || "Workspace Spot";
     const existing = usageByWorkspace.get(key) ?? {
       id: key,
-      name: reservation.workspaceDisplayName,
+      name: formatWorkspaceLabel(reservation.workspaceDisplayName, reservation.workspaceInstanceCode),
       templateName: reservation.workspaceTemplateName ?? "Standard Workspace",
       floorName: reservation.floorName ?? "Main Floor",
       reservationCount: 0,
@@ -808,14 +808,17 @@ function buildWorkspaceRows(reservations: ReportReservationRecord[]) {
   >();
 
   for (const reservation of reservations) {
-    if (!reservation.workspaceDisplayName || !reservation.bookingStartAt || !reservation.bookingEndAt) {
+    if ((!reservation.workspaceDisplayName && !reservation.workspaceInstanceCode) || !reservation.bookingStartAt || !reservation.bookingEndAt) {
       continue;
     }
 
-    const key = reservation.workspaceInstanceCode ?? reservation.workspaceDisplayName;
+    const key = reservation.workspaceInstanceCode || reservation.workspaceDisplayName || "Workspace Spot";
     const existing = usageByWorkspace.get(key) ?? {
       floorName: reservation.floorName ?? "",
-      workspaceDisplayName: reservation.workspaceDisplayName,
+      workspaceDisplayName: formatWorkspaceLabel(
+        reservation.workspaceDisplayName,
+        reservation.workspaceInstanceCode
+      ),
       workspaceInstanceCode: reservation.workspaceInstanceCode ?? "",
       workspaceTemplateName: reservation.workspaceTemplateName ?? "",
       reservationCount: 0,
@@ -852,7 +855,7 @@ function buildReservationRows(reservations: ReportReservationRecord[]) {
       customer_name: `${reservation.customerFirstName} ${reservation.customerLastName}`.trim(),
       customer_email: reservation.customerEmail,
       reservation_status: reservation.reservationStatus,
-      workspace_name: reservation.workspaceDisplayName ?? "",
+      workspace_name: formatWorkspaceLabel(reservation.workspaceDisplayName, reservation.workspaceInstanceCode),
       workspace_code: reservation.workspaceInstanceCode ?? "",
       floor_name: reservation.floorName ?? "",
       booking_start_at: reservation.bookingStartAt ?? "",
@@ -947,7 +950,7 @@ function buildCheckInRows(reservations: ReportReservationRecord[]) {
     .map((reservation) => ({
       reference_code: reservation.referenceCode,
       customer_name: `${reservation.customerFirstName} ${reservation.customerLastName}`.trim(),
-      workspace_name: reservation.workspaceDisplayName ?? "",
+      workspace_name: formatWorkspaceLabel(reservation.workspaceDisplayName, reservation.workspaceInstanceCode),
       workspace_code: reservation.workspaceInstanceCode ?? "",
       floor_name: reservation.floorName ?? "",
       checked_in_at: reservation.checkedInAt ?? "",

@@ -1571,185 +1571,185 @@ export function MapEditor() {
           autosaveDebouncerRef.current?.cancel();
         }
 
-      const currentObjects = builderObjectsRef.current;
-      const elementsPayload = currentObjects.map((obj, index) => {
-        const isWorkspace = Boolean(obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId);
-        const isThinWall = !isWorkspace && (
-          obj.elementType === 'thin_wall' ||
-          obj.elementType === 'thin' ||
-          obj.elementType?.toLowerCase().includes('thin_wall') ||
-          obj.elementType?.toLowerCase().includes('separator') ||
-          obj.name?.toLowerCase() === 'thin wall' ||
-          obj.name?.toLowerCase().includes('separator')
-        );
-        const isGlass = !isWorkspace && (obj.elementType?.toLowerCase().includes('glass') || obj.name?.toLowerCase().includes('glass'));
-        const isWall = !isWorkspace && (
-          obj.elementType === 'wall' ||
-          obj.elementType?.toLowerCase().includes('wall') ||
-          obj.name?.toLowerCase() === 'wall' ||
-          isThinWall ||
-          isGlass
-        );
-        const isWindow = !isWorkspace && (obj.elementType === 'window' || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase() === 'window');
-        const isStairs = !isWorkspace && (obj.elementType === 'stairs' || obj.elementType?.toLowerCase().includes('stairs') || obj.elementType?.toLowerCase().includes('staircase') || obj.name?.toLowerCase() === 'stairs');
-        const isRestroom = !isWorkspace && (obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom'));
-        const isPantry = !isWorkspace && (obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry'));
-        const isEmergencyExit = !isWorkspace && (obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency'));
-        const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
-        const isKioskMarker = !isWorkspace && (
-          obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
-          obj.elementType === 'kiosk' ||
-          obj.elementRole === 'INFORMATION' ||
-          obj.name?.toLowerCase() === 'you are here' ||
-          obj.name?.toLowerCase() === 'kiosk'
-        );
-        const fixedThickness = isThinWall ? 10 : 20;
+        const currentObjects = builderObjectsRef.current;
+        const elementsPayload = currentObjects.map((obj, index) => {
+          const isWorkspace = Boolean(obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId);
+          const isThinWall = !isWorkspace && (
+            obj.elementType === 'thin_wall' ||
+            obj.elementType === 'thin' ||
+            obj.elementType?.toLowerCase().includes('thin_wall') ||
+            obj.elementType?.toLowerCase().includes('separator') ||
+            obj.name?.toLowerCase() === 'thin wall' ||
+            obj.name?.toLowerCase().includes('separator')
+          );
+          const isGlass = !isWorkspace && (obj.elementType?.toLowerCase().includes('glass') || obj.name?.toLowerCase().includes('glass'));
+          const isWall = !isWorkspace && (
+            obj.elementType === 'wall' ||
+            obj.elementType?.toLowerCase().includes('wall') ||
+            obj.name?.toLowerCase() === 'wall' ||
+            isThinWall ||
+            isGlass
+          );
+          const isWindow = !isWorkspace && (obj.elementType === 'window' || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase() === 'window');
+          const isStairs = !isWorkspace && (obj.elementType === 'stairs' || obj.elementType?.toLowerCase().includes('stairs') || obj.elementType?.toLowerCase().includes('staircase') || obj.name?.toLowerCase() === 'stairs');
+          const isRestroom = !isWorkspace && (obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom'));
+          const isPantry = !isWorkspace && (obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry'));
+          const isEmergencyExit = !isWorkspace && (obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency'));
+          const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
+          const isKioskMarker = !isWorkspace && (
+            obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
+            obj.elementType === 'kiosk' ||
+            obj.elementRole === 'INFORMATION' ||
+            obj.name?.toLowerCase() === 'you are here' ||
+            obj.name?.toLowerCase() === 'kiosk'
+          );
+          const fixedThickness = isThinWall ? 10 : 20;
 
-        let role: 'WORKSPACE' | 'STRUCTURE' | 'AMENITY' | 'INFORMATION' = isWorkspace
-          ? 'WORKSPACE'
-          : (isKioskMarker ? 'INFORMATION' : (isAmenity ? 'AMENITY' : (obj.elementRole || 'STRUCTURE')));
-        let normType = obj.elementType;
-        if (isKioskMarker) {
-          normType = 'KIOSK_YOU_ARE_HERE';
-        } else if (!normType || normType === 'generic') {
-          if (isWorkspace) normType = 'desk';
-          else if (isRestroom) normType = 'restroom';
-          else if (isPantry) normType = 'pantry';
-          else if (isEmergencyExit) normType = 'emergency_exit';
-          else if (isWindow) normType = 'window';
-          else if (isStairs) normType = 'stairs';
-          else if (isThinWall) normType = 'thin_wall';
-          else if (isGlass) normType = 'glass';
-          else if (isWall) normType = 'wall';
-          else normType = 'generic';
-        }
-
-        return {
-          elementRole: role,
-          elementType: normType,
-          workspaceInstanceId: obj.workspaceInstanceId || null,
-          x: Math.round(obj.x),
-          y: Math.round(obj.y),
-          width: Math.max(20, Math.round(obj.w)),
-          height: isKioskMarker
-            ? 80
-            : (isWindow
-              ? Math.max(10, Math.round(obj.h))
-              : (isStairs
-                ? Math.max(20, Math.round(obj.h))
-                : (isWall ? fixedThickness : Math.max(20, Math.round(obj.h))))),
-          rotation: (obj.rotation || 0) as 0 | 90 | 180 | 270,
-          zIndex: index + 1,
-          label: obj.name || (isKioskMarker ? 'Kiosk' : null),
-          properties: {
-            ...(obj.properties || {}),
-            color: obj.color,
-            recommendationTags: obj.recommendationTags || [],
-            ...(obj.borderStyle ? { borderStyle: obj.borderStyle } : {}),
-            ...(isKioskMarker ? { markerType: 'KIOSK_YOU_ARE_HERE' } : {}),
-          },
-          isLocked: false,
-        };
-      });
-
-      const validElementsPayload = elementsPayload.map((el) => {
-        if (el.elementRole === 'WORKSPACE') {
-          const isMissingInstance = !el.workspaceInstanceId || (instances.length > 0 && !instances.some((i: { id: string }) => i.id === el.workspaceInstanceId));
-          if (isMissingInstance) {
-            // Attempt to re-link to unmapped instance matching element label
-            const matchingUnmapped = instances.find(
-              (i: { id: string; displayName?: string; name?: string }) =>
-                (i.displayName === el.label || i.name === el.label) &&
-                !elementsPayload.some((e) => e.workspaceInstanceId === i.id)
-            );
-            if (matchingUnmapped) {
-              return { ...el, workspaceInstanceId: matchingUnmapped.id };
-            }
-            // Fallback: convert orphaned element to non-bookable structure to preserve geometry
-            return {
-              ...el,
-              elementRole: 'STRUCTURE' as const,
-              elementType: 'desk',
-              workspaceInstanceId: null,
-            };
+          let role: 'WORKSPACE' | 'STRUCTURE' | 'AMENITY' | 'INFORMATION' = isWorkspace
+            ? 'WORKSPACE'
+            : (isKioskMarker ? 'INFORMATION' : (isAmenity ? 'AMENITY' : (obj.elementRole || 'STRUCTURE')));
+          let normType = obj.elementType;
+          if (isKioskMarker) {
+            normType = 'KIOSK_YOU_ARE_HERE';
+          } else if (!normType || normType === 'generic') {
+            if (isWorkspace) normType = 'desk';
+            else if (isRestroom) normType = 'restroom';
+            else if (isPantry) normType = 'pantry';
+            else if (isEmergencyExit) normType = 'emergency_exit';
+            else if (isWindow) normType = 'window';
+            else if (isStairs) normType = 'stairs';
+            else if (isThinWall) normType = 'thin_wall';
+            else if (isGlass) normType = 'glass';
+            else if (isWall) normType = 'wall';
+            else normType = 'generic';
           }
-        }
-        return el;
-      });
 
-      if (validElementsPayload.some((el, idx) => el.workspaceInstanceId !== elementsPayload[idx].workspaceInstanceId || el.elementRole !== elementsPayload[idx].elementRole)) {
-        setBuilderObjects((prev) =>
-          prev.map((obj, idx) => {
-            const valid = validElementsPayload[idx];
-            if (valid && (valid.workspaceInstanceId !== obj.workspaceInstanceId || valid.elementRole !== obj.elementRole)) {
+          return {
+            elementRole: role,
+            elementType: normType,
+            workspaceInstanceId: obj.workspaceInstanceId || null,
+            x: Math.round(obj.x),
+            y: Math.round(obj.y),
+            width: Math.max(20, Math.round(obj.w)),
+            height: isKioskMarker
+              ? 80
+              : (isWindow
+                ? Math.max(10, Math.round(obj.h))
+                : (isStairs
+                  ? Math.max(20, Math.round(obj.h))
+                  : (isWall ? fixedThickness : Math.max(20, Math.round(obj.h))))),
+            rotation: (obj.rotation || 0) as 0 | 90 | 180 | 270,
+            zIndex: index + 1,
+            label: obj.name || (isKioskMarker ? 'Kiosk' : null),
+            properties: {
+              ...(obj.properties || {}),
+              color: obj.color,
+              recommendationTags: obj.recommendationTags || [],
+              ...(obj.borderStyle ? { borderStyle: obj.borderStyle } : {}),
+              ...(isKioskMarker ? { markerType: 'KIOSK_YOU_ARE_HERE' } : {}),
+            },
+            isLocked: false,
+          };
+        });
+
+        const validElementsPayload = elementsPayload.map((el) => {
+          if (el.elementRole === 'WORKSPACE') {
+            const isMissingInstance = !el.workspaceInstanceId || (instances.length > 0 && !instances.some((i: { id: string }) => i.id === el.workspaceInstanceId));
+            if (isMissingInstance) {
+              // Attempt to re-link to unmapped instance matching element label
+              const matchingUnmapped = instances.find(
+                (i: { id: string; displayName?: string; name?: string }) =>
+                  (i.displayName === el.label || i.name === el.label) &&
+                  !elementsPayload.some((e) => e.workspaceInstanceId === i.id)
+              );
+              if (matchingUnmapped) {
+                return { ...el, workspaceInstanceId: matchingUnmapped.id };
+              }
+              // Fallback: convert orphaned element to non-bookable structure to preserve geometry
               return {
-                ...obj,
-                workspaceInstanceId: valid.workspaceInstanceId ?? undefined,
-                elementRole: valid.elementRole,
-                bookable: valid.elementRole === 'WORKSPACE',
+                ...el,
+                elementRole: 'STRUCTURE' as const,
+                elementType: 'desk',
+                workspaceInstanceId: null,
               };
             }
-            return obj;
-          })
-        );
-      }
+          }
+          return el;
+        });
 
-      const res = await fetch('/api/admin/maps/draft', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          floorId,
-          canvasWidth: canvasDimensionsRef.current.width,
-          canvasHeight: canvasDimensionsRef.current.height,
-          gridSize: canvasDimensionsRef.current.gridSize,
-          elements: validElementsPayload,
-          actorUserId: user?.id ?? null,
-        }),
-      });
+        if (validElementsPayload.some((el, idx) => el.workspaceInstanceId !== elementsPayload[idx].workspaceInstanceId || el.elementRole !== elementsPayload[idx].elementRole)) {
+          setBuilderObjects((prev) =>
+            prev.map((obj, idx) => {
+              const valid = validElementsPayload[idx];
+              if (valid && (valid.workspaceInstanceId !== obj.workspaceInstanceId || valid.elementRole !== obj.elementRole)) {
+                return {
+                  ...obj,
+                  workspaceInstanceId: valid.workspaceInstanceId ?? undefined,
+                  elementRole: valid.elementRole,
+                  bookable: valid.elementRole === 'WORKSPACE',
+                };
+              }
+              return obj;
+            })
+          );
+        }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to save draft map');
-      }
+        const res = await fetch('/api/admin/maps/draft', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            floorId,
+            canvasWidth: canvasDimensionsRef.current.width,
+            canvasHeight: canvasDimensionsRef.current.height,
+            gridSize: canvasDimensionsRef.current.gridSize,
+            elements: validElementsPayload,
+            actorUserId: user?.id ?? null,
+          }),
+        });
 
-      const snapshotAfterSave = serializeMapElementsForSnapshot(currentObjects);
-      savedSnapshotRef.current = snapshotAfterSave;
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to save draft map');
+        }
 
-      if (!isMapDraftDirty(snapshotAfterSave, builderObjectsRef.current)) {
-        setIsDirty(false);
-        setSaveState(`Saved at ${new Date().toLocaleTimeString()}`);
-      } else {
-        setIsDirty(true);
+        const snapshotAfterSave = serializeMapElementsForSnapshot(currentObjects);
+        savedSnapshotRef.current = snapshotAfterSave;
+
+        if (!isMapDraftDirty(snapshotAfterSave, builderObjectsRef.current)) {
+          setIsDirty(false);
+          setSaveState(`Saved at ${new Date().toLocaleTimeString()}`);
+        } else {
+          setIsDirty(true);
+          setSaveState('Unsaved changes');
+          autosaveDebouncerRef.current?.schedule();
+        }
+        return true;
+      } catch (err: unknown) {
+        const errorObj = err instanceof Error ? err : new Error(String(err));
         setSaveState('Unsaved changes');
-        autosaveDebouncerRef.current?.schedule();
+        setErrorMsg(isAutosave ? `Autosave warning: ${errorObj.message || 'Failed to save draft map'}` : (errorObj.message || 'Failed to save draft map'));
+        if (throwOnError) {
+          throw errorObj;
+        }
+        return false;
+      } finally {
+        isSavingRef.current = false;
+        activeSavePromiseRef.current = null;
       }
-      return true;
-    } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      setSaveState('Unsaved changes');
-      setErrorMsg(isAutosave ? `Autosave warning: ${errorObj.message || 'Failed to save draft map'}` : (errorObj.message || 'Failed to save draft map'));
-      if (throwOnError) {
-        throw errorObj;
-      }
-      return false;
-    } finally {
-      isSavingRef.current = false;
-      activeSavePromiseRef.current = null;
-    }
-  })();
+    })();
 
-  activeSavePromiseRef.current = savePromise;
-  return savePromise;
-};
-
-useEffect(() => {
-  autosaveDebouncerRef.current = createAutosaveDebouncer(() => {
-    void handleSaveDraft(true);
-  }, AUTOSAVE_DEBOUNCE_MS);
-  return () => {
-    autosaveDebouncerRef.current?.cancel();
+    activeSavePromiseRef.current = savePromise;
+    return savePromise;
   };
-}, []);
+
+  useEffect(() => {
+    autosaveDebouncerRef.current = createAutosaveDebouncer(() => {
+      void handleSaveDraft(true);
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      autosaveDebouncerRef.current?.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     if (savedSnapshotRef.current === null || loading) return;
@@ -2720,270 +2720,270 @@ useEffect(() => {
                   overflow: 'hidden',
                 }}
               >
-              {builderObjects.map((obj) => {
-                const isWorkspace = Boolean(obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId);
-                const isRestroom = !isWorkspace && (obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom'));
-                const isPantry = !isWorkspace && (obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry'));
-                const isEmergencyExit = !isWorkspace && (obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency'));
-                const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
-                const isKioskMarker =
-                  !isWorkspace &&
-                  (obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
-                    obj.elementType === 'kiosk' ||
-                    obj.elementRole === 'INFORMATION' ||
-                    obj.name?.toLowerCase() === 'you are here' ||
-                    obj.name?.toLowerCase() === 'kiosk');
-                const isWall = !isWorkspace && (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall'));
-                const isWindow = !isWorkspace && (obj.elementType === 'window' || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase() === 'window');
-                const isStairs = !isWorkspace && (obj.elementType === 'stairs' || obj.elementType?.toLowerCase().includes('stairs') || obj.elementType?.toLowerCase().includes('staircase') || obj.name?.toLowerCase() === 'stairs');
-                const workspaceStatusColor = isWorkspace ? resolveWorkspaceStatusColor(obj.status || 'ACTIVE', statusColors) : null;
-                const contrastColor = isWorkspace
-                  ? getContrastColor(workspaceStatusColor!)
-                  : (isKioskMarker ? '#ffffff' : getContrastColor(obj.color || '#F3F7F4'));
-                const isOutOfBounds = !isRotatedElementWithinBounds(
-                  { x: obj.x, y: obj.y, width: obj.w, height: obj.h, rotation: obj.rotation || 0 },
-                  canvasDimensions.width,
-                  canvasDimensions.height
-                );
-                const isColliding = collidingElementIds.has(obj.id);
+                {builderObjects.map((obj) => {
+                  const isWorkspace = Boolean(obj.bookable || obj.elementRole === 'WORKSPACE' || obj.workspaceInstanceId);
+                  const isRestroom = !isWorkspace && (obj.elementType?.toLowerCase().includes('restroom') || obj.name?.toLowerCase().includes('restroom'));
+                  const isPantry = !isWorkspace && (obj.elementType?.toLowerCase().includes('pantry') || obj.name?.toLowerCase().includes('pantry'));
+                  const isEmergencyExit = !isWorkspace && (obj.elementType?.toLowerCase().includes('exit') || obj.elementType?.toLowerCase().includes('emergency') || obj.name?.toLowerCase().includes('exit') || obj.name?.toLowerCase().includes('emergency'));
+                  const isAmenity = !isWorkspace && (obj.elementRole === 'AMENITY' || isRestroom || isPantry || isEmergencyExit);
+                  const isKioskMarker =
+                    !isWorkspace &&
+                    (obj.elementType === 'KIOSK_YOU_ARE_HERE' ||
+                      obj.elementType === 'kiosk' ||
+                      obj.elementRole === 'INFORMATION' ||
+                      obj.name?.toLowerCase() === 'you are here' ||
+                      obj.name?.toLowerCase() === 'kiosk');
+                  const isWall = !isWorkspace && (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall'));
+                  const isWindow = !isWorkspace && (obj.elementType === 'window' || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase() === 'window');
+                  const isStairs = !isWorkspace && (obj.elementType === 'stairs' || obj.elementType?.toLowerCase().includes('stairs') || obj.elementType?.toLowerCase().includes('staircase') || obj.name?.toLowerCase() === 'stairs');
+                  const workspaceStatusColor = isWorkspace ? resolveWorkspaceStatusColor(obj.status || 'ACTIVE', statusColors) : null;
+                  const contrastColor = isWorkspace
+                    ? getContrastColor(workspaceStatusColor!)
+                    : (isKioskMarker ? '#ffffff' : getContrastColor(obj.color || '#F3F7F4'));
+                  const isOutOfBounds = !isRotatedElementWithinBounds(
+                    { x: obj.x, y: obj.y, width: obj.w, height: obj.h, rotation: obj.rotation || 0 },
+                    canvasDimensions.width,
+                    canvasDimensions.height
+                  );
+                  const isColliding = collidingElementIds.has(obj.id);
 
-                return (
-                  <div
-                    key={obj.id}
-                    style={{
-                      position: 'absolute',
-                      left: obj.x,
-                      top: obj.y,
-                      width: obj.w,
-                      height: obj.h,
-                      transform: `rotate(${obj.rotation}deg)`,
-                      zIndex: isColliding ? 50 : (isOutOfBounds ? 60 : (selectedObjId === obj.id ? 40 : (obj.zIndex || 1))),
-                    }}
-                  >
-                    <button
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        if (e.button !== 0) return;
-                        setSelectedObjId(obj.id);
-                        setShowInspector(true);
-                        setDragState({
-                          id: obj.id,
-                          startX: e.clientX,
-                          startY: e.clientY,
-                          startObjX: obj.x,
-                          startObjY: obj.y
-                        });
-                      }}
-                      onClick={() => { setSelectedObjId(obj.id); setShowInspector(true); }}
-                      aria-pressed={selectedObjId === obj.id}
-                      title={isColliding ? `${obj.name || 'This element'} has an overlap collision conflict!` : (isOutOfBounds ? `${obj.name || 'This element'} is out of bounds!` : undefined)}
+                  return (
+                    <div
+                      key={obj.id}
                       style={{
-                        width: '100%', height: '100%',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '11px', fontWeight: 700, textAlign: 'center', cursor: 'pointer',
-                        fontFamily: 'var(--da-font-family)', padding: '4px', lineHeight: 1.2,
-                        background: isColliding
-                          ? 'rgba(239, 68, 68, 0.2)'
-                          : (isOutOfBounds
-                              ? 'rgba(239, 68, 68, 0.15)'
-                              : (isWorkspace
-                                  ? workspaceStatusColor!
-                                  : (isKioskMarker
-                                      ? (obj.color || '#DC2626')
-                                      : (isWindow
-                                          ? (obj.color || 'rgba(56, 189, 248, 0.25)')
-                                          : (isStairs
-                                              ? (obj.color || '#E2E8F0')
-                                              : (obj.color || '#F3F7F4')))))),
-                        color: (isColliding || isOutOfBounds)
-                          ? '#DC2626'
-                          : (isWorkspace
-                              ? contrastColor
-                              : (isKioskMarker
-                                  ? '#ffffff'
-                                  : (isWindow
-                                      ? '#0284C7'
-                                      : (isStairs ? '#334155' : contrastColor)))),
-                        border: isColliding
-                          ? '2.5px solid #EF4444'
-                          : (isOutOfBounds
-                              ? '2.5px solid #EF4444'
-                              : (selectedObjId === obj.id
-                                  ? '2px solid var(--da-brand-dark)'
-                                  : (isKioskMarker
-                                      ? '2px solid #fff'
-                                      : (isWindow
-                                          ? '1.5px solid #38BDF8'
-                                          : (isStairs
-                                              ? '1.5px solid #94A3B8'
-                                              : (obj.borderStyle === 'dashed' || obj.properties?.borderStyle === 'dashed'
-                                                  ? '1.5px dashed var(--da-border)'
-                                                  : (obj.borderStyle === 'none' || obj.properties?.borderStyle === 'none'
-                                                      ? 'none'
-                                                      : '1px solid var(--da-border)'))))))),
-                        borderRadius: isKioskMarker ? '14px' : ((isWall || isWindow) ? '2px' : '8px'),
-                        boxShadow: (isColliding || isOutOfBounds)
-                          ? '0 0 16px rgba(239, 68, 68, 0.85)'
-                          : (isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : 'none'),
-                        animation: isColliding
-                          ? 'da-pulse-red-glow 1.0s infinite ease-in-out'
-                          : (isOutOfBounds
-                              ? 'da-pulse-red-glow 1.2s infinite ease-in-out'
-                              : 'none'),
-                        opacity: obj.status === 'INACTIVE' ? (selectedObjId === obj.id ? 0.6 : 0.25) : 1,
-                        boxSizing: 'border-box',
-                        overflow: 'visible',
-                        position: 'relative'
+                        position: 'absolute',
+                        left: obj.x,
+                        top: obj.y,
+                        width: obj.w,
+                        height: obj.h,
+                        transform: `rotate(${obj.rotation}deg)`,
+                        zIndex: isColliding ? 50 : (isOutOfBounds ? 60 : (selectedObjId === obj.id ? 40 : (obj.zIndex || 1))),
                       }}
                     >
-                      {isColliding && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            top: -20,
-                            left: 0,
-                            background: '#EF4444',
-                            color: '#fff',
-                            fontSize: '10px',
-                            fontWeight: 800,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            whiteSpace: 'nowrap',
-                            zIndex: 60,
-                            pointerEvents: 'none',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                            lineHeight: '14px',
-                            transform: obj.rotation ? `rotate(-${obj.rotation}deg)` : undefined,
-                            transformOrigin: 'bottom left',
-                          }}
-                        >
-                          Overlap Conflict
-                        </div>
-                      )}
-                      {isWorkspace ? (
-                        <MarqueeLabel
-                          text={obj.name}
-                          style={{ maxWidth: '100%', fontSize: '11px', fontWeight: 700 }}
-                        />
-                      ) : isKioskMarker ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Kiosk">
-                            <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" fill="#ffffff" stroke="#DC2626" strokeWidth="1.5" />
-                            <circle cx="12" cy="10" r="3" fill="#DC2626" />
-                          </svg>
-                          <span style={{ fontSize: '10px', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
-                            {obj.name || 'Kiosk'}
-                          </span>
-                        </div>
-                      ) : isWindow ? (
-                        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                          <div style={{ position: 'absolute', inset: '1px', border: '1px solid rgba(56, 189, 248, 0.4)', borderRadius: '1px', pointerEvents: 'none' }} />
-                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: 'rgba(56, 189, 248, 0.7)', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                          <div style={{ position: 'absolute', top: 0, bottom: 0, left: '33.3%', width: '1px', background: 'rgba(56, 189, 248, 0.6)', pointerEvents: 'none' }} />
-                          <div style={{ position: 'absolute', top: 0, bottom: 0, left: '66.6%', width: '1px', background: 'rgba(56, 189, 248, 0.6)', pointerEvents: 'none' }} />
+                      <button
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          if (e.button !== 0) return;
+                          setSelectedObjId(obj.id);
+                          setShowInspector(true);
+                          setDragState({
+                            id: obj.id,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            startObjX: obj.x,
+                            startObjY: obj.y
+                          });
+                        }}
+                        onClick={() => { setSelectedObjId(obj.id); setShowInspector(true); }}
+                        aria-pressed={selectedObjId === obj.id}
+                        title={isColliding ? `${obj.name || 'This element'} has an overlap collision conflict!` : (isOutOfBounds ? `${obj.name || 'This element'} is out of bounds!` : undefined)}
+                        style={{
+                          width: '100%', height: '100%',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '11px', fontWeight: 700, textAlign: 'center', cursor: 'pointer',
+                          fontFamily: 'var(--da-font-family)', padding: '4px', lineHeight: 1.2,
+                          background: isColliding
+                            ? 'rgba(239, 68, 68, 0.2)'
+                            : (isOutOfBounds
+                              ? 'rgba(239, 68, 68, 0.15)'
+                              : (isWorkspace
+                                ? workspaceStatusColor!
+                                : (isKioskMarker
+                                  ? (obj.color || '#DC2626')
+                                  : (isWindow
+                                    ? (obj.color || 'rgba(56, 189, 248, 0.25)')
+                                    : (isStairs
+                                      ? (obj.color || '#E2E8F0')
+                                      : (obj.color || '#F3F7F4')))))),
+                          color: (isColliding || isOutOfBounds)
+                            ? '#DC2626'
+                            : (isWorkspace
+                              ? contrastColor
+                              : (isKioskMarker
+                                ? '#ffffff'
+                                : (isWindow
+                                  ? '#0284C7'
+                                  : (isStairs ? '#334155' : contrastColor)))),
+                          border: isColliding
+                            ? '2.5px solid #EF4444'
+                            : (isOutOfBounds
+                              ? '2.5px solid #EF4444'
+                              : (selectedObjId === obj.id
+                                ? '2px solid var(--da-brand-dark)'
+                                : (isKioskMarker
+                                  ? '2px solid #fff'
+                                  : (isWindow
+                                    ? '1.5px solid #38BDF8'
+                                    : (isStairs
+                                      ? '1.5px solid #94A3B8'
+                                      : (obj.borderStyle === 'dashed' || obj.properties?.borderStyle === 'dashed'
+                                        ? '1.5px dashed var(--da-border)'
+                                        : (obj.borderStyle === 'none' || obj.properties?.borderStyle === 'none'
+                                          ? 'none'
+                                          : '1px solid var(--da-border)'))))))),
+                          borderRadius: isKioskMarker ? '14px' : ((isWall || isWindow) ? '2px' : '8px'),
+                          boxShadow: (isColliding || isOutOfBounds)
+                            ? '0 0 16px rgba(239, 68, 68, 0.85)'
+                            : (isKioskMarker ? '0 4px 12px rgba(220, 38, 38, 0.35)' : 'none'),
+                          animation: isColliding
+                            ? 'da-pulse-red-glow 1.0s infinite ease-in-out'
+                            : (isOutOfBounds
+                              ? 'da-pulse-red-glow 1.2s infinite ease-in-out'
+                              : 'none'),
+                          opacity: obj.status === 'INACTIVE' ? (selectedObjId === obj.id ? 0.6 : 0.25) : 1,
+                          boxSizing: 'border-box',
+                          overflow: 'visible',
+                          position: 'relative'
+                        }}
+                      >
+                        {isColliding && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: -20,
+                              left: 0,
+                              background: '#EF4444',
+                              color: '#fff',
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              whiteSpace: 'nowrap',
+                              zIndex: 60,
+                              pointerEvents: 'none',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                              lineHeight: '14px',
+                              transform: obj.rotation ? `rotate(-${obj.rotation}deg)` : undefined,
+                              transformOrigin: 'bottom left',
+                            }}
+                          >
+                            Overlap Conflict
+                          </div>
+                        )}
+                        {isWorkspace ? (
+                          <MarqueeLabel
+                            text={obj.name}
+                            style={{ maxWidth: '100%', fontSize: '11px', fontWeight: 700 }}
+                          />
+                        ) : isKioskMarker ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Kiosk">
+                              <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" fill="#ffffff" stroke="#DC2626" strokeWidth="1.5" />
+                              <circle cx="12" cy="10" r="3" fill="#DC2626" />
+                            </svg>
+                            <span style={{ fontSize: '10px', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#ffffff', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                              {obj.name || 'Kiosk'}
+                            </span>
+                          </div>
+                        ) : isWindow ? (
+                          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                            <div style={{ position: 'absolute', inset: '1px', border: '1px solid rgba(56, 189, 248, 0.4)', borderRadius: '1px', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: 'rgba(56, 189, 248, 0.7)', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '33.3%', width: '1px', background: 'rgba(56, 189, 248, 0.6)', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '66.6%', width: '1px', background: 'rgba(56, 189, 248, 0.6)', pointerEvents: 'none' }} />
+                            <span
+                              style={{
+                                position: 'relative',
+                                zIndex: 1,
+                                fontSize: '9px',
+                                fontWeight: 800,
+                                color: '#0284C7',
+                                letterSpacing: '0.05em',
+                                textTransform: 'uppercase',
+                                pointerEvents: 'none',
+                                padding: '0 4px',
+                                lineHeight: 1,
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {obj.name || formatStructureLabel(obj.elementType)}
+                            </span>
+                          </div>
+                        ) : isStairs ? (
+                          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '4px' }}>
+                            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', opacity: 0.75 }} xmlns="http://www.w3.org/2000/svg">
+                              <defs>
+                                <pattern id={`stairs-pattern-${obj.id}`} width="100%" height="16" patternUnits="userSpaceOnUse">
+                                  <line x1="0" y1="16" x2="100%" y2="16" stroke="#94A3B8" strokeWidth="1.5" />
+                                </pattern>
+                              </defs>
+                              <rect width="100%" height="100%" fill={`url(#stairs-pattern-${obj.id})`} />
+                              <line x1="50%" y1="85%" x2="50%" y2="20%" stroke="#64748B" strokeWidth="2" strokeLinecap="round" />
+                              <polyline points="calc(50% - 6px),30% 50%,18% calc(50% + 6px),30%" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <div style={{ position: 'relative', zIndex: 1, background: 'rgba(255, 255, 255, 0.9)', padding: '2px 6px', borderRadius: '4px', border: '1px solid #CBD5E1', display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '90%' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" />
+                              </svg>
+                              <span style={{ fontSize: '10px', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {obj.name || formatStructureLabel(obj.elementType)}
+                              </span>
+                            </div>
+                          </div>
+                        ) : isAmenity ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
+                            <AmenityIcon type={obj.elementType} name={obj.name} color={contrastColor} />
+                            <span style={{ fontSize: '10px', fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.9 }}>
+                              {obj.name}
+                            </span>
+                          </div>
+                        ) : (
                           <span
                             style={{
-                              position: 'relative',
-                              zIndex: 1,
-                              fontSize: '9px',
-                              fontWeight: 800,
-                              color: '#0284C7',
-                              letterSpacing: '0.05em',
-                              textTransform: 'uppercase',
-                              pointerEvents: 'none',
-                              padding: '0 4px',
-                              lineHeight: 1,
                               maxWidth: '100%',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
+                              fontSize: obj.h <= 20 ? '9px' : '11px',
+                              fontWeight: obj.h <= 20 ? 800 : 700,
+                              letterSpacing: obj.h <= 20 ? '0.05em' : 'normal',
+                              textTransform: obj.h <= 20 ? 'uppercase' : 'none',
+                              padding: '0 4px',
+                              lineHeight: 1,
+                              pointerEvents: 'none',
                             }}
                           >
                             {obj.name || formatStructureLabel(obj.elementType)}
                           </span>
-                        </div>
-                      ) : isStairs ? (
-                        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '4px' }}>
-                          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', opacity: 0.75 }} xmlns="http://www.w3.org/2000/svg">
-                            <defs>
-                              <pattern id={`stairs-pattern-${obj.id}`} width="100%" height="16" patternUnits="userSpaceOnUse">
-                                <line x1="0" y1="16" x2="100%" y2="16" stroke="#94A3B8" strokeWidth="1.5" />
-                              </pattern>
-                            </defs>
-                            <rect width="100%" height="100%" fill={`url(#stairs-pattern-${obj.id})`} />
-                            <line x1="50%" y1="85%" x2="50%" y2="20%" stroke="#64748B" strokeWidth="2" strokeLinecap="round" />
-                            <polyline points="calc(50% - 6px),30% 50%,18% calc(50% + 6px),30%" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          <div style={{ position: 'relative', zIndex: 1, background: 'rgba(255, 255, 255, 0.9)', padding: '2px 6px', borderRadius: '4px', border: '1px solid #CBD5E1', display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '90%' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M19 5h-4v4h-4v4H7v4H3v2h18V5z" />
-                            </svg>
-                            <span style={{ fontSize: '10px', fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {obj.name || formatStructureLabel(obj.elementType)}
-                            </span>
-                          </div>
-                        </div>
-                      ) : isAmenity ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', pointerEvents: 'none', maxWidth: '100%', maxHeight: '100%' }}>
-                          <AmenityIcon type={obj.elementType} name={obj.name} color={contrastColor} />
-                          <span style={{ fontSize: '10px', fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.9 }}>
-                            {obj.name}
-                          </span>
-                        </div>
-                      ) : (
-                        <span
-                          style={{
-                            maxWidth: '100%',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            fontSize: obj.h <= 20 ? '9px' : '11px',
-                            fontWeight: obj.h <= 20 ? 800 : 700,
-                            letterSpacing: obj.h <= 20 ? '0.05em' : 'normal',
-                            textTransform: obj.h <= 20 ? 'uppercase' : 'none',
-                            padding: '0 4px',
-                            lineHeight: 1,
-                            pointerEvents: 'none',
+                        )}
+                      </button>
+                      {selectedObjId === obj.id && (
+                        <div
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (e.button !== 0) return;
+                            setResizeState({
+                              id: obj.id,
+                              startX: e.clientX,
+                              startY: e.clientY,
+                              startObjW: obj.w,
+                              startObjH: obj.h,
+                              startObjX: obj.x,
+                              startObjY: obj.y,
+                            });
                           }}
-                        >
-                          {obj.name || formatStructureLabel(obj.elementType)}
-                        </span>
+                          style={{
+                            position: 'absolute',
+                            right: '-4px',
+                            bottom: (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall') || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase().includes('window')) ? 'calc(50% - 6px)' : '-4px',
+                            width: '12px',
+                            height: '12px',
+                            background: 'var(--da-brand-dark)',
+                            borderRadius: '50%',
+                            cursor: (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall') || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase().includes('window'))
+                              ? ((obj.rotation === 90 || obj.rotation === 270) ? 'ns-resize' : 'ew-resize')
+                              : 'nwse-resize',
+                            border: '2px solid #fff'
+                          }}
+                        />
                       )}
-                    </button>
-                  {selectedObjId === obj.id && (
-                    <div
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.button !== 0) return;
-                        setResizeState({
-                          id: obj.id,
-                          startX: e.clientX,
-                          startY: e.clientY,
-                          startObjW: obj.w,
-                          startObjH: obj.h,
-                          startObjX: obj.x,
-                          startObjY: obj.y,
-                        });
-                      }}
-                      style={{
-                        position: 'absolute',
-                        right: '-4px',
-                        bottom: (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall') || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase().includes('window')) ? 'calc(50% - 6px)' : '-4px',
-                        width: '12px',
-                        height: '12px',
-                        background: 'var(--da-brand-dark)',
-                        borderRadius: '50%',
-                        cursor: (obj.elementType?.toLowerCase().includes('wall') || obj.name?.toLowerCase().includes('wall') || obj.elementType?.toLowerCase().includes('window') || obj.name?.toLowerCase().includes('window'))
-                          ? ((obj.rotation === 90 || obj.rotation === 270) ? 'ns-resize' : 'ew-resize')
-                          : 'nwse-resize',
-                        border: '2px solid #fff'
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -3119,13 +3119,13 @@ useEffect(() => {
                                       prev.map((o) =>
                                         o.id === selectedObj.id
                                           ? {
-                                              ...o,
+                                            ...o,
+                                            recommendationTags: nextTags,
+                                            properties: {
+                                              ...(o.properties || {}),
                                               recommendationTags: nextTags,
-                                              properties: {
-                                                ...(o.properties || {}),
-                                                recommendationTags: nextTags,
-                                              },
-                                            }
+                                            },
+                                          }
                                           : o
                                       )
                                     );

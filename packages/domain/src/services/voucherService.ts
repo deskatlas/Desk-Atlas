@@ -298,6 +298,8 @@ export class VoucherService {
                 redemptionChannels: ruleDefinition.redemption_channels,
                 redemptionWorkspaceTypeIds: ruleDefinition.redemption_workspace_type_ids,
                 minimumBookingAmount: ruleDefinition.minimum_booking_amount,
+                campaign_rule_version: rule.version ?? 1,
+                campaignRuleVersion: rule.version ?? 1,
               },
               status: 'AVAILABLE',
               issuedAt: now.toISOString(),
