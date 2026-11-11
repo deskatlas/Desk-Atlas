@@ -361,6 +361,14 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
       }
     }
 
+    // Automatically remove expired pending invitations to allow reinvitation in the future
+    const nowTime = this.nowProvider().getTime();
+    for (const [invId, existingInv] of this.invitations.entries()) {
+      if (existingInv.status === 'PENDING' && new Date(existingInv.expiresAt).getTime() <= nowTime) {
+        this.invitations.delete(invId);
+      }
+    }
+
     const id = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const nowIso = this.nowProvider().toISOString();
     const inv = {
@@ -425,6 +433,13 @@ export class StaffManagementMemoryRepository implements StaffManagementRepositor
 
     const list: StaffInvitation[] = [];
     const now = this.nowProvider().getTime();
+
+    // Automatically remove expired pending invitations to allow reinvitation in the future
+    for (const [invId, existingInv] of this.invitations.entries()) {
+      if (existingInv.status === 'PENDING' && new Date(existingInv.expiresAt).getTime() <= now) {
+        this.invitations.delete(invId);
+      }
+    }
 
     for (const inv of this.invitations.values()) {
       const isExpired = new Date(inv.expiresAt).getTime() < now;

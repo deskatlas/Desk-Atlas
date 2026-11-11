@@ -684,6 +684,13 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
       }
     }
 
+    // Automatically remove expired pending invitations to allow reinvitation in the future
+    const nowIso = this.nowProvider().toISOString();
+    await this.request(
+      `/staff_invitations?status=eq.PENDING&expires_at=lte.${encodeURIComponent(nowIso)}`,
+      { method: 'DELETE' }
+    ).catch(() => {});
+
     const rows = await this.request<any[]>('/staff_invitations', {
       method: 'POST',
       headers: {
@@ -720,13 +727,22 @@ export class StaffManagementSupabaseRepository implements StaffManagementReposit
   }
 
   async listPendingInvitations(actorUserId?: string, actorIsSuperAdmin?: boolean): Promise<StaffInvitation[]> {
+    const now = this.nowProvider();
+    const nowIso = now.toISOString();
+
+    // Automatically remove expired pending invitations to allow reinvitation in the future
+    await this.request(
+      `/staff_invitations?status=eq.PENDING&expires_at=lte.${encodeURIComponent(nowIso)}`,
+      { method: 'DELETE' }
+    ).catch(() => {});
+
     const endpoint = '/staff_invitations?select=*&order=created_at.desc';
 
     const rows = await this.request<any[]>(endpoint);
-    const now = this.nowProvider().getTime();
+    const nowTime = now.getTime();
 
     return rows.map((r) => {
-      const isExpired = new Date(r.expires_at).getTime() < now;
+      const isExpired = new Date(r.expires_at).getTime() < nowTime;
       const status = isExpired && r.status === 'PENDING' ? 'EXPIRED' : r.status;
       return {
         ...this.mapRowToStaffInvitation(r),

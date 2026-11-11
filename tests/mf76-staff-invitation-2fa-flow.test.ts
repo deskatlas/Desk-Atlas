@@ -168,4 +168,54 @@ describe("Staff Invitation with Email & 2FA Confirmation", () => {
       (err: any) => err.message.includes("cancelled")
     );
   });
+
+  it("automatically removes expired pending invitations to allow reinvitation", async () => {
+    let currentTime = new Date("2026-09-08T12:00:00.000Z");
+    const dynamicNow = () => currentTime;
+
+    const memoryRepo = new StaffManagementMemoryRepository([], dynamicNow);
+    const service = createStaffManagementService(memoryRepo, dynamicNow);
+
+    // 1. Initial invitation
+    const { invitation: firstInv } = await service.inviteStaff({
+      email: "staff.reinvite@deskatlas.com",
+      displayName: "Reinvite Staff",
+      role: "STAFF",
+      actorUserId: adminA.userId,
+      actorRole: "ADMIN",
+    });
+
+    assert.equal(firstInv.email, "staff.reinvite@deskatlas.com");
+    assert.equal(firstInv.status, "PENDING");
+
+    // 2. Advance time past 24-hour expiration window
+    currentTime = new Date("2026-09-09T13:00:00.000Z");
+
+    // 3. listPendingInvitations cleans up expired pending invitation
+    const pendingList = await service.listPendingInvitations(adminA);
+    assert.equal(pendingList.length, 0);
+
+    // 4. Re-inviting the same email succeeds cleanly and creates fresh invitation
+    const { invitation: secondInv } = await service.inviteStaff({
+      email: "staff.reinvite@deskatlas.com",
+      displayName: "Reinvite Staff",
+      role: "STAFF",
+      password: "NewPassword123!",
+      actorUserId: adminA.userId,
+      actorRole: "ADMIN",
+    });
+
+    assert.equal(secondInv.status, "PENDING");
+    assert.notEqual(secondInv.id, firstInv.id);
+    assert.notEqual(secondInv.token, firstInv.token);
+
+    // 5. Confirming the second invitation with the fresh verification code succeeds
+    const confirmed = await service.confirmStaffInvitation({
+      token: secondInv.token,
+      verificationCode: secondInv.verificationCode,
+    });
+
+    assert.equal(confirmed.staff.email, "staff.reinvite@deskatlas.com");
+    assert.equal(confirmed.invitation.status, "CONFIRMED");
+  });
 });
